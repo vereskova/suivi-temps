@@ -15,7 +15,7 @@ type WorkerRow = {
 const DEFAULT_DAY = {
   start: "08:00",
   end: "17:00",
-  pause: "01:00",
+  pause: "02:00",
   extra: "00:00",
 };
 
@@ -23,14 +23,22 @@ function today() {
   return new Date().toISOString().split("T")[0];
 }
 
-// 🔥 автоформат времени
-function formatTime(value: string) {
-  const digits = value.replace(/\D/g, "");
+function formatLive(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 4);
 
-  if (digits.length === 3) return "0" + digits[0] + ":" + digits.slice(1);
-  if (digits.length === 4) return digits.slice(0, 2) + ":" + digits.slice(2);
+  if (digits.length <= 2) return digits;
+  return digits.slice(0, 2) + ":" + digits.slice(2);
+}
 
-  return value;
+function normalizeTime(value: string) {
+  const [h, m] = value.split(":");
+
+  if (!h) return value;
+
+  const hh = h.padStart(2, "0");
+  const mm = (m || "00").padEnd(2, "0");
+
+  return `${hh}:${mm}`;
 }
 
 export default function Home() {
@@ -263,14 +271,13 @@ function Time({
         {label}
         <span className="block text-[10px] text-slate-400">{ru}</span>
       </label>
-
       <input
         type="text"
         inputMode="numeric"
         className="input"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={(e) => onChange(formatTime(e.target.value))}
+        onChange={(e) => onChange(formatLive(e.target.value))}
+        onBlur={(e) => onChange(normalizeTime(e.target.value))}
       />
     </div>
   );
