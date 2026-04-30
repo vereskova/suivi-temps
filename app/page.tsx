@@ -31,14 +31,16 @@ function formatLive(value: string) {
 }
 
 function normalizeTime(value: string) {
-  const [h, m] = value.split(":");
+  const digits = value.replace(/\D/g, "");
 
-  if (!h) return value;
+  if (!digits) return "";
 
-  const hh = h.padStart(2, "0");
-  const mm = (m || "00").padEnd(2, "0");
+  if (digits.length <= 2) {
+    return `${digits.padStart(2, "0")}:00`;
+  }
 
-  return `${hh}:${mm}`;
+  const normalized = digits.slice(0, 4).padEnd(4, "0");
+  return `${normalized.slice(0, 2)}:${normalized.slice(2)}`;
 }
 
 export default function Home() {
@@ -47,24 +49,20 @@ export default function Home() {
   );
 
   const [date, setDate] = useState(today());
-  const [selectedEquipe, setSelectedEquipe] = useState<EquipeName>(equipeNames[0]);
+  const [selectedEquipe, setSelectedEquipe] = useState<EquipeName | "">("");
   const [status, setStatus] = useState("");
+  const [workers, setWorkers] = useState<WorkerRow[]>([]);
 
-  const [workers, setWorkers] = useState<WorkerRow[]>(
-    equipes[equipeNames[0]].workers.map((name) => ({
-      name,
-      start: "",
-      end: "",
-      pause: "",
-      extra: "",
-      absent: false,
-    }))
-  );
+  function changeEquipe(equipe: string) {
+    if (!equipe || !(equipe in equipes)) return;
 
-  function changeEquipe(equipe: EquipeName) {
-    setSelectedEquipe(equipe);
+    const validEquipe = equipe as EquipeName;
+
+    setSelectedEquipe(validEquipe);
+    setStatus("");
+
     setWorkers(
-      equipes[equipe].workers.map((name) => ({
+      equipes[validEquipe].workers.map((name) => ({
         name,
         start: "",
         end: "",
@@ -76,6 +74,11 @@ export default function Home() {
   }
 
   function setStandardDay() {
+    if (!selectedEquipe) {
+      setStatus("❌ Сначала выберите бригаду");
+      return;
+    }
+
     setWorkers((prev) =>
       prev.map((w) => ({
         ...w,
@@ -83,6 +86,8 @@ export default function Home() {
         absent: false,
       }))
     );
+
+    setStatus("");
   }
 
   function toggleAbsent(index: number) {
@@ -104,58 +109,57 @@ export default function Home() {
 
   function updateWorker(index: number, field: keyof WorkerRow, value: string) {
     setWorkers((prev) =>
-      prev.map((w, i) =>
-        i === index ? { ...w, [field]: value } : w
-      )
+      prev.map((w, i) => (i === index ? { ...w, [field]: value } : w))
     );
   }
 
   async function submitForm() {
-  const url = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
+    const url = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
 
-  if (!url) {
-    setStatus("❌ Нет ссылки");
-    return;
-  }
-
-  try {
-    setStatus("⏳ Отправка...");
-
-    const response = await fetch(url, {
-      method: "POST",
-      body: JSON.stringify({
-        date,
-        equipe: selectedEquipe,
-        chef: equipes[selectedEquipe].chef,
-        workers,
-      }),
-    });
-
-    const text = await response.text();
-
-    if (!response.ok) {
-      throw new Error(text);
+    if (!selectedEquipe) {
+      setStatus("❌ Выберите бригаду");
+      return;
     }
 
-    setStatus("✅ Отправлено: " + text);
-  } catch (error) {
-    console.error(error);
-    setStatus("❌ Ошибка отправки. Смотри Console.");
+    if (!url) {
+      setStatus("❌ Нет ссылки");
+      return;
+    }
+
+    try {
+      setStatus("⏳ Отправка...");
+
+      const response = await fetch(url, {
+        method: "POST",
+        body: JSON.stringify({
+          date,
+          equipe: selectedEquipe,
+          chef: equipes[selectedEquipe].chef,
+          workers,
+        }),
+      });
+
+      const text = await response.text();
+
+      if (!response.ok) {
+        throw new Error(text);
+      }
+
+      setStatus("✅ Отправлено: " + text);
+    } catch (error) {
+      console.error(error);
+      setStatus("❌ Ошибка отправки. Смотри Console.");
+    }
   }
-}
 
   return (
     <main className="min-h-screen bg-slate-100 p-4">
       <div className="mx-auto max-w-md rounded-3xl bg-white p-5 shadow-xl">
-
         <h1 className="text-center text-3xl font-black">
           Suivi des heures
-          <span className="block text-sm text-slate-400">
-            Учёт времени
-          </span>
+          <span className="block text-sm text-slate-400">Учёт времени</span>
         </h1>
 
-        {/* ÉQUIPE */}
         <div className="mt-6">
           <label className="font-bold">
             Équipe
@@ -165,8 +169,12 @@ export default function Home() {
           <select
             className="input mt-2"
             value={selectedEquipe}
-            onChange={(e) => changeEquipe(e.target.value as EquipeName)}
+            onChange={(e) => changeEquipe(e.target.value)}
           >
+            <option value="" disabled>
+              Sélectionner une équipe / Выберите бригаду
+            </option>
+
             {equipeNames.map((e) => (
               <option key={e} value={e}>
                 {e} — {equipes[e].chef}
@@ -175,7 +183,6 @@ export default function Home() {
           </select>
         </div>
 
-        {/* DATE */}
         <div className="mt-4">
           <label className="font-bold">
             Date
@@ -190,65 +197,80 @@ export default function Home() {
           />
         </div>
 
-        {/* BUTTONS */}
         <div className="mt-5 grid grid-cols-2 gap-3">
-          <button
-            onClick={() => setDate(today())}
-            className="btn btn-dark"
-          >
+          <button onClick={() => setDate(today())} className="btn btn-dark">
             Aujourd’hui
             <span className="block text-xs">Сегодня</span>
           </button>
 
-          <button
-            onClick={setStandardDay}
-            className="btn btn-primary"
-          >
+          <button onClick={setStandardDay} className="btn btn-primary">
             Journée standard
             <span className="block text-xs">Стандарт</span>
           </button>
         </div>
 
-        {/* WORKERS */}
+        {workers.length === 0 && (
+          <p className="mt-6 rounded-2xl bg-slate-50 p-4 text-center text-sm font-bold text-slate-400">
+            Sélectionnez une équipe
+            <span className="block">Выберите бригаду</span>
+          </p>
+        )}
+
         <div className="mt-6 space-y-4">
           {workers.map((w, i) => (
-            <div key={i} className="card">
-              <div className="flex justify-between mb-3">
+            <div key={w.name} className="card">
+              <div className="mb-3 flex justify-between gap-3">
                 <p className="font-bold">{w.name}</p>
 
                 <button
                   onClick={() => toggleAbsent(i)}
-                  className={`px-3 py-1 rounded-full text-sm ${
+                  className={`rounded-full px-3 py-1 text-sm font-bold ${
                     w.absent ? "bg-red-600 text-white" : "bg-slate-200"
                   }`}
                 >
                   Absent
-                  <span className="block text-[10px]">Нет</span>
+                  <span className="block text-[10px]">Отсутствует</span>
                 </button>
               </div>
 
               {!w.absent && (
                 <div className="grid grid-cols-2 gap-2">
-                  <Time label="Début" ru="Начало" value={w.start} onChange={(v)=>updateWorker(i,"start",v)} />
-                  <Time label="Fin" ru="Конец" value={w.end} onChange={(v)=>updateWorker(i,"end",v)} />
-                  <Time label="Pause" ru="Перерыв" value={w.pause} onChange={(v)=>updateWorker(i,"pause",v)} />
-                  <Time label="H. supp" ru="Перераб." value={w.extra} onChange={(v)=>updateWorker(i,"extra",v)} />
+                  <Time
+                    label="Début"
+                    ru="Начало"
+                    value={w.start}
+                    onChange={(v) => updateWorker(i, "start", v)}
+                  />
+                  <Time
+                    label="Fin"
+                    ru="Конец"
+                    value={w.end}
+                    onChange={(v) => updateWorker(i, "end", v)}
+                  />
+                  <Time
+                    label="Pause"
+                    ru="Перерыв"
+                    value={w.pause}
+                    onChange={(v) => updateWorker(i, "pause", v)}
+                  />
+                  <Time
+                    label="H. supp"
+                    ru="Перераб."
+                    value={w.extra}
+                    onChange={(v) => updateWorker(i, "extra", v)}
+                  />
                 </div>
               )}
             </div>
           ))}
         </div>
 
-        {/* SUBMIT */}
-        <button
-          onClick={submitForm}
-          className="btn btn-green w-full mt-6 text-lg"
-        >
+        <button onClick={submitForm} className="btn btn-green mt-6 w-full text-lg">
           Envoyer
           <span className="block text-xs">Отправить</span>
         </button>
 
-        {status && <p className="mt-4 text-center">{status}</p>}
+        {status && <p className="mt-4 text-center font-bold">{status}</p>}
       </div>
     </main>
   );
@@ -271,6 +293,7 @@ function Time({
         {label}
         <span className="block text-[10px] text-slate-400">{ru}</span>
       </label>
+
       <input
         type="text"
         inputMode="numeric"
