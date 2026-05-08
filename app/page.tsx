@@ -15,7 +15,7 @@ type WorkerRow = {
 const DEFAULT_DAY = {
   start: "08:00",
   end: "17:00",
-  pause: "02:00",
+  pause: "01:00",
   extra: "00:00",
 };
 
