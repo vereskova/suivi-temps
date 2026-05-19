@@ -3,8 +3,8 @@ export const equipes = {
     chef: "GARBUZ Nicolai",
     workers: [
       "GARBUZ Nicolai",
-      "BOTNARI Aleksandr",
-      "GUZUN Mihail",
+      "MYSKO Boghdan",
+      "TSAPKO Serghii",
     ],
   },
 
@@ -18,8 +18,12 @@ export const equipes = {
   },
 
   "Equipe 3": {
-    chef: "",
-    workers: [],
+    chef: "CERNISEV Artiom",
+    workers: [
+      "CERNIZEV Artiom",
+      "ILIIN Evghenii",
+      "COZODAEV Serghei"
+    ],
   },
 
   "Equipe 4": {
@@ -53,8 +57,8 @@ export const equipes = {
     chef: "KOTENKO Serhii",
     workers: [
       "KOTENKO Serhii",
-      "MYSKO Bohdan",
-      "TSAPKO Serhii",
+      "VACULENCO Anatolii",
+      "ZMEU Nicolai",
     ],
   },
 
