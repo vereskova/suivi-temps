@@ -3,8 +3,8 @@ export const equipes = {
     chef: "GARBUZ Nicolai",
     workers: [
       "GARBUZ Nicolai",
-      "MYSKO Boghdan",
-      "TSAPKO Serghii",
+      "CERNIZEV Artiom",
+      "ZMEU Nicolai"
     ],
   },
 
@@ -13,14 +13,14 @@ export const equipes = {
     workers: [
       "DANDARA Ivan",
       "COBZARI Serghei",
-      "ROPONICA Dionis",
+      "VETRICI Semion"
     ],
   },
 
   "Equipe 3": {
     chef: "CERNISEV Artiom",
     workers: [
-      "CERNIZEV Artiom",
+      "VACULENCO Anatolii",
       "ILIIN Evghenii",
       "COZODAEV Serghei"
     ],
@@ -31,7 +31,7 @@ export const equipes = {
     workers: [
       "BOGOMAZ Nicolai",
       "SAVA Nicolae",
-      "AGATII Alexandr",
+      "AGATII Alexandr"
     ],
   },
 
@@ -40,7 +40,7 @@ export const equipes = {
     workers: [
       "FACHIRA Dmitri",
       "SUCEVEANU Tudor",
-      "NICHIFOREAC Roman",
+      "NICHIFOREAC Roman"
     ],
   },
 
@@ -49,7 +49,7 @@ export const equipes = {
     workers: [
       "BORETS Yevhen",
       "DROSSU Fiodor",
-      "CHIRILIUC Mihail",
+      "CHIRILIUC Mihail"
     ],
   },
 
@@ -57,8 +57,8 @@ export const equipes = {
     chef: "KOTENKO Serhii",
     workers: [
       "KOTENKO Serhii",
-      "VACULENCO Anatolii",
-      "ZMEU Nicolai",
+      "MYSKO Boghdan",
+      "TSAPKO Serghii"
     ],
   },
 
