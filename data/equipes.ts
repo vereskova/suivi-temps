@@ -3,7 +3,7 @@ export const equipes = {
     chef: "GARBUZ Nicolai",
     workers: [
       "GARBUZ Nicolai",
-      "CERNIZEV Artiom",
+      "VACULENCO Anatolii",
       "ZMEU Nicolai"
     ],
   },
@@ -20,7 +20,7 @@ export const equipes = {
   "Equipe 3": {
     chef: "CERNISEV Artiom",
     workers: [
-      "VACULENCO Anatolii",
+      "CERNISEV Artiom",
       "ILIIN Evghenii",
       "COZODAEV Serghei"
     ],
