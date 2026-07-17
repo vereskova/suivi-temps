@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { equipes, EquipeName } from "@/data/equipes";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+
+type Team = { id: string; name: string };
+type AbsenceType = { id: string; code: string; label: string };
 
 type WorkerRow = {
+  employeeId: string;
   name: string;
   start: string;
   end: string;
   pause: string;
   extra: string;
   absent: boolean;
+  absenceTypeId: string;
 };
 
 const DEFAULT_DAY = {
@@ -43,38 +49,112 @@ function normalizeTime(value: string) {
   return `${normalized.slice(0, 2)}:${normalized.slice(2)}`;
 }
 
+function timeToMinutes(value: string) {
+  if (!value) return 0;
+  const [h, m] = value.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 export default function Home() {
-  const equipeNames = (Object.keys(equipes) as EquipeName[]).filter(
-    (e) => equipes[e].workers.length > 0
-  );
+  const supabase = createClient();
+  const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
 
   const [date, setDate] = useState(today());
-  const [selectedEquipe, setSelectedEquipe] = useState<EquipeName | "">("");
+  const [selectedTeamId, setSelectedTeamId] = useState("");
   const [status, setStatus] = useState("");
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
 
-  function changeEquipe(equipe: string) {
-    if (!equipe || !(equipe in equipes)) return;
+  useEffect(() => {
+    async function init() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    const validEquipe = equipe as EquipeName;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
 
-    setSelectedEquipe(validEquipe);
+      const { data: roleRow } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+      const admin = roleRow?.role === "rh_admin";
+      setIsAdmin(admin);
+
+      const { data: teamRows, error: teamsError } = await supabase
+        .from("teams")
+        .select("id, name")
+        .eq("active", true)
+        .order("name");
+
+      if (teamsError) {
+        setStatus("❌ Impossible de charger les équipes.");
+        setLoading(false);
+        return;
+      }
+
+      setTeams(teamRows ?? []);
+
+      const { data: absenceRows } = await supabase
+        .from("absence_types")
+        .select("id, code, label")
+        .order("label");
+      setAbsenceTypes(absenceRows ?? []);
+
+      // A chef sees only their own team via RLS, so a single row means auto-select it.
+      if (!admin && teamRows && teamRows.length === 1) {
+        await changeTeam(teamRows[0].id);
+      }
+
+      setLoading(false);
+    }
+
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function changeTeam(teamId: string) {
+    if (!teamId) return;
+
+    setSelectedTeamId(teamId);
     setStatus("");
 
+    const { data: employeeRows, error } = await supabase
+      .from("employees")
+      .select("id, first_name, last_name")
+      .eq("team_id", teamId)
+      .eq("status", "active")
+      .order("last_name");
+
+    if (error) {
+      setStatus("❌ Impossible de charger la brigade.");
+      return;
+    }
+
     setWorkers(
-      equipes[validEquipe].workers.map((name) => ({
-        name,
+      (employeeRows ?? []).map((e) => ({
+        employeeId: e.id,
+        name: `${e.last_name} ${e.first_name}`.trim(),
         start: "",
         end: "",
         pause: "",
         extra: "",
         absent: false,
+        absenceTypeId: "",
       }))
     );
   }
 
   function setStandardDay() {
-    if (!selectedEquipe) {
+    if (!selectedTeamId) {
       setStatus("❌ Сначала выберите бригаду");
       return;
     }
@@ -84,6 +164,7 @@ export default function Home() {
         ...w,
         ...DEFAULT_DAY,
         absent: false,
+        absenceTypeId: "",
       }))
     );
 
@@ -114,74 +195,88 @@ export default function Home() {
   }
 
   async function submitForm() {
-    const url = process.env.NEXT_PUBLIC_GOOGLE_SCRIPT_URL;
-
-    if (!selectedEquipe) {
+    if (!selectedTeamId) {
       setStatus("❌ Выберите бригаду");
       return;
     }
 
-    if (!url) {
-      setStatus("❌ Нет ссылки");
+    setStatus("⏳ Отправка...");
+
+    const rows = workers.map((w) => ({
+      work_date: date,
+      team_id: selectedTeamId,
+      employee_id: w.employeeId,
+      start_time: w.absent || !w.start ? null : w.start,
+      end_time: w.absent || !w.end ? null : w.end,
+      pause_minutes: w.absent ? null : timeToMinutes(w.pause),
+      overtime_minutes: w.absent ? null : timeToMinutes(w.extra),
+      is_absent: w.absent,
+      absence_type_id: w.absent && w.absenceTypeId ? w.absenceTypeId : null,
+    }));
+
+    const { error } = await supabase
+      .from("pointage_entries")
+      .upsert(rows, { onConflict: "work_date,employee_id" });
+
+    if (error) {
+      console.error(error);
+      setStatus("❌ Ошибка отправки. Смотри Console.");
       return;
     }
 
-    try {
-      setStatus("⏳ Отправка...");
+    setStatus("✅ Отправлено · " + new Date().toLocaleTimeString("ru"));
+  }
 
-      const response = await fetch(url, {
-        method: "POST",
-        body: JSON.stringify({
-          date,
-          equipe: selectedEquipe,
-          chef: equipes[selectedEquipe].chef,
-          workers,
-        }),
-      });
+  async function signOut() {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  }
 
-      const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(text);
-      }
-
-      setStatus("✅ Отправлено: " + text);
-    } catch (error) {
-      console.error(error);
-      setStatus("❌ Ошибка отправки. Смотри Console.");
-    }
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-slate-100 p-4 flex items-center justify-center">
+        <p className="text-slate-400">Chargement…</p>
+      </main>
+    );
   }
 
   return (
     <main className="min-h-screen bg-slate-100 p-4">
       <div className="mx-auto max-w-md rounded-3xl bg-white p-5 shadow-xl">
-        <h1 className="text-center text-3xl font-black">
-          Suivi des heures
-          <span className="block text-sm text-slate-400">Учёт времени</span>
-        </h1>
-
-        <div className="mt-6">
-          <label className="font-bold">
-            Équipe
-            <span className="block text-xs text-slate-400">Бригада</span>
-          </label>
-
-          <select
-            className="input mt-2"
-            value={selectedEquipe}
-            onChange={(e) => changeEquipe(e.target.value)}
-          >
-            <option value="" disabled>
-              Sélectionner une équipe / Выберите бригаду
-            </option>
-
-            {equipeNames.map((e) => (
-              <option key={e} value={e}>
-                {e} — {equipes[e].chef}
-              </option>
-            ))}
-          </select>
+        <div className="flex items-start justify-between">
+          <h1 className="text-3xl font-black">
+            Suivi des heures
+            <span className="block text-sm text-slate-400">Учёт времени</span>
+          </h1>
+          <button onClick={signOut} className="text-xs text-slate-400 underline">
+            Déconnexion
+          </button>
         </div>
+
+        {isAdmin && (
+          <div className="mt-6">
+            <label className="font-bold">
+              Équipe
+              <span className="block text-xs text-slate-400">Бригада</span>
+            </label>
+
+            <select
+              className="input mt-2"
+              value={selectedTeamId}
+              onChange={(e) => changeTeam(e.target.value)}
+            >
+              <option value="" disabled>
+                Sélectionner une équipe / Выберите бригаду
+              </option>
+
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div className="mt-4">
           <label className="font-bold">
@@ -211,14 +306,23 @@ export default function Home() {
 
         {workers.length === 0 && (
           <p className="mt-6 rounded-2xl bg-slate-50 p-4 text-center text-sm font-bold text-slate-400">
-            Sélectionnez une équipe
-            <span className="block">Выберите бригаду</span>
+            {isAdmin ? (
+              <>
+                Sélectionnez une équipe
+                <span className="block">Выберите бригаду</span>
+              </>
+            ) : (
+              <>
+                Aucune équipe assignée
+                <span className="block">Бригада не назначена — обратитесь к RH</span>
+              </>
+            )}
           </p>
         )}
 
         <div className="mt-6 space-y-4">
           {workers.map((w, i) => (
-            <div key={w.name} className="card">
+            <div key={w.employeeId} className="card">
               <div className="mb-3 flex justify-between gap-3">
                 <p className="font-bold">{w.name}</p>
 
@@ -261,14 +365,33 @@ export default function Home() {
                   />
                 </div>
               )}
+
+              {w.absent && absenceTypes.length > 0 && (
+                <select
+                  className="input mt-2"
+                  value={w.absenceTypeId}
+                  onChange={(e) =>
+                    updateWorker(i, "absenceTypeId", e.target.value)
+                  }
+                >
+                  <option value="">Type d&apos;absence / Тип отсутствия</option>
+                  {absenceTypes.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           ))}
         </div>
 
-        <button onClick={submitForm} className="btn btn-green mt-6 w-full text-lg">
-          Envoyer
-          <span className="block text-xs">Отправить</span>
-        </button>
+        {workers.length > 0 && (
+          <button onClick={submitForm} className="btn btn-green mt-6 w-full text-lg">
+            Envoyer
+            <span className="block text-xs">Отправить</span>
+          </button>
+        )}
 
         {status && <p className="mt-4 text-center font-bold">{status}</p>}
       </div>
