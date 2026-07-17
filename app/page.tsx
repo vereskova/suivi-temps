@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { formatLive, normalizeTime, timeToMinutes } from "@/lib/time";
 
 type Team = { id: string; name: string };
 type AbsenceType = { id: string; code: string; label: string };
@@ -28,32 +29,6 @@ const DEFAULT_DAY = {
 
 function today() {
   return new Date().toISOString().split("T")[0];
-}
-
-function formatLive(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-
-  if (digits.length <= 2) return digits;
-  return digits.slice(0, 2) + ":" + digits.slice(2);
-}
-
-function normalizeTime(value: string) {
-  const digits = value.replace(/\D/g, "");
-
-  if (!digits) return "";
-
-  if (digits.length <= 2) {
-    return `${digits.padStart(2, "0")}:00`;
-  }
-
-  const normalized = digits.slice(0, 4).padEnd(4, "0");
-  return `${normalized.slice(0, 2)}:${normalized.slice(2)}`;
-}
-
-function timeToMinutes(value: string) {
-  if (!value) return 0;
-  const [h, m] = value.split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
 }
 
 export default function Home() {
