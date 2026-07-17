@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
 type Team = { id: string; name: string };
@@ -248,9 +249,16 @@ export default function Home() {
             Suivi des heures
             <span className="block text-sm text-slate-400">Учёт времени</span>
           </h1>
-          <button onClick={signOut} className="text-xs text-slate-400 underline">
-            Déconnexion
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            {isAdmin && (
+              <Link href="/admin" className="text-xs text-slate-400 underline">
+                Tableau RH
+              </Link>
+            )}
+            <button onClick={signOut} className="text-xs text-slate-400 underline">
+              Déconnexion
+            </button>
+          </div>
         </div>
 
         {isAdmin && (
