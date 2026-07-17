@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -90,7 +90,15 @@ function monthRange(year: number, month: number) {
 const POINTAGE_SELECT =
   "employee_id, work_date, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label)";
 
-type ViewKey = "jour" | "employe" | "mois" | "export" | "effectif";
+type ViewKey =
+  | "jour"
+  | "employe"
+  | "mois"
+  | "export"
+  | "effectif"
+  | "medical"
+  | "formations"
+  | "tailles";
 
 const NAV_ITEMS: { key: ViewKey; label: string }[] = [
   { key: "jour", label: "Par jour" },
@@ -218,6 +226,24 @@ export default function AdminPage() {
                 >
                   Employés
                 </SidebarLink>
+                <SidebarLink
+                  active={view === "medical"}
+                  onClick={() => setView("medical")}
+                >
+                  Médical
+                </SidebarLink>
+                <SidebarLink
+                  active={view === "formations"}
+                  onClick={() => setView("formations")}
+                >
+                  Formations
+                </SidebarLink>
+                <SidebarLink
+                  active={view === "tailles"}
+                  onClick={() => setView("tailles")}
+                >
+                  Tailles
+                </SidebarLink>
               </SidebarSection>
 
               <SidebarSection title="À venir">
@@ -255,6 +281,9 @@ export default function AdminPage() {
                 onChanged={loadActiveEmployees}
               />
             )}
+            {view === "medical" && <MedicalView supabase={supabase} />}
+            {view === "formations" && <FormationsView supabase={supabase} />}
+            {view === "tailles" && <TaillesView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -1238,6 +1267,7 @@ function EmployeesView({
   });
   const [adding, setAdding] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -1247,7 +1277,7 @@ function EmployeesView({
         .select(
           "id, first_name, last_name, team_id, status, hire_date, end_date, teams!employees_team_id_fkey(name)"
         )
-        .eq("category", "chantier")
+        .order("category")
         .order("status")
         .order("last_name");
       setEmployees((data as unknown as EmployeeFull[]) ?? []);
@@ -1401,7 +1431,8 @@ function EmployeesView({
               {employees.map((e) => {
                 const isEditing = editingId === e.id;
                 return (
-                  <tr key={e.id} className="border-t border-slate-100">
+                  <Fragment key={e.id}>
+                  <tr className="border-t border-slate-100">
                     <td className="py-2 pr-4 font-semibold">
                       {employeeName(e)}
                     </td>
@@ -1492,10 +1523,779 @@ function EmployeesView({
                         <td className="py-2 pr-4 text-slate-500">
                           {e.end_date ?? "—"}
                         </td>
+                        <td className="py-2 whitespace-nowrap">
+                          <button
+                            className="text-xs text-slate-400 underline mr-3"
+                            onClick={() => startEdit(e)}
+                          >
+                            Modifier
+                          </button>
+                          <button
+                            className="text-xs text-slate-400 underline"
+                            onClick={() =>
+                              setExpandedId(expandedId === e.id ? null : e.id)
+                            }
+                          >
+                            {expandedId === e.id ? "Fermer" : "Détails"}
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                  {expandedId === e.id && (
+                    <tr className="border-t border-slate-100">
+                      <td colSpan={5} className="bg-slate-50 p-4">
+                        <EmployeeDetailPanel supabase={supabase} employeeId={e.id} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Panneau détail employé — profil étendu + confidentiel (RIB, SS, visa) ───
+type EmployeeProfileFields = {
+  sex: string | null;
+  qualification: string | null;
+  contract_type: string | null;
+  job_title: string | null;
+  device_label: string | null;
+  hire_date: string | null;
+  date_of_birth: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
+type ConfidentialFields = {
+  nationality: string | null;
+  rib: string | null;
+  securite_sociale: string | null;
+  status_ameli: string | null;
+  carte_vitale: string | null;
+  mutuelle: string | null;
+  residence_permit_type: string | null;
+  residence_permit_number: string | null;
+};
+
+const EMPTY_CONFIDENTIAL: ConfidentialFields = {
+  nationality: null,
+  rib: null,
+  securite_sociale: null,
+  status_ameli: null,
+  carte_vitale: null,
+  mutuelle: null,
+  residence_permit_type: null,
+  residence_permit_number: null,
+};
+
+function EmployeeDetailPanel({
+  supabase,
+  employeeId,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  employeeId: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<EmployeeProfileFields | null>(null);
+  const [confidential, setConfidential] =
+    useState<ConfidentialFields>(EMPTY_CONFIDENTIAL);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [{ data: emp }, { data: conf }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email"
+          )
+          .eq("id", employeeId)
+          .single(),
+        supabase
+          .from("employee_confidential")
+          .select("*")
+          .eq("employee_id", employeeId)
+          .maybeSingle(),
+      ]);
+      setProfile((emp as EmployeeProfileFields) ?? null);
+      setConfidential({ ...EMPTY_CONFIDENTIAL, ...(conf ?? {}) });
+      setLoading(false);
+    }
+    load();
+  }, [employeeId, supabase]);
+
+  async function save() {
+    if (!profile) return;
+    setSaving(true);
+    const { error: profileError } = await supabase
+      .from("employees")
+      .update(profile)
+      .eq("id", employeeId);
+    const { error: confError } = await supabase
+      .from("employee_confidential")
+      .upsert(
+        { ...confidential, employee_id: employeeId },
+        { onConflict: "employee_id" }
+      );
+    setSaving(false);
+
+    if (profileError || confError) {
+      alert("Erreur : " + (profileError?.message || confError?.message));
+      return;
+    }
+    setSavedAt(new Date().toLocaleTimeString("fr-FR"));
+  }
+
+  if (loading) return <p className="text-sm text-slate-400">Chargement…</p>;
+  if (!profile) return null;
+
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
+        Profil
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <DetailField
+          label="Sexe"
+          value={profile.sex}
+          onChange={(v) => setProfile({ ...profile, sex: v })}
+        />
+        <DetailField
+          label="Qualification"
+          value={profile.qualification}
+          onChange={(v) => setProfile({ ...profile, qualification: v })}
+        />
+        <DetailField
+          label="Type de contrat"
+          value={profile.contract_type}
+          onChange={(v) => setProfile({ ...profile, contract_type: v })}
+        />
+        <DetailField
+          label="Poste / Emploi"
+          value={profile.job_title}
+          onChange={(v) => setProfile({ ...profile, job_title: v })}
+        />
+        <DetailField
+          label="Téléphone"
+          value={profile.phone}
+          onChange={(v) => setProfile({ ...profile, phone: v })}
+        />
+        <DetailField
+          label="Email"
+          value={profile.email}
+          onChange={(v) => setProfile({ ...profile, email: v })}
+        />
+        <DetailField
+          label="Date de naissance"
+          type="date"
+          value={profile.date_of_birth}
+          onChange={(v) => setProfile({ ...profile, date_of_birth: v })}
+        />
+        <DetailField
+          label="Date d'embauche"
+          type="date"
+          value={profile.hire_date}
+          onChange={(v) => setProfile({ ...profile, hire_date: v })}
+        />
+      </div>
+
+      <p className="text-xs font-bold uppercase tracking-wide text-red-500 mb-2">
+        Confidentiel — RH uniquement
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <DetailField
+          label="Nationalité"
+          value={confidential.nationality}
+          onChange={(v) => setConfidential({ ...confidential, nationality: v })}
+        />
+        <DetailField
+          label="RIB"
+          value={confidential.rib}
+          onChange={(v) => setConfidential({ ...confidential, rib: v })}
+        />
+        <DetailField
+          label="Sécurité sociale"
+          value={confidential.securite_sociale}
+          onChange={(v) =>
+            setConfidential({ ...confidential, securite_sociale: v })
+          }
+        />
+        <DetailField
+          label="Statut Ameli"
+          value={confidential.status_ameli}
+          onChange={(v) => setConfidential({ ...confidential, status_ameli: v })}
+        />
+        <DetailField
+          label="Carte Vitale"
+          value={confidential.carte_vitale}
+          onChange={(v) => setConfidential({ ...confidential, carte_vitale: v })}
+        />
+        <DetailField
+          label="Mutuelle"
+          value={confidential.mutuelle}
+          onChange={(v) => setConfidential({ ...confidential, mutuelle: v })}
+        />
+        <DetailField
+          label="Type de titre de séjour"
+          value={confidential.residence_permit_type}
+          onChange={(v) =>
+            setConfidential({ ...confidential, residence_permit_type: v })
+          }
+        />
+        <DetailField
+          label="N° du titre"
+          value={confidential.residence_permit_number}
+          onChange={(v) =>
+            setConfidential({ ...confidential, residence_permit_number: v })
+          }
+        />
+      </div>
+
+      <button
+        className="btn btn-green text-sm px-4 py-2"
+        disabled={saving}
+        onClick={save}
+      >
+        {saving ? "…" : "Enregistrer"}
+      </button>
+      {savedAt && (
+        <span className="ml-3 text-xs font-semibold text-green-600">
+          Enregistré à {savedAt}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  onChange,
+  type = "text",
+}: {
+  label: string;
+  value: string | null;
+  onChange: (v: string) => void;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase text-slate-400">
+        {label}
+      </label>
+      <input
+        type={type}
+        className="input"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+// ── Vue "Médical" — RDV médecine du travail ─────────────────────────────────
+type MedicalVisit = {
+  id: string;
+  employee_id: string;
+  last_visit_date: string | null;
+  next_visit_date: string | null;
+  visit_subtype: string | null;
+  employees: { first_name: string; last_name: string } | null;
+};
+
+function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [visits, setVisits] = useState<MedicalVisit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    last: string;
+    next: string;
+    subtype: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("medical_visits")
+        .select(
+          "id, employee_id, last_visit_date, next_visit_date, visit_subtype, employees(first_name, last_name)"
+        )
+        .order("next_visit_date", { ascending: true, nullsFirst: false });
+      setVisits((data as unknown as MedicalVisit[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase, refreshKey]);
+
+  function startEdit(v: MedicalVisit) {
+    setEditingId(v.id);
+    setEditForm({
+      last: v.last_visit_date ?? "",
+      next: v.next_visit_date ?? "",
+      subtype: v.visit_subtype ?? "",
+    });
+  }
+
+  async function saveEdit(v: MedicalVisit) {
+    if (!editForm) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("medical_visits")
+      .update({
+        last_visit_date: editForm.last || null,
+        next_visit_date: editForm.next || null,
+        visit_subtype: editForm.subtype || null,
+      })
+      .eq("id", v.id);
+    setSaving(false);
+
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+    setEditingId(null);
+    setRefreshKey((k) => k + 1);
+  }
+
+  const todayIso = today();
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <p className="font-bold">Visites médicales ({visits.length})</p>
+      </div>
+
+      {loading ? (
+        <p className="text-slate-400">Chargement…</p>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <th className="pb-2 pr-4">Nom</th>
+                <th className="pb-2 pr-4">Dernière visite</th>
+                <th className="pb-2 pr-4">Prochaine visite</th>
+                <th className="pb-2 pr-4">Sous-type</th>
+                <th className="pb-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {visits.map((v) => {
+                const isEditing = editingId === v.id;
+                const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
+                return (
+                  <tr key={v.id} className="border-t border-slate-100">
+                    <td className="py-2 pr-4 font-semibold">
+                      {v.employees ? employeeName(v.employees) : "—"}
+                    </td>
+                    {isEditing && editForm ? (
+                      <>
+                        <td className="py-2 pr-4">
+                          <input
+                            type="date"
+                            className="input"
+                            value={editForm.last}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, last: e.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 pr-4">
+                          <input
+                            type="date"
+                            className="input"
+                            value={editForm.next}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, next: e.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 pr-4">
+                          <input
+                            className="input"
+                            value={editForm.subtype}
+                            onChange={(e) =>
+                              setEditForm({ ...editForm, subtype: e.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 whitespace-nowrap">
+                          <button
+                            className="btn btn-green text-xs px-3 py-1 mr-2"
+                            disabled={saving}
+                            onClick={() => saveEdit(v)}
+                          >
+                            Enregistrer
+                          </button>
+                          <button
+                            className="text-xs text-slate-400 underline"
+                            onClick={() => setEditingId(null)}
+                          >
+                            Annuler
+                          </button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 pr-4">{v.last_visit_date ?? "—"}</td>
+                        <td
+                          className={`py-2 pr-4 font-semibold ${
+                            isOverdue ? "text-red-600" : ""
+                          }`}
+                        >
+                          {v.next_visit_date ?? "—"}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-500">
+                          {v.visit_subtype ?? "—"}
+                        </td>
                         <td className="py-2">
                           <button
                             className="text-xs text-slate-400 underline"
-                            onClick={() => startEdit(e)}
+                            onClick={() => startEdit(v)}
+                          >
+                            Modifier
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vue "Formations" — matrice des habilitations ────────────────────────────
+type TrainingType = { id: string; code: string; label: string };
+type EmployeeTrainingRow = {
+  employee_id: string;
+  training_type_id: string;
+  status: string;
+};
+
+function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [types, setTypes] = useState<TrainingType[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [trainings, setTrainings] = useState<EmployeeTrainingRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [{ data: typeRows }, { data: empRows }, { data: trainRows }] =
+        await Promise.all([
+          supabase
+            .from("training_types")
+            .select("id, code, label")
+            .order("mandatory", { ascending: false }),
+          supabase
+            .from("employees")
+            .select(
+              "id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)"
+            )
+            .eq("category", "chantier")
+            .eq("status", "active")
+            .order("last_name"),
+          supabase.from("employee_trainings").select("employee_id, training_type_id, status"),
+        ]);
+      setTypes(typeRows ?? []);
+      setEmployees((empRows as unknown as Employee[]) ?? []);
+      setTrainings(trainRows ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase, refreshKey]);
+
+  const statusMap = useMemo(() => {
+    const m = new Map<string, string>();
+    trainings.forEach((t) => m.set(`${t.employee_id}|${t.training_type_id}`, t.status));
+    return m;
+  }, [trainings]);
+
+  async function toggle(employeeId: string, typeId: string, current: string | undefined) {
+    const next = current === "ok" ? "ko" : "ok";
+    const key = `${employeeId}|${typeId}`;
+    setSaving(key);
+    const { error } = await supabase
+      .from("employee_trainings")
+      .upsert(
+        { employee_id: employeeId, training_type_id: typeId, status: next },
+        { onConflict: "employee_id,training_type_id" }
+      );
+    setSaving(null);
+
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <p className="font-bold">Formations & habilitations</p>
+        <p className="text-xs text-slate-400">
+          Cliquer une cellule pour basculer OK / KO.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-slate-400">Chargement…</p>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <th className="pb-2 pr-4">Nom</th>
+                <th className="pb-2 pr-4">Équipe</th>
+                {types.map((t) => (
+                  <th key={t.id} className="pb-2 px-2 text-center" title={t.label}>
+                    {t.code}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((e) => (
+                <tr key={e.id} className="border-t border-slate-100">
+                  <td className="py-2 pr-4 font-semibold">{employeeName(e)}</td>
+                  <td className="py-2 pr-4 text-slate-500">
+                    {e.teams?.name ?? "—"}
+                  </td>
+                  {types.map((t) => {
+                    const key = `${e.id}|${t.id}`;
+                    const status = statusMap.get(key);
+                    return (
+                      <td key={t.id} className="py-2 px-2 text-center">
+                        <button
+                          onClick={() => toggle(e.id, t.id, status)}
+                          disabled={saving === key}
+                          className={`w-10 rounded-full px-2 py-1 text-xs font-bold ${
+                            status === "ok"
+                              ? "bg-green-100 text-green-700"
+                              : status === "ko"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-slate-100 text-slate-400"
+                          }`}
+                        >
+                          {status ? status.toUpperCase() : "—"}
+                        </button>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vue "Tailles" — équipement / EPI ─────────────────────────────────────────
+type EquipmentSize = {
+  employee_id: string;
+  chaussures: string | null;
+  pantalon: string | null;
+  tshirt: string | null;
+  notes: string | null;
+};
+
+function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [sizes, setSizes] = useState<EquipmentSize[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    chaussures: string;
+    pantalon: string;
+    tshirt: string;
+    notes: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [{ data: empRows }, { data: sizeRows }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)"
+          )
+          .eq("category", "chantier")
+          .eq("status", "active")
+          .order("last_name"),
+        supabase.from("employee_equipment_sizes").select("*"),
+      ]);
+      setEmployees((empRows as unknown as Employee[]) ?? []);
+      setSizes(sizeRows ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase, refreshKey]);
+
+  const sizeByEmployee = useMemo(
+    () => new Map(sizes.map((s) => [s.employee_id, s])),
+    [sizes]
+  );
+
+  function startEdit(id: string) {
+    const s = sizeByEmployee.get(id);
+    setEditingId(id);
+    setEditForm({
+      chaussures: s?.chaussures ?? "",
+      pantalon: s?.pantalon ?? "",
+      tshirt: s?.tshirt ?? "",
+      notes: s?.notes ?? "",
+    });
+  }
+
+  async function saveEdit(id: string) {
+    if (!editForm) return;
+    setSaving(true);
+    const { error } = await supabase.from("employee_equipment_sizes").upsert(
+      {
+        employee_id: id,
+        chaussures: editForm.chaussures || null,
+        pantalon: editForm.pantalon || null,
+        tshirt: editForm.tshirt || null,
+        notes: editForm.notes || null,
+      },
+      { onConflict: "employee_id" }
+    );
+    setSaving(false);
+
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+    setEditingId(null);
+    setRefreshKey((k) => k + 1);
+  }
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <p className="font-bold">Tailles / équipement (EPI)</p>
+      </div>
+
+      {loading ? (
+        <p className="text-slate-400">Chargement…</p>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <th className="pb-2 pr-4">Nom</th>
+                <th className="pb-2 pr-4">Chaussures</th>
+                <th className="pb-2 pr-4">Pantalon</th>
+                <th className="pb-2 pr-4">T-shirt</th>
+                <th className="pb-2 pr-4">Notes</th>
+                <th className="pb-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((e) => {
+                const s = sizeByEmployee.get(e.id);
+                const isEditing = editingId === e.id;
+                return (
+                  <tr key={e.id} className="border-t border-slate-100">
+                    <td className="py-2 pr-4 font-semibold">{employeeName(e)}</td>
+                    {isEditing && editForm ? (
+                      <>
+                        <td className="py-2 pr-4">
+                          <input
+                            className="input"
+                            style={{ width: "5rem" }}
+                            value={editForm.chaussures}
+                            onChange={(ev) =>
+                              setEditForm({ ...editForm, chaussures: ev.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 pr-4">
+                          <input
+                            className="input"
+                            style={{ width: "5rem" }}
+                            value={editForm.pantalon}
+                            onChange={(ev) =>
+                              setEditForm({ ...editForm, pantalon: ev.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 pr-4">
+                          <input
+                            className="input"
+                            style={{ width: "5rem" }}
+                            value={editForm.tshirt}
+                            onChange={(ev) =>
+                              setEditForm({ ...editForm, tshirt: ev.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 pr-4">
+                          <input
+                            className="input"
+                            value={editForm.notes}
+                            onChange={(ev) =>
+                              setEditForm({ ...editForm, notes: ev.target.value })
+                            }
+                          />
+                        </td>
+                        <td className="py-2 whitespace-nowrap">
+                          <button
+                            className="btn btn-green text-xs px-3 py-1 mr-2"
+                            disabled={saving}
+                            onClick={() => saveEdit(e.id)}
+                          >
+                            Enregistrer
+                          </button>
+                          <button
+                            className="text-xs text-slate-400 underline"
+                            onClick={() => setEditingId(null)}
+                          >
+                            Annuler
+                          </button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 pr-4 text-slate-500">
+                          {s?.chaussures ?? "—"}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-500">
+                          {s?.pantalon ?? "—"}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-500">
+                          {s?.tshirt ?? "—"}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-500">{s?.notes ?? "—"}</td>
+                        <td className="py-2">
+                          <button
+                            className="text-xs text-slate-400 underline"
+                            onClick={() => startEdit(e.id)}
                           >
                             Modifier
                           </button>
