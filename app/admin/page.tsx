@@ -90,7 +90,7 @@ const NAV_ITEMS: { key: ViewKey; label: string }[] = [
 ];
 
 export default function AdminPage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);

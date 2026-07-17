@@ -32,7 +32,7 @@ function today() {
 }
 
 export default function Home() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
