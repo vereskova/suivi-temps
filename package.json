@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed:equipes": "tsx scripts/seed-equipes.ts",
-    "seed:chefs": "tsx scripts/seed-chef-logins.ts"
+    "seed:chefs": "tsx scripts/seed-chef-logins.ts",
+    "import:historical": "tsx scripts/import-historical-pointage.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

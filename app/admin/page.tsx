@@ -15,6 +15,16 @@ type Employee = {
   teams: { name: string } | null;
 };
 
+type EmployeeStatus = "active" | "on_leave" | "terminated";
+
+type EmployeeFull = Employee & {
+  status: EmployeeStatus;
+  hire_date: string | null;
+  end_date: string | null;
+};
+
+type Team = { id: string; name: string };
+
 type AbsenceType = { id: string; code: string; label: string };
 
 type PointageRow = {
@@ -80,7 +90,7 @@ function monthRange(year: number, month: number) {
 const POINTAGE_SELECT =
   "employee_id, work_date, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label)";
 
-type ViewKey = "jour" | "employe" | "mois" | "export";
+type ViewKey = "jour" | "employe" | "mois" | "export" | "effectif";
 
 const NAV_ITEMS: { key: ViewKey; label: string }[] = [
   { key: "jour", label: "Par jour" },
@@ -98,6 +108,19 @@ export default function AdminPage() {
   const [view, setView] = useState<ViewKey>("jour");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+
+  async function loadActiveEmployees() {
+    const { data } = await supabase
+      .from("employees")
+      .select(
+        "id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)"
+      )
+      .eq("category", "chantier")
+      .eq("status", "active")
+      .order("last_name");
+    setEmployees((data as unknown as Employee[]) ?? []);
+  }
 
   useEffect(() => {
     async function init() {
@@ -120,19 +143,13 @@ export default function AdminPage() {
       setIsAdmin(admin);
 
       if (admin) {
-        const [{ data: employeeRows }, { data: absenceRows }] = await Promise.all([
-          supabase
-            .from("employees")
-            .select(
-              "id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)"
-            )
-            .eq("category", "chantier")
-            .eq("status", "active")
-            .order("last_name"),
+        const [, { data: absenceRows }, { data: teamRows }] = await Promise.all([
+          loadActiveEmployees(),
           supabase.from("absence_types").select("id, code, label").order("label"),
+          supabase.from("teams").select("id, name").eq("active", true).order("name"),
         ]);
-        setEmployees((employeeRows as unknown as Employee[]) ?? []);
         setAbsenceTypes(absenceRows ?? []);
+        setTeams(teamRows ?? []);
       }
 
       setLoading(false);
@@ -194,6 +211,15 @@ export default function AdminPage() {
                 ))}
               </SidebarSection>
 
+              <SidebarSection title="Effectif">
+                <SidebarLink
+                  active={view === "effectif"}
+                  onClick={() => setView("effectif")}
+                >
+                  Employés
+                </SidebarLink>
+              </SidebarSection>
+
               <SidebarSection title="À venir">
                 <SidebarLink disabled>Dossier salarié</SidebarLink>
                 <SidebarLink disabled>Paie</SidebarLink>
@@ -220,6 +246,13 @@ export default function AdminPage() {
                 supabase={supabase}
                 employees={employees}
                 absenceTypes={absenceTypes}
+              />
+            )}
+            {view === "effectif" && (
+              <EmployeesView
+                supabase={supabase}
+                teams={teams}
+                onChanged={loadActiveEmployees}
               />
             )}
           </div>
@@ -1166,6 +1199,316 @@ function ExportImportView({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Vue "Employés" — gestion de l'effectif (équipe, statut, départs) ────────
+const STATUS_LABELS: Record<EmployeeStatus, string> = {
+  active: "Actif",
+  on_leave: "En congé",
+  terminated: "Sorti",
+};
+
+type EmployeeEditForm = {
+  teamId: string;
+  status: EmployeeStatus;
+  endDate: string;
+};
+
+function EmployeesView({
+  supabase,
+  teams,
+  onChanged,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  teams: Team[];
+  onChanged: () => void;
+}) {
+  const [employees, setEmployees] = useState<EmployeeFull[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<EmployeeEditForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newEmployee, setNewEmployee] = useState({
+    firstName: "",
+    lastName: "",
+    teamId: "",
+  });
+  const [adding, setAdding] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("employees")
+        .select(
+          "id, first_name, last_name, team_id, status, hire_date, end_date, teams!employees_team_id_fkey(name)"
+        )
+        .eq("category", "chantier")
+        .order("status")
+        .order("last_name");
+      setEmployees((data as unknown as EmployeeFull[]) ?? []);
+      setLoading(false);
+    }
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
+  const teamsById = useMemo(
+    () => new Map(teams.map((t) => [t.id, t.name])),
+    [teams]
+  );
+
+  function startEdit(e: EmployeeFull) {
+    setEditingId(e.id);
+    setEditForm({
+      teamId: e.team_id ?? "",
+      status: e.status,
+      endDate: e.end_date ?? "",
+    });
+  }
+
+  async function saveEdit(e: EmployeeFull) {
+    if (!editForm) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("employees")
+      .update({
+        team_id: editForm.teamId || null,
+        status: editForm.status,
+        end_date: editForm.status === "terminated" ? editForm.endDate || null : null,
+      })
+      .eq("id", e.id);
+    setSaving(false);
+
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+
+    setEditingId(null);
+    setEditForm(null);
+    setRefreshKey((k) => k + 1);
+    onChanged();
+  }
+
+  async function addEmployee() {
+    if (!newEmployee.firstName.trim() || !newEmployee.lastName.trim()) return;
+    setAdding(true);
+    const { error } = await supabase.from("employees").insert({
+      first_name: newEmployee.firstName.trim(),
+      last_name: newEmployee.lastName.trim(),
+      category: "chantier",
+      team_id: newEmployee.teamId || null,
+      status: "active",
+    });
+    setAdding(false);
+
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+
+    setNewEmployee({ firstName: "", lastName: "", teamId: "" });
+    setShowAddForm(false);
+    setRefreshKey((k) => k + 1);
+    onChanged();
+  }
+
+  return (
+    <div>
+      <div className="card mb-4 flex items-center justify-between">
+        <p className="font-bold">Employés ({employees.length})</p>
+        <button
+          className="btn btn-primary text-sm px-3 py-2"
+          onClick={() => setShowAddForm((v) => !v)}
+        >
+          + Nouvel employé
+        </button>
+      </div>
+
+      {showAddForm && (
+        <div className="card mb-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Prénom
+            </label>
+            <input
+              className="input"
+              value={newEmployee.firstName}
+              onChange={(e) =>
+                setNewEmployee({ ...newEmployee, firstName: e.target.value })
+              }
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">Nom</label>
+            <input
+              className="input"
+              value={newEmployee.lastName}
+              onChange={(e) =>
+                setNewEmployee({ ...newEmployee, lastName: e.target.value })
+              }
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Équipe
+            </label>
+            <select
+              className="input"
+              value={newEmployee.teamId}
+              onChange={(e) =>
+                setNewEmployee({ ...newEmployee, teamId: e.target.value })
+              }
+            >
+              <option value="">—</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn btn-green text-sm px-3 py-2"
+            disabled={adding}
+            onClick={addEmployee}
+          >
+            {adding ? "…" : "Ajouter"}
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-slate-400">Chargement…</p>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <th className="pb-2 pr-4">Nom</th>
+                <th className="pb-2 pr-4">Équipe</th>
+                <th className="pb-2 pr-4">Statut</th>
+                <th className="pb-2 pr-4">Date de fin</th>
+                <th className="pb-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((e) => {
+                const isEditing = editingId === e.id;
+                return (
+                  <tr key={e.id} className="border-t border-slate-100">
+                    <td className="py-2 pr-4 font-semibold">
+                      {employeeName(e)}
+                    </td>
+                    {isEditing && editForm ? (
+                      <>
+                        <td className="py-2 pr-4">
+                          <select
+                            className="input"
+                            style={{ width: "auto" }}
+                            value={editForm.teamId}
+                            onChange={(ev) =>
+                              setEditForm({ ...editForm, teamId: ev.target.value })
+                            }
+                          >
+                            <option value="">—</option>
+                            {teams.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2 pr-4">
+                          <select
+                            className="input"
+                            style={{ width: "auto" }}
+                            value={editForm.status}
+                            onChange={(ev) =>
+                              setEditForm({
+                                ...editForm,
+                                status: ev.target.value as EmployeeStatus,
+                              })
+                            }
+                          >
+                            {(
+                              ["active", "on_leave", "terminated"] as EmployeeStatus[]
+                            ).map((s) => (
+                              <option key={s} value={s}>
+                                {STATUS_LABELS[s]}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="py-2 pr-4">
+                          {editForm.status === "terminated" && (
+                            <input
+                              type="date"
+                              className="input"
+                              value={editForm.endDate}
+                              onChange={(ev) =>
+                                setEditForm({ ...editForm, endDate: ev.target.value })
+                              }
+                            />
+                          )}
+                        </td>
+                        <td className="py-2">
+                          <button
+                            className="btn btn-green text-xs px-3 py-1 mr-2"
+                            disabled={saving}
+                            onClick={() => saveEdit(e)}
+                          >
+                            Enregistrer
+                          </button>
+                          <button
+                            className="text-xs text-slate-400 underline"
+                            onClick={() => setEditingId(null)}
+                          >
+                            Annuler
+                          </button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 pr-4 text-slate-500">
+                          {e.team_id ? teamsById.get(e.team_id) ?? "—" : "—"}
+                        </td>
+                        <td
+                          className={`py-2 pr-4 font-semibold ${
+                            e.status === "terminated"
+                              ? "text-red-600"
+                              : e.status === "on_leave"
+                              ? "text-amber-600"
+                              : "text-green-600"
+                          }`}
+                        >
+                          {STATUS_LABELS[e.status]}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-500">
+                          {e.end_date ?? "—"}
+                        </td>
+                        <td className="py-2">
+                          <button
+                            className="text-xs text-slate-400 underline"
+                            onClick={() => startEdit(e)}
+                          >
+                            Modifier
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
