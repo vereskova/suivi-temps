@@ -19,6 +19,7 @@ type EmployeeStatus = "active" | "on_leave" | "terminated";
 
 type EmployeeFull = Employee & {
   status: EmployeeStatus;
+  category: "chantier" | "bureau";
   hire_date: string | null;
   end_date: string | null;
 };
@@ -362,6 +363,8 @@ function JourView({
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -393,6 +396,22 @@ function JourView({
     });
     return Array.from(teams.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [employees]);
+
+  const teamOptions = useMemo(
+    () => grouped.map(([teamName]) => teamName),
+    [grouped]
+  );
+
+  const filteredGrouped = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return grouped
+      .filter(([teamName]) => teamFilter === "all" || teamName === teamFilter)
+      .map(([teamName, members]) => [
+        teamName,
+        q ? members.filter((m) => employeeName(m).toLowerCase().includes(q)) : members,
+      ] as [string, Employee[]])
+      .filter(([, members]) => members.length > 0);
+  }, [grouped, teamFilter, search]);
 
   function startEdit(e: Employee) {
     const r = byEmployee.get(e.id);
@@ -442,7 +461,7 @@ function JourView({
 
   return (
     <div>
-      <div className="card mb-4 max-w-xs">
+      <div className="card mb-4 flex flex-wrap items-end gap-3">
         <label className="font-bold text-sm">
           Date
           <input
@@ -452,12 +471,40 @@ function JourView({
             onChange={(e) => setDate(e.target.value)}
           />
         </label>
+        <label className="font-bold text-sm">
+          Recherche
+          <input
+            className="input mt-2"
+            placeholder="Nom, prénom…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <label className="font-bold text-sm">
+          Équipe
+          <select
+            className="input mt-2"
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+          >
+            <option value="all">Toutes</option>
+            {teamOptions.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {loading ? (
         <p className="text-slate-400">Chargement…</p>
+      ) : filteredGrouped.length === 0 ? (
+        <p className="card text-center text-slate-400">
+          Aucun résultat pour ces filtres.
+        </p>
       ) : (
-        grouped.map(([teamName, members]) => (
+        filteredGrouped.map(([teamName, members]) => (
           <div key={teamName} className="card mb-4 overflow-x-auto">
             <p className="font-bold mb-3">{teamName}</p>
             <table className="w-full text-sm">
@@ -1269,13 +1316,20 @@ function EmployeesView({
   const [refreshKey, setRefreshKey] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "chantier" | "bureau">(
+    "all"
+  );
+  const [search, setSearch] = useState("");
+
   useEffect(() => {
     async function load() {
       setLoading(true);
       const { data } = await supabase
         .from("employees")
         .select(
-          "id, first_name, last_name, team_id, status, hire_date, end_date, teams!employees_team_id_fkey(name)"
+          "id, first_name, last_name, team_id, status, category, hire_date, end_date, teams!employees_team_id_fkey(name)"
         )
         .order("category")
         .order("status")
@@ -1286,6 +1340,27 @@ function EmployeesView({
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  const counts = useMemo(() => {
+    const c = { active: 0, on_leave: 0, terminated: 0 };
+    employees.forEach((e) => {
+      c[e.status]++;
+    });
+    return c;
+  }, [employees]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (teamFilter === "none" && e.team_id) return false;
+      if (teamFilter !== "all" && teamFilter !== "none" && e.team_id !== teamFilter)
+        return false;
+      if (categoryFilter !== "all" && e.category !== categoryFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, teamFilter, categoryFilter, search]);
 
   const teamsById = useMemo(
     () => new Map(teams.map((t) => [t.id, t.name])),
@@ -1350,14 +1425,109 @@ function EmployeesView({
 
   return (
     <div>
-      <div className="card mb-4 flex items-center justify-between">
-        <p className="font-bold">Employés ({employees.length})</p>
-        <button
-          className="btn btn-primary text-sm px-3 py-2"
-          onClick={() => setShowAddForm((v) => !v)}
-        >
-          + Nouvel employé
-        </button>
+      <div className="card mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-bold">
+            Employés ({filtered.length}/{employees.length})
+          </p>
+          <button
+            className="btn btn-primary text-sm px-3 py-2"
+            onClick={() => setShowAddForm((v) => !v)}
+          >
+            + Nouvel employé
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setStatusFilter("active")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "active"
+                ? "bg-green-600 text-white"
+                : "bg-green-50 text-green-700"
+            }`}
+          >
+            {counts.active} actifs
+          </button>
+          <button
+            onClick={() => setStatusFilter("on_leave")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "on_leave"
+                ? "bg-amber-600 text-white"
+                : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {counts.on_leave} en congé
+          </button>
+          <button
+            onClick={() => setStatusFilter("terminated")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "terminated"
+                ? "bg-red-600 text-white"
+                : "bg-red-50 text-red-700"
+            }`}
+          >
+            {counts.terminated} sortis
+          </button>
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "all"
+                ? "bg-slate-900 text-white"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            Tous ({employees.length})
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Recherche
+            </label>
+            <input
+              className="input"
+              placeholder="Nom, prénom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Équipe
+            </label>
+            <select
+              className="input"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+            >
+              <option value="all">Toutes</option>
+              <option value="none">Sans équipe</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Catégorie
+            </label>
+            <select
+              className="input"
+              value={categoryFilter}
+              onChange={(e) =>
+                setCategoryFilter(e.target.value as "all" | "chantier" | "bureau")
+              }
+            >
+              <option value="all">Toutes</option>
+              <option value="chantier">Chantier</option>
+              <option value="bureau">Bureau</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       {showAddForm && (
@@ -1415,6 +1585,10 @@ function EmployeesView({
 
       {loading ? (
         <p className="text-slate-400">Chargement…</p>
+      ) : filtered.length === 0 ? (
+        <p className="card text-center text-slate-400">
+          Aucun employé ne correspond à ces filtres.
+        </p>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -1428,7 +1602,7 @@ function EmployeesView({
               </tr>
             </thead>
             <tbody>
-              {employees.map((e) => {
+              {filtered.map((e) => {
                 const isEditing = editingId === e.id;
                 return (
                   <Fragment key={e.id}>
@@ -1809,7 +1983,12 @@ type MedicalVisit = {
   last_visit_date: string | null;
   next_visit_date: string | null;
   visit_subtype: string | null;
-  employees: { first_name: string; last_name: string } | null;
+  employees: {
+    first_name: string;
+    last_name: string;
+    team_id: string | null;
+    teams: { name: string } | null;
+  } | null;
 };
 
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -1823,6 +2002,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -1830,7 +2011,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       const { data } = await supabase
         .from("medical_visits")
         .select(
-          "id, employee_id, last_visit_date, next_visit_date, visit_subtype, employees(first_name, last_name)"
+          "id, employee_id, last_visit_date, next_visit_date, visit_subtype, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
         )
         .order("next_visit_date", { ascending: true, nullsFirst: false });
       setVisits((data as unknown as MedicalVisit[]) ?? []);
@@ -1838,6 +2019,26 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     }
     load();
   }, [supabase, refreshKey]);
+
+  const teamOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    visits.forEach((v) => {
+      if (v.employees?.team_id && v.employees.teams?.name) {
+        map.set(v.employees.team_id, v.employees.teams.name);
+      }
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [visits]);
+
+  const filteredVisits = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return visits.filter((v) => {
+      if (teamFilter !== "all" && v.employees?.team_id !== teamFilter) return false;
+      if (q && !(v.employees && employeeName(v.employees).toLowerCase().includes(q)))
+        return false;
+      return true;
+    });
+  }, [visits, teamFilter, search]);
 
   function startEdit(v: MedicalVisit) {
     setEditingId(v.id);
@@ -1874,11 +2075,47 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">Visites médicales ({visits.length})</p>
+        <p className="font-bold">
+          Visites médicales ({filteredVisits.length}/{visits.length})
+        </p>
+        <div className="flex flex-wrap items-end gap-3 mt-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Recherche
+            </label>
+            <input
+              className="input"
+              placeholder="Nom, prénom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Équipe
+            </label>
+            <select
+              className="input"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+            >
+              <option value="all">Toutes</option>
+              {teamOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {loading ? (
         <p className="text-slate-400">Chargement…</p>
+      ) : filteredVisits.length === 0 ? (
+        <p className="card text-center text-slate-400">
+          Aucune visite ne correspond à ces filtres.
+        </p>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -1892,7 +2129,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               </tr>
             </thead>
             <tbody>
-              {visits.map((v) => {
+              {filteredVisits.map((v) => {
                 const isEditing = editingId === v.id;
                 const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
                 return (
@@ -1996,6 +2233,8 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -2030,6 +2269,23 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     return m;
   }, [trainings]);
 
+  const teamOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    employees.forEach((e) => {
+      if (e.team_id && e.teams?.name) map.set(e.team_id, e.teams.name);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (teamFilter !== "all" && e.team_id !== teamFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, teamFilter, search]);
+
   async function toggle(employeeId: string, typeId: string, current: string | undefined) {
     const next = current === "ok" ? "ko" : "ok";
     const key = `${employeeId}|${typeId}`;
@@ -2052,14 +2308,50 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">Formations & habilitations</p>
-        <p className="text-xs text-slate-400">
+        <p className="font-bold">
+          Formations & habilitations ({filteredEmployees.length}/{employees.length})
+        </p>
+        <p className="text-xs text-slate-400 mb-3">
           Cliquer une cellule pour basculer OK / KO.
         </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Recherche
+            </label>
+            <input
+              className="input"
+              placeholder="Nom, prénom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Équipe
+            </label>
+            <select
+              className="input"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+            >
+              <option value="all">Toutes</option>
+              {teamOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {loading ? (
         <p className="text-slate-400">Chargement…</p>
+      ) : filteredEmployees.length === 0 ? (
+        <p className="card text-center text-slate-400">
+          Aucun employé ne correspond à ces filtres.
+        </p>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -2075,7 +2367,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
               </tr>
             </thead>
             <tbody>
-              {employees.map((e) => (
+              {filteredEmployees.map((e) => (
                 <tr key={e.id} className="border-t border-slate-100">
                   <td className="py-2 pr-4 font-semibold">{employeeName(e)}</td>
                   <td className="py-2 pr-4 text-slate-500">
@@ -2134,6 +2426,8 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
   } | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [teamFilter, setTeamFilter] = useState("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -2160,6 +2454,23 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
     () => new Map(sizes.map((s) => [s.employee_id, s])),
     [sizes]
   );
+
+  const teamOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    employees.forEach((e) => {
+      if (e.team_id && e.teams?.name) map.set(e.team_id, e.teams.name);
+    });
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [employees]);
+
+  const filteredEmployees = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (teamFilter !== "all" && e.team_id !== teamFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, teamFilter, search]);
 
   function startEdit(id: string) {
     const s = sizeByEmployee.get(id);
@@ -2198,11 +2509,47 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">Tailles / équipement (EPI)</p>
+        <p className="font-bold">
+          Tailles / équipement ({filteredEmployees.length}/{employees.length})
+        </p>
+        <div className="flex flex-wrap items-end gap-3 mt-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Recherche
+            </label>
+            <input
+              className="input"
+              placeholder="Nom, prénom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400">
+              Équipe
+            </label>
+            <select
+              className="input"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+            >
+              <option value="all">Toutes</option>
+              {teamOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {loading ? (
         <p className="text-slate-400">Chargement…</p>
+      ) : filteredEmployees.length === 0 ? (
+        <p className="card text-center text-slate-400">
+          Aucun employé ne correspond à ces filtres.
+        </p>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -2217,7 +2564,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
               </tr>
             </thead>
             <tbody>
-              {employees.map((e) => {
+              {filteredEmployees.map((e) => {
                 const s = sizeByEmployee.get(e.id);
                 const isEditing = editingId === e.id;
                 return (
