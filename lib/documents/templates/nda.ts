@@ -1,5 +1,6 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, signatureBlock } from "../types";
 import { formatDateShort } from "../helpers";
+import { agr } from "../gender";
 
 export type NdaParams = {
   signingDate: string;
@@ -24,9 +25,9 @@ export function nda(employee: EmployeeDoc, company: CompanyDoc, params: NdaParam
     para("ET"),
     { type: "spacer" },
     p(b(fullName)),
-    para(`Né(e) le ${formatDateShort(employee.dateOfBirth)}${employee.birthPlace ? `, à ${employee.birthPlace}` : ""}`),
+    para(`${agr(employee.sex, "Né")} le ${formatDateShort(employee.dateOfBirth)}${employee.birthPlace ? `, à ${employee.birthPlace}` : ""}`),
     para(`Demeurant : ${employee.address ?? "____________"}`),
-    para("Ci-après dénommé(e) « le Signataire »"),
+    para(`Ci-après ${agr(employee.sex, "dénommé")} « le Signataire »`),
     { type: "spacer" },
     para("IL A ÉTÉ CONVENU CE QUI SUIT :"),
     { type: "spacer" },

@@ -2935,6 +2935,21 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                             setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
                           }
                         />
+                      ) : f.type === "select" ? (
+                        <select
+                          className="input mt-2"
+                          value={String(formValues[f.key] ?? "")}
+                          onChange={(ev) =>
+                            setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
+                          }
+                        >
+                          <option value="">—</option>
+                          {f.options?.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
                       ) : (
                         <input
                           className="input mt-2"

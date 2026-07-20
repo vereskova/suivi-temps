@@ -1,5 +1,6 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, rule } from "../types";
 import { formatDateFr } from "../helpers";
+import { civility } from "../gender";
 
 export type ConvocationRCParams = {
   meetingDate: string;
@@ -27,7 +28,7 @@ export function convocationRC(
     { type: "spacer" },
     p(t("Lettre remise en main propre contre décharge / recommandée avec accusé de réception")),
     { type: "spacer" },
-    para(`Madame, Monsieur ${fullName},`),
+    para(`${civility(employee.sex)} ${fullName},`),
     { type: "spacer" },
     para(
       "Faisant suite à nos échanges, nous vous proposons de nous rencontrer afin d'évoquer la possibilité d'une rupture conventionnelle de votre contrat de travail, telle que prévue aux articles L.1237-11 et suivants du Code du travail."
@@ -43,7 +44,7 @@ export function convocationRC(
         : "En l'absence d'institution représentative du personnel dans l'entreprise, vous avez la possibilité de vous faire assister lors de cet entretien par un conseiller du salarié de votre choix, inscrit sur la liste dressée par le représentant de l'État dans le département, disponible à la mairie de votre domicile ou à la Direction Départementale de l'Emploi, du Travail et des Solidarités (DDETS). Si vous choisissez de vous faire assister, nous vous informons que nous aurons également la faculté de nous faire assister par une personne de notre choix appartenant au personnel de l'entreprise ou par un représentant de notre organisation professionnelle."
     ),
     { type: "spacer" },
-    para("Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées."),
+    para(`Nous vous prions d'agréer, ${civility(employee.sex)}, l'expression de nos salutations distinguées.`),
     { type: "spacer" },
     para(company.representativeName),
     para(company.representativeTitle),

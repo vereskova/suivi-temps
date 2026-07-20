@@ -1,6 +1,7 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule } from "../types";
 import { formatDateFr, addMonthsIso, addDaysIso } from "../helpers";
 import { computePreavis } from "../preavis";
+import { civility } from "../gender";
 
 export type AccuseDemissionParams = {
   resignationDate: string; // date written on the employee's resignation letter
@@ -38,7 +39,7 @@ export function accuseDemission(
     { type: "spacer" },
     p(t("Objet : "), b("Accusé de réception de votre démission")),
     { type: "spacer" },
-    para(`Madame, Monsieur ${fullName},`),
+    para(`${civility(employee.sex)} ${fullName},`),
     { type: "spacer" },
     para(
       `Nous accusons réception de votre lettre du ${formatDateFr(

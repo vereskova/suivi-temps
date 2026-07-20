@@ -1,4 +1,4 @@
-import { CompanyDoc, EmployeeDoc } from "./types";
+import { CompanyDoc, EmployeeDoc, Sex } from "./types";
 
 export type EmployeeConfidentialRow = {
   nationality: string | null;
@@ -9,6 +9,7 @@ export type EmployeeConfidentialRow = {
 export type EmployeeRow = {
   first_name: string;
   last_name: string;
+  sex: Sex;
   category: "chantier" | "bureau";
   date_of_birth: string | null;
   birth_place: string | null;
@@ -16,6 +17,7 @@ export type EmployeeRow = {
   hire_date: string | null;
   job_title: string | null;
   classification: string | null;
+  classe: string | null;
   weekly_hours: number | null;
   employee_confidential: EmployeeConfidentialRow | EmployeeConfidentialRow[] | null;
 };
@@ -33,7 +35,7 @@ export type CompanyRow = {
 };
 
 export const EMPLOYEE_DOC_SELECT =
-  "id, first_name, last_name, category, date_of_birth, birth_place, address, hire_date, job_title, classification, weekly_hours, employee_confidential(nationality, securite_sociale, monthly_gross_salary)";
+  "id, first_name, last_name, sex, category, date_of_birth, birth_place, address, hire_date, job_title, classification, classe, weekly_hours, employee_confidential(nationality, securite_sociale, monthly_gross_salary)";
 
 export function mapEmployeeRow(row: EmployeeRow): EmployeeDoc {
   const confidential = Array.isArray(row.employee_confidential)
@@ -44,6 +46,7 @@ export function mapEmployeeRow(row: EmployeeRow): EmployeeDoc {
     firstName: row.first_name,
     lastName: row.last_name,
     fullNameUpper: `${row.last_name.toUpperCase()} ${row.first_name}`,
+    sex: row.sex,
     dateOfBirth: row.date_of_birth,
     birthPlace: row.birth_place,
     nationality: confidential?.nationality ?? null,
@@ -54,6 +57,7 @@ export function mapEmployeeRow(row: EmployeeRow): EmployeeDoc {
     hireDate: row.hire_date,
     weeklyHours: row.weekly_hours,
     classification: row.classification,
+    classe: row.classe,
     monthlyGrossSalary: confidential?.monthly_gross_salary ?? null,
   };
 }

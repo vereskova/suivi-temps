@@ -1,5 +1,6 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, signatureBlock } from "../types";
 import { formatDateShort, formatEuros } from "../helpers";
+import { agr, pronoun, salarieDu, salarieLabel, salarieLabelLower } from "../gender";
 
 export type ContratBureauParams = {
   startDate: string;
@@ -17,7 +18,24 @@ export function contratBureau(
   params: ContratBureauParams
 ): DocContent {
   const fullName = `${employee.lastName.toUpperCase()} ${employee.firstName}`;
-  const civility = "La Salariée / Le Salarié";
+  const sex = employee.sex;
+  const salarie = salarieLabel(sex);
+  const salarieLower = salarieLabelLower(sex);
+
+  let articleNum = 0;
+  function article(title: string): Block {
+    articleNum += 1;
+    return { type: "heading", text: `Article ${articleNum}. ${title}` };
+  }
+
+  const classificationSentence =
+    employee.classification || employee.classe
+      ? para(
+          `Cette fonction correspond, au sein de la grille de classification de la convention collective applicable, au groupe ${
+            employee.classification ?? "____________"
+          }${employee.classe ? `, classe ${employee.classe}` : ""}.`
+        )
+      : null;
 
   const blocks: Block[] = [
     {
@@ -41,33 +59,38 @@ export function contratBureau(
     para("ET"),
     { type: "spacer" },
     p(b(fullName)),
-    para(`Né(e) le ${formatDateShort(employee.dateOfBirth)}${employee.birthPlace ? `, à ${employee.birthPlace}` : ""}`),
+    para(
+      `${agr(sex, "Né", "e")} le ${formatDateShort(employee.dateOfBirth)}${
+        employee.birthPlace ? `, à ${employee.birthPlace}` : ""
+      }`
+    ),
     para(`De nationalité ${employee.nationality ?? "____________"}`),
     para(`N° Sécurité Sociale : ${employee.socialSecurity ?? "____________"}`),
     para(`Demeurant ${employee.address ?? "____________"}`),
-    para(`Ci-après dénommé(e) « ${civility} »`),
+    para(`Ci-après ${agr(sex, "dénommé")} « ${salarie} »`),
     para("D'AUTRE PART,"),
     { type: "spacer" },
     para("IL A ÉTÉ CONVENU CE QUI SUIT :"),
     { type: "spacer" },
 
-    { type: "heading", text: "Article 1. Conditions d'engagement" },
+    article("Conditions d'engagement"),
     para(
-      `${civility}, qui se déclare libre de tout engagement, est embauché(e) pour une durée indéterminée${
+      `${salarie}, qui se déclare libre de tout engagement, est ${agr(sex, "embauché")} pour une durée indéterminée${
         params.isPartTime ? " à temps partiel" : " à temps plein"
       }, à compter du ${formatDateShort(params.startDate)} sous réserve des résultats de la visite médicale d'embauche.`
     ),
     para(`La déclaration préalable d'embauche a été faite auprès de l'URSSAF le ${formatDateShort(params.startDate)}.`),
 
-    { type: "heading", text: "Article 2. Convention collective" },
+    article("Convention collective"),
     para(
       `Sous réserve d'une évolution de l'activité de l'entreprise, le présent contrat est régi par les dispositions de la ${company.conventionCollective}.`
     ),
 
-    { type: "heading", text: "Article 3. Fonctions" },
-    para(`${civility} est engagé(e) en qualité de ${employee.jobTitle ?? "____________"}.`),
+    article("Fonctions et classification"),
+    para(`${salarie} est ${agr(sex, "engagé")} en qualité de ${employee.jobTitle ?? "____________"}.`),
+    ...(classificationSentence ? [classificationSentence] : []),
 
-    { type: "heading", text: "Article 4. Période d'essai" },
+    article("Période d'essai"),
     para(
       `Le présent contrat est conclu pour une durée indéterminée, il ne deviendra définitif qu'à l'issue de la période d'essai fixée à ${params.trialDays} jours, renouvelable une fois si un accord de branche le prévoit et pour une durée maximum égale à la première. En cas de renouvellement de la période d'essai, un accord écrit devra être établi.`
     ),
@@ -78,32 +101,29 @@ export function contratBureau(
       "Au terme de la période d'essai, si elle s'est avérée satisfaisante, le présent contrat deviendra définitif et se poursuivra pour une période indéterminée."
     ),
 
-    { type: "heading", text: "Article 5. Lieu de travail" },
-    para(`${civility} est rattaché(e) initialement au siège social de l'entreprise.`),
+    article("Lieu de travail"),
+    para(`${salarie} est ${agr(sex, "rattaché")} initialement au siège social de l'entreprise.`),
     para(
       `Cette mobilité pourra s'exercer dans les limites géographiques suivantes : ${params.mobiliteZone}.`
     ),
 
-    { type: "heading", text: "Article 6. Rémunération" },
+    article("Rémunération"),
     para(
       params.isPartTime
-        ? `En contrepartie de son travail, ${civility} percevra une rémunération mensuelle brute de ${formatEuros(employee.monthlyGrossSalary)} pour ${params.weeklyHours}h par semaine.`
-        : `En contrepartie de son travail, ${civility} percevra une rémunération mensuelle brute de ${formatEuros(employee.monthlyGrossSalary)}.`
+        ? `En contrepartie de son travail, ${salarie} percevra une rémunération mensuelle brute de ${formatEuros(employee.monthlyGrossSalary)} pour ${params.weeklyHours}h par semaine.`
+        : `En contrepartie de son travail, ${salarie} percevra une rémunération mensuelle brute de ${formatEuros(employee.monthlyGrossSalary)}.`
     ),
 
-    { type: "heading", text: "Article 7. Durée du travail" },
+    article("Durée du travail"),
     para(
       params.isPartTime
-        ? `${civility} est engagé(e) à temps partiel, pour un horaire hebdomadaire de ${params.weeklyHours}h par semaine. Cette durée sera répartie de façon à convenir entre les parties selon les besoins de l'entreprise.`
-        : `${civility} est engagé(e) à temps plein, pour un horaire hebdomadaire de ${params.weeklyHours}h par semaine.`
+        ? `${salarie} est ${agr(sex, "engagé")} à temps partiel, pour un horaire hebdomadaire de ${params.weeklyHours}h par semaine. Cette durée sera répartie de façon à convenir entre les parties selon les besoins de l'entreprise.`
+        : `${salarie} est ${agr(sex, "engagé")} à temps plein, pour un horaire hebdomadaire de ${params.weeklyHours}h par semaine.`
     ),
 
     ...(params.isPartTime
       ? ([
-          {
-            type: "heading",
-            text: "Article 8. Modification de la répartition horaire & Heures complémentaires",
-          },
+          article("Modification de la répartition horaire & Heures complémentaires"),
           para(
             "La répartition de la durée de travail pourra être modifiée dans les cas suivants : changements des heures d'ouverture, remplacement d'un salarié absent, accroissement de l'activité, accord entre les parties, réorganisation du planning de travail."
           ),
@@ -116,55 +136,74 @@ export function contratBureau(
         ] as Block[])
       : []),
 
-    { type: "heading", text: "Article 9. Heures d'absences" },
+    article("Heures d'absences"),
     para(
       "Les heures d'absences pour convenance personnelle devront avoir obligatoirement l'accord de l'employeur, faute de quoi ces absences seront considérées comme injustifiées."
     ),
     para(
-      "En cas d'absence pour maladie, le salarié devra prévenir de son absence dans les plus brefs délais et justifier dans les 48 heures par la production d'un certificat médical."
+      `En cas d'absence pour maladie, ${salarieLower} devra prévenir de son absence dans les plus brefs délais et justifier dans les 48 heures par la production d'un certificat médical.`
     ),
 
-    { type: "heading", text: "Article 10. Retraite et Prévoyance" },
-    para("Dès son entrée dans l'entreprise, le/la salarié(e) sera affilié(e) aux caisses de retraite et de prévoyance de l'entreprise."),
+    article("Retraite et Prévoyance"),
+    para(`Dès son entrée dans l'entreprise, ${salarieLower} sera ${agr(sex, "affilié")} aux caisses de retraite et de prévoyance de l'entreprise.`),
 
-    { type: "heading", text: "Article 11. Congés payés" },
+    article("Congés payés"),
     para(
-      "Le/la salarié(e) bénéficiera des congés payés institués en faveur des salariés de l'entreprise, soit 2,0833 jours ouvrés de congés payés par mois de travail effectif, soit 25 jours ouvrés pour une période de travail calculée du 1er juin de l'année précédente au 31 mai de l'année en cours."
+      `${salarie} bénéficiera des congés payés institués en faveur des salariés de l'entreprise, soit 2,0833 jours ouvrés de congés payés par mois de travail effectif, soit 25 jours ouvrés pour une période de travail calculée du 1er juin de l'année précédente au 31 mai de l'année en cours.`
     ),
 
-    { type: "heading", text: "Article 12. Ancienneté" },
+    article("Ancienneté"),
     para(
-      "L'ancienneté du/de la salarié(e), pour la détermination des droits qui y sont liés, sera calculée selon des modalités identiques à celles applicables aux salariés à temps complet."
+      `L'ancienneté ${salarieDu(sex)}, pour la détermination des droits qui y sont liés, sera calculée selon des modalités identiques à celles applicables aux salariés à temps complet.`
     ),
 
-    { type: "heading", text: "Article 13. Égalité de traitement" },
+    article("Égalité de traitement"),
     para(
-      "Le/la salarié(e) bénéficiera de tous les droits et avantages reconnus aux salariés à temps plein travaillant dans l'entreprise, au prorata de son temps de travail le cas échéant."
+      `${salarie} bénéficiera de tous les droits et avantages reconnus aux salariés à temps plein travaillant dans l'entreprise, au prorata de son temps de travail le cas échéant.`
     ),
 
-    { type: "heading", text: "Article 14. Cumul d'emplois" },
+    article("Cumul d'emplois"),
     para(
-      "Le/la salarié(e) pourra exercer, en parallèle, une autre activité professionnelle, sous réserve qu'elle ne porte pas préjudice aux intérêts légitimes de l'entreprise et dans le respect des durées maximales légales de travail."
+      `${salarie} pourra exercer, en parallèle, une autre activité professionnelle, sous réserve qu'elle ne porte pas préjudice aux intérêts légitimes de l'entreprise et dans le respect des durées maximales légales de travail.`
     ),
 
-    { type: "heading", text: "Article 15. Confidentialité" },
+    article("Confidentialité"),
     para(
-      "Le/la salarié(e) s'engage à respecter une stricte obligation de discrétion et de confidentialité sur tout ce qui concerne l'activité de l'entreprise. Cette obligation se prolongera après la cessation du contrat de travail, quelle qu'en soit la cause."
+      `${salarie} s'engage à respecter une stricte obligation de discrétion et de confidentialité sur tout ce qui concerne l'activité de l'entreprise. Cette obligation se prolongera après la cessation du contrat de travail, quelle qu'en soit la cause.`
     ),
 
-    { type: "heading", text: "Article 16. Préavis" },
+    article("Traitement des données personnelles"),
     para(
-      "Le/la salarié(e) et la société peuvent l'une et l'autre rompre à tout moment le contrat de travail en respectant les dispositions légales et conventionnelles en vigueur, en fonction de l'ancienneté acquise au moment du départ."
+      `${salarie}, étant à ce titre ${agr(sex, "amené")} à accéder à des données à caractère personnel dans l'exercice de ses fonctions, déclare reconnaître la confidentialité desdites données.`
+    ),
+    para(
+      `Conformément aux articles 34 et 35 de la loi du 6 janvier 1978 modifiée relative à l'informatique, aux fichiers et aux libertés ainsi qu'aux articles 32 à 35 du Règlement général sur la protection des données du 27 avril 2016, ${pronoun(sex)} s'engage à prendre toutes précautions conformes aux usages afin de protéger la confidentialité des informations auxquelles ${pronoun(sex)} a accès.`
+    ),
+    para(
+      "Cet engagement de confidentialité, en vigueur pendant toute la durée de ses fonctions, demeurera effectif, sans limitation de durée après la cessation de ses fonctions, quelle qu'en soit la cause, dès lors que cet engagement concerne l'utilisation et la communication de données à caractère personnel."
     ),
 
-    { type: "heading", text: "Article 17. Conditions d'exécution du contrat" },
+    article("Formation professionnelle"),
     para(
-      "Le/la salarié(e) s'engage à observer toutes les instructions et consignes particulières de travail qui lui seront données, et à faire connaître à l'entreprise sans délai toute modification postérieure à son engagement (état civil, situation de famille, adresse, etc.)."
+      `${salarie} bénéficie du droit à la formation professionnelle tout au long de la vie, notamment au titre du compte personnel de formation (CPF) et du plan de développement des compétences de l'entreprise.`
+    ),
+    para(
+      `${salarie} est ${agr(sex, "informé")} qu'${pronoun(sex)} bénéficie tous les deux ans d'un entretien professionnel avec son employeur consacré à ses perspectives d'évolution professionnelle, notamment en termes de qualifications et d'emploi, conformément aux dispositions de l'article L.6315-1 du Code du travail.`
     ),
 
-    { type: "heading", text: "Article 18. Engagement" },
+    article("Préavis"),
     para(
-      "Le/la salarié(e) reconnaît avoir pris connaissance du présent contrat, en accepte toutes les modalités et s'engage expressément à les respecter."
+      "En cas de rupture du contrat de travail à l'initiative de l'une ou l'autre des parties, un préavis devra être respecté, dont la durée est fixée par les dispositions légales et conventionnelles en vigueur en fonction de l'ancienneté acquise au moment du départ."
+    ),
+
+    article("Conditions d'exécution du contrat"),
+    para(
+      `${salarie} s'engage à observer toutes les instructions et consignes particulières de travail qui lui seront données, et à faire connaître à l'entreprise sans délai toute modification postérieure à son engagement (état civil, situation de famille, adresse, etc.).`
+    ),
+
+    article("Engagement"),
+    para(
+      `${salarie} reconnaît avoir pris connaissance du présent contrat, en accepte toutes les modalités et s'engage expressément à les respecter.`
     ),
     para(
       "Le présent contrat est établi en deux exemplaires originaux dont l'un devra être retourné signé à l'entreprise dans les plus brefs délais."
@@ -174,7 +213,7 @@ export function contratBureau(
     para(`Fait à ${params.signingCity}, le ${formatDateShort(params.signingDate)}`),
     signatureBlock(
       { label: "L'Employeur", lines: [company.representativeName, company.representativeTitle] },
-      { label: civility, lines: [fullName, "« Lu et approuvé »"] }
+      { label: salarie, lines: [fullName, "« Lu et approuvé »"] }
     ),
   ];
 

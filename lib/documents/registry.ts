@@ -10,7 +10,7 @@ import { convocationEntretien } from "./templates/convocationEntretien";
 import { lettreLicenciement } from "./templates/lettreLicenciement";
 import { convocationRC } from "./templates/convocationRC";
 
-export type FieldType = "date" | "text" | "textarea" | "number" | "boolean";
+export type FieldType = "date" | "text" | "textarea" | "number" | "boolean" | "select";
 
 export type FieldSchema = {
   key: string;
@@ -25,6 +25,8 @@ export type FieldSchema = {
   target?: "employee" | "params";
   defaultValue?: (employee: EmployeeDoc, company: CompanyDoc) => string | number | boolean | null;
   help?: string;
+  /** Options for type "select". */
+  options?: { value: string; label: string }[];
 };
 
 export type DocumentCategory = "contrat" | "confidentialite" | "conges" | "rupture";
@@ -44,7 +46,8 @@ function employeeField(
   key: keyof EmployeeDoc,
   label: string,
   type: FieldType,
-  help?: string
+  help?: string,
+  options?: { value: string; label: string }[]
 ): FieldSchema {
   return {
     key,
@@ -52,6 +55,7 @@ function employeeField(
     type,
     target: "employee",
     help,
+    options,
     defaultValue: (employee) => {
       const value = employee[key];
       if (value === null || value === undefined) return type === "boolean" ? false : "";
@@ -68,12 +72,22 @@ const IDENTITY_FIELDS: FieldSchema[] = [
   employeeField("socialSecurity", "N° Sécurité sociale", "text"),
 ];
 
+const SEX_FIELD = employeeField("sex", "Civilité", "select", undefined, [
+  { value: "M", label: "Homme" },
+  { value: "F", label: "Femme" },
+]);
 const JOB_TITLE_FIELD = employeeField("jobTitle", "Intitulé du poste", "text");
 const CLASSIFICATION_FIELD = employeeField(
   "classification",
   "Classification / groupe d'emploi (A–I)",
   "text",
   "Détermine la durée légale du préavis — laissez vide pour utiliser la valeur par défaut (1 mois)."
+);
+const CLASSE_FIELD = employeeField(
+  "classe",
+  "Classe (coefficient conventionnel)",
+  "text",
+  "Positionnement dans la grille de classification, ex. \"1\" — voir le bulletin de paie."
 );
 const WEEKLY_HOURS_FIELD = employeeField("weeklyHours", "Heures hebdomadaires", "number");
 const SALARY_FIELD = employeeField("monthlyGrossSalary", "Salaire mensuel brut (€)", "number");
@@ -95,8 +109,11 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: (_e, c) => c.signingCity,
       },
+      SEX_FIELD,
       ...IDENTITY_FIELDS,
       JOB_TITLE_FIELD,
+      CLASSIFICATION_FIELD,
+      CLASSE_FIELD,
       WEEKLY_HOURS_FIELD,
       SALARY_FIELD,
     ],
@@ -133,8 +150,11 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: () => "un rayon de 50 km autour du siège social",
       },
+      SEX_FIELD,
       ...IDENTITY_FIELDS,
       JOB_TITLE_FIELD,
+      CLASSIFICATION_FIELD,
+      CLASSE_FIELD,
       SALARY_FIELD,
     ],
     generate: contratBureau,
@@ -153,6 +173,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: (_e, c) => c.signingCity,
       },
+      SEX_FIELD,
       employeeField("dateOfBirth", "Date de naissance", "date"),
       employeeField("birthPlace", "Lieu de naissance", "text"),
       employeeField("address", "Adresse du salarié", "text"),
@@ -187,6 +208,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: (_e, c) => c.signingCity,
       },
+      SEX_FIELD,
       JOB_TITLE_FIELD,
       CLASSIFICATION_FIELD,
       employeeField("hireDate", "Date d'embauche", "date"),
@@ -205,6 +227,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
       { key: "dispensePreavis", label: "Dispense de préavis", type: "boolean", defaultValue: () => false },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      SEX_FIELD,
       JOB_TITLE_FIELD,
       CLASSIFICATION_FIELD,
     ],
@@ -227,6 +250,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       },
       { key: "hasCse", label: "L'entreprise dispose d'un CSE", type: "boolean", defaultValue: () => false },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      SEX_FIELD,
     ],
     generate: convocationEntretien,
   },
@@ -248,6 +272,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
       { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      SEX_FIELD,
       CLASSIFICATION_FIELD,
     ],
     generate: lettreLicenciement,
@@ -269,6 +294,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       },
       { key: "hasCse", label: "L'entreprise dispose d'un CSE", type: "boolean", defaultValue: () => false },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      SEX_FIELD,
     ],
     generate: convocationRC,
   },

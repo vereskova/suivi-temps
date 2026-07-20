@@ -56,10 +56,13 @@ export function signatureBlock(left: SignatureParty, right: SignatureParty): Blo
   return { type: "signatureBlock", left, right };
 }
 
+export type Sex = "M" | "F" | null;
+
 export type EmployeeDoc = {
   firstName: string;
   lastName: string;
   fullNameUpper: string; // "NOM Prénom" as used in salutations
+  sex: Sex;
   dateOfBirth: string | null;
   birthPlace: string | null;
   nationality: string | null;
@@ -69,7 +72,8 @@ export type EmployeeDoc = {
   category: "chantier" | "bureau";
   hireDate: string | null;
   weeklyHours: number | null;
-  classification: string | null;
+  classification: string | null; // groupe d'emploi A-I — drives préavis, see preavis.ts
+  classe: string | null; // classification coefficient/classe, display-only
   monthlyGrossSalary: number | null;
 };
 

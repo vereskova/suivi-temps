@@ -1,5 +1,6 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, rule } from "../types";
 import { formatDateFr } from "../helpers";
+import { civility } from "../gender";
 
 export type ConvocationEntretienParams = {
   interviewDate: string;
@@ -27,7 +28,7 @@ export function convocationEntretien(
     { type: "spacer" },
     p(t("Lettre recommandée avec accusé de réception")),
     { type: "spacer" },
-    para(`Madame, Monsieur ${fullName},`),
+    para(`${civility(employee.sex)} ${fullName},`),
     { type: "spacer" },
     para(
       "Nous envisageons de prendre à votre encontre une mesure de licenciement et sommes donc conduits à vous convoquer à un entretien préalable, conformément aux articles L.1232-2 à L.1232-4 du Code du travail."
@@ -50,7 +51,7 @@ export function convocationEntretien(
       "En cas d'assistance par un conseiller du salarié, vous voudrez bien noter que ses coordonnées sont disponibles à la mairie de votre domicile ou à la Direction Départementale de l'Emploi, du Travail et des Solidarités (DDETS)."
     ),
     { type: "spacer" },
-    para("Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées."),
+    para(`Nous vous prions d'agréer, ${civility(employee.sex)}, l'expression de nos salutations distinguées.`),
     { type: "spacer" },
     para(company.representativeName),
     para(company.representativeTitle),

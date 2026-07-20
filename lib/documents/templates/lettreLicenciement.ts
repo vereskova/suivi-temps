@@ -1,6 +1,7 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, rule } from "../types";
 import { formatDateFr, addMonthsIso, addDaysIso } from "../helpers";
 import { computePreavis } from "../preavis";
+import { agr, civility } from "../gender";
 
 export type LettreLicenciementParams = {
   interviewDate: string;
@@ -38,10 +39,10 @@ export function lettreLicenciement(
     { type: "spacer" },
     p(t("Lettre recommandée avec accusé de réception")),
     { type: "spacer" },
-    para(`Madame, Monsieur ${fullName},`),
+    para(`${civility(employee.sex)} ${fullName},`),
     { type: "spacer" },
     para(
-      `Nous vous avons reçu(e) en entretien préalable le ${formatDateFr(
+      `Nous vous avons ${agr(employee.sex, "reçu")} en entretien préalable le ${formatDateFr(
         params.interviewDate
       )}, au cours duquel nous vous avons exposé les motifs de la mesure de licenciement envisagée à votre encontre et recueilli vos explications.`
     ),
@@ -66,7 +67,7 @@ export function lettreLicenciement(
       "Nous vous rappelons également que vous disposez d'un délai de 12 mois à compter de la notification du licenciement pour contester la rupture de votre contrat de travail devant le Conseil de Prud'hommes."
     ),
     { type: "spacer" },
-    para("Nous vous prions d'agréer, Madame, Monsieur, l'expression de nos salutations distinguées."),
+    para(`Nous vous prions d'agréer, ${civility(employee.sex)}, l'expression de nos salutations distinguées.`),
     { type: "spacer" },
     para(company.representativeName),
     para(company.representativeTitle),

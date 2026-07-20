@@ -1,5 +1,6 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, signatureBlock } from "../types";
 import { formatDateShort, formatEuros } from "../helpers";
+import { agr, civility, pronoun, pronounCap, salarieLabel } from "../gender";
 
 export type ContratChantierParams = {
   startDate: string; // ISO
@@ -14,7 +15,23 @@ export function contratChantier(
   params: ContratChantierParams
 ): DocContent {
   const fullName = `${employee.lastName.toUpperCase()} ${employee.firstName}`;
+  const sex = employee.sex;
   const weeklyHours = employee.weeklyHours ?? 35;
+
+  let articleNum = 0;
+  function article(title: string): Block {
+    articleNum += 1;
+    return { type: "heading", text: `ARTICLE ${articleNum} - ${title}` };
+  }
+
+  const classificationSentence =
+    employee.classification || employee.classe
+      ? para(
+          `Cette fonction correspond, au sein de la grille de classification de la convention collective applicable, au groupe ${
+            employee.classification ?? "____________"
+          }${employee.classe ? `, classe ${employee.classe}` : ""}.`
+        )
+      : null;
 
   const blocks: Block[] = [
     { type: "title", text: "CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE" },
@@ -27,8 +44,8 @@ export function contratChantier(
     p(t("Représenté par "), b(company.representativeName)),
     para(`En sa qualité de ${company.representativeTitle}`),
     { type: "spacer" },
-    p(b("Monsieur/Madame "), b(fullName)),
-    para(`Né(e) le ${formatDateShort(employee.dateOfBirth)}${employee.birthPlace ? ` à ${employee.birthPlace}` : ""}`),
+    p(b(`${civility(sex)} `), b(fullName)),
+    para(`${agr(sex, "Né")} le ${formatDateShort(employee.dateOfBirth)}${employee.birthPlace ? ` à ${employee.birthPlace}` : ""}`),
     para(`Nationalité : ${employee.nationality ?? "____________"}`),
     para(`Adresse : ${employee.address ?? "____________"}`),
     para(`Sécurité sociale : ${employee.socialSecurity ?? "-"}`),
@@ -36,18 +53,19 @@ export function contratChantier(
     para("Il est convenu ce qui suit :"),
     { type: "spacer" },
 
-    { type: "heading", text: "ARTICLE 1 - ENGAGEMENT - EMPLOI" },
+    article("ENGAGEMENT - EMPLOI"),
     para(
-      `${fullName} est engagé(e) à compter du ${formatDateShort(params.startDate)}, en qualité de ${employee.jobTitle ?? "____________"}, sous réserve, en application de la réglementation en vigueur, des résultats de la visite médicale d'information et de prévention.`
+      `${fullName} est ${agr(sex, "engagé")} à compter du ${formatDateShort(params.startDate)}, en qualité de ${employee.jobTitle ?? "____________"}, sous réserve, en application de la réglementation en vigueur, des résultats de la visite médicale d'information et de prévention.`
     ),
+    ...(classificationSentence ? [classificationSentence] : []),
     para(
-      `${fullName} se déclare être libre de tout engagement, n'être tenu(e) par aucune clause de non-concurrence, n'être frappé(e) d'aucune incapacité ni d'aucune inaptitude physique à l'exercice de son activité.`
+      `${fullName} se déclare être libre de tout engagement, n'être ${agr(sex, "tenu")} par aucune clause de non-concurrence, n'être ${agr(sex, "frappé")} d'aucune incapacité ni d'aucune inaptitude physique à l'exercice de son activité.`
     ),
     para(
       `Le présent contrat est régi par les dispositions légales et réglementaires en vigueur, par les dispositions de la convention collective actuellement applicable à l'entreprise à savoir la ${company.conventionCollective} ainsi que par les dispositions particulières ci-après.`
     ),
 
-    { type: "heading", text: "ARTICLE 2 - DURÉE DU CONTRAT - PÉRIODE D'ESSAI" },
+    article("DURÉE DU CONTRAT - PÉRIODE D'ESSAI"),
     para(
       `Le contrat de travail est conclu pour une durée indéterminée. Il prendra cours le ${formatDateShort(params.startDate)}.`
     ),
@@ -55,7 +73,7 @@ export function contratChantier(
       `Le présent contrat ne deviendra toutefois définitif qu'à l'issue d'une période d'essai de ${params.trialDays} jours maximum à compter du ${formatDateShort(params.startDate)}. Dans le cas d'une rupture de cette période d'essai à l'initiative de ${company.name}, il sera adressé à ${fullName} une lettre pendant le délai de prévenance en vigueur. En cas de renouvellement de la période d'essai de ${fullName}, une lettre lui sera adressée au cours du délai de prévenance en vigueur.`
     ),
 
-    { type: "heading", text: "ARTICLE 3 - DURÉE ET HORAIRES DE TRAVAIL" },
+    article("DURÉE ET HORAIRES DE TRAVAIL"),
     para(
       `Le présent contrat de travail porte sur un travail à ${weeklyHours} heures en moyenne par semaine, réparties conformément au planning et aux horaires de travail affichés.`
     ),
@@ -63,18 +81,18 @@ export function contratChantier(
       `L'horaire de travail de ${fullName} sera susceptible de modifications et ce, en fonction des nécessités de service.`
     ),
     para(
-      `Par ailleurs, il est expressément convenu que ${fullName} pourra être amené(e) à effectuer des heures de travail au-delà des ${weeklyHours} heures susmentionnées sous réserve du respect des dispositions légales, réglementaires et conventionnelles en vigueur concernant la durée du travail.`
+      `Par ailleurs, il est expressément convenu que ${fullName} pourra être ${agr(sex, "amené")} à effectuer des heures de travail au-delà des ${weeklyHours} heures susmentionnées sous réserve du respect des dispositions légales, réglementaires et conventionnelles en vigueur concernant la durée du travail.`
     ),
     para(
       "Toute heure supplémentaire devra faire l'objet de l'accord préalable et exprès du supérieur hiérarchique."
     ),
 
-    { type: "heading", text: "ARTICLE 4 - RÉMUNÉRATION" },
+    article("RÉMUNÉRATION"),
     para(
       `En contrepartie de son travail, ${fullName} percevra une rémunération mensuelle brute de base de ${formatEuros(employee.monthlyGrossSalary)} plus les frais de déplacement.`
     ),
 
-    { type: "heading", text: "ARTICLE 5 - LIEU DE TRAVAIL" },
+    article("LIEU DE TRAVAIL"),
     para(
       `${fullName} exercera sa prestation de travail dans l'établissement situé à l'adresse ci-dessus et sur les différents chantiers de l'entreprise.`
     ),
@@ -82,21 +100,21 @@ export function contratChantier(
       `${fullName} s'engage à effectuer tout déplacement professionnel rendu nécessaire pour la bonne exécution de ses missions.`
     ),
 
-    { type: "heading", text: "ARTICLE 6 - OBLIGATIONS PROFESSIONNELLES" },
+    article("OBLIGATIONS PROFESSIONNELLES"),
     para(
       `${fullName} s'engage à observer toutes les instructions et consignes particulières de travail qui lui seront données et, plus particulièrement, les consignes relatives à l'hygiène et à la sécurité en vigueur dans l'entreprise.`
     ),
     para(
-      "Il/Elle s'engage également à respecter une stricte obligation de discrétion sur tout ce qui concerne l'activité de l'entreprise ainsi que sur toutes les informations concernant sa clientèle."
+      `${pronounCap(sex)} s'engage également à respecter une stricte obligation de discrétion sur tout ce qui concerne l'activité de l'entreprise ainsi que sur toutes les informations concernant sa clientèle.`
     ),
     para(
       `${fullName} devra faire connaître à l'entreprise, sans délai, toute modification postérieure à son engagement qui pourrait intervenir dans son état civil, sa situation de famille, son adresse.`
     ),
     para(
-      "Dès la cessation de ses fonctions au sein de l'entreprise, il/elle devra restituer les documents et autres matériels qui lui ont été confiés ou établis par ses soins pour l'exercice de sa fonction."
+      `Dès la cessation de ses fonctions au sein de l'entreprise, ${pronoun(sex)} devra restituer les documents et autres matériels qui lui ont été confiés ou établis par ses soins pour l'exercice de sa fonction.`
     ),
 
-    { type: "heading", text: "ARTICLE 7 - ABSENCES DIVERSES" },
+    article("ABSENCES DIVERSES"),
     para(
       "Toute absence, quelle que soit sa durée, doit faire l'objet d'une justification auprès de la société sans délai."
     ),
@@ -105,20 +123,28 @@ export function contratChantier(
       "Et à produire un justificatif dans les 48 heures.",
     ]},
 
-    { type: "heading", text: "ARTICLE 8 - TRAITEMENT DES DONNÉES PERSONNELLES" },
+    article("TRAITEMENT DES DONNÉES PERSONNELLES"),
     para(
-      `${fullName}, exerçant les fonctions de ${employee.jobTitle ?? "____________"} au sein de la société, étant à ce titre amené(e) à accéder à des données à caractère personnel, déclare reconnaître la confidentialité desdites données.`
+      `${fullName}, exerçant les fonctions de ${employee.jobTitle ?? "____________"} au sein de la société, étant à ce titre ${agr(sex, "amené")} à accéder à des données à caractère personnel, déclare reconnaître la confidentialité desdites données.`
     ),
     para(
-      "Conformément aux articles 34 et 35 de la loi du 6 janvier 1978 modifiée relative à l'informatique, aux fichiers et aux libertés ainsi qu'aux articles 32 à 35 du Règlement général sur la protection des données du 27 avril 2016, il/elle s'engage à prendre toutes précautions conformes aux usages afin de protéger la confidentialité des informations auxquelles il/elle a accès."
+      `Conformément aux articles 34 et 35 de la loi du 6 janvier 1978 modifiée relative à l'informatique, aux fichiers et aux libertés ainsi qu'aux articles 32 à 35 du Règlement général sur la protection des données du 27 avril 2016, ${pronoun(sex)} s'engage à prendre toutes précautions conformes aux usages afin de protéger la confidentialité des informations auxquelles ${pronoun(sex)} a accès.`
     ),
     para(
       "Cet engagement de confidentialité, en vigueur pendant toute la durée de ses fonctions, demeurera effectif, sans limitation de durée après la cessation de ses fonctions, quelle qu'en soit la cause, dès lors que cet engagement concerne l'utilisation et la communication de données à caractère personnel."
     ),
 
-    { type: "heading", text: "ARTICLE 9 - ENTRETIEN PROFESSIONNEL" },
+    article("FORMATION ET ENTRETIEN PROFESSIONNEL"),
     para(
-      `${fullName} est informé(e) qu'il/elle bénéficie tous les deux ans d'un entretien professionnel avec son employeur consacré à ses perspectives d'évolution professionnelle, notamment en termes de qualifications et d'emploi, conformément aux dispositions L.6315-1 du code du travail.`
+      `${salarieLabel(sex)} bénéficie du droit à la formation professionnelle tout au long de la vie, notamment au titre du compte personnel de formation (CPF) et du plan de développement des compétences de l'entreprise.`
+    ),
+    para(
+      `${fullName} est ${agr(sex, "informé")} qu'${pronoun(sex)} bénéficie tous les deux ans d'un entretien professionnel avec son employeur consacré à ses perspectives d'évolution professionnelle, notamment en termes de qualifications et d'emploi, conformément aux dispositions L.6315-1 du code du travail.`
+    ),
+
+    article("PRÉAVIS"),
+    para(
+      "En cas de rupture du contrat de travail à l'initiative de l'une ou l'autre des parties, un préavis devra être respecté, dont la durée est fixée par les dispositions légales et conventionnelles en vigueur en fonction de l'ancienneté acquise au moment du départ."
     ),
 
     { type: "spacer" },
@@ -126,7 +152,7 @@ export function contratChantier(
     signatureBlock(
       { label: `L'employeur — ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
       {
-        label: "Le/La salarié(e)",
+        label: salarieLabel(sex),
         lines: [fullName, "« Lu et approuvé - Bon pour accord »"],
       }
     ),
