@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, rule } from "../types";
 import { formatDateFr, addMonthsIso, addDaysIso } from "../helpers";
 import { computePreavis } from "../preavis";
 
@@ -30,11 +30,11 @@ export function lettreLicenciement(
   const blocks: Block[] = [
     { type: "title", text: "LETTRE DE LICENCIEMENT" },
     { type: "subtitle", text: "POUR CAUSE RÉELLE ET SÉRIEUSE" },
-    { type: "spacer" },
+    rule(),
     para(company.name),
     para(company.address),
     { type: "spacer" },
-    para(`${company.signingCity}, le ${formatDateFr(params.issueDate)}`),
+    para(`${company.signingCity}, le ${formatDateFr(params.issueDate)}`, "right"),
     { type: "spacer" },
     p(t("Lettre recommandée avec accusé de réception")),
     { type: "spacer" },

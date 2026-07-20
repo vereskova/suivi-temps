@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getDocumentType } from "@/lib/documents/registry";
+import { getDocumentType, splitParams } from "@/lib/documents/registry";
 import { renderDocx } from "@/lib/documents/renderDocx";
 import { renderPdf } from "@/lib/documents/renderPdf";
 import {
@@ -71,12 +71,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Company settings not configured" }, { status: 500 });
   }
 
-  const employee = mapEmployeeRow(employeeRow);
+  const baseEmployee = mapEmployeeRow(employeeRow);
   const company = mapCompanyRow(companyRow);
+  const { employee, params: docParams } = splitParams(definition, baseEmployee, params ?? {});
 
   let content;
   try {
-    content = definition.generate(employee, company, params ?? {});
+    content = definition.generate(employee, company, docParams);
   } catch {
     return NextResponse.json({ error: "Failed to generate document content" }, { status: 400 });
   }

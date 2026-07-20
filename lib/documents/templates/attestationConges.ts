@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, rule } from "../types";
 import { formatDateFr, formatDateShort } from "../helpers";
 
 export type AttestationCongesParams = {
@@ -16,7 +16,7 @@ export function attestationConges(
 
   const blocks: Block[] = [
     { type: "title", text: "ATTESTATION DE CONGÉS PAYÉS" },
-    { type: "spacer" },
+    rule(),
     para("Je soussigné,"),
     para(company.representativeName + ","),
     para(company.representativeTitle + ","),

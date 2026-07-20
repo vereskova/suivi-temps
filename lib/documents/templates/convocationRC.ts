@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, rule } from "../types";
 import { formatDateFr } from "../helpers";
 
 export type ConvocationRCParams = {
@@ -19,11 +19,11 @@ export function convocationRC(
   const blocks: Block[] = [
     { type: "title", text: "CONVOCATION À UN ENTRETIEN" },
     { type: "subtitle", text: "EN VUE D'UNE RUPTURE CONVENTIONNELLE" },
-    { type: "spacer" },
+    rule(),
     para(company.name),
     para(company.address),
     { type: "spacer" },
-    para(`${company.signingCity}, le ${formatDateFr(params.issueDate)}`),
+    para(`${company.signingCity}, le ${formatDateFr(params.issueDate)}`, "right"),
     { type: "spacer" },
     p(t("Lettre remise en main propre contre décharge / recommandée avec accusé de réception")),
     { type: "spacer" },

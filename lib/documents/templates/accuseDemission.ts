@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule } from "../types";
 import { formatDateFr, addMonthsIso, addDaysIso } from "../helpers";
 import { computePreavis } from "../preavis";
 
@@ -28,11 +28,11 @@ export function accuseDemission(
 
   const blocks: Block[] = [
     { type: "title", text: "ACCUSÉ DE RÉCEPTION DE DÉMISSION" },
-    { type: "spacer" },
+    rule(),
     para(company.name),
     para(company.address),
     { type: "spacer" },
-    para(`${company.signingCity}, le ${formatDateFr(params.issueDate)}`),
+    para(`${company.signingCity}, le ${formatDateFr(params.issueDate)}`, "right"),
     { type: "spacer" },
     p(t("Lettre recommandée avec accusé de réception")),
     { type: "spacer" },

@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, signatureBlock } from "../types";
 import { formatDateShort, formatEuros } from "../helpers";
 
 export type ContratChantierParams = {
@@ -18,7 +18,7 @@ export function contratChantier(
 
   const blocks: Block[] = [
     { type: "title", text: "CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE" },
-    { type: "spacer" },
+    rule(),
     para("Entre les soussignés :"),
     { type: "spacer" },
     p(b(`${company.name}, ${company.legalForm}`)),
@@ -123,13 +123,13 @@ export function contratChantier(
 
     { type: "spacer" },
     para(`Fait en double exemplaire à ${params.signingCity} le ${formatDateShort(params.signingDate)}`),
-    { type: "spacer" },
-    p(b(`L'employeur ${company.name}`)),
-    para(company.representativeName),
-    { type: "spacer" },
-    p(b("Le/La salarié(e)")),
-    para(fullName),
-    para('Signature précédée de la mention manuscrite « Lu et approuvé - Bon pour accord »'),
+    signatureBlock(
+      { label: `L'employeur — ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
+      {
+        label: "Le/La salarié(e)",
+        lines: [fullName, "« Lu et approuvé - Bon pour accord »"],
+      }
+    ),
   ];
 
   return { title: `Contrat de travail — ${fullName}`, blocks };

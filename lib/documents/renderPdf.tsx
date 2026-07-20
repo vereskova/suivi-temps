@@ -1,19 +1,49 @@
 import React from "react";
 import { Document, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
-import { Block, DocContent } from "./types";
+import { Align, Block, DocContent } from "./types";
+
+const FONT = "Times-Roman";
 
 const styles = StyleSheet.create({
-  page: { paddingTop: 56, paddingBottom: 56, paddingHorizontal: 56, fontSize: 11, lineHeight: 1.4 },
-  title: { fontSize: 16, fontWeight: 700, textAlign: "center", marginBottom: 8 },
-  subtitle: { fontSize: 12, fontWeight: 700, textAlign: "center", marginBottom: 12 },
-  heading: { fontSize: 12, fontWeight: 700, marginTop: 14, marginBottom: 6 },
-  paragraph: { marginBottom: 6, textAlign: "justify" },
-  paragraphCenter: { marginBottom: 6, textAlign: "center" },
-  listItem: { marginBottom: 4, marginLeft: 12 },
+  page: {
+    paddingTop: 56,
+    paddingBottom: 56,
+    paddingHorizontal: 56,
+    fontSize: 12,
+    fontFamily: FONT,
+    lineHeight: 1.35,
+  },
+  title: { fontSize: 16, fontWeight: 700, textAlign: "center", marginBottom: 10, textDecoration: "underline" },
+  subtitle: { fontSize: 14, fontWeight: 700, textAlign: "center", marginBottom: 12 },
+  heading: { fontSize: 14, fontWeight: 700, marginTop: 16, marginBottom: 8 },
+  rule: { borderBottomWidth: 1, borderBottomColor: "#999999", marginBottom: 10 },
+  paragraphBase: { fontSize: 12, marginBottom: 8 },
+  alignJustify: { textAlign: "justify" },
+  alignCenter: { textAlign: "center" },
+  alignRight: { textAlign: "right" },
+  alignLeft: { textAlign: "left" },
+  listItem: { fontSize: 12, marginBottom: 6, marginLeft: 14 },
   spacer: { height: 10 },
   bold: { fontWeight: 700 },
   italic: { fontStyle: "italic" },
+  signatureRow: { flexDirection: "row", marginTop: 20 },
+  signatureCol: { width: "48%", marginRight: "4%" },
+  signatureLabel: { fontSize: 12, fontWeight: 700, marginBottom: 8 },
+  signatureLine: { fontSize: 12, marginBottom: 4 },
 });
+
+function alignStyleFor(align: Align | undefined) {
+  switch (align) {
+    case "center":
+      return styles.alignCenter;
+    case "right":
+      return styles.alignRight;
+    case "left":
+      return styles.alignLeft;
+    default:
+      return styles.alignJustify;
+  }
+}
 
 function renderBlock(block: Block, index: number) {
   switch (block.type) {
@@ -35,6 +65,8 @@ function renderBlock(block: Block, index: number) {
           {block.text}
         </Text>
       );
+    case "rule":
+      return <View key={index} style={styles.rule} />;
     case "spacer":
       return <View key={index} style={styles.spacer} />;
     case "list":
@@ -47,9 +79,24 @@ function renderBlock(block: Block, index: number) {
           ))}
         </View>
       );
+    case "signatureBlock":
+      return (
+        <View key={index} style={styles.signatureRow}>
+          {[block.left, block.right].map((party, i) => (
+            <View key={i} style={styles.signatureCol}>
+              <Text style={styles.signatureLabel}>{party.label}</Text>
+              {party.lines.map((line, j) => (
+                <Text key={j} style={styles.signatureLine}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+          ))}
+        </View>
+      );
     case "paragraph":
       return (
-        <Text key={index} style={block.center ? styles.paragraphCenter : styles.paragraph}>
+        <Text key={index} style={[styles.paragraphBase, alignStyleFor(block.align)]}>
           {block.runs.map((r, i) => (
             <Text key={i} style={r.bold ? styles.bold : r.italic ? styles.italic : undefined}>
               {r.text}

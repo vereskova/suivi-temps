@@ -5,6 +5,7 @@ import { contratBureau } from "./templates/contratBureau";
 import { nda } from "./templates/nda";
 import { attestationConges } from "./templates/attestationConges";
 import { accuseDemission } from "./templates/accuseDemission";
+import { lettreDemission } from "./templates/lettreDemission";
 import { convocationEntretien } from "./templates/convocationEntretien";
 import { lettreLicenciement } from "./templates/lettreLicenciement";
 import { convocationRC } from "./templates/convocationRC";
@@ -16,6 +17,12 @@ export type FieldSchema = {
   label: string;
   type: FieldType;
   required?: boolean;
+  /**
+   * "employee" fields are merged onto the employee record before generation (they fill in
+   * gaps in the employee's profile — address, nationality, salary, etc.). "params" (default)
+   * are passed straight through as document-specific parameters. See splitParams().
+   */
+  target?: "employee" | "params";
   defaultValue?: (employee: EmployeeDoc, company: CompanyDoc) => string | number | boolean | null;
   help?: string;
 };
@@ -31,6 +38,45 @@ export type DocumentTypeDefinition = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   generate: (employee: EmployeeDoc, company: CompanyDoc, params: any) => DocContent;
 };
+
+/** Field that fills a gap on the employee's profile rather than a document-specific parameter. */
+function employeeField(
+  key: keyof EmployeeDoc,
+  label: string,
+  type: FieldType,
+  help?: string
+): FieldSchema {
+  return {
+    key,
+    label,
+    type,
+    target: "employee",
+    help,
+    defaultValue: (employee) => {
+      const value = employee[key];
+      if (value === null || value === undefined) return type === "boolean" ? false : "";
+      return value as string | number | boolean;
+    },
+  };
+}
+
+const IDENTITY_FIELDS: FieldSchema[] = [
+  employeeField("dateOfBirth", "Date de naissance", "date"),
+  employeeField("birthPlace", "Lieu de naissance", "text"),
+  employeeField("nationality", "Nationalité", "text"),
+  employeeField("address", "Adresse du salarié", "text"),
+  employeeField("socialSecurity", "N° Sécurité sociale", "text"),
+];
+
+const JOB_TITLE_FIELD = employeeField("jobTitle", "Intitulé du poste", "text");
+const CLASSIFICATION_FIELD = employeeField(
+  "classification",
+  "Classification / groupe d'emploi (A–I)",
+  "text",
+  "Détermine la durée légale du préavis — laissez vide pour utiliser la valeur par défaut (1 mois)."
+);
+const WEEKLY_HOURS_FIELD = employeeField("weeklyHours", "Heures hebdomadaires", "number");
+const SALARY_FIELD = employeeField("monthlyGrossSalary", "Salaire mensuel brut (€)", "number");
 
 export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
   {
@@ -49,6 +95,10 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: (_e, c) => c.signingCity,
       },
+      ...IDENTITY_FIELDS,
+      JOB_TITLE_FIELD,
+      WEEKLY_HOURS_FIELD,
+      SALARY_FIELD,
     ],
     generate: contratChantier,
   },
@@ -83,6 +133,9 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: () => "un rayon de 50 km autour du siège social",
       },
+      ...IDENTITY_FIELDS,
+      JOB_TITLE_FIELD,
+      SALARY_FIELD,
     ],
     generate: contratBureau,
   },
@@ -100,6 +153,9 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         defaultValue: (_e, c) => c.signingCity,
       },
+      employeeField("dateOfBirth", "Date de naissance", "date"),
+      employeeField("birthPlace", "Lieu de naissance", "text"),
+      employeeField("address", "Adresse du salarié", "text"),
     ],
     generate: nda,
   },
@@ -116,6 +172,29 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     generate: attestationConges,
   },
   {
+    code: "lettre_demission",
+    label: "Lettre de démission (rédigée pour le salarié)",
+    category: "rupture",
+    legalRisk: true,
+    fields: [
+      { key: "resignationDate", label: "Date de la lettre", type: "date", required: true, defaultValue: () => todayIso() },
+      { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
+      { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
+      {
+        key: "signingCity",
+        label: "Ville de signature",
+        type: "text",
+        required: true,
+        defaultValue: (_e, c) => c.signingCity,
+      },
+      JOB_TITLE_FIELD,
+      CLASSIFICATION_FIELD,
+      employeeField("hireDate", "Date d'embauche", "date"),
+      employeeField("address", "Adresse du salarié", "text"),
+    ],
+    generate: lettreDemission,
+  },
+  {
     code: "accuse_demission",
     label: "Accusé de réception de démission",
     category: "rupture",
@@ -126,6 +205,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
       { key: "dispensePreavis", label: "Dispense de préavis", type: "boolean", defaultValue: () => false },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      JOB_TITLE_FIELD,
+      CLASSIFICATION_FIELD,
     ],
     generate: accuseDemission,
   },
@@ -167,6 +248,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
       { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      CLASSIFICATION_FIELD,
     ],
     generate: lettreLicenciement,
   },
@@ -194,4 +276,31 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
 
 export function getDocumentType(code: string): DocumentTypeDefinition | undefined {
   return DOCUMENT_TYPES.find((d) => d.code === code);
+}
+
+/**
+ * Splits raw form values into employee-profile overrides (merged onto the employee record)
+ * and document-specific params, per each field's `target`. Blank overrides are dropped so an
+ * empty form field never erases a value already on file.
+ */
+export function splitParams(
+  definition: DocumentTypeDefinition,
+  employee: EmployeeDoc,
+  values: Record<string, unknown>
+): { employee: EmployeeDoc; params: Record<string, unknown> } {
+  const overrides: Partial<Record<keyof EmployeeDoc, unknown>> = {};
+  const params: Record<string, unknown> = {};
+
+  definition.fields.forEach((f) => {
+    const value = values[f.key];
+    if (f.target === "employee") {
+      if (value !== undefined && value !== "") {
+        overrides[f.key as keyof EmployeeDoc] = value;
+      }
+    } else {
+      params[f.key] = value;
+    }
+  });
+
+  return { employee: { ...employee, ...overrides } as EmployeeDoc, params };
 }

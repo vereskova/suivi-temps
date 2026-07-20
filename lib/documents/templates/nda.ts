@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, signatureBlock } from "../types";
 import { formatDateShort } from "../helpers";
 
 export type NdaParams = {
@@ -12,7 +12,7 @@ export function nda(employee: EmployeeDoc, company: CompanyDoc, params: NdaParam
   const blocks: Block[] = [
     { type: "title", text: "ACCORD DE NON-DIVULGATION" },
     { type: "subtitle", text: "(ACCORD DE CONFIDENTIALITÉ)" },
-    { type: "spacer" },
+    rule(),
     para("ENTRE LES SOUSSIGNÉS :"),
     { type: "spacer" },
     p(b(`La société ${company.name}`)),
@@ -92,13 +92,10 @@ export function nda(employee: EmployeeDoc, company: CompanyDoc, params: NdaParam
 
     { type: "spacer" },
     para(`Fait à ${params.signingCity}, le ${formatDateShort(params.signingDate)}`),
-    para('Signatures précédées de la mention manuscrite « Lu et approuvé ».'),
-    { type: "spacer" },
-    p(b("Le Signataire")),
-    para(fullName),
-    { type: "spacer" },
-    p(b(`Pour la Société ${company.name}`)),
-    para(`${company.representativeName} — ${company.representativeTitle}`),
+    signatureBlock(
+      { label: `Pour la Société ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
+      { label: "Le Signataire", lines: [fullName, "« Lu et approuvé »"] }
+    ),
   ];
 
   return { title: `NDA — ${fullName}`, blocks };

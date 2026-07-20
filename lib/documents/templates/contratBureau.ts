@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, signatureBlock } from "../types";
 import { formatDateShort, formatEuros } from "../helpers";
 
 export type ContratBureauParams = {
@@ -26,7 +26,7 @@ export function contratBureau(
         params.isPartTime ? " À TEMPS PARTIEL" : ""
       }`,
     },
-    { type: "spacer" },
+    rule(),
     para("ENTRE LES SOUSSIGNÉS :"),
     { type: "spacer" },
     p(b(`La société ${company.name}`)),
@@ -171,15 +171,11 @@ export function contratBureau(
     ),
 
     { type: "spacer" },
-    para(`Fait à ${params.signingCity}`),
-    para(`Le ${formatDateShort(params.signingDate)}`),
-    para('Signatures précédées de la mention manuscrite « Lu et approuvé ».'),
-    { type: "spacer" },
-    p(b(civility)),
-    para(fullName),
-    { type: "spacer" },
-    p(b("L'Employeur")),
-    para(company.representativeName),
+    para(`Fait à ${params.signingCity}, le ${formatDateShort(params.signingDate)}`),
+    signatureBlock(
+      { label: "L'Employeur", lines: [company.representativeName, company.representativeTitle] },
+      { label: civility, lines: [fullName, "« Lu et approuvé »"] }
+    ),
   ];
 
   return { title: `Contrat de travail — ${fullName}`, blocks };
