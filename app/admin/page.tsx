@@ -6,6 +6,15 @@ import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
+import { DOCUMENT_TYPES, getDocumentType } from "@/lib/documents/registry";
+import {
+  CompanyRow,
+  EMPLOYEE_DOC_SELECT,
+  EmployeeRow as DocEmployeeRow,
+  mapCompanyRow,
+  mapEmployeeRow,
+} from "@/lib/documents/mappers";
+import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
 
 type Employee = {
   id: string;
@@ -99,7 +108,8 @@ type ViewKey =
   | "effectif"
   | "medical"
   | "formations"
-  | "tailles";
+  | "tailles"
+  | "documents";
 
 const NAV_ITEMS: { key: ViewKey; label: string }[] = [
   { key: "jour", label: "Par jour" },
@@ -247,6 +257,15 @@ export default function AdminPage() {
                 </SidebarLink>
               </SidebarSection>
 
+              <SidebarSection title="RH">
+                <SidebarLink
+                  active={view === "documents"}
+                  onClick={() => setView("documents")}
+                >
+                  Documents
+                </SidebarLink>
+              </SidebarSection>
+
               <SidebarSection title="À venir">
                 <SidebarLink disabled>Dossier salarié</SidebarLink>
                 <SidebarLink disabled>Paie</SidebarLink>
@@ -285,6 +304,7 @@ export default function AdminPage() {
             {view === "medical" && <MedicalView supabase={supabase} />}
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
+            {view === "documents" && <DocumentsView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -2656,6 +2676,321 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Vue "Documents" — génération de contrats/NDA/attestations/ruptures ──────
+type DocEmployeeListRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  status: EmployeeStatus;
+  category: "chantier" | "bureau";
+};
+
+type FormValue = string | number | boolean;
+
+function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<DocEmployeeListRow[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+  const [search, setSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
+  const [employeeDoc, setEmployeeDoc] = useState<EmployeeDoc | null>(null);
+  const [companyDoc, setCompanyDoc] = useState<CompanyDoc | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [typeCode, setTypeCode] = useState<string>(DOCUMENT_TYPES[0].code);
+  const [formValues, setFormValues] = useState<Record<string, FormValue>>({});
+  const [generating, setGenerating] = useState<"pdf" | "docx" | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoadingEmployees(true);
+      const { data } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, status, category")
+        .order("last_name");
+      setEmployees((data as unknown as DocEmployeeListRow[]) ?? []);
+      setLoadingEmployees(false);
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase
+        .from("company_settings")
+        .select("*")
+        .limit(1)
+        .maybeSingle<CompanyRow>();
+      if (data) setCompanyDoc(mapCompanyRow(data));
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      if (!selectedEmployeeId) {
+        setEmployeeDoc(null);
+        return;
+      }
+      setLoadingDetail(true);
+      const { data } = await supabase
+        .from("employees")
+        .select(EMPLOYEE_DOC_SELECT)
+        .eq("id", selectedEmployeeId)
+        .maybeSingle<DocEmployeeRow>();
+      setEmployeeDoc(data ? mapEmployeeRow(data) : null);
+      setLoadingDetail(false);
+    }
+    load();
+  }, [supabase, selectedEmployeeId]);
+
+  const definition = useMemo(() => getDocumentType(typeCode), [typeCode]);
+
+  useEffect(() => {
+    function applyDefaults() {
+      if (!employeeDoc || !companyDoc || !definition) return;
+      const next: Record<string, FormValue> = {};
+      definition.fields.forEach((f) => {
+        const dv = f.defaultValue ? f.defaultValue(employeeDoc, companyDoc) : null;
+        if (f.type === "boolean") next[f.key] = (dv as boolean) ?? false;
+        else if (f.type === "number") next[f.key] = dv === null ? "" : (dv as number);
+        else next[f.key] = (dv as string) ?? "";
+      });
+      setFormValues(next);
+      setErrorMsg(null);
+    }
+    applyDefaults();
+  }, [definition, employeeDoc, companyDoc]);
+
+  const filteredEmployees = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, search]);
+
+  const missingRequired = useMemo(() => {
+    if (!definition) return [];
+    return definition.fields.filter((f) => {
+      if (!f.required) return false;
+      const v = formValues[f.key];
+      return v === undefined || v === "" || v === null;
+    });
+  }, [definition, formValues]);
+
+  async function download(format: "pdf" | "docx") {
+    if (!selectedEmployeeId || !definition || missingRequired.length > 0) return;
+    setGenerating(format);
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/documents/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId: selectedEmployeeId,
+          documentType: typeCode,
+          format,
+          params: formValues,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Erreur ${res.status}`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] ?? `document.${format}`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Erreur inconnue");
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  return (
+    <div className="flex gap-4 items-start">
+      <div className="card w-72 shrink-0">
+        <p className="font-bold mb-3">Employés ({filteredEmployees.length})</p>
+        <input
+          className="input mb-2"
+          placeholder="Rechercher…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input mb-3"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
+        >
+          <option value="active">Actifs</option>
+          <option value="on_leave">En congé</option>
+          <option value="terminated">Sortis</option>
+          <option value="all">Tous</option>
+        </select>
+
+        {loadingEmployees ? (
+          <p className="text-sm text-slate-400">Chargement…</p>
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto -mx-1">
+            {filteredEmployees.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedEmployeeId(e.id)}
+                className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
+                  selectedEmployeeId === e.id
+                    ? "bg-slate-900 text-white font-bold"
+                    : "hover:bg-slate-50 text-slate-600"
+                }`}
+              >
+                {employeeName(e)}
+                <span className="block text-xs opacity-60">
+                  {e.category === "bureau" ? "Bureau" : "Chantier"}
+                </span>
+              </button>
+            ))}
+            {filteredEmployees.length === 0 && (
+              <p className="text-sm text-slate-400 px-1">Aucun résultat.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 card">
+        {!selectedEmployeeId ? (
+          <p className="text-slate-400">Sélectionnez un employé à gauche.</p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-bold text-lg">
+                {employeeDoc ? employeeDoc.fullNameUpper : "…"}
+              </p>
+              <select
+                className="input w-auto"
+                value={typeCode}
+                onChange={(e) => setTypeCode(e.target.value)}
+              >
+                {DOCUMENT_TYPES.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {definition?.legalRisk && (
+              <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm px-3 py-2 mb-4">
+                Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ;
+                relisez-le (et faites-le relire si besoin) avant signature ou envoi au
+                salarié.
+              </div>
+            )}
+
+            {loadingDetail || !employeeDoc || !companyDoc ? (
+              <p className="text-slate-400">Chargement des données de l&apos;employé…</p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  {definition?.fields.map((f) => (
+                    <label
+                      key={f.key}
+                      className={`text-sm font-bold ${
+                        f.type === "textarea" ? "col-span-2" : ""
+                      }`}
+                    >
+                      {f.label}
+                      {f.required && <span className="text-red-500"> *</span>}
+                      {f.type === "boolean" ? (
+                        <div className="mt-2">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(formValues[f.key])}
+                            onChange={(ev) =>
+                              setFormValues((prev) => ({
+                                ...prev,
+                                [f.key]: ev.target.checked,
+                              }))
+                            }
+                          />
+                        </div>
+                      ) : f.type === "textarea" ? (
+                        <textarea
+                          className="input mt-2 min-h-24"
+                          value={String(formValues[f.key] ?? "")}
+                          onChange={(ev) =>
+                            setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
+                          }
+                        />
+                      ) : (
+                        <input
+                          className="input mt-2"
+                          type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+                          value={String(formValues[f.key] ?? "")}
+                          onChange={(ev) =>
+                            setFormValues((prev) => ({
+                              ...prev,
+                              [f.key]:
+                                f.type === "number"
+                                  ? ev.target.value === ""
+                                    ? ""
+                                    : Number(ev.target.value)
+                                  : ev.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                      {f.help && (
+                        <span className="block text-xs font-normal text-slate-400 mt-1">
+                          {f.help}
+                        </span>
+                      )}
+                    </label>
+                  ))}
+                </div>
+
+                {missingRequired.length > 0 && (
+                  <p className="text-sm text-red-500 mb-3">
+                    Champs obligatoires manquants :{" "}
+                    {missingRequired.map((f) => f.label).join(", ")}
+                  </p>
+                )}
+                {errorMsg && <p className="text-sm text-red-500 mb-3">{errorMsg}</p>}
+
+                <div className="flex gap-3">
+                  <button
+                    className="btn btn-dark"
+                    disabled={missingRequired.length > 0 || generating !== null}
+                    onClick={() => download("docx")}
+                  >
+                    {generating === "docx" ? "Génération…" : "Télécharger Word (.docx)"}
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    disabled={missingRequired.length > 0 || generating !== null}
+                    onClick={() => download("pdf")}
+                  >
+                    {generating === "pdf" ? "Génération…" : "Télécharger PDF"}
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
