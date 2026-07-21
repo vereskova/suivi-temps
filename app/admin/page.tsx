@@ -3770,8 +3770,6 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
   const [employees, setEmployees] = useState<OrgEmployee[]>([]);
   const [teams, setTeams] = useState<OrgTeam[]>([]);
   const [loading, setLoading] = useState(true);
-  const [addBureau, setAddBureau] = useState<Record<string, string>>({});
-  const [addTeam, setAddTeam] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function load() {
@@ -3826,53 +3824,17 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
     [chantierEmployees]
   );
 
-  async function reload() {
-    const [{ data: emp }, { data: tm }] = await Promise.all([
-      supabase
-        .from("employees")
-        .select(
-          "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name)"
-        )
-        .eq("status", "active")
-        .order("last_name"),
-      supabase.from("teams").select("id, name").eq("active", true).order("name"),
-    ]);
-    setEmployees((emp as unknown as OrgEmployee[]) ?? []);
-    setTeams((tm as OrgTeam[]) ?? []);
-  }
-
-  async function setBureauRole(employeeId: string, role: string | null) {
-    const { error } = await supabase.from("employees").update({ bureau_role: role }).eq("id", employeeId);
-    if (error) {
-      alert("Erreur : " + error.message);
-      return;
-    }
-    await reload();
-  }
-
-  async function setTeam(employeeId: string, teamId: string | null) {
-    const { error } = await supabase.from("employees").update({ team_id: teamId }).eq("id", employeeId);
-    if (error) {
-      alert("Erreur : " + error.message);
-      return;
-    }
-    await reload();
-  }
-
   if (loading) return <p className="text-slate-400">Chargement…</p>;
 
   return (
     <div>
       <div className="card mb-4 overflow-x-auto">
         <p className="font-bold mb-3">Bureau</p>
-        <table className="min-w-full border-separate border-spacing-1">
+        <table className="w-full text-sm">
           <thead>
-            <tr>
+            <tr className="text-left text-slate-400 whitespace-nowrap">
               {bureauColumns.map((c) => (
-                <th
-                  key={c.key}
-                  className="text-xs font-bold uppercase tracking-wide text-slate-400 bg-slate-50 rounded-lg px-2 py-1 whitespace-nowrap"
-                >
+                <th key={c.key} className="py-2 pr-4">
                   {c.label}
                 </th>
               ))}
@@ -3880,64 +3842,32 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           </thead>
           <tbody>
             {bureauGrid.rows.map((row, r) => (
-              <tr key={r}>
+              <tr key={r} className="border-t border-slate-100">
                 {row.map((e, c) => (
-                  <td key={bureauColumns[c].key} className="align-top px-2 py-1 text-sm">
-                    {e && (
-                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                        {employeeName(e)}
-                        <button
-                          type="button"
-                          onClick={() => setBureauRole(e.id, null)}
-                          title="Retirer de ce rôle"
-                          className="text-red-400 hover:text-red-600"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    )}
+                  <td key={bureauColumns[c].key} className="py-2 pr-4 whitespace-nowrap font-bold">
+                    {e ? employeeName(e) : ""}
                   </td>
                 ))}
               </tr>
             ))}
-            <tr>
-              {bureauColumns.map((c) => (
-                <td key={c.key} className="px-2 py-1">
-                  <select
-                    className="input text-xs"
-                    value={addBureau[c.key] ?? ""}
-                    onChange={(ev) => {
-                      const id = ev.target.value;
-                      setAddBureau((s) => ({ ...s, [c.key]: "" }));
-                      if (id) setBureauRole(id, c.key);
-                    }}
-                  >
-                    <option value="">+ Ajouter</option>
-                    {bureauEmployees
-                      .filter((e) => e.bureau_role !== c.key)
-                      .map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {employeeName(e)}
-                        </option>
-                      ))}
-                  </select>
+            {bureauGrid.maxRows === 0 && (
+              <tr>
+                <td colSpan={bureauColumns.length} className="py-6 text-center text-slate-400">
+                  Aucun résultat.
                 </td>
-              ))}
-            </tr>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
       <div className="card mb-4 overflow-x-auto">
         <p className="font-bold mb-3">Chantier — par équipe</p>
-        <table className="min-w-full border-separate border-spacing-1">
+        <table className="w-full text-sm">
           <thead>
-            <tr>
+            <tr className="text-left text-slate-400 whitespace-nowrap">
               {teamColumns.map((c) => (
-                <th
-                  key={c.key}
-                  className="text-xs font-bold uppercase tracking-wide text-slate-400 bg-slate-50 rounded-lg px-2 py-1 whitespace-nowrap"
-                >
+                <th key={c.key} className="py-2 pr-4">
                   {c.label}
                 </th>
               ))}
@@ -3945,50 +3875,21 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           </thead>
           <tbody>
             {teamGrid.rows.map((row, r) => (
-              <tr key={r}>
+              <tr key={r} className="border-t border-slate-100">
                 {row.map((e, c) => (
-                  <td key={teamColumns[c].key} className="align-top px-2 py-1 text-sm">
-                    {e && (
-                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                        {employeeName(e)}
-                        <button
-                          type="button"
-                          onClick={() => setTeam(e.id, null)}
-                          title="Retirer de cette équipe"
-                          className="text-red-400 hover:text-red-600"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    )}
+                  <td key={teamColumns[c].key} className="py-2 pr-4 whitespace-nowrap">
+                    {e ? employeeName(e) : ""}
                   </td>
                 ))}
               </tr>
             ))}
-            <tr>
-              {teamColumns.map((c) => (
-                <td key={c.key} className="px-2 py-1">
-                  <select
-                    className="input text-xs"
-                    value={addTeam[c.key] ?? ""}
-                    onChange={(ev) => {
-                      const id = ev.target.value;
-                      setAddTeam((s) => ({ ...s, [c.key]: "" }));
-                      if (id) setTeam(id, c.key);
-                    }}
-                  >
-                    <option value="">+ Ajouter</option>
-                    {chantierEmployees
-                      .filter((e) => e.team_id !== c.key)
-                      .map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {employeeName(e)}
-                        </option>
-                      ))}
-                  </select>
+            {teamGrid.maxRows === 0 && (
+              <tr>
+                <td colSpan={teamColumns.length} className="py-6 text-center text-slate-400">
+                  Aucun résultat.
                 </td>
-              ))}
-            </tr>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
