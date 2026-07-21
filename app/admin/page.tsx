@@ -109,7 +109,8 @@ type ViewKey =
   | "medical"
   | "formations"
   | "tailles"
-  | "documents";
+  | "documents"
+  | "registre";
 
 const NAV_ITEMS: { key: ViewKey; label: string }[] = [
   { key: "jour", label: "Par jour" },
@@ -264,6 +265,12 @@ export default function AdminPage() {
                 >
                   Documents
                 </SidebarLink>
+                <SidebarLink
+                  active={view === "registre"}
+                  onClick={() => setView("registre")}
+                >
+                  Registre du personnel
+                </SidebarLink>
               </SidebarSection>
 
               <SidebarSection title="À venir">
@@ -305,6 +312,7 @@ export default function AdminPage() {
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
+            {view === "registre" && <RegistreView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -3006,6 +3014,197 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Vue "Registre du personnel" — copie fidèle du Registre unique du personnel ──
+type RegistreRow = {
+  id: string;
+  numero: number | null;
+  nom_prenom: string;
+  date_entree: string | null;
+  nationalite: string | null;
+  date_naissance: string | null;
+  sexe: string | null;
+  emploi: string | null;
+  qualification: string | null;
+  type_titre: string | null;
+  numero_titre: string | null;
+  type_contrat: string | null;
+  temps_partiel: string | null;
+  date_sortie: string | null;
+};
+
+function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [rows, setRows] = useState<RegistreRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "present" | "sorti">("all");
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("registre_unique_personnel")
+        .select(
+          "id, numero, nom_prenom, date_entree, nationalite, date_naissance, sexe, emploi, qualification, type_titre, numero_titre, type_contrat, temps_partiel, date_sortie"
+        )
+        .order("numero", { ascending: true });
+      setRows((data as unknown as RegistreRow[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (statusFilter === "present" && r.date_sortie) return false;
+      if (statusFilter === "sorti" && !r.date_sortie) return false;
+      if (q && !r.nom_prenom.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [rows, search, statusFilter]);
+
+  const counts = useMemo(() => {
+    const sorti = rows.filter((r) => r.date_sortie).length;
+    return { total: rows.length, present: rows.length - sorti, sorti };
+  }, [rows]);
+
+  function exportExcel() {
+    const exportRows = filtered.map((r) => ({
+      "N°": r.numero,
+      "Nom Prénom": r.nom_prenom,
+      "Date d'entrée": r.date_entree,
+      Nationalité: r.nationalite,
+      "Date de naissance": r.date_naissance,
+      Sexe: r.sexe,
+      Emploi: r.emploi,
+      Qualification: r.qualification,
+      "Type de titre": r.type_titre,
+      "N° du titre": r.numero_titre,
+      "Type de contrat": r.type_contrat,
+      "Temps partiel": r.temps_partiel,
+      "Date de sortie": r.date_sortie,
+    }));
+    const sheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Registre unique du personnel");
+    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "registre_unique_du_personnel.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-bold">
+            Registre unique du personnel ({filtered.length}/{counts.total})
+          </p>
+          <button className="btn btn-dark text-sm px-3 py-2" onClick={exportExcel}>
+            Exporter Excel
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 mb-4">
+          Copie fidèle du registre — un enregistrement par embauche (un salarié réembauché
+          apparaît plusieurs fois).
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            {counts.total} au total
+          </button>
+          <button
+            onClick={() => setStatusFilter("present")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "present" ? "bg-green-600 text-white" : "bg-green-50 text-green-700"
+            }`}
+          >
+            {counts.present} sans date de sortie
+          </button>
+          <button
+            onClick={() => setStatusFilter("sorti")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "sorti" ? "bg-red-600 text-white" : "bg-red-50 text-red-700"
+            }`}
+          >
+            {counts.sorti} sortis
+          </button>
+        </div>
+
+        <input
+          className="input mb-2"
+          placeholder="Rechercher un nom…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <p className="text-slate-400">Chargement…</p>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm whitespace-nowrap">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <th className="py-2 pr-4">N°</th>
+                <th className="py-2 pr-4">Nom Prénom</th>
+                <th className="py-2 pr-4">Date d&apos;entrée</th>
+                <th className="py-2 pr-4">Nationalité</th>
+                <th className="py-2 pr-4">Date de naissance</th>
+                <th className="py-2 pr-4">Sexe</th>
+                <th className="py-2 pr-4">Emploi</th>
+                <th className="py-2 pr-4">Qualification</th>
+                <th className="py-2 pr-4">Type de titre</th>
+                <th className="py-2 pr-4">N° du titre</th>
+                <th className="py-2 pr-4">Type de contrat</th>
+                <th className="py-2 pr-4">Temps partiel</th>
+                <th className="py-2 pr-4">Date de sortie</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100">
+                  <td className="py-2 pr-4 text-slate-400">{r.numero ?? "—"}</td>
+                  <td className="py-2 pr-4 font-bold">{r.nom_prenom}</td>
+                  <td className="py-2 pr-4">{r.date_entree ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.nationalite ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.date_naissance ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.sexe ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.emploi ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.qualification ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.type_titre ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.numero_titre ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.type_contrat ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.temps_partiel ?? "—"}</td>
+                  <td className="py-2 pr-4">{r.date_sortie ?? "—"}</td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={13} className="py-6 text-center text-slate-400">
+                    Aucun résultat.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
