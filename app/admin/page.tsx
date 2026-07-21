@@ -3068,11 +3068,122 @@ type RegistreEditForm = {
   date_sortie: string;
 };
 
-const FRENCH_NATIONALITY_MARKERS = ["FRANCE", "FRANÇAISE", "FRANCAISE", "FRANÇAIS", "FRANCAIS", "FR"];
+// EU/EEA/Switzerland nationals don't need a work permit in France — only nationalities
+// outside this list should be flagged as needing a titre de séjour/travail check.
+const EU_EEA_CH_NATIONALITY_MARKERS = [
+  "FRANCE",
+  "FRANÇAISE",
+  "FRANCAISE",
+  "FRANÇAIS",
+  "FRANCAIS",
+  "FR",
+  "ALLEMAGNE",
+  "ALLEMANDE",
+  "DE",
+  "AUTRICHE",
+  "AUTRICHIENNE",
+  "AT",
+  "BELGIQUE",
+  "BELGE",
+  "BE",
+  "BULGARIE",
+  "BULGARE",
+  "BG",
+  "CHYPRE",
+  "CHYPRIOTE",
+  "CY",
+  "CROATIE",
+  "CROATE",
+  "HR",
+  "DANEMARK",
+  "DANOISE",
+  "DK",
+  "ESPAGNE",
+  "ESPAGNOLE",
+  "ES",
+  "ESTONIE",
+  "ESTONIENNE",
+  "EE",
+  "FINLANDE",
+  "FINLANDAISE",
+  "FI",
+  "GRÈCE",
+  "GRECE",
+  "GRECQUE",
+  "GR",
+  "HONGRIE",
+  "HONGROISE",
+  "HU",
+  "IRLANDE",
+  "IRLANDAISE",
+  "IE",
+  "ITALIE",
+  "ITALIENNE",
+  "IT",
+  "LETTONIE",
+  "LETTONE",
+  "LV",
+  "LITUANIE",
+  "LITUANIENNE",
+  "LT",
+  "LUXEMBOURG",
+  "LUXEMBOURGEOISE",
+  "LU",
+  "MALTE",
+  "MALTAISE",
+  "MT",
+  "PAYS-BAS",
+  "NÉERLANDAISE",
+  "NEERLANDAISE",
+  "NL",
+  "POLOGNE",
+  "POLONAISE",
+  "PL",
+  "PORTUGAL",
+  "PORTUGAISE",
+  "PT",
+  "TCHÉQUIE",
+  "TCHEQUIE",
+  "RÉPUBLIQUE TCHÈQUE",
+  "REPUBLIQUE TCHEQUE",
+  "TCHÈQUE",
+  "TCHEQUE",
+  "CZ",
+  "ROUMANIE",
+  "ROUMAINE",
+  "RO",
+  "SLOVAQUIE",
+  "SLOVAQUE",
+  "SK",
+  "SLOVÉNIE",
+  "SLOVENIE",
+  "SLOVÈNE",
+  "SLOVENE",
+  "SI",
+  "SUÈDE",
+  "SUEDE",
+  "SUÉDOISE",
+  "SUEDOISE",
+  "SE",
+  // EEA + Switzerland (same work-permit exemption in practice)
+  "ISLANDE",
+  "ISLANDAISE",
+  "IS",
+  "LIECHTENSTEIN",
+  "LI",
+  "NORVÈGE",
+  "NORVEGE",
+  "NORVÉGIENNE",
+  "NORVEGIENNE",
+  "NO",
+  "SUISSE",
+  "SUISSESSE",
+  "CH",
+];
 
 function isForeignNationality(nationalite: string | null): boolean {
   if (!nationalite) return false;
-  return !FRENCH_NATIONALITY_MARKERS.includes(nationalite.trim().toUpperCase());
+  return !EU_EEA_CH_NATIONALITY_MARKERS.includes(nationalite.trim().toUpperCase());
 }
 
 function toRegistreEditForm(r: RegistreRow): RegistreEditForm {
@@ -3139,20 +3250,57 @@ function validateRegistreEditForm(form: RegistreEditForm): string[] {
   return errors;
 }
 
-const REGISTRE_FIELD_LABELS: { key: keyof RegistreEditForm; label: string; type: "text" | "date" }[] = [
+const REGISTRE_FIELD_LABELS: { key: keyof RegistreEditForm; label: string; type: "text" | "date" | "select" }[] = [
   { key: "numero", label: "N°", type: "text" },
   { key: "nom_prenom", label: "Nom Prénom", type: "text" },
   { key: "date_entree", label: "Date d'entrée", type: "date" },
-  { key: "nationalite", label: "Nationalité", type: "text" },
+  { key: "nationalite", label: "Nationalité", type: "select" },
   { key: "date_naissance", label: "Date de naissance", type: "date" },
-  { key: "sexe", label: "Sexe (M/F)", type: "text" },
+  { key: "sexe", label: "Sexe (M/F)", type: "select" },
   { key: "emploi", label: "Emploi", type: "text" },
   { key: "qualification", label: "Qualification", type: "text" },
-  { key: "type_titre", label: "Type de titre", type: "text" },
+  { key: "type_titre", label: "Type de titre", type: "select" },
   { key: "numero_titre", label: "N° du titre", type: "text" },
-  { key: "type_contrat", label: "Type de contrat", type: "text" },
+  { key: "type_contrat", label: "Type de contrat", type: "select" },
   { key: "temps_partiel", label: "Temps partiel", type: "text" },
   { key: "date_sortie", label: "Date de sortie", type: "date" },
+];
+
+const SEXE_SELECT_OPTIONS = ["M", "F"];
+const CURATED_NATIONALITE_OPTIONS = [
+  "France",
+  "Ukraine",
+  "Biélorussie",
+  "Roumanie",
+  "Moldavie",
+  "Russie",
+  "Lituanie",
+  "Kazakhstan",
+  "Pologne",
+  "Portugal",
+  "Maroc",
+  "Algérie",
+  "Tunisie",
+  "Géorgie",
+  "Arménie",
+  "Azerbaïdjan",
+];
+const CURATED_TYPE_TITRE_OPTIONS = [
+  "APS",
+  "Titre de séjour",
+  "VLS-TS salarié",
+  "Carte de résident",
+  "Carte de séjour pluriannuelle",
+  "Passeport talent",
+  "Récépissé de demande de titre de séjour",
+];
+const CURATED_TYPE_CONTRAT_OPTIONS = [
+  "CDI",
+  "CDD",
+  "Intérim",
+  "Apprentissage",
+  "Contrat de professionnalisation",
+  "Stage",
 ];
 
 function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -3190,6 +3338,39 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
     rows.forEach((r) => r.nationalite && set.add(r.nationalite));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
+
+  const nationaliteSelectOptions = useMemo(() => {
+    const set = new Set(CURATED_NATIONALITE_OPTIONS);
+    rows.forEach((r) => r.nationalite && set.add(r.nationalite));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const typeTitreSelectOptions = useMemo(() => {
+    const set = new Set(CURATED_TYPE_TITRE_OPTIONS);
+    rows.forEach((r) => r.type_titre && set.add(r.type_titre));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const typeContratSelectOptions = useMemo(() => {
+    const set = new Set(CURATED_TYPE_CONTRAT_OPTIONS);
+    rows.forEach((r) => r.type_contrat && set.add(r.type_contrat));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  function registreSelectOptions(key: keyof RegistreEditForm): string[] {
+    switch (key) {
+      case "sexe":
+        return SEXE_SELECT_OPTIONS;
+      case "nationalite":
+        return nationaliteSelectOptions;
+      case "type_titre":
+        return typeTitreSelectOptions;
+      case "type_contrat":
+        return typeContratSelectOptions;
+      default:
+        return [];
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -3379,12 +3560,27 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             {REGISTRE_FIELD_LABELS.map((f) => (
               <label key={f.key} className="text-xs font-bold text-slate-500">
                 {f.label}
-                <input
-                  className="input mt-1"
-                  type={f.type}
-                  value={editForm[f.key]}
-                  onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
-                />
+                {f.type === "select" ? (
+                  <select
+                    className="input mt-1"
+                    value={editForm[f.key]}
+                    onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                  >
+                    <option value="">—</option>
+                    {registreSelectOptions(f.key).map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input mt-1"
+                    type={f.type}
+                    value={editForm[f.key]}
+                    onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                  />
+                )}
               </label>
             ))}
           </div>
@@ -3440,10 +3636,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     <td className="py-2 pr-4 text-slate-400 whitespace-nowrap">{r.numero ?? "—"}</td>
                     <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
                     <td className="py-2 pr-4 whitespace-nowrap">{r.date_entree ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">
-                      {foreign && <span className="mr-1" title="Nationalité étrangère">🌍</span>}
-                      {r.nationalite ?? "—"}
-                    </td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "—"}</td>
                     <td className="py-2 pr-4 whitespace-nowrap">{r.date_naissance ?? "—"}</td>
                     <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "—"}</td>
                     <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "—"}</td>
