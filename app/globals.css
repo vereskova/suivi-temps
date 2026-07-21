@@ -17,16 +17,27 @@
   --color-surface-subtle: #f7faff;
 
   --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
   --color-success-500: #16a34a;
   --color-success-600: #15803d;
+  --color-success-700: #166534;
+  --color-success-800: #065f46;
 
   --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
   --color-warning-500: #d97706;
   --color-warning-600: #b45309;
+  --color-warning-700: #92400e;
+  --color-warning-800: #78350f;
 
   --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
   --color-error-500: #dc2626;
   --color-error-600: #b91c1c;
+  --color-error-700: #991b1b;
+  --color-error-800: #7f1d1d;
 
   /* Radii */
   --radius-sm: 0.5rem;

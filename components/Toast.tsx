@@ -24,10 +24,10 @@ export const toast = {
 };
 
 const KIND_STYLES: Record<ToastKind, { icon: typeof Info; classes: string; iconClass: string }> = {
-  success: { icon: CheckCircle2, classes: "border-emerald-200 bg-emerald-50 text-emerald-800", iconClass: "text-emerald-500" },
-  error: { icon: XCircle, classes: "border-red-200 bg-red-50 text-red-800", iconClass: "text-red-500" },
-  warning: { icon: AlertTriangle, classes: "border-amber-200 bg-amber-50 text-amber-800", iconClass: "text-amber-500" },
-  info: { icon: Info, classes: "border-blue-200 bg-blue-50 text-blue-800", iconClass: "text-blue-500" },
+  success: { icon: CheckCircle2, classes: "border-success-100 bg-success-50 text-success-800", iconClass: "text-success-500" },
+  error: { icon: XCircle, classes: "border-error-200 bg-error-50 text-error-800", iconClass: "text-error-500" },
+  warning: { icon: AlertTriangle, classes: "border-warning-200 bg-warning-50 text-warning-800", iconClass: "text-warning-500" },
+  info: { icon: Info, classes: "border-primary-100 bg-primary-50 text-primary-700", iconClass: "text-primary-500" },
 };
 
 const ToastListContext = createContext<ToastItem[]>([]);

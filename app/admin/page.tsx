@@ -535,6 +535,7 @@ function JourView({
     setEditingId(null);
     setEditForm(null);
     setRefreshKey((k) => k + 1);
+    toast.success("Pointage enregistré");
   }
 
   return (
@@ -619,7 +620,7 @@ function JourView({
                               }
                               className={`rounded-full px-3 py-1 text-xs font-bold ${
                                 editForm.absent
-                                  ? "bg-red-600 text-white"
+                                  ? "bg-error-600 text-white"
                                   : "bg-slate-200"
                               }`}
                             >
@@ -699,7 +700,7 @@ function JourView({
                           — non saisi —
                         </td>
                       ) : r.is_absent ? (
-                        <td colSpan={5} className="py-2 text-red-600 font-semibold">
+                        <td colSpan={5} className="py-2 text-error-600 font-semibold">
                           Absent{r.absence_types ? ` — ${r.absence_types.label}` : ""}
                         </td>
                       ) : (
@@ -719,7 +720,7 @@ function JourView({
                       )}
                       <td
                         className={`py-2 pr-4 font-semibold ${
-                          r ? "text-green-600" : ""
+                          r ? "text-success-600" : ""
                         }`}
                       >
                         {r ? "OK" : ""}
@@ -912,7 +913,7 @@ function EmployeView({
                         —
                       </td>
                     ) : r.is_absent ? (
-                      <td colSpan={4} className="py-1.5 text-red-600 font-semibold">
+                      <td colSpan={4} className="py-1.5 text-error-600 font-semibold">
                         Absent{r.absence_types ? ` — ${r.absence_types.label}` : ""}
                       </td>
                     ) : (
@@ -1059,7 +1060,7 @@ function MoisView({
                     </td>
                     <td
                       className={`py-2 font-semibold ${
-                        total ? "text-green-600" : "text-slate-300"
+                        total ? "text-success-600" : "text-slate-300"
                       }`}
                     >
                       {total ? "OK" : "Aucune donnée"}
@@ -1346,12 +1347,12 @@ function ExportImportView({
         />
         {importing && <p className="text-sm text-slate-400 mt-3">Import en cours…</p>}
         {importSummary && (
-          <p className="text-sm font-semibold text-green-600 mt-3">
+          <p className="text-sm font-semibold text-success-600 mt-3">
             {importSummary}
           </p>
         )}
         {importErrors.length > 0 && (
-          <div className="mt-3 text-sm text-red-600">
+          <div className="mt-3 text-sm text-error-600">
             <p className="font-semibold">Erreurs :</p>
             <ul className="list-disc pl-5">
               {importErrors.map((err, i) => (
@@ -1484,6 +1485,7 @@ function EmployeesView({
     setEditForm(null);
     setRefreshKey((k) => k + 1);
     onChanged();
+    toast.success("Employé mis à jour");
   }
 
   async function addEmployee() {
@@ -1507,6 +1509,7 @@ function EmployeesView({
     setShowAddForm(false);
     setRefreshKey((k) => k + 1);
     onChanged();
+    toast.success("Employé ajouté");
   }
 
   return (
@@ -1529,8 +1532,8 @@ function EmployeesView({
             onClick={() => setStatusFilter("active")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
               statusFilter === "active"
-                ? "bg-green-600 text-white"
-                : "bg-green-50 text-green-700"
+                ? "bg-success-600 text-white"
+                : "bg-success-50 text-success-700"
             }`}
           >
             {counts.active} actifs
@@ -1539,8 +1542,8 @@ function EmployeesView({
             onClick={() => setStatusFilter("on_leave")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
               statusFilter === "on_leave"
-                ? "bg-amber-600 text-white"
-                : "bg-amber-50 text-amber-700"
+                ? "bg-warning-600 text-white"
+                : "bg-warning-50 text-warning-700"
             }`}
           >
             {counts.on_leave} en congé
@@ -1549,8 +1552,8 @@ function EmployeesView({
             onClick={() => setStatusFilter("terminated")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
               statusFilter === "terminated"
-                ? "bg-red-600 text-white"
-                : "bg-red-50 text-red-700"
+                ? "bg-error-600 text-white"
+                : "bg-error-50 text-error-700"
             }`}
           >
             {counts.terminated} sortis
@@ -1774,10 +1777,10 @@ function EmployeesView({
                         <td
                           className={`py-2 pr-4 font-semibold ${
                             e.status === "terminated"
-                              ? "text-red-600"
+                              ? "text-error-600"
                               : e.status === "on_leave"
-                              ? "text-amber-600"
-                              : "text-green-600"
+                              ? "text-warning-600"
+                              : "text-success-600"
                           }`}
                         >
                           {STATUS_LABELS[e.status]}
@@ -2009,7 +2012,7 @@ function EmployeeDetailPanel({
         />
       </div>
 
-      <p className="text-xs font-bold uppercase tracking-wide text-red-500 mb-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-error-500 mb-2">
         Confidentiel — RH uniquement
       </p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -2080,7 +2083,7 @@ function EmployeeDetailPanel({
         {saving ? "…" : "Enregistrer"}
       </button>
       {savedAt && (
-        <span className="ml-3 text-xs font-semibold text-green-600">
+        <span className="ml-3 text-xs font-semibold text-success-600">
           Enregistré à {savedAt}
         </span>
       )}
@@ -2206,6 +2209,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     }
     setEditingId(null);
     setRefreshKey((k) => k + 1);
+    toast.success("Visite médicale mise à jour");
   }
 
   const todayIso = today();
@@ -2329,7 +2333,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         <td className="py-2 pr-4">{v.last_visit_date ?? "—"}</td>
                         <td
                           className={`py-2 pr-4 font-semibold ${
-                            isOverdue ? "text-red-600" : ""
+                            isOverdue ? "text-error-600" : ""
                           }`}
                         >
                           {v.next_visit_date ?? "—"}
@@ -2525,9 +2529,9 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
                           disabled={saving === key}
                           className={`w-10 rounded-full px-2 py-1 text-xs font-bold ${
                             status === "ok"
-                              ? "bg-green-100 text-green-700"
+                              ? "bg-success-100 text-success-700"
                               : status === "ko"
-                              ? "bg-red-100 text-red-700"
+                              ? "bg-error-100 text-error-700"
                               : "bg-slate-100 text-slate-400"
                           }`}
                         >
@@ -2646,6 +2650,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
     }
     setEditingId(null);
     setRefreshKey((k) => k + 1);
+    toast.success("Tailles enregistrées");
   }
 
   return (
@@ -2939,6 +2944,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+      toast.success(`Document généré : ${filename}`);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Erreur inconnue");
     } finally {
@@ -3017,7 +3023,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
             </div>
 
             {definition?.legalRisk && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm px-3 py-2 mb-4">
+              <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
                 Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ;
                 relisez-le (et faites-le relire si besoin) avant signature ou envoi au
                 salarié.
@@ -3037,7 +3043,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                       }`}
                     >
                       {f.label}
-                      {f.required && <span className="text-red-500"> *</span>}
+                      {f.required && <span className="text-error-500"> *</span>}
                       {f.type === "boolean" ? (
                         <div className="mt-2">
                           <input
@@ -3102,12 +3108,12 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                 </div>
 
                 {missingRequired.length > 0 && (
-                  <p className="text-sm text-red-500 mb-3">
+                  <p className="text-sm text-error-500 mb-3">
                     Champs obligatoires manquants :{" "}
                     {missingRequired.map((f) => f.label).join(", ")}
                   </p>
                 )}
-                {errorMsg && <p className="text-sm text-red-500 mb-3">{errorMsg}</p>}
+                {errorMsg && <p className="text-sm text-error-500 mb-3">{errorMsg}</p>}
 
                 <div className="flex gap-3">
                   <button
@@ -3537,6 +3543,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
     }
     cancelEdit();
     setRefreshKey((k) => k + 1);
+    toast.success("Enregistrement mis à jour");
   }
 
   function exportExcel() {
@@ -3599,7 +3606,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <button
             onClick={() => setStatusFilter("present")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
-              statusFilter === "present" ? "bg-green-600 text-white" : "bg-green-50 text-green-700"
+              statusFilter === "present" ? "bg-success-600 text-white" : "bg-success-50 text-success-700"
             }`}
           >
             {counts.present} sans date de sortie
@@ -3607,7 +3614,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <button
             onClick={() => setStatusFilter("sorti")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
-              statusFilter === "sorti" ? "bg-red-600 text-white" : "bg-red-50 text-red-700"
+              statusFilter === "sorti" ? "bg-error-600 text-white" : "bg-error-50 text-error-700"
             }`}
           >
             {counts.sorti} sortis
@@ -3615,7 +3622,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <button
             onClick={() => setForeignersOnly((v) => !v)}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
-              foreignersOnly ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700"
+              foreignersOnly ? "bg-warning-600 text-white" : "bg-warning-50 text-warning-700"
             }`}
           >
             {counts.foreigners} étrangers
@@ -3685,7 +3692,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               ))}
             </div>
             {editErrors.length > 0 && (
-              <div className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2">
+              <div className="mt-3 rounded-xl bg-error-50 border border-error-200 text-error-600 text-sm px-3 py-2">
                 {editErrors.map((err) => (
                   <p key={err}>{err}</p>
                 ))}
@@ -3734,7 +3741,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                 return (
                   <tr
                     key={r.id}
-                    className={`border-t border-slate-100 ${foreign ? "bg-amber-50" : ""}`}
+                    className={`border-t border-slate-100 ${foreign ? "bg-warning-50" : ""}`}
                   >
                     <td className="py-2 pr-4 text-slate-400 whitespace-nowrap">{r.numero ?? "—"}</td>
                     <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
@@ -3960,7 +3967,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
 
       {(unassignedBureau.length > 0 || unassignedChantier.length > 0) && (
         <div className="card">
-          <p className="font-bold mb-2 text-red-500">
+          <p className="font-bold mb-2 text-error-500">
             Sans rôle ni équipe ({unassignedBureau.length + unassignedChantier.length})
           </p>
           {[...unassignedBureau, ...unassignedChantier].map((e) => (
