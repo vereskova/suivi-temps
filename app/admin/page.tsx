@@ -4,6 +4,24 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
+import {
+  ArrowLeft,
+  BarChart3,
+  BookText,
+  CalendarDays,
+  FileSpreadsheet,
+  FileText,
+  FolderLock,
+  GraduationCap,
+  HeartPulse,
+  Languages,
+  Network,
+  Shirt,
+  User,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
 import { DOCUMENT_TYPES, getDocumentType } from "@/lib/documents/registry";
@@ -15,6 +33,9 @@ import {
   mapEmployeeRow,
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
+import { LogoMark } from "@/components/Logo";
+import { Skeleton } from "@/components/Skeleton";
+import { toast } from "@/components/Toast";
 
 type Employee = {
   id: string;
@@ -114,11 +135,41 @@ type ViewKey =
   | "organigramme"
   | "francais";
 
-const NAV_ITEMS: { key: ViewKey; label: string }[] = [
-  { key: "jour", label: "Par jour" },
-  { key: "employe", label: "Par employé" },
-  { key: "mois", label: "Totaux du mois" },
-  { key: "export", label: "Export / Import" },
+type NavItem = { key: ViewKey; label: string; icon: LucideIcon };
+
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Pointage",
+    items: [
+      { key: "jour", label: "Par jour", icon: CalendarDays },
+      { key: "employe", label: "Par employé", icon: User },
+      { key: "mois", label: "Totaux du mois", icon: BarChart3 },
+      { key: "export", label: "Export / Import", icon: FileSpreadsheet },
+    ],
+  },
+  {
+    title: "Effectif",
+    items: [
+      { key: "effectif", label: "Employés", icon: Users },
+      { key: "medical", label: "Médical", icon: HeartPulse },
+      { key: "formations", label: "Formations", icon: GraduationCap },
+      { key: "tailles", label: "Tailles", icon: Shirt },
+    ],
+  },
+  {
+    title: "RH",
+    items: [
+      { key: "documents", label: "Documents", icon: FileText },
+      { key: "registre", label: "Registre du personnel", icon: BookText },
+      { key: "organigramme", label: "Organigramme", icon: Network },
+      { key: "francais", label: "Cours de français", icon: Languages },
+    ],
+  },
+];
+
+const UPCOMING_ITEMS: { label: string; icon: LucideIcon }[] = [
+  { label: "Dossier salarié", icon: FolderLock },
+  { label: "Paie", icon: Wallet },
 ];
 
 export default function AdminPage() {
@@ -183,19 +234,26 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-100 p-4 flex items-center justify-center">
-        <p className="text-slate-400">Chargement…</p>
+      <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
+        <div className="card w-full max-w-sm space-y-3">
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+        </div>
       </main>
     );
   }
 
   if (!isAdmin) {
     return (
-      <main className="min-h-screen bg-slate-100 p-4 flex items-center justify-center">
+      <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
         <div className="card max-w-sm text-center">
-          <p className="font-bold">Accès réservé RH</p>
-          <p className="text-sm text-slate-400 mt-2">Доступ только для RH.</p>
-          <Link href="/" className="btn btn-dark mt-4 inline-block">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white">
+            <LogoMark size={22} />
+          </div>
+          <p className="font-bold text-slate-900">Accès réservé RH</p>
+          <p className="text-sm text-slate-400 mt-1">Доступ только для RH.</p>
+          <Link href="/" className="btn btn-dark mt-4 inline-flex">
             Retour
           </Link>
         </div>
@@ -204,92 +262,52 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4">
-      <div className="mx-auto max-w-6xl">
-        <div className="flex items-start justify-between mb-6">
-          <h1 className="text-3xl font-black">
-            Tableau de bord RH
-            <span className="block text-sm text-slate-400 font-normal">
-              Отчёты по часам
-            </span>
-          </h1>
-          <Link href="/" className="text-xs text-slate-400 underline">
+    <main className="min-h-screen p-4 md:p-8">
+      <div className="mx-auto max-w-[1400px]">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+              <LogoMark size={24} />
+            </div>
+            <div>
+              <p className="text-lg font-extrabold tracking-tight text-slate-900 leading-tight">
+                VLADIS
+              </p>
+              <p className="text-xs font-semibold text-slate-400 leading-tight">
+                Tableau de bord RH
+              </p>
+            </div>
+          </div>
+          <Link href="/" className="btn btn-secondary text-sm">
+            <ArrowLeft size={15} />
             Retour au pointage
           </Link>
         </div>
 
         <div className="flex gap-6 items-start">
-          <aside className="w-56 shrink-0">
+          <aside className="w-60 shrink-0">
             <nav className="card p-3 space-y-4 sticky top-4">
-              <SidebarSection title="Pointage">
-                {NAV_ITEMS.map((item) => (
-                  <SidebarLink
-                    key={item.key}
-                    active={view === item.key}
-                    onClick={() => setView(item.key)}
-                  >
+              {NAV_GROUPS.map((group) => (
+                <SidebarSection key={group.title} title={group.title}>
+                  {group.items.map((item) => (
+                    <SidebarLink
+                      key={item.key}
+                      icon={item.icon}
+                      active={view === item.key}
+                      onClick={() => setView(item.key)}
+                    >
+                      {item.label}
+                    </SidebarLink>
+                  ))}
+                </SidebarSection>
+              ))}
+
+              <SidebarSection title="À venir">
+                {UPCOMING_ITEMS.map((item) => (
+                  <SidebarLink key={item.label} icon={item.icon} disabled>
                     {item.label}
                   </SidebarLink>
                 ))}
-              </SidebarSection>
-
-              <SidebarSection title="Effectif">
-                <SidebarLink
-                  active={view === "effectif"}
-                  onClick={() => setView("effectif")}
-                >
-                  Employés
-                </SidebarLink>
-                <SidebarLink
-                  active={view === "medical"}
-                  onClick={() => setView("medical")}
-                >
-                  Médical
-                </SidebarLink>
-                <SidebarLink
-                  active={view === "formations"}
-                  onClick={() => setView("formations")}
-                >
-                  Formations
-                </SidebarLink>
-                <SidebarLink
-                  active={view === "tailles"}
-                  onClick={() => setView("tailles")}
-                >
-                  Tailles
-                </SidebarLink>
-              </SidebarSection>
-
-              <SidebarSection title="RH">
-                <SidebarLink
-                  active={view === "documents"}
-                  onClick={() => setView("documents")}
-                >
-                  Documents
-                </SidebarLink>
-                <SidebarLink
-                  active={view === "registre"}
-                  onClick={() => setView("registre")}
-                >
-                  Registre du personnel
-                </SidebarLink>
-                <SidebarLink
-                  active={view === "organigramme"}
-                  onClick={() => setView("organigramme")}
-                >
-                  Organigramme
-                </SidebarLink>
-                <SidebarLink
-                  active={view === "francais"}
-                  onClick={() => setView("francais")}
-                >
-                  Cours de français
-                </SidebarLink>
-              </SidebarSection>
-
-              <SidebarSection title="À venir">
-                <SidebarLink disabled>Dossier salarié</SidebarLink>
-                <SidebarLink disabled>Paie</SidebarLink>
               </SidebarSection>
             </nav>
           </aside>
@@ -345,10 +363,10 @@ function SidebarSection({
 }) {
   return (
     <div>
-      <p className="px-3 pb-1 text-xs font-bold uppercase tracking-wide text-slate-400">
+      <p className="px-3 pb-1 text-[0.68rem] font-bold uppercase tracking-wider text-slate-400">
         {title}
       </p>
-      <div className="space-y-1">{children}</div>
+      <div className="space-y-0.5">{children}</div>
     </div>
   );
 }
@@ -357,25 +375,39 @@ function SidebarLink({
   active,
   disabled,
   onClick,
+  icon: Icon,
   children,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  icon?: LucideIcon;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full text-left rounded-xl px-3 py-2 text-sm font-bold ${
+      className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
         disabled
           ? "text-slate-300 cursor-not-allowed"
           : active
-          ? "bg-slate-900 text-white"
-          : "text-slate-500 hover:bg-slate-50"
+          ? "bg-primary-50 text-primary-700"
+          : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
       }`}
     >
+      {Icon && (
+        <Icon
+          size={16}
+          className={
+            disabled
+              ? "text-slate-300"
+              : active
+              ? "text-primary-600"
+              : "text-slate-400 group-hover:text-slate-500"
+          }
+        />
+      )}
       {children}
     </button>
   );
@@ -494,7 +526,7 @@ function JourView({
 
     if (error) {
       console.error(error);
-      alert("Erreur d'enregistrement : " + error.message);
+      toast.error("Erreur d'enregistrement : " + error.message);
       return;
     }
 
@@ -1125,7 +1157,7 @@ function ExportImportView({
     setExporting(false);
 
     if (error) {
-      alert("Erreur d'export : " + error.message);
+      toast.error("Erreur d'export : " + error.message);
       return;
     }
 
@@ -1434,7 +1466,7 @@ function EmployeesView({
     setSaving(false);
 
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
       return;
     }
 
@@ -1457,7 +1489,7 @@ function EmployeesView({
     setAdding(false);
 
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
       return;
     }
 
@@ -1874,7 +1906,7 @@ function EmployeeDetailPanel({
     setSaving(false);
 
     if (profileError || confError) {
-      alert("Erreur : " + (profileError?.message || confError?.message));
+      toast.error("Erreur : " + (profileError?.message || confError?.message));
       return;
     }
     setSavedAt(new Date().toLocaleTimeString("fr-FR"));
@@ -2151,7 +2183,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     setSaving(false);
 
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
       return;
     }
     setEditingId(null);
@@ -2387,7 +2419,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     setSaving(null);
 
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
       return;
     }
     setRefreshKey((k) => k + 1);
@@ -2587,7 +2619,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
     setSaving(false);
 
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
       return;
     }
     setEditingId(null);
@@ -3994,7 +4026,7 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
       .upsert(payload, { onConflict: "session_id,employee_id" });
     setSaving(false);
     if (error) {
-      alert("Erreur : " + error.message);
+      toast.error("Erreur : " + error.message);
       return;
     }
     setAttendance((prev) => {

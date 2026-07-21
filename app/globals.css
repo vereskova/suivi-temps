@@ -1,58 +1,264 @@
 @import "tailwindcss";
 
+@theme {
+  /* Brand */
+  --color-primary-50: #eef4ff;
+  --color-primary-100: #dce9ff;
+  --color-primary-200: #b9d2ff;
+  --color-primary-300: #8bb2ff;
+  --color-primary-400: #5688f5;
+  --color-primary-500: #2f63e0;
+  --color-primary-600: #1748b6;
+  --color-primary-700: #123a92;
+  --color-primary-800: #0f2f76;
+  --color-primary-900: #0c2660;
+
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f7faff;
+
+  --color-success-50: #ecfdf5;
+  --color-success-500: #16a34a;
+  --color-success-600: #15803d;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-500: #d97706;
+  --color-warning-600: #b45309;
+
+  --color-error-50: #fef2f2;
+  --color-error-500: #dc2626;
+  --color-error-600: #b91c1c;
+
+  /* Radii */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --shadow-card-hover: 0 1px 2px rgba(15, 23, 42, 0.05), 0 16px 32px rgba(15, 23, 42, 0.09);
+  --shadow-pop: 0 12px 32px rgba(23, 72, 182, 0.18);
+
+  --animate-toast-in: toast-in 0.18s ease-out;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 body {
   margin: 0;
-  background: linear-gradient(180deg, #eef2ff 0%, #f8fafc 100%);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--color-surface-subtle);
+  color: #0f172a;
+  font-family:
+    var(--font-inter), ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+::selection {
+  background: var(--color-primary-100);
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-primary-400);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
 
 .btn {
-  border-radius: 1rem;
-  padding: 0.85rem 1rem;
-  font-weight: 800;
-  transition: 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: var(--radius-md);
+  padding: 0.7rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease,
+    transform 0.05s ease;
 }
 
-.btn:active {
-  transform: scale(0.95);
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn-primary {
-  background: #2563eb;
+  background: var(--color-primary-600);
   color: white;
-  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.25);
+  box-shadow: var(--shadow-pop);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-700);
 }
 
 .btn-green {
-  background: #16a34a;
+  background: var(--color-success-500);
   color: white;
-  box-shadow: 0 10px 25px rgba(22, 163, 74, 0.25);
+  box-shadow: 0 10px 24px rgba(22, 163, 74, 0.2);
+}
+.btn-green:hover:not(:disabled) {
+  background: var(--color-success-600);
+}
+
+.btn-red {
+  background: var(--color-error-500);
+  color: white;
+  box-shadow: 0 10px 24px rgba(220, 38, 38, 0.2);
+}
+.btn-red:hover:not(:disabled) {
+  background: var(--color-error-600);
 }
 
 .btn-dark {
   background: #0f172a;
   color: white;
 }
+.btn-dark:hover:not(:disabled) {
+  background: #1e293b;
+}
+
+.btn-secondary {
+  background: white;
+  color: #334155;
+  border-color: #e2e8f0;
+}
+.btn-secondary:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+/* ── Surfaces ────────────────────────────────────────────────────────── */
 
 .card {
-  border-radius: 28px;
-  background: white;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  border: 1px solid #eef1f6;
   padding: 1.25rem;
-  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .input {
   width: 100%;
-  border-radius: 1rem;
-  border: 2px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  border: 1.5px solid #e2e8f0;
   background: #f8fafc;
-  padding: 0.85rem;
-  font-size: 1.05rem;
-  font-weight: 700;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.925rem;
+  font-weight: 600;
+  color: #0f172a;
   outline: none;
+  transition: border-color 0.12s ease, background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.input:hover {
+  border-color: #cbd5e1;
 }
 
 .input:focus {
-  border-color: #3b82f6;
+  border-color: var(--color-primary-500);
   background: white;
+  box-shadow: 0 0 0 3px var(--color-primary-100);
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.badge-neutral {
+  background: #f1f5f9;
+  color: #475569;
+}
+.badge-primary {
+  background: var(--color-primary-50);
+  color: var(--color-primary-700);
+}
+.badge-success {
+  background: var(--color-success-50);
+  color: var(--color-success-600);
+}
+.badge-warning {
+  background: var(--color-warning-50);
+  color: var(--color-warning-600);
+}
+.badge-error {
+  background: var(--color-error-50);
+  color: var(--color-error-600);
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────── */
+/* Baseline styling for every plain <table> in the admin surface, so
+   individual views don't need bespoke classes to look consistent. */
+
+.card table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.card thead th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  padding: 0.5rem 1rem 0.5rem 0;
+  border-bottom: 1.5px solid #eef1f6;
+}
+
+.card tbody tr {
+  transition: background-color 0.1s ease;
+}
+
+.card tbody tr:hover {
+  background: var(--color-surface-subtle);
+}
+
+.card tbody td {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #dbe4f3;
+  border-radius: 999px;
+  border: 2px solid var(--color-surface-subtle);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c3d1ea;
 }
