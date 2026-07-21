@@ -242,7 +242,13 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     category: "rupture",
     legalRisk: true,
     fields: [
-      { key: "resignationDate", label: "Date de la lettre", type: "date", required: true, defaultValue: () => todayIso() },
+      {
+        key: "lastWorkDay",
+        label: "Dernier jour de travail souhaité",
+        type: "date",
+        required: true,
+        help: "La date de la lettre est calculée en amont pour que le préavis se termine exactement ce jour-là.",
+      },
       { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
       { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
       {

@@ -3,7 +3,7 @@ import { formatDateFr, addMonthsIso, addDaysIso } from "../helpers";
 import { computePreavis } from "../preavis";
 
 export type LettreDemissionParams = {
-  resignationDate: string; // date of the letter, and start of the notice period
+  lastWorkDay: string; // desired/target last day of work — the letter date is computed backwards from this
   ancienneteYears: number;
   ageYears: number | null;
   signingCity: string;
@@ -18,12 +18,15 @@ export function lettreDemission(
   const fullName = `${employee.lastName.toUpperCase()} ${employee.firstName}`;
   const preavis = computePreavis(employee.classification, params.ancienneteYears, "demission", params.ageYears);
 
-  const lastDay =
+  // Work backwards from the desired last day of work to the date the letter must be dated
+  // (and thus sent) for the préavis to run out exactly then.
+  const resignationDate =
     preavis.months !== null
-      ? addMonthsIso(params.resignationDate, preavis.months)
+      ? addMonthsIso(params.lastWorkDay, -preavis.months)
       : preavis.weeks !== null
-      ? addDaysIso(params.resignationDate, preavis.weeks * 7)
-      : params.resignationDate;
+      ? addDaysIso(params.lastWorkDay, -preavis.weeks * 7)
+      : params.lastWorkDay;
+  const lastDay = params.lastWorkDay;
 
   const blocks: Block[] = [
     { type: "title", text: "LETTRE DE DÉMISSION DU SALARIÉ" },
@@ -48,9 +51,7 @@ export function lettreDemission(
         company.conventionCollective
       }), j'effectuerai un préavis de ${preavis.label}${
         preavis.note ? " — " + preavis.note : ""
-      } à compter du ${formatDateFr(params.resignationDate)}. Mon contrat prendra donc fin le ${formatDateFr(
-        lastDay
-      )}.`
+      } à compter du ${formatDateFr(resignationDate)}. Mon contrat prendra donc fin le ${formatDateFr(lastDay)}.`
     ),
     para(
       "À l'issue de mon contrat de travail, je vous remercie de bien vouloir me remettre l'ensemble des documents de fin de contrat, à savoir : le reçu pour solde de tout compte, le certificat de travail ainsi que l'attestation destinée à France Travail."
@@ -58,7 +59,7 @@ export function lettreDemission(
     { type: "spacer" },
     para("Je vous prie d'agréer, Madame, Monsieur, l'expression de mes salutations distinguées."),
     { type: "spacer" },
-    para(`Fait à ${params.signingCity}, le ${formatDateFr(params.resignationDate)}`),
+    para(`Fait à ${params.signingCity}, le ${formatDateFr(resignationDate)}`),
     { type: "spacer" },
     rightAligned("Signature"),
     para(fullName),
