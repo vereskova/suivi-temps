@@ -3052,11 +3052,123 @@ type RegistreRow = {
   date_sortie: string | null;
 };
 
+type RegistreEditForm = {
+  numero: string;
+  nom_prenom: string;
+  date_entree: string;
+  nationalite: string;
+  date_naissance: string;
+  sexe: string;
+  emploi: string;
+  qualification: string;
+  type_titre: string;
+  numero_titre: string;
+  type_contrat: string;
+  temps_partiel: string;
+  date_sortie: string;
+};
+
+const FRENCH_NATIONALITY_MARKERS = ["FRANCE", "FRANÇAISE", "FRANCAISE", "FRANÇAIS", "FRANCAIS", "FR"];
+
+function isForeignNationality(nationalite: string | null): boolean {
+  if (!nationalite) return false;
+  return !FRENCH_NATIONALITY_MARKERS.includes(nationalite.trim().toUpperCase());
+}
+
+function toRegistreEditForm(r: RegistreRow): RegistreEditForm {
+  return {
+    numero: r.numero?.toString() ?? "",
+    nom_prenom: r.nom_prenom,
+    date_entree: r.date_entree ?? "",
+    nationalite: r.nationalite ?? "",
+    date_naissance: r.date_naissance ?? "",
+    sexe: r.sexe ?? "",
+    emploi: r.emploi ?? "",
+    qualification: r.qualification ?? "",
+    type_titre: r.type_titre ?? "",
+    numero_titre: r.numero_titre ?? "",
+    type_contrat: r.type_contrat ?? "",
+    temps_partiel: r.temps_partiel ?? "",
+    date_sortie: r.date_sortie ?? "",
+  };
+}
+
+function validateRegistreEditForm(form: RegistreEditForm): string[] {
+  const errors: string[] = [];
+  if (!form.nom_prenom.trim()) errors.push("« Nom Prénom » est obligatoire.");
+  if (form.numero && (!/^\d+$/.test(form.numero) || Number(form.numero) <= 0)) {
+    errors.push("« N° » doit être un entier positif.");
+  }
+  if (form.sexe && !["M", "F"].includes(form.sexe.trim().toUpperCase())) {
+    errors.push("« Sexe » doit être M ou F.");
+  }
+
+  const dates: { label: string; value: string }[] = [
+    { label: "Date d'entrée", value: form.date_entree },
+    { label: "Date de naissance", value: form.date_naissance },
+    { label: "Date de sortie", value: form.date_sortie },
+  ];
+  for (const { label, value } of dates) {
+    if (value && isNaN(new Date(value).getTime())) errors.push(`« ${label} » n'est pas une date valide.`);
+  }
+
+  if (form.date_naissance && !isNaN(new Date(form.date_naissance).getTime())) {
+    const ageYears = (Date.now() - new Date(form.date_naissance).getTime()) / (365.25 * 24 * 3600 * 1000);
+    if (ageYears < 14 || ageYears > 100) {
+      errors.push("« Date de naissance » donne un âge improbable (< 14 ou > 100 ans).");
+    }
+  }
+  if (
+    form.date_entree &&
+    form.date_naissance &&
+    !isNaN(new Date(form.date_entree).getTime()) &&
+    !isNaN(new Date(form.date_naissance).getTime()) &&
+    new Date(form.date_entree) < new Date(form.date_naissance)
+  ) {
+    errors.push("« Date d'entrée » précède « Date de naissance ».");
+  }
+  if (
+    form.date_sortie &&
+    form.date_entree &&
+    !isNaN(new Date(form.date_sortie).getTime()) &&
+    !isNaN(new Date(form.date_entree).getTime()) &&
+    new Date(form.date_sortie) < new Date(form.date_entree)
+  ) {
+    errors.push("« Date de sortie » précède « Date d'entrée ».");
+  }
+  return errors;
+}
+
+const REGISTRE_FIELD_LABELS: { key: keyof RegistreEditForm; label: string; type: "text" | "date" }[] = [
+  { key: "numero", label: "N°", type: "text" },
+  { key: "nom_prenom", label: "Nom Prénom", type: "text" },
+  { key: "date_entree", label: "Date d'entrée", type: "date" },
+  { key: "nationalite", label: "Nationalité", type: "text" },
+  { key: "date_naissance", label: "Date de naissance", type: "date" },
+  { key: "sexe", label: "Sexe (M/F)", type: "text" },
+  { key: "emploi", label: "Emploi", type: "text" },
+  { key: "qualification", label: "Qualification", type: "text" },
+  { key: "type_titre", label: "Type de titre", type: "text" },
+  { key: "numero_titre", label: "N° du titre", type: "text" },
+  { key: "type_contrat", label: "Type de contrat", type: "text" },
+  { key: "temps_partiel", label: "Temps partiel", type: "text" },
+  { key: "date_sortie", label: "Date de sortie", type: "date" },
+];
+
 function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [rows, setRows] = useState<RegistreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "present" | "sorti">("all");
+  const [nationaliteFilter, setNationaliteFilter] = useState("all");
+  const [sexeFilter, setSexeFilter] = useState<"all" | "M" | "F">("all");
+  const [foreignersOnly, setForeignersOnly] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<RegistreEditForm | null>(null);
+  const [editErrors, setEditErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -3071,22 +3183,80 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
       setLoading(false);
     }
     load();
-  }, [supabase]);
+  }, [supabase, refreshKey]);
+
+  const nationaliteOptions = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => r.nationalite && set.add(r.nationalite));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (statusFilter === "present" && r.date_sortie) return false;
       if (statusFilter === "sorti" && !r.date_sortie) return false;
+      if (nationaliteFilter !== "all" && r.nationalite !== nationaliteFilter) return false;
+      if (sexeFilter !== "all" && (r.sexe ?? "").toUpperCase() !== sexeFilter) return false;
+      if (foreignersOnly && !isForeignNationality(r.nationalite)) return false;
       if (q && !r.nom_prenom.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, nationaliteFilter, sexeFilter, foreignersOnly]);
 
   const counts = useMemo(() => {
     const sorti = rows.filter((r) => r.date_sortie).length;
-    return { total: rows.length, present: rows.length - sorti, sorti };
+    const foreigners = rows.filter((r) => isForeignNationality(r.nationalite)).length;
+    return { total: rows.length, present: rows.length - sorti, sorti, foreigners };
   }, [rows]);
+
+  function startEdit(r: RegistreRow) {
+    setEditingId(r.id);
+    setEditForm(toRegistreEditForm(r));
+    setEditErrors([]);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm(null);
+    setEditErrors([]);
+  }
+
+  async function saveEdit() {
+    if (!editingId || !editForm) return;
+    const errors = validateRegistreEditForm(editForm);
+    if (errors.length > 0) {
+      setEditErrors(errors);
+      return;
+    }
+    setSaving(true);
+    const { error } = await supabase
+      .from("registre_unique_personnel")
+      .update({
+        numero: editForm.numero ? Number(editForm.numero) : null,
+        nom_prenom: editForm.nom_prenom.trim(),
+        date_entree: editForm.date_entree || null,
+        nationalite: editForm.nationalite.trim() || null,
+        date_naissance: editForm.date_naissance || null,
+        sexe: editForm.sexe.trim().toUpperCase() || null,
+        emploi: editForm.emploi.trim() || null,
+        qualification: editForm.qualification.trim() || null,
+        type_titre: editForm.type_titre.trim() || null,
+        numero_titre: editForm.numero_titre.trim() || null,
+        type_contrat: editForm.type_contrat.trim() || null,
+        temps_partiel: editForm.temps_partiel.trim() || null,
+        date_sortie: editForm.date_sortie || null,
+      })
+      .eq("id", editingId);
+    setSaving(false);
+
+    if (error) {
+      setEditErrors([`Erreur d'enregistrement : ${error.message}`]);
+      return;
+    }
+    cancelEdit();
+    setRefreshKey((k) => k + 1);
+  }
 
   function exportExcel() {
     const exportRows = filtered.map((r) => ({
@@ -3122,7 +3292,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
   return (
     <div>
       <div className="card mb-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <p className="font-bold">
             Registre unique du personnel ({filtered.length}/{counts.total})
           </p>
@@ -3132,7 +3302,8 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
         </div>
         <p className="text-xs text-slate-400 mb-4">
           Copie fidèle du registre — un enregistrement par embauche (un salarié réembauché
-          apparaît plusieurs fois).
+          apparaît plusieurs fois). Les lignes surlignées correspondent aux salariés de
+          nationalité étrangère.
         </p>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -3160,23 +3331,88 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           >
             {counts.sorti} sortis
           </button>
+          <button
+            onClick={() => setForeignersOnly((v) => !v)}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              foreignersOnly ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700"
+            }`}
+          >
+            {counts.foreigners} étrangers
+          </button>
         </div>
 
-        <input
-          className="input mb-2"
-          placeholder="Rechercher un nom…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <input
+            className="input"
+            placeholder="Rechercher un nom…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select
+            className="input"
+            value={nationaliteFilter}
+            onChange={(e) => setNationaliteFilter(e.target.value)}
+          >
+            <option value="all">Toutes nationalités</option>
+            {nationaliteOptions.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <select
+            className="input"
+            value={sexeFilter}
+            onChange={(e) => setSexeFilter(e.target.value as "all" | "M" | "F")}
+          >
+            <option value="all">Tous sexes</option>
+            <option value="M">Homme</option>
+            <option value="F">Femme</option>
+          </select>
+        </div>
       </div>
+
+      {editingId && editForm && (
+        <div className="card mb-4">
+          <p className="font-bold mb-3">Modifier l&apos;enregistrement</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {REGISTRE_FIELD_LABELS.map((f) => (
+              <label key={f.key} className="text-xs font-bold text-slate-500">
+                {f.label}
+                <input
+                  className="input mt-1"
+                  type={f.type}
+                  value={editForm[f.key]}
+                  onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                />
+              </label>
+            ))}
+          </div>
+          {editErrors.length > 0 && (
+            <div className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2">
+              {editErrors.map((err) => (
+                <p key={err}>{err}</p>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-3 mt-4">
+            <button className="btn btn-green text-sm px-3 py-2" disabled={saving} onClick={saveEdit}>
+              {saving ? "Enregistrement…" : "Enregistrer"}
+            </button>
+            <button className="text-xs text-slate-400 underline" onClick={cancelEdit}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-slate-400">Chargement…</p>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="w-full text-sm whitespace-nowrap">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-slate-400 whitespace-nowrap">
                 <th className="py-2 pr-4">N°</th>
                 <th className="py-2 pr-4">Nom Prénom</th>
                 <th className="py-2 pr-4">Date d&apos;entrée</th>
@@ -3190,29 +3426,47 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                 <th className="py-2 pr-4">Type de contrat</th>
                 <th className="py-2 pr-4">Temps partiel</th>
                 <th className="py-2 pr-4">Date de sortie</th>
+                <th className="py-2 pr-4"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id} className="border-t border-slate-100">
-                  <td className="py-2 pr-4 text-slate-400">{r.numero ?? "—"}</td>
-                  <td className="py-2 pr-4 font-bold">{r.nom_prenom}</td>
-                  <td className="py-2 pr-4">{r.date_entree ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.nationalite ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.date_naissance ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.sexe ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.emploi ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.qualification ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.type_titre ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.numero_titre ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.type_contrat ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.temps_partiel ?? "—"}</td>
-                  <td className="py-2 pr-4">{r.date_sortie ?? "—"}</td>
-                </tr>
-              ))}
+              {filtered.map((r) => {
+                const foreign = isForeignNationality(r.nationalite);
+                return (
+                  <tr
+                    key={r.id}
+                    className={`border-t border-slate-100 ${foreign ? "bg-amber-50" : ""}`}
+                  >
+                    <td className="py-2 pr-4 text-slate-400 whitespace-nowrap">{r.numero ?? "—"}</td>
+                    <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.date_entree ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">
+                      {foreign && <span className="mr-1" title="Nationalité étrangère">🌍</span>}
+                      {r.nationalite ?? "—"}
+                    </td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.date_naissance ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "—"}</td>
+                    <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.qualification ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.type_titre ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.numero_titre ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.type_contrat ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
+                    <td className="py-2 pr-2 whitespace-nowrap">
+                      <button
+                        className="text-xs text-slate-400 underline"
+                        onClick={() => startEdit(r)}
+                      >
+                        Modifier
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={13} className="py-6 text-center text-slate-400">
+                  <td colSpan={14} className="py-6 text-center text-slate-400">
                     Aucun résultat.
                   </td>
                 </tr>
