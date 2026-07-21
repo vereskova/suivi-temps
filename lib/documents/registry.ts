@@ -41,6 +41,15 @@ export type DocumentTypeDefinition = {
   generate: (employee: EmployeeDoc, company: CompanyDoc, params: any) => DocContent;
 };
 
+/** Whole years between an ISO date and today — null if the date is missing/invalid. */
+function yearsSince(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = new Date(iso + "T00:00:00Z").getTime();
+  if (isNaN(then)) return null;
+  const years = (Date.now() - then) / (365.25 * 24 * 3600 * 1000);
+  return Math.round(years * 10) / 10;
+}
+
 /** Field that fills a gap on the employee's profile rather than a document-specific parameter. */
 function employeeField(
   key: keyof EmployeeDoc,
@@ -249,8 +258,20 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         required: true,
         help: "La date de la lettre est calculée en amont pour que le préavis se termine exactement ce jour-là.",
       },
-      { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
-      { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
+      {
+        key: "ancienneteYears",
+        label: "Ancienneté (années)",
+        type: "number",
+        required: true,
+        defaultValue: (e) => yearsSince(e.hireDate) ?? "",
+        help: "Calculée depuis la date d'embauche du dossier salarié — à ajuster si besoin.",
+      },
+      {
+        key: "ageYears",
+        label: "Âge du salarié (années)",
+        type: "number",
+        defaultValue: (e) => (yearsSince(e.dateOfBirth) !== null ? Math.floor(yearsSince(e.dateOfBirth) as number) : ""),
+      },
       {
         key: "signingCity",
         label: "Ville de signature",
@@ -273,8 +294,20 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     legalRisk: true,
     fields: [
       { key: "resignationDate", label: "Date de la lettre de démission", type: "date", required: true },
-      { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
-      { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
+      {
+        key: "ancienneteYears",
+        label: "Ancienneté (années)",
+        type: "number",
+        required: true,
+        defaultValue: (e) => yearsSince(e.hireDate) ?? "",
+        help: "Calculée depuis la date d'embauche du dossier salarié — à ajuster si besoin.",
+      },
+      {
+        key: "ageYears",
+        label: "Âge du salarié (années)",
+        type: "number",
+        defaultValue: (e) => (yearsSince(e.dateOfBirth) !== null ? Math.floor(yearsSince(e.dateOfBirth) as number) : ""),
+      },
       { key: "dispensePreavis", label: "Dispense de préavis", type: "boolean", defaultValue: () => false },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
       SEX_FIELD,
@@ -319,8 +352,20 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         help: "Obligatoire — à rédiger avec précision, ce texte engage juridiquement l'entreprise.",
       },
       { key: "dispensePreavis", label: "Dispense de préavis", type: "boolean", defaultValue: () => false },
-      { key: "ancienneteYears", label: "Ancienneté (années)", type: "number", required: true },
-      { key: "ageYears", label: "Âge du salarié (années)", type: "number" },
+      {
+        key: "ancienneteYears",
+        label: "Ancienneté (années)",
+        type: "number",
+        required: true,
+        defaultValue: (e) => yearsSince(e.hireDate) ?? "",
+        help: "Calculée depuis la date d'embauche du dossier salarié — à ajuster si besoin.",
+      },
+      {
+        key: "ageYears",
+        label: "Âge du salarié (années)",
+        type: "number",
+        defaultValue: (e) => (yearsSince(e.dateOfBirth) !== null ? Math.floor(yearsSince(e.dateOfBirth) as number) : ""),
+      },
       { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
       SEX_FIELD,
       CLASSIFICATION_FIELD,

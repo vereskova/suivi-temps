@@ -1789,6 +1789,11 @@ type EmployeeProfileFields = {
   date_of_birth: string | null;
   phone: string | null;
   email: string | null;
+  address: string | null;
+  birth_place: string | null;
+  classification: string | null;
+  classe: string | null;
+  weekly_hours: number | null;
 };
 
 type ConfidentialFields = {
@@ -1800,6 +1805,7 @@ type ConfidentialFields = {
   mutuelle: string | null;
   residence_permit_type: string | null;
   residence_permit_number: string | null;
+  monthly_gross_salary: number | null;
 };
 
 const EMPTY_CONFIDENTIAL: ConfidentialFields = {
@@ -1811,6 +1817,7 @@ const EMPTY_CONFIDENTIAL: ConfidentialFields = {
   mutuelle: null,
   residence_permit_type: null,
   residence_permit_number: null,
+  monthly_gross_salary: null,
 };
 
 function EmployeeDetailPanel({
@@ -1834,7 +1841,7 @@ function EmployeeDetailPanel({
         supabase
           .from("employees")
           .select(
-            "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email"
+            "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours"
           )
           .eq("id", employeeId)
           .single(),
@@ -1924,6 +1931,32 @@ function EmployeeDetailPanel({
           value={profile.hire_date}
           onChange={(v) => setProfile({ ...profile, hire_date: v })}
         />
+        <DetailField
+          label="Lieu de naissance"
+          value={profile.birth_place}
+          onChange={(v) => setProfile({ ...profile, birth_place: v })}
+        />
+        <DetailField
+          label="Adresse"
+          value={profile.address}
+          onChange={(v) => setProfile({ ...profile, address: v })}
+        />
+        <DetailField
+          label="Classification (groupe A–I)"
+          value={profile.classification}
+          onChange={(v) => setProfile({ ...profile, classification: v })}
+        />
+        <DetailField
+          label="Classe (coefficient)"
+          value={profile.classe}
+          onChange={(v) => setProfile({ ...profile, classe: v })}
+        />
+        <DetailField
+          label="Heures hebdomadaires"
+          type="number"
+          value={profile.weekly_hours?.toString() ?? null}
+          onChange={(v) => setProfile({ ...profile, weekly_hours: v === "" ? null : Number(v) })}
+        />
       </div>
 
       <p className="text-xs font-bold uppercase tracking-wide text-red-500 mb-2">
@@ -1974,6 +2007,17 @@ function EmployeeDetailPanel({
           value={confidential.residence_permit_number}
           onChange={(v) =>
             setConfidential({ ...confidential, residence_permit_number: v })
+          }
+        />
+        <DetailField
+          label="Salaire mensuel brut (€)"
+          type="number"
+          value={confidential.monthly_gross_salary?.toString() ?? null}
+          onChange={(v) =>
+            setConfidential({
+              ...confidential,
+              monthly_gross_salary: v === "" ? null : Number(v),
+            })
           }
         />
       </div>
