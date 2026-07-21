@@ -9,6 +9,7 @@ import {
   BarChart3,
   BookText,
   CalendarDays,
+  Download,
   FileSpreadsheet,
   FileText,
   FolderLock,
@@ -17,6 +18,8 @@ import {
   Languages,
   Network,
   Shirt,
+  Trash2,
+  Upload,
   User,
   Users,
   Wallet,
@@ -33,6 +36,7 @@ import {
   mapEmployeeRow,
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
+import { computePayrollLine, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
 import { toast } from "@/components/Toast";
@@ -102,6 +106,12 @@ function today() {
   return new Date().toISOString().split("T")[0];
 }
 
+/** Module-level (not component-scoped) so calling it from an event handler isn't
+ *  flagged as an impure call during render. */
+function uniqueFileToken() {
+  return Date.now();
+}
+
 function fmtMinutes(min: number | null | undefined) {
   if (min === null || min === undefined) return "—";
   const h = Math.floor(min / 60);
@@ -135,7 +145,9 @@ type ViewKey =
   | "documents"
   | "registre"
   | "organigramme"
-  | "francais";
+  | "francais"
+  | "dossier"
+  | "paie";
 
 type NavItem = { key: ViewKey; label: string; icon: LucideIcon };
 
@@ -165,13 +177,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "registre", label: "Registre du personnel", icon: BookText },
       { key: "organigramme", label: "Organigramme", icon: Network },
       { key: "francais", label: "Cours de français", icon: Languages },
+      { key: "dossier", label: "Dossier salarié", icon: FolderLock },
+      { key: "paie", label: "Paie", icon: Wallet },
     ],
   },
-];
-
-const UPCOMING_ITEMS: { label: string; icon: LucideIcon }[] = [
-  { label: "Dossier salarié", icon: FolderLock },
-  { label: "Paie", icon: Wallet },
 ];
 
 export default function AdminPage() {
@@ -303,14 +312,6 @@ export default function AdminPage() {
                   ))}
                 </SidebarSection>
               ))}
-
-              <SidebarSection title="À venir">
-                {UPCOMING_ITEMS.map((item) => (
-                  <SidebarLink key={item.label} icon={item.icon} disabled>
-                    {item.label}
-                  </SidebarLink>
-                ))}
-              </SidebarSection>
             </nav>
           </aside>
 
@@ -349,6 +350,8 @@ export default function AdminPage() {
             {view === "registre" && <RegistreView supabase={supabase} />}
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
             {view === "francais" && <FrancaisView supabase={supabase} />}
+            {view === "dossier" && <DossierView supabase={supabase} />}
+            {view === "paie" && <PaieView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -4160,4 +4163,675 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
 function formatDateShortDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
+}
+
+// ── Vue "Paie" — table de saisie net→brut (repas → HS+25% → HS+50% → prime) ──
+type PaieEmployee = { id: string; first_name: string; last_name: string };
+
+type PaieLineInput = {
+  netSouhaite: string;
+  majJoursFeries: string;
+  joursRepas: string;
+};
+
+const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursRepas: "" };
+
+function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [employees, setEmployees] = useState<PaieEmployee[]>([]);
+  const [params, setParams] = useState<PayrollParams>(DEFAULT_PAYROLL_PARAMS);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [inputs, setInputs] = useState<Record<string, PaieLineInput>>({});
+  const [showParams, setShowParams] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
+
+      const [{ data: emp }, { data: paramRow }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select("id, first_name, last_name")
+          .eq("status", "active")
+          .order("last_name"),
+        supabase.from("payroll_parameters").select("*").limit(1).maybeSingle(),
+      ]);
+      setEmployees((emp as PaieEmployee[]) ?? []);
+      if (paramRow) {
+        setParams({
+          tauxHoraireBase: Number(paramRow.taux_horaire_base),
+          heuresNormalesMois: Number(paramRow.heures_normales_mois),
+          majorationHs25: Number(paramRow.majoration_hs25),
+          majorationHs50: Number(paramRow.majoration_hs50),
+          tauxRetenues: Number(paramRow.taux_retenues),
+          exonerationHsFixe: Number(paramRow.exoneration_hs_fixe),
+          tarifRepasJour: Number(paramRow.tarif_repas_jour),
+          maxJoursRepas: Number(paramRow.max_jours_repas),
+          maxHs25Heures: Number(paramRow.max_hs25_heures),
+          maxHs50Heures: Number(paramRow.max_hs50_heures),
+        });
+      }
+
+      let { data: run } = await supabase
+        .from("payroll_runs")
+        .select("id")
+        .eq("month", monthIso)
+        .maybeSingle();
+      if (!run) {
+        const { data: created } = await supabase
+          .from("payroll_runs")
+          .insert({ month: monthIso })
+          .select("id")
+          .single();
+        run = created;
+      }
+      setRunId(run?.id ?? null);
+
+      if (run?.id) {
+        const { data: lines } = await supabase
+          .from("payroll_line_items")
+          .select("employee_id, net_souhaite, maj_jours_feries, jours_repas")
+          .eq("run_id", run.id);
+        const map: Record<string, PaieLineInput> = {};
+        (lines ?? []).forEach((l) => {
+          map[l.employee_id] = {
+            netSouhaite: l.net_souhaite ? String(l.net_souhaite) : "",
+            majJoursFeries: l.maj_jours_feries ? String(l.maj_jours_feries) : "",
+            joursRepas: l.jours_repas ? String(l.jours_repas) : "",
+          };
+        });
+        setInputs(map);
+      } else {
+        setInputs({});
+      }
+
+      setLoading(false);
+    }
+    load();
+  }, [supabase, year, month]);
+
+  function updateInput(employeeId: string, field: keyof PaieLineInput, value: string) {
+    setInputs((prev) => ({
+      ...prev,
+      [employeeId]: { ...(prev[employeeId] ?? EMPTY_PAIE_LINE), [field]: value },
+    }));
+  }
+
+  const computed = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computePayrollLine>> = {};
+    employees.forEach((e) => {
+      const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+      map[e.id] = computePayrollLine(
+        {
+          netSouhaite: Number(line.netSouhaite) || 0,
+          majJoursFeries: Number(line.majJoursFeries) || 0,
+          joursRepas: Number(line.joursRepas) || 0,
+        },
+        params
+      );
+    });
+    return map;
+  }, [employees, inputs, params]);
+
+  const totals = useMemo(() => {
+    return employees.reduce(
+      (acc, e) => {
+        const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+        const c = computed[e.id];
+        acc.netSouhaite += Number(line.netSouhaite) || 0;
+        acc.majJoursFeries += Number(line.majJoursFeries) || 0;
+        acc.joursRepas += Number(line.joursRepas) || 0;
+        acc.hs25Heures += c?.hs25Heures ?? 0;
+        acc.hs50Heures += c?.hs50Heures ?? 0;
+        acc.primeExceptionnelle += c?.primeExceptionnelle ?? 0;
+        return acc;
+      },
+      { netSouhaite: 0, majJoursFeries: 0, joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 }
+    );
+  }, [employees, inputs, computed]);
+
+  async function save() {
+    if (!runId) return;
+    setSaving(true);
+    const rows = employees.map((e) => {
+      const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+      const c = computed[e.id];
+      return {
+        run_id: runId,
+        employee_id: e.id,
+        net_souhaite: Number(line.netSouhaite) || 0,
+        maj_jours_feries: Number(line.majJoursFeries) || 0,
+        jours_repas: Number(line.joursRepas) || 0,
+        hs25_heures: c?.hs25Heures ?? 0,
+        hs50_heures: c?.hs50Heures ?? 0,
+        prime_exceptionnelle: c?.primeExceptionnelle ?? 0,
+      };
+    });
+    const { error } = await supabase
+      .from("payroll_line_items")
+      .upsert(rows, { onConflict: "run_id,employee_id" });
+    setSaving(false);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    toast.success("Paie enregistrée");
+  }
+
+  function exportExcel() {
+    const exportRows = employees.map((e, i) => {
+      const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+      const c = computed[e.id];
+      return {
+        "#": i + 1,
+        "Nom Prénom": employeeName(e),
+        "Net souhaité €": Number(line.netSouhaite) || 0,
+        "Maj. jours fériés €": Number(line.majJoursFeries) || 0,
+        "Jours repas": Number(line.joursRepas) || 0,
+        "HS+25% h": c?.hs25Heures ?? 0,
+        "HS+50% h": c?.hs50Heures ?? 0,
+        "Prime except. €": c?.primeExceptionnelle ?? 0,
+      };
+    });
+    exportRows.push({
+      "#": 0,
+      "Nom Prénom": "TOTAL",
+      "Net souhaité €": Math.round(totals.netSouhaite * 100) / 100,
+      "Maj. jours fériés €": Math.round(totals.majJoursFeries * 100) / 100,
+      "Jours repas": totals.joursRepas,
+      "HS+25% h": totals.hs25Heures,
+      "HS+50% h": totals.hs50Heures,
+      "Prime except. €": Math.round(totals.primeExceptionnelle * 100) / 100,
+    });
+    const sheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Paie");
+    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `paie_${year}-${String(month).padStart(2, "0")}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div>
+      <div className="card mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4 items-end">
+          <label className="font-bold text-sm">
+            Mois
+            <select
+              className="input mt-2"
+              value={month}
+              onChange={(e) => setMonth(Number(e.target.value))}
+            >
+              {MONTHS_FR.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="font-bold text-sm">
+            Année
+            <input
+              type="number"
+              className="input mt-2"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+            />
+          </label>
+        </div>
+        <div className="flex gap-3">
+          <button className="btn btn-secondary text-sm" onClick={() => setShowParams((s) => !s)}>
+            Paramètres de calcul
+          </button>
+          <button className="btn btn-secondary text-sm" onClick={exportExcel}>
+            <FileSpreadsheet size={15} /> Exporter Excel
+          </button>
+          <button className="btn btn-primary text-sm" disabled={saving} onClick={save}>
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+
+      {showParams && (
+        <div className="card mb-4">
+          <p className="font-bold mb-3">Paramètres de calcul</p>
+          <p className="text-xs text-slate-400 mb-3">
+            Ces valeurs viennent du classeur Excel de référence. À ajuster seulement si le taux
+            horaire, le SMIC ou les cotisations changent — le calcul ci-dessous s&apos;appuiera
+            immédiatement sur les nouvelles valeurs.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <p>
+              Taux horaire base <span className="block font-bold">{params.tauxHoraireBase} €/h</span>
+            </p>
+            <p>
+              Heures normales/mois <span className="block font-bold">{params.heuresNormalesMois} h</span>
+            </p>
+            <p>
+              Majoration HS+25% <span className="block font-bold">{params.majorationHs25 * 100}%</span>
+            </p>
+            <p>
+              Majoration HS+50% <span className="block font-bold">{params.majorationHs50 * 100}%</span>
+            </p>
+            <p>
+              Taux retenues <span className="block font-bold">{params.tauxRetenues * 100}%</span>
+            </p>
+            <p>
+              Exonération HS fixe <span className="block font-bold">{params.exonerationHsFixe} €</span>
+            </p>
+            <p>
+              Tarif repas/jour <span className="block font-bold">{params.tarifRepasJour} €</span>
+            </p>
+            <p>
+              Max jours repas/mois <span className="block font-bold">{params.maxJoursRepas}</span>
+            </p>
+            <p>
+              Max HS+25% h/mois <span className="block font-bold">{params.maxHs25Heures} h</span>
+            </p>
+            <p>
+              Max HS+50% h/mois <span className="block font-bold">{params.maxHs50Heures} h</span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={7} />
+        </div>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-slate-400 whitespace-nowrap">
+                <th className="py-2 pr-4">Nom Prénom</th>
+                <th className="py-2 pr-4 text-warning-700">Net souhaité €</th>
+                <th className="py-2 pr-4 text-warning-700">Maj. jours fériés €</th>
+                <th className="py-2 pr-4 text-warning-700">Jours repas</th>
+                <th className="py-2 pr-4 text-primary-600">HS+25% h</th>
+                <th className="py-2 pr-4 text-primary-600">HS+50% h</th>
+                <th className="py-2 pr-4 text-primary-600">Prime except. €</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.map((e) => {
+                const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+                const c = computed[e.id];
+                return (
+                  <tr key={e.id} className="border-t border-slate-100">
+                    <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="number"
+                        className="input bg-warning-50/60"
+                        style={{ width: "8rem" }}
+                        value={line.netSouhaite}
+                        onChange={(ev) => updateInput(e.id, "netSouhaite", ev.target.value)}
+                      />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="number"
+                        className="input bg-warning-50/60"
+                        style={{ width: "8rem" }}
+                        value={line.majJoursFeries}
+                        onChange={(ev) => updateInput(e.id, "majJoursFeries", ev.target.value)}
+                      />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <select
+                        className="input bg-warning-50/60"
+                        style={{ width: "6rem" }}
+                        value={line.joursRepas}
+                        onChange={(ev) => updateInput(e.id, "joursRepas", ev.target.value)}
+                      >
+                        <option value="">0</option>
+                        {Array.from({ length: params.maxJoursRepas }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs25Heures ?? 0} h</td>
+                    <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs50Heures ?? 0} h</td>
+                    <td className="py-2 pr-4 font-semibold text-primary-700">
+                      {(c?.primeExceptionnelle ?? 0).toFixed(2)} €
+                    </td>
+                  </tr>
+                );
+              })}
+              {employees.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-slate-400">
+                    Aucun résultat.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {employees.length > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-slate-200 font-bold">
+                  <td className="py-2 pr-4">TOTAL</td>
+                  <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
+                  <td className="py-2 pr-4">{totals.majJoursFeries.toFixed(2)} €</td>
+                  <td className="py-2 pr-4">{totals.joursRepas}</td>
+                  <td className="py-2 pr-4">{totals.hs25Heures} h</td>
+                  <td className="py-2 pr-4">{totals.hs50Heures} h</td>
+                  <td className="py-2 pr-4">{totals.primeExceptionnelle.toFixed(2)} €</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vue "Dossier salarié" — documents par catégorie, stockés dans Supabase Storage ──
+type DossierEmployee = { id: string; first_name: string; last_name: string; status: EmployeeStatus };
+type DocumentCategory = { code: string; label: string; sort_order: number; sensitive: boolean };
+type EmployeeDocumentRow = {
+  id: string;
+  employee_id: string;
+  category_code: string;
+  file_name: string;
+  storage_path: string;
+  file_size: number | null;
+  created_at: string;
+};
+
+const DOSSIER_BUCKET = "dossier-salarie";
+
+function formatFileSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} o`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<DossierEmployee[]>([]);
+  const [categories, setCategories] = useState<DocumentCategory[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+  const [search, setSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
+  const [documents, setDocuments] = useState<EmployeeDocumentRow[]>([]);
+  const [loadingDocuments, setLoadingDocuments] = useState(false);
+  const [uploadingCategory, setUploadingCategory] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    async function load() {
+      setLoadingEmployees(true);
+      const [{ data: emp }, { data: cats }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select("id, first_name, last_name, status")
+          .order("last_name"),
+        supabase.from("document_categories").select("*").order("sort_order"),
+      ]);
+      setEmployees((emp as DossierEmployee[]) ?? []);
+      setCategories((cats as DocumentCategory[]) ?? []);
+      setLoadingEmployees(false);
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function loadDocs() {
+      if (!selectedEmployeeId) {
+        setDocuments([]);
+        return;
+      }
+      setLoadingDocuments(true);
+      const { data } = await supabase
+        .from("employee_documents")
+        .select("id, employee_id, category_code, file_name, storage_path, file_size, created_at")
+        .eq("employee_id", selectedEmployeeId)
+        .order("created_at", { ascending: false });
+      setDocuments((data as EmployeeDocumentRow[]) ?? []);
+      setLoadingDocuments(false);
+    }
+    loadDocs();
+  }, [supabase, selectedEmployeeId]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, search]);
+
+  const documentsByCategory = useMemo(() => {
+    const map = new Map<string, EmployeeDocumentRow[]>();
+    documents.forEach((d) => {
+      if (!map.has(d.category_code)) map.set(d.category_code, []);
+      map.get(d.category_code)!.push(d);
+    });
+    return map;
+  }, [documents]);
+
+  async function reloadDocuments() {
+    if (!selectedEmployeeId) return;
+    const { data } = await supabase
+      .from("employee_documents")
+      .select("id, employee_id, category_code, file_name, storage_path, file_size, created_at")
+      .eq("employee_id", selectedEmployeeId)
+      .order("created_at", { ascending: false });
+    setDocuments((data as EmployeeDocumentRow[]) ?? []);
+  }
+
+  async function uploadFile(categoryCode: string, file: File) {
+    if (!selectedEmployeeId) return;
+    setUploadingCategory(categoryCode);
+    const path = `${selectedEmployeeId}/${categoryCode}/${uniqueFileToken()}_${file.name}`;
+    const { error: uploadError } = await supabase.storage.from(DOSSIER_BUCKET).upload(path, file);
+    if (uploadError) {
+      setUploadingCategory(null);
+      toast.error("Erreur d'envoi : " + uploadError.message);
+      return;
+    }
+    const { error: insertError } = await supabase.from("employee_documents").insert({
+      employee_id: selectedEmployeeId,
+      category_code: categoryCode,
+      file_name: file.name,
+      storage_path: path,
+      file_size: file.size,
+      mime_type: file.type || null,
+    });
+    setUploadingCategory(null);
+    if (insertError) {
+      toast.error("Erreur : " + insertError.message);
+      return;
+    }
+    await reloadDocuments();
+    toast.success("Document ajouté");
+  }
+
+  async function downloadFile(doc: EmployeeDocumentRow) {
+    const { data, error } = await supabase.storage.from(DOSSIER_BUCKET).download(doc.storage_path);
+    if (error || !data) {
+      toast.error("Erreur de téléchargement : " + (error?.message ?? "fichier introuvable"));
+      return;
+    }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.file_name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function deleteFile(doc: EmployeeDocumentRow) {
+    if (!confirm(`Supprimer « ${doc.file_name} » ?`)) return;
+    const { error: storageError } = await supabase.storage
+      .from(DOSSIER_BUCKET)
+      .remove([doc.storage_path]);
+    if (storageError) {
+      toast.error("Erreur : " + storageError.message);
+      return;
+    }
+    const { error: dbError } = await supabase.from("employee_documents").delete().eq("id", doc.id);
+    if (dbError) {
+      toast.error("Erreur : " + dbError.message);
+      return;
+    }
+    await reloadDocuments();
+    toast.success("Document supprimé");
+  }
+
+  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+
+  return (
+    <div className="flex gap-4 items-start">
+      <div className="card w-72 shrink-0">
+        <p className="font-bold mb-3">Employés</p>
+        <input
+          className="input mb-2"
+          placeholder="Rechercher un nom…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input mb-3"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
+        >
+          <option value="active">Actifs</option>
+          <option value="on_leave">En congé</option>
+          <option value="terminated">Sortis</option>
+          <option value="all">Tous</option>
+        </select>
+        {loadingEmployees ? (
+          <SkeletonRows rows={4} cols={1} />
+        ) : (
+          <div className="max-h-[32rem] overflow-y-auto -mx-1">
+            {filtered.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedEmployeeId(e.id)}
+                className={`w-full text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
+                  selectedEmployeeId === e.id
+                    ? "bg-primary-50 text-primary-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {employeeName(e)}
+              </button>
+            ))}
+            {filtered.length === 0 && <EmptyState title="Aucun employé" />}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {!selectedEmployee ? (
+          <div className="card">
+            <EmptyState
+              title="Sélectionnez un employé"
+              description="Choisissez un employé dans la liste pour voir et gérer son dossier."
+            />
+          </div>
+        ) : (
+          <div className="card">
+            <p className="font-bold mb-4">Dossier — {employeeName(selectedEmployee)}</p>
+            {loadingDocuments ? (
+              <SkeletonRows rows={4} cols={3} />
+            ) : (
+              <div className="space-y-4">
+                {categories.map((cat) => {
+                  const docs = documentsByCategory.get(cat.code) ?? [];
+                  return (
+                    <div key={cat.code} className="rounded-xl border border-slate-100 p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-bold flex items-center gap-2">
+                          {cat.label}
+                          {cat.sensitive && (
+                            <span className="badge badge-warning">confidentiel</span>
+                          )}
+                        </p>
+                        <label className="btn btn-secondary text-xs px-3 py-1.5 cursor-pointer">
+                          {uploadingCategory === cat.code ? (
+                            "Envoi…"
+                          ) : (
+                            <>
+                              <Upload size={13} /> Ajouter
+                            </>
+                          )}
+                          <input
+                            ref={(el) => {
+                              fileInputRefs.current[cat.code] = el;
+                            }}
+                            type="file"
+                            className="hidden"
+                            disabled={uploadingCategory !== null}
+                            onChange={(ev) => {
+                              const file = ev.target.files?.[0];
+                              if (file) uploadFile(cat.code, file);
+                              ev.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {docs.length === 0 ? (
+                        <p className="text-xs text-slate-400">Aucun document.</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {docs.map((doc) => (
+                            <li
+                              key={doc.id}
+                              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                            >
+                              <span className="truncate">{doc.file_name}</span>
+                              <span className="flex items-center gap-2 shrink-0">
+                                <span className="text-xs text-slate-400">
+                                  {formatFileSize(doc.file_size)}
+                                </span>
+                                <button
+                                  onClick={() => downloadFile(doc)}
+                                  title="Télécharger"
+                                  className="text-slate-400 hover:text-primary-600"
+                                >
+                                  <Download size={15} />
+                                </button>
+                                <button
+                                  onClick={() => deleteFile(doc)}
+                                  title="Supprimer"
+                                  className="text-slate-400 hover:text-error-600"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
