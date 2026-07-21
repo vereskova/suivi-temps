@@ -3738,104 +3738,267 @@ type OrgEmployee = {
   id: string;
   first_name: string;
   last_name: string;
+  category: "bureau" | "chantier";
   bureau_role: string | null;
   team_id: string | null;
   teams: { name: string } | null;
 };
 
+type OrgTeam = { id: string; name: string };
+
+/** Groups employees into fixed columns (one per role/team id) and pads every column to
+ *  the same row count so the whole thing renders as a rectangular <table>. */
+function buildOrgGrid(
+  columns: { key: string; label: string }[],
+  columnOf: (e: OrgEmployee) => string | null,
+  employees: OrgEmployee[]
+) {
+  const byColumn = new Map<string, OrgEmployee[]>();
+  columns.forEach((c) => byColumn.set(c.key, []));
+  employees.forEach((e) => {
+    const key = columnOf(e);
+    if (key && byColumn.has(key)) byColumn.get(key)!.push(e);
+  });
+  const maxRows = Math.max(0, ...Array.from(byColumn.values()).map((v) => v.length));
+  const rows: (OrgEmployee | null)[][] = Array.from({ length: maxRows }, (_, r) =>
+    columns.map((c) => byColumn.get(c.key)![r] ?? null)
+  );
+  return { byColumn, rows, maxRows };
+}
+
 function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [employees, setEmployees] = useState<OrgEmployee[]>([]);
+  const [teams, setTeams] = useState<OrgTeam[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addBureau, setAddBureau] = useState<Record<string, string>>({});
+  const [addTeam, setAddTeam] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
-        .from("employees")
-        .select(
-          "id, first_name, last_name, bureau_role, team_id, teams!employees_team_id_fkey(name)"
-        )
-        .eq("status", "active")
-        .order("last_name");
-      setEmployees((data as unknown as OrgEmployee[]) ?? []);
+      const [{ data: emp }, { data: tm }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name)"
+          )
+          .eq("status", "active")
+          .order("last_name"),
+        supabase.from("teams").select("id, name").eq("active", true).order("name"),
+      ]);
+      setEmployees((emp as unknown as OrgEmployee[]) ?? []);
+      setTeams((tm as OrgTeam[]) ?? []);
       setLoading(false);
     }
     load();
   }, [supabase]);
 
-  const byRole = useMemo(() => {
-    const map = new Map<string, OrgEmployee[]>();
-    employees.forEach((e) => {
-      if (!e.bureau_role) return;
-      if (!map.has(e.bureau_role)) map.set(e.bureau_role, []);
-      map.get(e.bureau_role)!.push(e);
-    });
-    return map;
-  }, [employees]);
+  const bureauEmployees = useMemo(() => employees.filter((e) => e.category === "bureau"), [employees]);
+  const chantierEmployees = useMemo(() => employees.filter((e) => e.category === "chantier"), [employees]);
 
-  const byTeam = useMemo(() => {
-    const map = new Map<string, OrgEmployee[]>();
-    employees.forEach((e) => {
-      if (!e.team_id || !e.teams?.name) return;
-      if (!map.has(e.teams.name)) map.set(e.teams.name, []);
-      map.get(e.teams.name)!.push(e);
-    });
-    return Array.from(map.entries()).sort(([a], [b]) =>
-      a.localeCompare(b, undefined, { numeric: true })
-    );
-  }, [employees]);
+  const teamColumns = useMemo(
+    () =>
+      [...teams]
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((t) => ({ key: t.id, label: t.name })),
+    [teams]
+  );
+  const bureauColumns = useMemo(
+    () => BUREAU_ROLE_ORDER.map((role) => ({ key: role, label: BUREAU_ROLE_LABELS[role] })),
+    []
+  );
+
+  const bureauGrid = useMemo(
+    () => buildOrgGrid(bureauColumns, (e) => e.bureau_role, bureauEmployees),
+    [bureauColumns, bureauEmployees]
+  );
+  const teamGrid = useMemo(
+    () => buildOrgGrid(teamColumns, (e) => e.team_id, chantierEmployees),
+    [teamColumns, chantierEmployees]
+  );
 
   const unassignedBureau = useMemo(
-    () => employees.filter((e) => !e.bureau_role && !e.team_id),
-    [employees]
+    () => bureauEmployees.filter((e) => !e.bureau_role),
+    [bureauEmployees]
   );
+  const unassignedChantier = useMemo(
+    () => chantierEmployees.filter((e) => !e.team_id),
+    [chantierEmployees]
+  );
+
+  async function reload() {
+    const [{ data: emp }, { data: tm }] = await Promise.all([
+      supabase
+        .from("employees")
+        .select(
+          "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name)"
+        )
+        .eq("status", "active")
+        .order("last_name"),
+      supabase.from("teams").select("id, name").eq("active", true).order("name"),
+    ]);
+    setEmployees((emp as unknown as OrgEmployee[]) ?? []);
+    setTeams((tm as OrgTeam[]) ?? []);
+  }
+
+  async function setBureauRole(employeeId: string, role: string | null) {
+    const { error } = await supabase.from("employees").update({ bureau_role: role }).eq("id", employeeId);
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+    await reload();
+  }
+
+  async function setTeam(employeeId: string, teamId: string | null) {
+    const { error } = await supabase.from("employees").update({ team_id: teamId }).eq("id", employeeId);
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+    await reload();
+  }
 
   if (loading) return <p className="text-slate-400">Chargement…</p>;
 
   return (
     <div>
-      <div className="card mb-4">
+      <div className="card mb-4 overflow-x-auto">
         <p className="font-bold mb-3">Bureau</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {BUREAU_ROLE_ORDER.filter((role) => byRole.has(role)).map((role) => (
-            <div key={role} className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-                {BUREAU_ROLE_LABELS[role]}
-              </p>
-              {byRole.get(role)!.map((e) => (
-                <p key={e.id} className="text-sm font-bold">
-                  {employeeName(e)}
-                </p>
+        <table className="min-w-full border-separate border-spacing-1">
+          <thead>
+            <tr>
+              {bureauColumns.map((c) => (
+                <th
+                  key={c.key}
+                  className="text-xs font-bold uppercase tracking-wide text-slate-400 bg-slate-50 rounded-lg px-2 py-1 whitespace-nowrap"
+                >
+                  {c.label}
+                </th>
               ))}
-            </div>
-          ))}
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {bureauGrid.rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((e, c) => (
+                  <td key={bureauColumns[c].key} className="align-top px-2 py-1 text-sm">
+                    {e && (
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        {employeeName(e)}
+                        <button
+                          type="button"
+                          onClick={() => setBureauRole(e.id, null)}
+                          title="Retirer de ce rôle"
+                          className="text-red-400 hover:text-red-600"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr>
+              {bureauColumns.map((c) => (
+                <td key={c.key} className="px-2 py-1">
+                  <select
+                    className="input text-xs"
+                    value={addBureau[c.key] ?? ""}
+                    onChange={(ev) => {
+                      const id = ev.target.value;
+                      setAddBureau((s) => ({ ...s, [c.key]: "" }));
+                      if (id) setBureauRole(id, c.key);
+                    }}
+                  >
+                    <option value="">+ Ajouter</option>
+                    {bureauEmployees
+                      .filter((e) => e.bureau_role !== c.key)
+                      .map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {employeeName(e)}
+                        </option>
+                      ))}
+                  </select>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      <div className="card mb-4">
+      <div className="card mb-4 overflow-x-auto">
         <p className="font-bold mb-3">Chantier — par équipe</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {byTeam.map(([teamName, members]) => (
-            <div key={teamName} className="rounded-xl bg-slate-50 p-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
-                {teamName}
-              </p>
-              {members.map((e) => (
-                <p key={e.id} className="text-sm">
-                  {employeeName(e)}
-                </p>
+        <table className="min-w-full border-separate border-spacing-1">
+          <thead>
+            <tr>
+              {teamColumns.map((c) => (
+                <th
+                  key={c.key}
+                  className="text-xs font-bold uppercase tracking-wide text-slate-400 bg-slate-50 rounded-lg px-2 py-1 whitespace-nowrap"
+                >
+                  {c.label}
+                </th>
               ))}
-            </div>
-          ))}
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {teamGrid.rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((e, c) => (
+                  <td key={teamColumns[c].key} className="align-top px-2 py-1 text-sm">
+                    {e && (
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        {employeeName(e)}
+                        <button
+                          type="button"
+                          onClick={() => setTeam(e.id, null)}
+                          title="Retirer de cette équipe"
+                          className="text-red-400 hover:text-red-600"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr>
+              {teamColumns.map((c) => (
+                <td key={c.key} className="px-2 py-1">
+                  <select
+                    className="input text-xs"
+                    value={addTeam[c.key] ?? ""}
+                    onChange={(ev) => {
+                      const id = ev.target.value;
+                      setAddTeam((s) => ({ ...s, [c.key]: "" }));
+                      if (id) setTeam(id, c.key);
+                    }}
+                  >
+                    <option value="">+ Ajouter</option>
+                    {chantierEmployees
+                      .filter((e) => e.team_id !== c.key)
+                      .map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {employeeName(e)}
+                        </option>
+                      ))}
+                  </select>
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      {unassignedBureau.length > 0 && (
+      {(unassignedBureau.length > 0 || unassignedChantier.length > 0) && (
         <div className="card">
           <p className="font-bold mb-2 text-red-500">
-            Sans rôle ni équipe ({unassignedBureau.length})
+            Sans rôle ni équipe ({unassignedBureau.length + unassignedChantier.length})
           </p>
-          {unassignedBureau.map((e) => (
+          {[...unassignedBureau, ...unassignedChantier].map((e) => (
             <p key={e.id} className="text-sm">
               {employeeName(e)}
             </p>
