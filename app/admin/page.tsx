@@ -34,8 +34,10 @@ import {
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
 import { LogoMark } from "@/components/Logo";
-import { Skeleton } from "@/components/Skeleton";
+import { Skeleton, SkeletonRows } from "@/components/Skeleton";
 import { toast } from "@/components/Toast";
+import { Modal } from "@/components/Modal";
+import { EmptyState } from "@/components/StateMessage";
 
 type Employee = {
   id: string;
@@ -574,11 +576,13 @@ function JourView({
       </div>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={5} />
+        </div>
       ) : filteredGrouped.length === 0 ? (
-        <p className="card text-center text-slate-400">
-          Aucun résultat pour ces filtres.
-        </p>
+        <div className="card">
+          <EmptyState description="Aucun résultat pour ces filtres." />
+        </div>
       ) : (
         filteredGrouped.map(([teamName, members]) => (
           <div key={teamName} className="card mb-4 overflow-x-auto">
@@ -865,9 +869,13 @@ function EmployeView({
       </div>
 
       {!employeeId ? (
-        <p className="text-slate-400">Sélectionnez un employé.</p>
+        <div className="card">
+          <EmptyState title="Sélectionnez un employé" />
+        </div>
       ) : loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={4} />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -1021,7 +1029,9 @@ function MoisView({
       </div>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={5} />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -1660,11 +1670,13 @@ function EmployeesView({
       )}
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={5} />
+        </div>
       ) : filtered.length === 0 ? (
-        <p className="card text-center text-slate-400">
-          Aucun employé ne correspond à ces filtres.
-        </p>
+        <div className="card">
+          <EmptyState description="Aucun employé ne correspond à ces filtres." />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -1792,13 +1804,6 @@ function EmployeesView({
                       </>
                     )}
                   </tr>
-                  {expandedId === e.id && (
-                    <tr className="border-t border-slate-100">
-                      <td colSpan={5} className="bg-slate-50 p-4">
-                        <EmployeeDetailPanel supabase={supabase} employeeId={e.id} />
-                      </td>
-                    </tr>
-                  )}
                   </Fragment>
                 );
               })}
@@ -1806,6 +1811,19 @@ function EmployeesView({
           </table>
         </div>
       )}
+
+      <Modal
+        open={!!expandedId}
+        onClose={() => setExpandedId(null)}
+        title={
+          expandedId
+            ? `Détails — ${employeeName(filtered.find((e) => e.id === expandedId) ?? { first_name: "", last_name: "" })}`
+            : "Détails"
+        }
+        maxWidth="max-w-3xl"
+      >
+        {expandedId && <EmployeeDetailPanel supabase={supabase} employeeId={expandedId} />}
+      </Modal>
     </div>
   );
 }
@@ -1912,7 +1930,7 @@ function EmployeeDetailPanel({
     setSavedAt(new Date().toLocaleTimeString("fr-FR"));
   }
 
-  if (loading) return <p className="text-sm text-slate-400">Chargement…</p>;
+  if (loading) return <SkeletonRows rows={3} cols={2} />;
   if (!profile) return null;
 
   return (
@@ -2231,11 +2249,13 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       </div>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={5} />
+        </div>
       ) : filteredVisits.length === 0 ? (
-        <p className="card text-center text-slate-400">
-          Aucune visite ne correspond à ces filtres.
-        </p>
+        <div className="card">
+          <EmptyState description="Aucune visite ne correspond à ces filtres." />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -2467,11 +2487,13 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
       </div>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={5} />
+        </div>
       ) : filteredEmployees.length === 0 ? (
-        <p className="card text-center text-slate-400">
-          Aucun employé ne correspond à ces filtres.
-        </p>
+        <div className="card">
+          <EmptyState description="Aucun employé ne correspond à ces filtres." />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -2665,11 +2687,13 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
       </div>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={5} cols={5} />
+        </div>
       ) : filteredEmployees.length === 0 ? (
-        <p className="card text-center text-slate-400">
-          Aucun employé ne correspond à ces filtres.
-        </p>
+        <div className="card">
+          <EmptyState description="Aucun employé ne correspond à ces filtres." />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -2944,7 +2968,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
         </select>
 
         {loadingEmployees ? (
-          <p className="text-sm text-slate-400">Chargement…</p>
+          <SkeletonRows rows={4} cols={1} />
         ) : (
           <div className="max-h-[28rem] overflow-y-auto -mx-1">
             {filteredEmployees.map((e) => (
@@ -3629,57 +3653,60 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
         </div>
       </div>
 
-      {editingId && editForm && (
-        <div className="card mb-4">
-          <p className="font-bold mb-3">Modifier l&apos;enregistrement</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {REGISTRE_FIELD_LABELS.map((f) => (
-              <label key={f.key} className="text-xs font-bold text-slate-500">
-                {f.label}
-                {f.type === "select" ? (
-                  <select
-                    className="input mt-1"
-                    value={editForm[f.key]}
-                    onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
-                  >
-                    <option value="">—</option>
-                    {registreSelectOptions(f.key).map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    className="input mt-1"
-                    type={f.type}
-                    value={editForm[f.key]}
-                    onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-          {editErrors.length > 0 && (
-            <div className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2">
-              {editErrors.map((err) => (
-                <p key={err}>{err}</p>
+      <Modal open={!!(editingId && editForm)} onClose={cancelEdit} title="Modifier l'enregistrement" maxWidth="max-w-3xl">
+        {editForm && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {REGISTRE_FIELD_LABELS.map((f) => (
+                <label key={f.key} className="text-xs font-bold text-slate-500">
+                  {f.label}
+                  {f.type === "select" ? (
+                    <select
+                      className="input mt-1"
+                      value={editForm[f.key]}
+                      onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                    >
+                      <option value="">—</option>
+                      {registreSelectOptions(f.key).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="input mt-1"
+                      type={f.type}
+                      value={editForm[f.key]}
+                      onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                    />
+                  )}
+                </label>
               ))}
             </div>
-          )}
-          <div className="flex gap-3 mt-4">
-            <button className="btn btn-green text-sm px-3 py-2" disabled={saving} onClick={saveEdit}>
-              {saving ? "Enregistrement…" : "Enregistrer"}
-            </button>
-            <button className="text-xs text-slate-400 underline" onClick={cancelEdit}>
-              Annuler
-            </button>
-          </div>
-        </div>
-      )}
+            {editErrors.length > 0 && (
+              <div className="mt-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm px-3 py-2">
+                {editErrors.map((err) => (
+                  <p key={err}>{err}</p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-3 mt-4">
+              <button className="btn btn-green text-sm px-3 py-2" disabled={saving} onClick={saveEdit}>
+                {saving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+              <button className="btn btn-secondary text-sm px-3 py-2" onClick={cancelEdit}>
+                Annuler
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
 
       {loading ? (
-        <p className="text-slate-400">Chargement…</p>
+        <div className="card">
+          <SkeletonRows rows={6} cols={6} />
+        </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
@@ -3856,7 +3883,12 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
     [chantierEmployees]
   );
 
-  if (loading) return <p className="text-slate-400">Chargement…</p>;
+  if (loading)
+    return (
+      <div className="card">
+        <SkeletonRows rows={5} cols={5} />
+      </div>
+    );
 
   return (
     <div>
@@ -4035,7 +4067,12 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
     });
   }
 
-  if (loading) return <p className="text-slate-400">Chargement…</p>;
+  if (loading)
+    return (
+      <div className="card">
+        <SkeletonRows rows={5} cols={5} />
+      </div>
+    );
 
   if (sessions.length === 0) {
     return (

@@ -3,8 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatLive, normalizeTime, timeToMinutes } from "@/lib/time";
+import { LogoMark } from "@/components/Logo";
+import { Skeleton } from "@/components/Skeleton";
+import { EmptyState } from "@/components/StateMessage";
 
 type Team = { id: string; name: string };
 type AbsenceType = { id: string; code: string; label: string };
@@ -30,6 +34,18 @@ const DEFAULT_DAY = {
 function today() {
   return new Date().toISOString().split("T")[0];
 }
+
+function statusTone(status: string): "success" | "error" | "info" {
+  if (status.startsWith("✅")) return "success";
+  if (status.startsWith("❌")) return "error";
+  return "info";
+}
+
+const STATUS_TONE_CLASSES: Record<string, string> = {
+  success: "bg-success-50 text-success-600",
+  error: "bg-error-50 text-error-600",
+  info: "bg-primary-50 text-primary-700",
+};
 
 export default function Home() {
   const [supabase] = useState(() => createClient());
@@ -210,27 +226,45 @@ export default function Home() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-slate-100 p-4 flex items-center justify-center">
-        <p className="text-slate-400">Chargement…</p>
+      <main className="relative min-h-screen overflow-hidden p-4 flex items-start justify-center pt-16">
+        <BackgroundGlow />
+        <div className="relative w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-xl space-y-3">
+          <Skeleton className="h-6 w-1/2" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-4">
-      <div className="mx-auto max-w-md rounded-3xl bg-white p-5 shadow-xl">
+    <main className="relative min-h-screen overflow-hidden p-4 flex items-start justify-center pt-10 sm:pt-16">
+      <BackgroundGlow />
+
+      <div className="relative w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-xl">
         <div className="flex items-start justify-between">
-          <h1 className="text-3xl font-black">
-            Suivi des heures
-            <span className="block text-sm text-slate-400">Учёт времени</span>
-          </h1>
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-white">
+              <LogoMark size={22} />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">
+                Suivi des heures
+              </h1>
+              <p className="text-xs font-semibold text-slate-400">Учёт времени</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1.5 pt-1">
             {isAdmin && (
-              <Link href="/admin" className="text-xs text-slate-400 underline">
+              <Link href="/admin" className="text-xs font-bold text-primary-600 hover:text-primary-700">
                 Tableau RH
               </Link>
             )}
-            <button onClick={signOut} className="text-xs text-slate-400 underline">
+            <button
+              onClick={signOut}
+              className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
+            >
+              <LogOut size={12} />
               Déconnexion
             </button>
           </div>
@@ -238,9 +272,9 @@ export default function Home() {
 
         {isAdmin && (
           <div className="mt-6">
-            <label className="font-bold">
+            <label className="font-bold text-sm text-slate-700">
               Équipe
-              <span className="block text-xs text-slate-400">Бригада</span>
+              <span className="block text-xs font-medium text-slate-400">Бригада</span>
             </label>
 
             <select
@@ -262,9 +296,9 @@ export default function Home() {
         )}
 
         <div className="mt-4">
-          <label className="font-bold">
+          <label className="font-bold text-sm text-slate-700">
             Date
-            <span className="block text-xs text-slate-400">Дата</span>
+            <span className="block text-xs font-medium text-slate-400">Дата</span>
           </label>
 
           <input
@@ -278,29 +312,26 @@ export default function Home() {
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button onClick={() => setDate(today())} className="btn btn-dark">
             Aujourd’hui
-            <span className="block text-xs">Сегодня</span>
+            <span className="block text-xs font-normal opacity-70">Сегодня</span>
           </button>
 
           <button onClick={setStandardDay} className="btn btn-primary">
             Journée standard
-            <span className="block text-xs">Стандарт</span>
+            <span className="block text-xs font-normal opacity-80">Стандарт</span>
           </button>
         </div>
 
         {workers.length === 0 && (
-          <p className="mt-6 rounded-2xl bg-slate-50 p-4 text-center text-sm font-bold text-slate-400">
-            {isAdmin ? (
-              <>
-                Sélectionnez une équipe
-                <span className="block">Выберите бригаду</span>
-              </>
-            ) : (
-              <>
-                Aucune équipe assignée
-                <span className="block">Бригада не назначена — обратитесь к RH</span>
-              </>
-            )}
-          </p>
+          <div className="mt-6 rounded-2xl bg-slate-50">
+            <EmptyState
+              title={isAdmin ? "Sélectionnez une équipe" : "Aucune équipe assignée"}
+              description={
+                isAdmin
+                  ? "Выберите бригаду"
+                  : "Бригада не назначена — обратитесь к RH"
+              }
+            />
+          </div>
         )}
 
         <div className="mt-6 space-y-4">
@@ -311,12 +342,12 @@ export default function Home() {
 
                 <button
                   onClick={() => toggleAbsent(i)}
-                  className={`rounded-full px-3 py-1 text-sm font-bold ${
-                    w.absent ? "bg-red-600 text-white" : "bg-slate-200"
+                  className={`rounded-full px-3 py-1 text-sm font-bold transition-colors ${
+                    w.absent ? "bg-error-50 text-error-600" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                   }`}
                 >
                   Absent
-                  <span className="block text-[10px]">Отсутствует</span>
+                  <span className="block text-[10px] font-semibold opacity-80">Отсутствует</span>
                 </button>
               </div>
 
@@ -372,13 +403,28 @@ export default function Home() {
         {workers.length > 0 && (
           <button onClick={submitForm} className="btn btn-green mt-6 w-full text-lg">
             Envoyer
-            <span className="block text-xs">Отправить</span>
+            <span className="block text-xs font-normal opacity-80">Отправить</span>
           </button>
         )}
 
-        {status && <p className="mt-4 text-center font-bold">{status}</p>}
+        {status && (
+          <p
+            className={`mt-4 rounded-xl px-3 py-2 text-center text-sm font-bold ${STATUS_TONE_CLASSES[statusTone(status)]}`}
+          >
+            {status}
+          </p>
+        )}
       </div>
     </main>
+  );
+}
+
+function BackgroundGlow() {
+  return (
+    <>
+      <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-primary-200/40 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-primary-100/60 blur-3xl" />
+    </>
   );
 }
 
@@ -397,7 +443,7 @@ function Time({
     <div>
       <label className="text-xs font-bold text-slate-500">
         {label}
-        <span className="block text-[10px] text-slate-400">{ru}</span>
+        <span className="block text-[10px] font-medium text-slate-400">{ru}</span>
       </label>
 
       <input
