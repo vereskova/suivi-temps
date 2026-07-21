@@ -110,7 +110,9 @@ type ViewKey =
   | "formations"
   | "tailles"
   | "documents"
-  | "registre";
+  | "registre"
+  | "organigramme"
+  | "francais";
 
 const NAV_ITEMS: { key: ViewKey; label: string }[] = [
   { key: "jour", label: "Par jour" },
@@ -271,6 +273,18 @@ export default function AdminPage() {
                 >
                   Registre du personnel
                 </SidebarLink>
+                <SidebarLink
+                  active={view === "organigramme"}
+                  onClick={() => setView("organigramme")}
+                >
+                  Organigramme
+                </SidebarLink>
+                <SidebarLink
+                  active={view === "francais"}
+                  onClick={() => setView("francais")}
+                >
+                  Cours de français
+                </SidebarLink>
               </SidebarSection>
 
               <SidebarSection title="À venir">
@@ -313,6 +327,8 @@ export default function AdminPage() {
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
             {view === "registre" && <RegistreView supabase={supabase} />}
+            {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
+            {view === "francais" && <FrancaisView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -3207,4 +3223,310 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
       )}
     </div>
   );
+}
+
+// ── Vue "Organigramme" — dérivée en direct des rôles bureau et des équipes ──
+const BUREAU_ROLE_LABELS: Record<string, string> = {
+  boss: "Boss",
+  rh: "RH",
+  assistant: "Assistante de direction",
+  coach: "Coach",
+  production: "Production",
+  planning: "Planning",
+  comptable: "Comptable",
+  marketing: "Marketing",
+  control: "Contrôle qualité",
+  formation_officer: "Formation",
+  depot: "Dépôt",
+  hotel: "Hôtel",
+  logement: "Logement",
+};
+const BUREAU_ROLE_ORDER = Object.keys(BUREAU_ROLE_LABELS);
+
+type OrgEmployee = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  bureau_role: string | null;
+  team_id: string | null;
+  teams: { name: string } | null;
+};
+
+function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<OrgEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("employees")
+        .select(
+          "id, first_name, last_name, bureau_role, team_id, teams!employees_team_id_fkey(name)"
+        )
+        .eq("status", "active")
+        .order("last_name");
+      setEmployees((data as unknown as OrgEmployee[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  const byRole = useMemo(() => {
+    const map = new Map<string, OrgEmployee[]>();
+    employees.forEach((e) => {
+      if (!e.bureau_role) return;
+      if (!map.has(e.bureau_role)) map.set(e.bureau_role, []);
+      map.get(e.bureau_role)!.push(e);
+    });
+    return map;
+  }, [employees]);
+
+  const byTeam = useMemo(() => {
+    const map = new Map<string, OrgEmployee[]>();
+    employees.forEach((e) => {
+      if (!e.team_id || !e.teams?.name) return;
+      if (!map.has(e.teams.name)) map.set(e.teams.name, []);
+      map.get(e.teams.name)!.push(e);
+    });
+    return Array.from(map.entries()).sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { numeric: true })
+    );
+  }, [employees]);
+
+  const unassignedBureau = useMemo(
+    () => employees.filter((e) => !e.bureau_role && !e.team_id),
+    [employees]
+  );
+
+  if (loading) return <p className="text-slate-400">Chargement…</p>;
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <p className="font-bold mb-3">Bureau</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {BUREAU_ROLE_ORDER.filter((role) => byRole.has(role)).map((role) => (
+            <div key={role} className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
+                {BUREAU_ROLE_LABELS[role]}
+              </p>
+              {byRole.get(role)!.map((e) => (
+                <p key={e.id} className="text-sm font-bold">
+                  {employeeName(e)}
+                </p>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card mb-4">
+        <p className="font-bold mb-3">Chantier — par équipe</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {byTeam.map(([teamName, members]) => (
+            <div key={teamName} className="rounded-xl bg-slate-50 p-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
+                {teamName}
+              </p>
+              {members.map((e) => (
+                <p key={e.id} className="text-sm">
+                  {employeeName(e)}
+                </p>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {unassignedBureau.length > 0 && (
+        <div className="card">
+          <p className="font-bold mb-2 text-red-500">
+            Sans rôle ni équipe ({unassignedBureau.length})
+          </p>
+          {unassignedBureau.map((e) => (
+            <p key={e.id} className="text-sm">
+              {employeeName(e)}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Vue "Cours de français" — présence par séance ──────────────────────────
+type FrenchStudent = { employee_id: string; employees: { first_name: string; last_name: string } };
+type FrenchSession = { id: string; session_date: string };
+type FrenchAttendance = {
+  session_id: string;
+  employee_id: string;
+  absent: boolean | null;
+  homework_done: boolean | null;
+  control_done: boolean | null;
+};
+
+function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [students, setStudents] = useState<FrenchStudent[]>([]);
+  const [sessions, setSessions] = useState<FrenchSession[]>([]);
+  const [attendance, setAttendance] = useState<FrenchAttendance[]>([]);
+  const [sessionId, setSessionId] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [{ data: studentRows }, { data: sessionRows }] = await Promise.all([
+        supabase
+          .from("french_class_students")
+          .select("employee_id, employees(first_name, last_name)")
+          .order("employees(last_name)"),
+        supabase.from("french_class_sessions").select("id, session_date").order("session_date"),
+      ]);
+      setStudents((studentRows as unknown as FrenchStudent[]) ?? []);
+      const sessionList = (sessionRows as unknown as FrenchSession[]) ?? [];
+      setSessions(sessionList);
+
+      const todayStr = today();
+      const defaultSession =
+        sessionList.find((s) => s.session_date >= todayStr) ?? sessionList[sessionList.length - 1];
+      setSessionId(defaultSession?.id ?? "");
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      if (!sessionId) {
+        setAttendance([]);
+        return;
+      }
+      const { data } = await supabase
+        .from("french_class_attendance")
+        .select("session_id, employee_id, absent, homework_done, control_done")
+        .eq("session_id", sessionId);
+      setAttendance((data as unknown as FrenchAttendance[]) ?? []);
+    }
+    load();
+  }, [supabase, sessionId]);
+
+  const attendanceByEmployee = useMemo(() => {
+    const map = new Map<string, FrenchAttendance>();
+    attendance.forEach((a) => map.set(a.employee_id, a));
+    return map;
+  }, [attendance]);
+
+  async function toggle(
+    employeeId: string,
+    field: "absent" | "homework_done" | "control_done",
+    value: boolean
+  ) {
+    if (!sessionId) return;
+    setSaving(true);
+    const current = attendanceByEmployee.get(employeeId);
+    const payload = {
+      session_id: sessionId,
+      employee_id: employeeId,
+      absent: current?.absent ?? null,
+      homework_done: current?.homework_done ?? null,
+      control_done: current?.control_done ?? null,
+      [field]: value,
+    };
+    const { error } = await supabase
+      .from("french_class_attendance")
+      .upsert(payload, { onConflict: "session_id,employee_id" });
+    setSaving(false);
+    if (error) {
+      alert("Erreur : " + error.message);
+      return;
+    }
+    setAttendance((prev) => {
+      const others = prev.filter((a) => a.employee_id !== employeeId);
+      return [...others, payload];
+    });
+  }
+
+  if (loading) return <p className="text-slate-400">Chargement…</p>;
+
+  if (sessions.length === 0) {
+    return (
+      <p className="card text-center text-slate-400">
+        Aucune séance programmée. Exécutez la migration des cours de français pour importer le
+        calendrier.
+      </p>
+    );
+  }
+
+  return (
+    <div>
+      <div className="card mb-4 flex flex-wrap items-end gap-3">
+        <label className="font-bold text-sm">
+          Séance
+          <select
+            className="input mt-2"
+            value={sessionId}
+            onChange={(e) => setSessionId(e.target.value)}
+          >
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {formatDateShortDMY(s.session_date)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {saving && <span className="text-xs text-slate-400">Enregistrement…</span>}
+      </div>
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-slate-400">
+              <th className="py-2 pr-4">Élève</th>
+              <th className="py-2 pr-4">Absent (Н)</th>
+              <th className="py-2 pr-4">Devoir fait (ДЗ)</th>
+              <th className="py-2 pr-4">Contrôle (К)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {students.map((s) => {
+              const a = attendanceByEmployee.get(s.employee_id);
+              return (
+                <tr key={s.employee_id} className="border-t border-slate-100">
+                  <td className="py-2 pr-4 font-bold">{employeeName(s.employees)}</td>
+                  <td className="py-2 pr-4">
+                    <input
+                      type="checkbox"
+                      checked={a?.absent ?? false}
+                      onChange={(ev) => toggle(s.employee_id, "absent", ev.target.checked)}
+                    />
+                  </td>
+                  <td className="py-2 pr-4">
+                    <input
+                      type="checkbox"
+                      checked={a?.homework_done ?? false}
+                      onChange={(ev) => toggle(s.employee_id, "homework_done", ev.target.checked)}
+                    />
+                  </td>
+                  <td className="py-2 pr-4">
+                    <input
+                      type="checkbox"
+                      checked={a?.control_done ?? false}
+                      onChange={(ev) => toggle(s.employee_id, "control_done", ev.target.checked)}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatDateShortDMY(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
 }

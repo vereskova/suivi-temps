@@ -1,15 +1,27 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, signatureBlock } from "../types";
-import { formatDateShort, formatEuros } from "../helpers";
-import { agr, pronoun, salarieDu, salarieLabel, salarieLabelLower } from "../gender";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, signatureBlock } from "../types";
+import { formatDateFr, formatEuros } from "../helpers";
+import { agr, civility, pronoun, salarieLabel } from "../gender";
 
 export type ContratBureauParams = {
   startDate: string;
-  trialDays: number;
+  trialMonths: number; // période d'essai, in months (ETAM/Agent de maîtrise: 2 or 3 per L.1221-19)
   signingDate: string;
   signingCity: string;
   isPartTime: boolean;
-  weeklyHours: number;
+  weeklyEffectiveHours: number; // actual contracted weekly hours
+  hasStructuralOvertime: boolean; // true if weeklyEffectiveHours > 35 with built-in overtime
+  overtimeMajorationPercent: number; // e.g. 25 — only used if hasStructuralOvertime
   mobiliteZone: string;
+  travelDescription: string; // free text, e.g. "des déplacements ponctuels sur les chantiers..." — leave blank to omit
+  dealsWithClients: boolean;
+  classificationStatut: string; // e.g. "Technicien / Agent de maîtrise (ETAM)"
+  classificationReferenceCode: string; // optional repère-emploi code, e.g. "M110.01.001" — leave blank to omit
+  // Statutory minimums for the comparison paragraph in Article "Rémunération" — leave any blank to omit
+  // the whole paragraph rather than guess (these change periodically and must be RH-verified).
+  smgAnnualAmount: number | null;
+  smgMonthlyAmount: number | null;
+  smicMonthlyAmount: number | null;
+  smicHourlyRate: number | null;
 };
 
 export function contratBureau(
@@ -17,205 +29,328 @@ export function contratBureau(
   company: CompanyDoc,
   params: ContratBureauParams
 ): DocContent {
-  const fullName = `${employee.lastName.toUpperCase()} ${employee.firstName}`;
   const sex = employee.sex;
+  const civ = civility(sex);
+  const name = `${civ} ${employee.firstName} ${employee.lastName.toUpperCase()}`;
+  const fullNameUpper = `${employee.lastName.toUpperCase()} ${employee.firstName}`;
   const salarie = salarieLabel(sex);
-  const salarieLower = salarieLabelLower(sex);
+  const monthlyHoursNumber = params.isPartTime
+    ? Math.round(((params.weeklyEffectiveHours * 52) / 12) * 100) / 100
+    : 151.67;
+  const monthlyHours = monthlyHoursNumber.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 
   let articleNum = 0;
   function article(title: string): Block {
     articleNum += 1;
-    return { type: "heading", text: `Article ${articleNum}. ${title}` };
+    return { type: "heading", text: `ARTICLE ${articleNum} – ${title}` };
   }
+  // Article 1 cross-references the "Visite d'information et de prévention" article by number.
+  // Its position is fixed by the order of article() calls below (currently the 9th) — update
+  // this constant if that ordering ever changes.
+  const VISITE_ARTICLE_NUMBER = 9;
 
-  const classificationSentence =
+  const classificationLine =
     employee.classification || employee.classe
       ? para(
-          `Cette fonction correspond, au sein de la grille de classification de la convention collective applicable, au groupe ${
-            employee.classification ?? "____________"
-          }${employee.classe ? `, classe ${employee.classe}` : ""}.`
+          `Conformément à la grille de classification de la ${company.conventionCollective}, Titre V, articles 59 à 64, fondée sur l'évaluation des critères classants (autonomie, responsabilité, complexité, connaissances/formation-expérience), ${name} est ${agr(
+            sex,
+            "classé"
+          )} au Groupe ${employee.classification ?? "____________"}${
+            employee.classe ? `, Classe ${employee.classe}` : ""
+          }${params.classificationReferenceCode ? ` (référence ${params.classificationReferenceCode})` : ""}.`
         )
       : null;
+
+  const remunerationMinimumLine =
+    params.smgAnnualAmount && params.smgMonthlyAmount && params.smicMonthlyAmount && params.smicHourlyRate
+      ? [
+          para(
+            `Le salaire minimum garanti (SMG) conventionnel applicable au Groupe ${employee.classification ?? "____________"}${
+              employee.classe ? `, Classe ${employee.classe}` : ""
+            } retenu à l'article 1 s'élève à ${formatEuros(params.smgAnnualAmount)} bruts annuels, soit ${formatEuros(
+              params.smgMonthlyAmount
+            )} bruts mensuels pour ${monthlyHours} heures.`
+          ),
+          para(
+            `Le SMIC en vigueur, fixé à ${formatEuros(params.smicMonthlyAmount)} bruts mensuels pour ${monthlyHours} heures, soit un taux horaire de ${formatEuros(
+              params.smicHourlyRate
+            )}, ${
+              params.smicMonthlyAmount >= params.smgMonthlyAmount
+                ? "étant supérieur ou égal au SMG conventionnel, il"
+                : "le SMG conventionnel étant supérieur, celui-ci"
+            } constitue le minimum de rémunération applicable.`
+          ),
+        ]
+      : [];
+
+  const overtimeLine = params.hasStructuralOvertime
+    ? [
+        para(
+          `Les ${(params.weeklyEffectiveHours - 35).toString().replace(".", ",")} heures effectuées chaque semaine au-delà de la durée légale de 35 heures constituent des heures supplémentaires structurelles, intégrées à l'horaire contractuel. Elles seront rémunérées avec une majoration de salaire d'au moins ${params.overtimeMajorationPercent} %, conformément aux dispositions légales et conventionnelles applicables. Le détail de cette majoration figurera distinctement sur chaque bulletin de paie.`
+        ),
+      ]
+    : [];
 
   const blocks: Block[] = [
     {
       type: "title",
-      text: `CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE${
-        params.isPartTime ? " À TEMPS PARTIEL" : ""
-      }`,
+      text: `CONTRAT DE TRAVAIL À DURÉE INDÉTERMINÉE${params.isPartTime ? " À TEMPS PARTIEL" : ""}`,
     },
     rule(),
-    para("ENTRE LES SOUSSIGNÉS :"),
+    para("Entre les soussignés :"),
     { type: "spacer" },
-    p(b(`La société ${company.name}`)),
+    p(b(`${company.name}, ${company.legalForm}`)),
+    para(`Siège social : ${company.address}`),
     para(`SIRET : ${company.siret}`),
-    para(`Code NAF : ${company.nafCode}`),
-    para(`Dont le siège social est situé ${company.address}`),
-    p(t("Représentée par "), b(company.representativeName)),
-    para(`Agissant en qualité de ${company.representativeTitle}`),
-    para("Ci-après dénommé « L'Employeur »"),
-    para("D'UNE PART,"),
+    para(`Représentée par ${civility(company.representativeSex ?? "M")} ${company.representativeName}`),
+    para(`En sa qualité de ${company.representativeTitle}`),
+    para('Ci-après dénommée « la Société » ou « l\'employeur »'),
     { type: "spacer" },
-    para("ET"),
-    { type: "spacer" },
-    p(b(fullName)),
+    p(b(name)),
     para(
-      `${agr(sex, "Né", "e")} le ${formatDateShort(employee.dateOfBirth)}${
-        employee.birthPlace ? `, à ${employee.birthPlace}` : ""
+      `${agr(sex, "Né", "e")} le ${formatDateFr(employee.dateOfBirth)}${
+        employee.birthPlace ? ` à ${employee.birthPlace}` : ""
       }`
     ),
-    para(`De nationalité ${employee.nationality ?? "____________"}`),
-    para(`N° Sécurité Sociale : ${employee.socialSecurity ?? "____________"}`),
-    para(`Demeurant ${employee.address ?? "____________"}`),
-    para(`Ci-après ${agr(sex, "dénommé")} « ${salarie} »`),
-    para("D'AUTRE PART,"),
+    para(`N° de sécurité sociale : ${employee.socialSecurity ?? "____________"}`),
+    para(`Demeurant : ${employee.address ?? "____________"}`),
+    para(`Nationalité : ${employee.nationality ?? "____________"}`),
+    para(`Ci-après ${agr(sex, "dénommé")} « ${sex === "F" ? "la salariée" : "le salarié"} »`),
     { type: "spacer" },
-    para("IL A ÉTÉ CONVENU CE QUI SUIT :"),
+    para("Il est convenu ce qui suit :"),
     { type: "spacer" },
 
-    article("Conditions d'engagement"),
+    article("ENGAGEMENT – EMPLOI"),
     para(
-      `${salarie}, qui se déclare libre de tout engagement, est ${agr(sex, "embauché")} pour une durée indéterminée${
-        params.isPartTime ? " à temps partiel" : " à temps plein"
-      }, à compter du ${formatDateShort(params.startDate)} sous réserve des résultats de la visite médicale d'embauche.`
+      `${name} est ${agr(sex, "engagé")} à compter du ${formatDateFr(params.startDate)} en qualité de ${
+        employee.jobTitle ?? "____________"
+      }, sous réserve, en application de la réglementation en vigueur, des résultats de la visite d'information et de prévention prévue à l'article ${VISITE_ARTICLE_NUMBER} du présent contrat.`
     ),
-    para(`La déclaration préalable d'embauche a été faite auprès de l'URSSAF le ${formatDateShort(params.startDate)}.`),
-
-    article("Convention collective"),
+    para(`Statut : ${params.classificationStatut}.`),
+    ...(classificationLine ? [classificationLine] : []),
     para(
-      `Sous réserve d'une évolution de l'activité de l'entreprise, le présent contrat est régi par les dispositions de la ${company.conventionCollective}.`
-    ),
-
-    article("Fonctions et classification"),
-    para(`${salarie} est ${agr(sex, "engagé")} en qualité de ${employee.jobTitle ?? "____________"}.`),
-    ...(classificationSentence ? [classificationSentence] : []),
-
-    article("Période d'essai"),
-    para(
-      `Le présent contrat est conclu pour une durée indéterminée, il ne deviendra définitif qu'à l'issue de la période d'essai fixée à ${params.trialDays} jours, renouvelable une fois si un accord de branche le prévoit et pour une durée maximum égale à la première. En cas de renouvellement de la période d'essai, un accord écrit devra être établi.`
+      `${name} déclare être libre de tout engagement, n'être ${agr(
+        sex,
+        "tenu"
+      )} par aucune clause de non-concurrence, n'être ${agr(
+        sex,
+        "frappé"
+      )} d'aucune incapacité ni d'aucune inaptitude physique à l'exercice de son activité.`
     ),
     para(
-      "Durant cette période d'essai, le contrat pourra être rompu par l'une ou l'autre des parties, à tout moment, sous réserve du respect du délai de prévenance prévu aux articles L.1221-25 ou L.1221-26 du Code du travail."
-    ),
-    para(
-      "Au terme de la période d'essai, si elle s'est avérée satisfaisante, le présent contrat deviendra définitif et se poursuivra pour une période indéterminée."
+      `Le présent contrat est régi par les dispositions légales et réglementaires en vigueur, par les dispositions de la convention collective actuellement applicable à l'entreprise, à savoir la ${company.conventionCollective}, ainsi que par les dispositions particulières ci-après.`
     ),
 
-    article("Lieu de travail"),
-    para(`${salarie} est ${agr(sex, "rattaché")} initialement au siège social de l'entreprise.`),
+    article("CONVENTION COLLECTIVE"),
     para(
-      `Cette mobilité pourra s'exercer dans les limites géographiques suivantes : ${params.mobiliteZone}.`
+      `Le présent contrat est régi par la ${company.conventionCollective}, ainsi que par tout accord de branche ou d'entreprise qui viendrait s'y substituer ou la compléter. Cette convention est tenue à la disposition du personnel auprès de la direction, conformément à l'article R.2262-3 du Code du travail.`
     ),
 
-    article("Rémunération"),
+    article("PÉRIODE D'ESSAI"),
+    para(
+      `Le contrat de travail est conclu pour une durée indéterminée. Il prend cours le ${formatDateFr(params.startDate)}.`
+    ),
+    para(
+      `Le présent contrat ne deviendra définitif qu'à l'issue d'une période d'essai de ${params.trialMonths} mois maximum à compter du ${formatDateFr(
+        params.startDate
+      )}, conformément à l'article L.1221-19 du Code du travail applicable aux employés, techniciens et agents de maîtrise.`
+    ),
+    para(
+      `Pendant la période d'essai, chacune des parties peut rompre librement le contrat, sous réserve du respect du délai de prévenance légal ou conventionnel en vigueur. En cas de rupture à l'initiative de la Société, une lettre sera adressée à ${name} respectant ce délai de prévenance.`
+    ),
+    para(
+      `La période d'essai ne pourra être renouvelée qu'une seule fois, pour une durée maximale égale à la première, et à la double condition que ce renouvellement soit expressément prévu par la convention collective applicable et qu'il recueille l'accord exprès et écrit de ${name}, donné avant le terme de la période d'essai initiale, conformément à l'article L.1221-23 du Code du travail. À défaut d'un tel accord écrit, la période d'essai ne pourra pas être renouvelée.`
+    ),
+
+    article("DURÉE DU TRAVAIL"),
+    para(
+      `La durée légale du travail applicable est de 35 heures hebdomadaires.${
+        params.isPartTime
+          ? ` La durée hebdomadaire de travail contractuelle de ${name} est fixée à ${params.weeklyEffectiveHours} heures.`
+          : ` La durée hebdomadaire de travail effectif de ${name} est fixée à ${params.weeklyEffectiveHours} heures.`
+      }`
+    ),
+    ...overtimeLine,
+    para(
+      `L'horaire de travail de ${name} est réparti selon les modalités en vigueur au sein de l'entreprise, affichées sur le lieu de travail, et pourra être modifié en fonction des nécessités de service, dans le respect des dispositions légales, réglementaires et conventionnelles applicables.`
+    ),
+    para(
+      `Toute heure supplémentaire${params.hasStructuralOvertime ? " effectuée au-delà de l'horaire contractuel" : ""} devra faire l'objet de l'accord préalable et exprès du supérieur hiérarchique de ${name}.`
+    ),
+
+    article("RÉMUNÉRATION"),
     para(
       params.isPartTime
-        ? `En contrepartie de son travail, ${salarie} percevra une rémunération mensuelle brute de ${formatEuros(employee.monthlyGrossSalary)} pour ${params.weeklyHours}h par semaine.`
-        : `En contrepartie de son travail, ${salarie} percevra une rémunération mensuelle brute de ${formatEuros(employee.monthlyGrossSalary)}.`
+        ? `En contrepartie de son travail, ${name} percevra une rémunération mensuelle brute de base de ${formatEuros(
+            employee.monthlyGrossSalary
+          )} pour un horaire mensuel de ${monthlyHours} heures.`
+        : `En contrepartie de son travail, ${name} percevra une rémunération mensuelle brute de base de ${formatEuros(
+            employee.monthlyGrossSalary
+          )} pour un horaire mensuel de ${monthlyHours} heures (équivalent à ${params.weeklyEffectiveHours} heures hebdomadaires).`
     ),
+    ...remunerationMinimumLine,
 
-    article("Durée du travail"),
-    para(
-      params.isPartTime
-        ? `${salarie} est ${agr(sex, "engagé")} à temps partiel, pour un horaire hebdomadaire de ${params.weeklyHours}h par semaine. Cette durée sera répartie de façon à convenir entre les parties selon les besoins de l'entreprise.`
-        : `${salarie} est ${agr(sex, "engagé")} à temps plein, pour un horaire hebdomadaire de ${params.weeklyHours}h par semaine.`
-    ),
-
-    ...(params.isPartTime
-      ? ([
-          article("Modification de la répartition horaire & Heures complémentaires"),
+    article("LIEU DE TRAVAIL ET MOBILITÉ"),
+    para(`Le lieu d'exécution habituel du contrat de travail est fixé au ${company.address}.`),
+    ...(params.travelDescription
+      ? [
           para(
-            "La répartition de la durée de travail pourra être modifiée dans les cas suivants : changements des heures d'ouverture, remplacement d'un salarié absent, accroissement de l'activité, accord entre les parties, réorganisation du planning de travail."
+            `Compte tenu de la nature de ses fonctions et de l'activité de la Société, ${name} pourra être ${agr(
+              sex,
+              "amené"
+            )} à effectuer ${params.travelDescription}, dans le respect des dispositions légales et conventionnelles applicables en matière de durée du travail et de repos.`
           ),
-          para(
-            "Cette modification sera notifiée au salarié au moins 7 jours avant son entrée en vigueur par lettre recommandée avec demande d'avis de réception."
-          ),
-          para(
-            "Conformément aux articles L.3123-14 et L.3123-17 du Code du travail, des heures complémentaires pourront être effectuées dans la limite d'1/5ᵉ des heures."
-          ),
-        ] as Block[])
+        ]
       : []),
-
-    article("Heures d'absences"),
     para(
-      "Les heures d'absences pour convenance personnelle devront avoir obligatoirement l'accord de l'employeur, faute de quoi ces absences seront considérées comme injustifiées."
-    ),
-    para(
-      `En cas d'absence pour maladie, ${salarieLower} devra prévenir de son absence dans les plus brefs délais et justifier dans les 48 heures par la production d'un certificat médical.`
+      `Par ailleurs, une clause de mobilité est convenue entre les parties : ${name} pourra être ${agr(
+        sex,
+        "affecté"
+      )}, en fonction des nécessités de service, dans les limites géographiques suivantes : ${params.mobiliteZone}. Toute extension de ce périmètre fera l'objet d'un accord écrit préalable des parties.`
     ),
 
-    article("Retraite et Prévoyance"),
-    para(`Dès son entrée dans l'entreprise, ${salarieLower} sera ${agr(sex, "affilié")} aux caisses de retraite et de prévoyance de l'entreprise.`),
-
-    article("Congés payés"),
+    article("OBLIGATIONS PROFESSIONNELLES"),
     para(
-      `${salarie} bénéficiera des congés payés institués en faveur des salariés de l'entreprise, soit 2,0833 jours ouvrés de congés payés par mois de travail effectif, soit 25 jours ouvrés pour une période de travail calculée du 1er juin de l'année précédente au 31 mai de l'année en cours.`
+      `${name} s'engage à observer toutes les instructions et consignes particulières de travail qui lui seront données et, plus particulièrement, les consignes relatives à l'hygiène et à la sécurité en vigueur dans l'entreprise.`
+    ),
+    para(
+      `${civ === "Monsieur" ? "Il" : "Elle"} s'engage également à respecter une stricte obligation de discrétion sur tout ce qui concerne l'activité de l'entreprise${
+        params.dealsWithClients ? " ainsi que sur toutes les informations concernant sa clientèle" : ""
+      }.`
+    ),
+    ...(params.dealsWithClients
+      ? [
+          para(
+            `Pouvant être en contact avec la clientèle, ${name} devra veiller à lui réserver un accueil aimable et ce, en toutes circonstances, et devra avoir une tenue vestimentaire correcte et compatible avec ses fonctions.`
+          ),
+        ]
+      : []),
+    para(
+      `${name} devra faire connaître à l'entreprise, sans délai, toute modification postérieure à son engagement qui pourrait intervenir dans son état civil, sa situation de famille ou son adresse.`
+    ),
+    para(
+      `Dès la cessation de ses fonctions au sein de l'entreprise, ${name} devra restituer les documents et autres matériels qui lui ont été confiés ou établis par ses soins pour l'exercice de sa fonction.`
     ),
 
-    article("Ancienneté"),
+    article("ABSENCES DIVERSES"),
     para(
-      `L'ancienneté ${salarieDu(sex)}, pour la détermination des droits qui y sont liés, sera calculée selon des modalités identiques à celles applicables aux salariés à temps complet.`
+      `Toute absence, quelle que soit sa durée, doit faire l'objet d'une justification auprès de la Société sans délai et selon tout moyen à la convenance de ${name}.`
+    ),
+    para(`${name} s'engage donc :`),
+    {
+      type: "list",
+      items: [
+        "à informer immédiatement la Société de tout empêchement d'exercer ses fonctions, en indiquant les motifs et la durée prévisible de cette absence ;",
+        "et à produire un justificatif dans les 48 heures.",
+      ],
+    },
+
+    article("VISITE D'INFORMATION ET DE PRÉVENTION"),
+    para(
+      `${name} bénéficiera d'une visite d'information et de prévention, qui devra intervenir dans un délai maximal de trois mois à compter de sa prise effective de fonctions, conformément aux articles R.4624-10 et suivants du Code du travail, sauf régime particulier de suivi renforcé applicable le cas échéant.`
     ),
 
-    article("Égalité de traitement"),
+    article("GARANTIES SOCIALES – MUTUELLE, PRÉVOYANCE ET RETRAITE"),
     para(
-      `${salarie} bénéficiera de tous les droits et avantages reconnus aux salariés à temps plein travaillant dans l'entreprise, au prorata de son temps de travail le cas échéant.`
+      `La Société a souscrit, au bénéfice de l'ensemble de ses salariés, un régime collectif et obligatoire de complémentaire santé et de prévoyance auprès de ${company.mutuelleProvider}.`
+    ),
+    para(
+      `${name} sera ${agr(
+        sex,
+        "affilié"
+      )} à ce régime dès son entrée en fonction, dans les conditions et selon les modalités de participation de l'employeur en vigueur au sein de la Société, sous réserve des cas de dispense d'adhésion prévus par la réglementation applicable. Une notice d'information détaillée lui sera remise par l'employeur.`
+    ),
+    para(
+      `${name} sera par ailleurs ${agr(
+        sex,
+        "affilié"
+      )}, dès son entrée en fonction, aux caisses de retraite complémentaire (AGIRC-ARRCO) dont relève l'entreprise, dans les conditions prévues par les dispositions légales et conventionnelles en vigueur.`
     ),
 
-    article("Cumul d'emplois"),
+    article("CONGÉS PAYÉS"),
     para(
-      `${salarie} pourra exercer, en parallèle, une autre activité professionnelle, sous réserve qu'elle ne porte pas préjudice aux intérêts légitimes de l'entreprise et dans le respect des durées maximales légales de travail.`
+      `${name} bénéficiera des congés payés institués en faveur des salariés de l'entreprise, soit 2,0833 jours ouvrés de congés payés par mois de travail effectif, soit 25 jours ouvrés pour une période de référence calculée du 1er juin de l'année précédente au 31 mai de l'année en cours, conformément aux articles L.3141-3 et suivants du Code du travail.`
     ),
 
-    article("Confidentialité"),
+    article("TRAITEMENT DES DONNÉES PERSONNELLES"),
     para(
-      `${salarie} s'engage à respecter une stricte obligation de discrétion et de confidentialité sur tout ce qui concerne l'activité de l'entreprise. Cette obligation se prolongera après la cessation du contrat de travail, quelle qu'en soit la cause.`
-    ),
-
-    article("Traitement des données personnelles"),
-    para(
-      `${salarie}, étant à ce titre ${agr(sex, "amené")} à accéder à des données à caractère personnel dans l'exercice de ses fonctions, déclare reconnaître la confidentialité desdites données.`
+      `${name}, exerçant les fonctions de ${employee.jobTitle ?? "____________"} au sein de la Société, étant à ce titre ${agr(
+        sex,
+        "amené"
+      )} à accéder à des données à caractère personnel, déclare reconnaître la confidentialité desdites données.`
     ),
     para(
-      `Conformément aux articles 34 et 35 de la loi du 6 janvier 1978 modifiée relative à l'informatique, aux fichiers et aux libertés ainsi qu'aux articles 32 à 35 du Règlement général sur la protection des données du 27 avril 2016, ${pronoun(sex)} s'engage à prendre toutes précautions conformes aux usages afin de protéger la confidentialité des informations auxquelles ${pronoun(sex)} a accès.`
+      `${name} s'engage par conséquent, conformément à la loi n° 78-17 du 6 janvier 1978 modifiée relative à l'informatique, aux fichiers et aux libertés, ainsi qu'au Règlement général sur la protection des données (RGPD) du 27 avril 2016, à prendre toutes précautions conformes aux usages et à l'état de l'art dans le cadre de ses attributions afin de protéger la confidentialité des informations auxquelles ${pronoun(
+        sex
+      )} a accès, et en particulier d'empêcher qu'elles ne soient modifiées, endommagées ou communiquées à des personnes non expressément autorisées à recevoir ces informations.`
     ),
+    para(`${name} s'engage en particulier à :`),
+    {
+      type: "list",
+      items: [
+        `ne pas utiliser les données auxquelles ${pronoun(sex)} peut accéder à des fins autres que celles prévues par ses attributions ;`,
+        "ne divulguer ces données qu'aux personnes dûment autorisées, en raison de leurs fonctions, à en recevoir communication, qu'il s'agisse de personnes privées, publiques, physiques ou morales ;",
+        "ne faire aucune copie de ces données sauf si cela est nécessaire à l'exécution de ses fonctions ;",
+        "prendre toutes les mesures conformes aux usages et à l'état de l'art dans le cadre de ses attributions afin d'éviter l'utilisation détournée ou frauduleuse de ces données ;",
+        "prendre toutes précautions conformes aux usages et à l'état de l'art pour préserver la sécurité de ces données ;",
+        "s'assurer, dans la limite de ses attributions, que seuls des moyens de communication sécurisés seront utilisés pour transférer ces données ;",
+        "en cas de cessation de ses fonctions, restituer intégralement les données, fichiers informatiques et tout support d'information relatif à ces données.",
+      ],
+    },
     para(
       "Cet engagement de confidentialité, en vigueur pendant toute la durée de ses fonctions, demeurera effectif, sans limitation de durée après la cessation de ses fonctions, quelle qu'en soit la cause, dès lors que cet engagement concerne l'utilisation et la communication de données à caractère personnel."
     ),
-
-    article("Formation professionnelle"),
     para(
-      `${salarie} bénéficie du droit à la formation professionnelle tout au long de la vie, notamment au titre du compte personnel de formation (CPF) et du plan de développement des compétences de l'entreprise.`
-    ),
-    para(
-      `${salarie} est ${agr(sex, "informé")} qu'${pronoun(sex)} bénéficie tous les deux ans d'un entretien professionnel avec son employeur consacré à ses perspectives d'évolution professionnelle, notamment en termes de qualifications et d'emploi, conformément aux dispositions de l'article L.6315-1 du Code du travail.`
+      `${name} reconnaît avoir été ${agr(
+        sex,
+        "informé"
+      )} que toute violation du présent engagement l'expose notamment à des actions et sanctions disciplinaires et pénales conformément aux dispositions légales en vigueur.`
     ),
 
-    article("Préavis"),
+    article("CONFIDENTIALITÉ"),
+    para(
+      `${name} s'engage à respecter une stricte obligation de discrétion et de confidentialité sur tout ce qui concerne l'activité de l'entreprise, ses procédés, son savoir-faire et ses informations commerciales ou financières. Cette obligation se prolongera après la cessation du contrat de travail, quelle qu'en soit la cause.`
+    ),
+
+    article("FORMATION PROFESSIONNELLE"),
+    para(
+      `${name} bénéficie du droit à la formation professionnelle continue tout au long de sa carrière, notamment par la mobilisation de son compte personnel de formation (CPF) dans les conditions prévues aux articles L.6323-1 et suivants du Code du travail, ainsi que, le cas échéant, du plan de développement des compétences mis en œuvre par l'entreprise.`
+    ),
+
+    article("ENTRETIEN PROFESSIONNEL"),
+    para(
+      `${name} est ${agr(
+        sex,
+        "informé"
+      )} qu'${pronoun(sex)} bénéficie, tous les deux ans, d'un entretien professionnel avec son employeur consacré à ses perspectives d'évolution professionnelle, notamment en termes de qualifications et d'emploi, conformément aux dispositions de l'article L.6315-1 du Code du travail.`
+    ),
+
+    article("PRÉAVIS"),
     para(
       "En cas de rupture du contrat de travail à l'initiative de l'une ou l'autre des parties, un préavis devra être respecté, dont la durée est fixée par les dispositions légales et conventionnelles en vigueur en fonction de l'ancienneté acquise au moment du départ."
     ),
 
-    article("Conditions d'exécution du contrat"),
+    article("CONDITIONS D'EXÉCUTION DU CONTRAT"),
     para(
-      `${salarie} s'engage à observer toutes les instructions et consignes particulières de travail qui lui seront données, et à faire connaître à l'entreprise sans délai toute modification postérieure à son engagement (état civil, situation de famille, adresse, etc.).`
+      `${name} s'engage à observer toutes les instructions et consignes particulières de travail qui lui seront données, et à faire connaître à l'entreprise sans délai toute modification postérieure à son engagement (état civil, situation de famille, adresse, etc.).`
     ),
 
-    article("Engagement"),
+    article("MENTIONS FINALES"),
     para(
-      `${salarie} reconnaît avoir pris connaissance du présent contrat, en accepte toutes les modalités et s'engage expressément à les respecter.`
+      `${name} reconnaît avoir pris connaissance du présent contrat, en accepte toutes les modalités et s'engage expressément à les respecter.`
     ),
-    para(
-      "Le présent contrat est établi en deux exemplaires originaux dont l'un devra être retourné signé à l'entreprise dans les plus brefs délais."
-    ),
+    para("Le présent contrat est établi en deux exemplaires originaux dont l'un est remis à chaque partie."),
 
     { type: "spacer" },
-    para(`Fait à ${params.signingCity}, le ${formatDateShort(params.signingDate)}`),
+    para(`Fait en double exemplaire à ${params.signingCity}, le ${formatDateFr(params.signingDate)}.`),
     signatureBlock(
-      { label: "L'Employeur", lines: [company.representativeName, company.representativeTitle] },
-      { label: salarie, lines: [fullName, "« Lu et approuvé »"] }
+      {
+        label: "L'employeur",
+        lines: [`${company.name}, ${company.legalForm}`, company.representativeName, company.representativeTitle],
+      },
+      { label: salarie, lines: [name, "(signature précédée de la mention « Lu et approuvé »)"] }
     ),
   ];
 
-  return { title: `Contrat de travail — ${fullName}`, blocks };
+  return { title: `Contrat de travail — ${fullNameUpper}`, blocks };
 }

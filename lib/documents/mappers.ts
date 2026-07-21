@@ -31,7 +31,9 @@ export type CompanyRow = {
   signing_city: string;
   representative_name: string;
   representative_title: string;
+  representative_sex: Sex;
   convention_collective: string;
+  mutuelle_provider: string;
 };
 
 export const EMPLOYEE_DOC_SELECT =
@@ -72,6 +74,8 @@ export function mapCompanyRow(row: CompanyRow): CompanyDoc {
     signingCity: row.signing_city,
     representativeName: row.representative_name,
     representativeTitle: row.representative_title,
+    representativeSex: row.representative_sex,
     conventionCollective: row.convention_collective,
+    mutuelleProvider: row.mutuelle_provider,
   };
 }

@@ -86,5 +86,7 @@ export type CompanyDoc = {
   signingCity: string;
   representativeName: string;
   representativeTitle: string;
+  representativeSex: Sex;
   conventionCollective: string;
+  mutuelleProvider: string;
 };
