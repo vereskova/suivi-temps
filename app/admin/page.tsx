@@ -7,16 +7,26 @@ import * as XLSX from "xlsx";
 import {
   ArrowLeft,
   BarChart3,
+  Banknote,
   BookText,
   CalendarDays,
+  ClipboardCheck,
+  CreditCard,
   Download,
+  FileSignature,
   FileSpreadsheet,
   FileText,
   FolderLock,
+  Fingerprint,
   GraduationCap,
+  HardHat,
   HeartPulse,
+  Image as ImageIcon,
   Languages,
+  LogOut,
   Network,
+  Plane,
+  ShieldCheck,
   Shirt,
   Trash2,
   Upload,
@@ -37,6 +47,7 @@ import {
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
 import { computePayrollLine, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
+import { isForeignNationality } from "@/lib/nationality";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
 import { toast } from "@/components/Toast";
@@ -110,6 +121,22 @@ function today() {
  *  flagged as an impure call during render. */
 function uniqueFileToken() {
   return Date.now();
+}
+
+function daysUntil(iso: string): number {
+  const now = new Date(today() + "T00:00:00Z").getTime();
+  const target = new Date(iso + "T00:00:00Z").getTime();
+  return Math.round((target - now) / 86400000);
+}
+
+/** Shared "expiring/overdue" badge logic for document expiry dates and the next
+ *  médecine du travail visit — same urgency language either way. */
+function dateUrgency(iso: string | null): { label: string; tone: "error" | "warning" } | null {
+  if (!iso) return null;
+  const days = daysUntil(iso);
+  if (days < 0) return { label: "En retard", tone: "error" };
+  if (days <= 30) return { label: `Dans ${days} j`, tone: "warning" };
+  return null;
 }
 
 function fmtMinutes(min: number | null | undefined) {
@@ -3179,121 +3206,6 @@ type RegistreEditForm = {
 
 // EU/EEA/Switzerland nationals don't need a work permit in France — only nationalities
 // outside this list should be flagged as needing a titre de séjour/travail check.
-const EU_EEA_CH_NATIONALITY_MARKERS = [
-  "FRANCE",
-  "FRANÇAISE",
-  "FRANCAISE",
-  "FRANÇAIS",
-  "FRANCAIS",
-  "FR",
-  "ALLEMAGNE",
-  "ALLEMANDE",
-  "DE",
-  "AUTRICHE",
-  "AUTRICHIENNE",
-  "AT",
-  "BELGIQUE",
-  "BELGE",
-  "BE",
-  "BULGARIE",
-  "BULGARE",
-  "BG",
-  "CHYPRE",
-  "CHYPRIOTE",
-  "CY",
-  "CROATIE",
-  "CROATE",
-  "HR",
-  "DANEMARK",
-  "DANOISE",
-  "DK",
-  "ESPAGNE",
-  "ESPAGNOLE",
-  "ES",
-  "ESTONIE",
-  "ESTONIENNE",
-  "EE",
-  "FINLANDE",
-  "FINLANDAISE",
-  "FI",
-  "GRÈCE",
-  "GRECE",
-  "GRECQUE",
-  "GR",
-  "HONGRIE",
-  "HONGROISE",
-  "HU",
-  "IRLANDE",
-  "IRLANDAISE",
-  "IE",
-  "ITALIE",
-  "ITALIENNE",
-  "IT",
-  "LETTONIE",
-  "LETTONE",
-  "LV",
-  "LITUANIE",
-  "LITUANIENNE",
-  "LT",
-  "LUXEMBOURG",
-  "LUXEMBOURGEOISE",
-  "LU",
-  "MALTE",
-  "MALTAISE",
-  "MT",
-  "PAYS-BAS",
-  "NÉERLANDAISE",
-  "NEERLANDAISE",
-  "NL",
-  "POLOGNE",
-  "POLONAISE",
-  "PL",
-  "PORTUGAL",
-  "PORTUGAISE",
-  "PT",
-  "TCHÉQUIE",
-  "TCHEQUIE",
-  "RÉPUBLIQUE TCHÈQUE",
-  "REPUBLIQUE TCHEQUE",
-  "TCHÈQUE",
-  "TCHEQUE",
-  "CZ",
-  "ROUMANIE",
-  "ROUMAINE",
-  "RO",
-  "SLOVAQUIE",
-  "SLOVAQUE",
-  "SK",
-  "SLOVÉNIE",
-  "SLOVENIE",
-  "SLOVÈNE",
-  "SLOVENE",
-  "SI",
-  "SUÈDE",
-  "SUEDE",
-  "SUÉDOISE",
-  "SUEDOISE",
-  "SE",
-  // EEA + Switzerland (same work-permit exemption in practice)
-  "ISLANDE",
-  "ISLANDAISE",
-  "IS",
-  "LIECHTENSTEIN",
-  "LI",
-  "NORVÈGE",
-  "NORVEGE",
-  "NORVÉGIENNE",
-  "NORVEGIENNE",
-  "NO",
-  "SUISSE",
-  "SUISSESSE",
-  "CH",
-];
-
-function isForeignNationality(nationalite: string | null): boolean {
-  if (!nationalite) return false;
-  return !EU_EEA_CH_NATIONALITY_MARKERS.includes(nationalite.trim().toUpperCase());
-}
 
 function toRegistreEditForm(r: RegistreRow): RegistreEditForm {
   return {
@@ -4541,9 +4453,18 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   );
 }
 
-// ── Vue "Dossier salarié" — documents par catégorie, stockés dans Supabase Storage ──
+
+// ── Vue "Dossier salarié" — documents par type, avec péremption et périodes d'embauche ──
 type DossierEmployee = { id: string; first_name: string; last_name: string; status: EmployeeStatus };
-type DocumentCategory = { code: string; label: string; sort_order: number; sensitive: boolean };
+type DocumentCategory = {
+  code: string;
+  label: string;
+  sort_order: number;
+  sensitive: boolean;
+  requires_expiry: boolean;
+  foreigners_only: boolean;
+  per_period: boolean;
+};
 type EmployeeDocumentRow = {
   id: string;
   employee_id: string;
@@ -4552,15 +4473,151 @@ type EmployeeDocumentRow = {
   storage_path: string;
   file_size: number | null;
   created_at: string;
+  valid_until: string | null;
+  registre_entry_id: string | null;
 };
+type DossierConfidential = {
+  nationality: string | null;
+  rib: string | null;
+  status_ameli: string | null;
+  carte_vitale: string | null;
+  residence_permit_type: string | null;
+  residence_permit_number: string | null;
+};
+type DossierMedicalVisit = {
+  id: string;
+  last_visit_date: string | null;
+  next_visit_date: string | null;
+  visit_subtype: string | null;
+};
+type RegistreEntry = { id: string; date_entree: string | null; date_sortie: string | null; nationalite: string | null };
 
 const DOSSIER_BUCKET = "dossier-salarie";
+
+const DOSSIER_CATEGORY_ICONS: Record<string, LucideIcon> = {
+  contrat: FileSignature,
+  rib: Banknote,
+  assurance_maladie: ShieldCheck,
+  medical_prevaly: HeartPulse,
+  titre_visa: Fingerprint,
+  passeport: Plane,
+  rupture: LogOut,
+  carte_btp: HardHat,
+  carte_vitale: CreditCard,
+  dpae: ClipboardCheck,
+  photo: ImageIcon,
+};
 
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} o`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} Ko`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+}
+
+function DossierPeriodCategory({
+  category,
+  icon: Icon,
+  entries,
+  documents,
+  uploadingKey,
+  onUpload,
+  onDownload,
+  onDelete,
+}: {
+  category: DocumentCategory;
+  icon: LucideIcon;
+  entries: RegistreEntry[];
+  documents: EmployeeDocumentRow[];
+  uploadingKey: string | null;
+  onUpload: (categoryCode: string, file: File, registreEntryId: string) => void;
+  onDownload: (doc: EmployeeDocumentRow) => void;
+  onDelete: (doc: EmployeeDocumentRow) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 p-3">
+      <p className="text-sm font-bold flex items-center gap-2 mb-2">
+        <Icon size={15} className="text-slate-400" />
+        {category.label}
+      </p>
+      {entries.length === 0 ? (
+        <p className="text-xs text-slate-400">
+          {category.code === "rupture"
+            ? "Aucune sortie enregistrée."
+            : "Aucune période d'embauche trouvée dans le Registre du personnel."}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {entries.map((entry) => {
+            const docs = documents.filter(
+              (d) => d.category_code === category.code && d.registre_entry_id === entry.id
+            );
+            const key = `${category.code}:${entry.id}`;
+            return (
+              <div key={entry.id} className="rounded-lg bg-slate-50 p-2.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-slate-500">
+                    {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
+                    {entry.date_sortie ? formatDateShortDMY(entry.date_sortie) : "en cours"}
+                  </p>
+                  <label className="btn btn-secondary text-xs px-2.5 py-1 cursor-pointer">
+                    {uploadingKey === key ? (
+                      "Envoi…"
+                    ) : (
+                      <>
+                        <Upload size={12} /> Ajouter
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      className="hidden"
+                      disabled={uploadingKey !== null}
+                      onChange={(ev) => {
+                        const file = ev.target.files?.[0];
+                        ev.target.value = "";
+                        if (file) onUpload(category.code, file, entry.id);
+                      }}
+                    />
+                  </label>
+                </div>
+                {docs.length === 0 ? (
+                  <p className="text-xs text-slate-400">Aucun document.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {docs.map((doc) => (
+                      <li
+                        key={doc.id}
+                        className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm hover:bg-white"
+                      >
+                        <span className="truncate">{doc.file_name}</span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-slate-400">{formatFileSize(doc.file_size)}</span>
+                          <button
+                            onClick={() => onDownload(doc)}
+                            title="Télécharger"
+                            className="text-slate-400 hover:text-primary-600"
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button
+                            onClick={() => onDelete(doc)}
+                            title="Supprimer"
+                            className="text-slate-400 hover:text-error-600"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -4572,43 +4629,98 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
   const [documents, setDocuments] = useState<EmployeeDocumentRow[]>([]);
-  const [loadingDocuments, setLoadingDocuments] = useState(false);
-  const [uploadingCategory, setUploadingCategory] = useState<string | null>(null);
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [confidential, setConfidential] = useState<DossierConfidential | null>(null);
+  const [medicalVisits, setMedicalVisits] = useState<DossierMedicalVisit[]>([]);
+  const [registreEntries, setRegistreEntries] = useState<RegistreEntry[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
+  const [expiryDate, setExpiryDate] = useState("");
+
+  const [overdueCounts, setOverdueCounts] = useState<Map<string, number>>(new Map());
+
+  async function reloadOverdueCounts() {
+    const t = today();
+    const [{ data: docs }, { data: visits }] = await Promise.all([
+      supabase.from("employee_documents").select("employee_id, valid_until").lt("valid_until", t),
+      supabase.from("medical_visits").select("employee_id, next_visit_date").lt("next_visit_date", t),
+    ]);
+    const map = new Map<string, number>();
+    (docs ?? []).forEach((d: { employee_id: string }) => map.set(d.employee_id, (map.get(d.employee_id) ?? 0) + 1));
+    (visits ?? []).forEach((v: { employee_id: string }) => map.set(v.employee_id, (map.get(v.employee_id) ?? 0) + 1));
+    setOverdueCounts(map);
+  }
 
   useEffect(() => {
     async function load() {
       setLoadingEmployees(true);
       const [{ data: emp }, { data: cats }] = await Promise.all([
-        supabase
-          .from("employees")
-          .select("id, first_name, last_name, status")
-          .order("last_name"),
+        supabase.from("employees").select("id, first_name, last_name, status").order("last_name"),
         supabase.from("document_categories").select("*").order("sort_order"),
       ]);
       setEmployees((emp as DossierEmployee[]) ?? []);
       setCategories((cats as DocumentCategory[]) ?? []);
       setLoadingEmployees(false);
+      await reloadOverdueCounts();
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
+  async function reloadDocuments() {
+    if (!selectedEmployeeId) return;
+    const { data } = await supabase
+      .from("employee_documents")
+      .select(
+        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id"
+      )
+      .eq("employee_id", selectedEmployeeId)
+      .order("created_at", { ascending: false });
+    setDocuments((data as EmployeeDocumentRow[]) ?? []);
+  }
+
   useEffect(() => {
-    async function loadDocs() {
+    async function loadDetail() {
       if (!selectedEmployeeId) {
         setDocuments([]);
+        setConfidential(null);
+        setMedicalVisits([]);
+        setRegistreEntries([]);
         return;
       }
-      setLoadingDocuments(true);
-      const { data } = await supabase
-        .from("employee_documents")
-        .select("id, employee_id, category_code, file_name, storage_path, file_size, created_at")
-        .eq("employee_id", selectedEmployeeId)
-        .order("created_at", { ascending: false });
-      setDocuments((data as EmployeeDocumentRow[]) ?? []);
-      setLoadingDocuments(false);
+      setLoadingDetail(true);
+      const [{ data: docs }, { data: conf }, { data: visits }, { data: registre }] = await Promise.all([
+        supabase
+          .from("employee_documents")
+          .select(
+            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id"
+          )
+          .eq("employee_id", selectedEmployeeId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("employee_confidential")
+          .select("nationality, rib, status_ameli, carte_vitale, residence_permit_type, residence_permit_number")
+          .eq("employee_id", selectedEmployeeId)
+          .maybeSingle(),
+        supabase
+          .from("medical_visits")
+          .select("id, last_visit_date, next_visit_date, visit_subtype")
+          .eq("employee_id", selectedEmployeeId)
+          .order("next_visit_date", { ascending: false }),
+        supabase
+          .from("registre_unique_personnel")
+          .select("id, date_entree, date_sortie, nationalite")
+          .eq("employee_id", selectedEmployeeId)
+          .order("date_entree", { ascending: false }),
+      ]);
+      setDocuments((docs as EmployeeDocumentRow[]) ?? []);
+      setConfidential((conf as DossierConfidential) ?? null);
+      setMedicalVisits((visits as DossierMedicalVisit[]) ?? []);
+      setRegistreEntries((registre as RegistreEntry[]) ?? []);
+      setLoadingDetail(false);
     }
-    loadDocs();
+    loadDetail();
   }, [supabase, selectedEmployeeId]);
 
   const filtered = useMemo(() => {
@@ -4620,32 +4732,25 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     });
   }, [employees, statusFilter, search]);
 
-  const documentsByCategory = useMemo(() => {
-    const map = new Map<string, EmployeeDocumentRow[]>();
-    documents.forEach((d) => {
-      if (!map.has(d.category_code)) map.set(d.category_code, []);
-      map.get(d.category_code)!.push(d);
-    });
-    return map;
-  }, [documents]);
+  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+  const isForeign = isForeignNationality(confidential?.nationality ?? registreEntries[0]?.nationalite ?? null);
+  const visibleCategories = useMemo(
+    () => categories.filter((c) => !c.foreigners_only || isForeign),
+    [categories, isForeign]
+  );
 
-  async function reloadDocuments() {
+  async function uploadFile(
+    categoryCode: string,
+    file: File,
+    opts?: { validUntil?: string; registreEntryId?: string }
+  ) {
     if (!selectedEmployeeId) return;
-    const { data } = await supabase
-      .from("employee_documents")
-      .select("id, employee_id, category_code, file_name, storage_path, file_size, created_at")
-      .eq("employee_id", selectedEmployeeId)
-      .order("created_at", { ascending: false });
-    setDocuments((data as EmployeeDocumentRow[]) ?? []);
-  }
-
-  async function uploadFile(categoryCode: string, file: File) {
-    if (!selectedEmployeeId) return;
-    setUploadingCategory(categoryCode);
+    const key = `${categoryCode}:${opts?.registreEntryId ?? ""}`;
+    setUploadingKey(key);
     const path = `${selectedEmployeeId}/${categoryCode}/${uniqueFileToken()}_${file.name}`;
     const { error: uploadError } = await supabase.storage.from(DOSSIER_BUCKET).upload(path, file);
     if (uploadError) {
-      setUploadingCategory(null);
+      setUploadingKey(null);
       toast.error("Erreur d'envoi : " + uploadError.message);
       return;
     }
@@ -4656,13 +4761,15 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       storage_path: path,
       file_size: file.size,
       mime_type: file.type || null,
+      valid_until: opts?.validUntil || null,
+      registre_entry_id: opts?.registreEntryId || null,
     });
-    setUploadingCategory(null);
+    setUploadingKey(null);
     if (insertError) {
       toast.error("Erreur : " + insertError.message);
       return;
     }
-    await reloadDocuments();
+    await Promise.all([reloadDocuments(), reloadOverdueCounts()]);
     toast.success("Document ajouté");
   }
 
@@ -4682,9 +4789,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
   async function deleteFile(doc: EmployeeDocumentRow) {
     if (!confirm(`Supprimer « ${doc.file_name} » ?`)) return;
-    const { error: storageError } = await supabase.storage
-      .from(DOSSIER_BUCKET)
-      .remove([doc.storage_path]);
+    const { error: storageError } = await supabase.storage.from(DOSSIER_BUCKET).remove([doc.storage_path]);
     if (storageError) {
       toast.error("Erreur : " + storageError.message);
       return;
@@ -4694,11 +4799,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       toast.error("Erreur : " + dbError.message);
       return;
     }
-    await reloadDocuments();
+    await Promise.all([reloadDocuments(), reloadOverdueCounts()]);
     toast.success("Document supprimé");
   }
-
-  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
 
   return (
     <div className="flex gap-4 items-start">
@@ -4724,19 +4827,27 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <SkeletonRows rows={4} cols={1} />
         ) : (
           <div className="max-h-[32rem] overflow-y-auto -mx-1">
-            {filtered.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => setSelectedEmployeeId(e.id)}
-                className={`w-full text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
-                  selectedEmployeeId === e.id
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {employeeName(e)}
-              </button>
-            ))}
+            {filtered.map((e) => {
+              const overdueCount = overdueCounts.get(e.id) ?? 0;
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => setSelectedEmployeeId(e.id)}
+                  className={`w-full flex items-center justify-between gap-2 text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
+                    selectedEmployeeId === e.id
+                      ? "bg-primary-50 text-primary-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="truncate">{employeeName(e)}</span>
+                  {overdueCount > 0 && (
+                    <span className="badge badge-error shrink-0" title="Documents en retard">
+                      {overdueCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             {filtered.length === 0 && <EmptyState title="Aucun employé" />}
           </div>
         )}
@@ -4753,23 +4864,43 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
         ) : (
           <div className="card">
             <p className="font-bold mb-4">Dossier — {employeeName(selectedEmployee)}</p>
-            {loadingDocuments ? (
+            {loadingDetail ? (
               <SkeletonRows rows={4} cols={3} />
             ) : (
               <div className="space-y-4">
-                {categories.map((cat) => {
-                  const docs = documentsByCategory.get(cat.code) ?? [];
+                {visibleCategories.map((cat) => {
+                  const Icon = DOSSIER_CATEGORY_ICONS[cat.code] ?? FileText;
+
+                  if (cat.per_period) {
+                    const entries = cat.code === "rupture" ? registreEntries.filter((r) => r.date_sortie) : registreEntries;
+                    return (
+                      <DossierPeriodCategory
+                        key={cat.code}
+                        category={cat}
+                        icon={Icon}
+                        entries={entries}
+                        documents={documents}
+                        uploadingKey={uploadingKey}
+                        onUpload={(code, file, registreEntryId) => uploadFile(code, file, { registreEntryId })}
+                        onDownload={downloadFile}
+                        onDelete={deleteFile}
+                      />
+                    );
+                  }
+
+                  const docs = documents.filter((d) => d.category_code === cat.code);
+                  const key = `${cat.code}:`;
+
                   return (
                     <div key={cat.code} className="rounded-xl border border-slate-100 p-3">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-bold flex items-center gap-2">
+                          <Icon size={15} className="text-slate-400" />
                           {cat.label}
-                          {cat.sensitive && (
-                            <span className="badge badge-warning">confidentiel</span>
-                          )}
+                          {cat.sensitive && <span className="badge badge-warning">confidentiel</span>}
                         </p>
                         <label className="btn btn-secondary text-xs px-3 py-1.5 cursor-pointer">
-                          {uploadingCategory === cat.code ? (
+                          {uploadingKey === key ? (
                             "Envoi…"
                           ) : (
                             <>
@@ -4777,51 +4908,104 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             </>
                           )}
                           <input
-                            ref={(el) => {
-                              fileInputRefs.current[cat.code] = el;
-                            }}
                             type="file"
                             className="hidden"
-                            disabled={uploadingCategory !== null}
+                            disabled={uploadingKey !== null}
                             onChange={(ev) => {
                               const file = ev.target.files?.[0];
-                              if (file) uploadFile(cat.code, file);
                               ev.target.value = "";
+                              if (!file) return;
+                              if (cat.requires_expiry) {
+                                setExpiryModal({ categoryCode: cat.code, file });
+                                setExpiryDate("");
+                              } else {
+                                uploadFile(cat.code, file);
+                              }
                             }}
                           />
                         </label>
                       </div>
+
+                      {cat.code === "rib" && confidential?.rib && (
+                        <p className="text-xs text-slate-500 mb-2">
+                          IBAN enregistré : <span className="font-semibold">{confidential.rib}</span>
+                        </p>
+                      )}
+                      {cat.code === "assurance_maladie" && confidential?.status_ameli && (
+                        <p className="text-xs text-slate-500 mb-2">
+                          Statut Ameli : <span className="font-semibold">{confidential.status_ameli}</span>
+                        </p>
+                      )}
+                      {cat.code === "carte_vitale" && confidential?.carte_vitale && (
+                        <p className="text-xs text-slate-500 mb-2">
+                          N° Carte Vitale : <span className="font-semibold">{confidential.carte_vitale}</span>
+                        </p>
+                      )}
+                      {cat.code === "titre_visa" &&
+                        (confidential?.residence_permit_type || confidential?.residence_permit_number) && (
+                          <p className="text-xs text-slate-500 mb-2">
+                            {confidential.residence_permit_type ?? "Titre"}
+                            {confidential.residence_permit_number ? ` — n° ${confidential.residence_permit_number}` : ""}
+                          </p>
+                        )}
+                      {cat.code === "medical_prevaly" &&
+                        (medicalVisits.length === 0 ? (
+                          <p className="text-xs text-slate-400 mb-2">Aucune visite enregistrée dans le suivi médical.</p>
+                        ) : (
+                          <div className="mb-2 space-y-1">
+                            {medicalVisits.map((v) => {
+                              const urgency = dateUrgency(v.next_visit_date);
+                              return (
+                                <p key={v.id} className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                                  <span>
+                                    {v.visit_subtype ?? "Visite"} — dernière : {v.last_visit_date ?? "—"} · prochaine :{" "}
+                                    {v.next_visit_date ?? "—"}
+                                  </span>
+                                  {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
+                                </p>
+                              );
+                            })}
+                          </div>
+                        ))}
+
                       {docs.length === 0 ? (
                         <p className="text-xs text-slate-400">Aucun document.</p>
                       ) : (
                         <ul className="space-y-1">
-                          {docs.map((doc) => (
-                            <li
-                              key={doc.id}
-                              className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
-                            >
-                              <span className="truncate">{doc.file_name}</span>
-                              <span className="flex items-center gap-2 shrink-0">
-                                <span className="text-xs text-slate-400">
-                                  {formatFileSize(doc.file_size)}
+                          {docs.map((doc) => {
+                            const urgency = dateUrgency(doc.valid_until);
+                            return (
+                              <li
+                                key={doc.id}
+                                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                              >
+                                <span className="truncate flex items-center gap-2 flex-wrap">
+                                  {doc.file_name}
+                                  {doc.valid_until && (
+                                    <span className="text-xs text-slate-400">expire le {doc.valid_until}</span>
+                                  )}
+                                  {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
                                 </span>
-                                <button
-                                  onClick={() => downloadFile(doc)}
-                                  title="Télécharger"
-                                  className="text-slate-400 hover:text-primary-600"
-                                >
-                                  <Download size={15} />
-                                </button>
-                                <button
-                                  onClick={() => deleteFile(doc)}
-                                  title="Supprimer"
-                                  className="text-slate-400 hover:text-error-600"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              </span>
-                            </li>
-                          ))}
+                                <span className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs text-slate-400">{formatFileSize(doc.file_size)}</span>
+                                  <button
+                                    onClick={() => downloadFile(doc)}
+                                    title="Télécharger"
+                                    className="text-slate-400 hover:text-primary-600"
+                                  >
+                                    <Download size={15} />
+                                  </button>
+                                  <button
+                                    onClick={() => deleteFile(doc)}
+                                    title="Supprimer"
+                                    className="text-slate-400 hover:text-error-600"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       )}
                     </div>
@@ -4832,6 +5016,45 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </div>
         )}
       </div>
+
+      <Modal
+        open={!!expiryModal}
+        onClose={() => setExpiryModal(null)}
+        title="Date d'expiration"
+        maxWidth="max-w-sm"
+      >
+        {expiryModal && (
+          <>
+            <p className="text-sm text-slate-500 mb-3">
+              Fichier : <span className="font-semibold">{expiryModal.file.name}</span>
+            </p>
+            <label className="text-xs font-bold text-slate-500">
+              Date d&apos;expiration
+              <input
+                type="date"
+                className="input mt-1"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+              />
+            </label>
+            <div className="flex gap-3 mt-4">
+              <button
+                className="btn btn-primary text-sm px-3 py-2"
+                disabled={!expiryDate}
+                onClick={async () => {
+                  await uploadFile(expiryModal.categoryCode, expiryModal.file, { validUntil: expiryDate });
+                  setExpiryModal(null);
+                }}
+              >
+                Ajouter
+              </button>
+              <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setExpiryModal(null)}>
+                Annuler
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
