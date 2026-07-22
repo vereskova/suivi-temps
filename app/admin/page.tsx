@@ -4343,16 +4343,27 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     });
   }
 
-  // Accepts either "Nom [tab] Montant" pairs (matched by name, robust to word
-  // order/case/accents) or a bare list of amounts (applied in the table's
-  // current visual/grouped order) — covers pasting straight out of Excel or
-  // Numbers without asking the accountant to reformat anything first.
+  // Accepts three paste shapes: "Nom [tab] Montant" pairs (matched by name,
+  // robust to word order/case/accents); a bare list of amounts (applied in
+  // the table's current visual/grouped order); or — since Nom and Montant
+  // often aren't adjacent columns in the source sheet and can't be copied
+  // together as one range — a Nom column pasted in full followed immediately
+  // by a Montant column pasted for that same row range. In that last shape,
+  // filler rows (team-header rows, vacant slots) land at the same line
+  // position in both halves, so pairing by index and skipping any pair
+  // where either side is blank/unusable discards them automatically.
+  function parseImportAmount(s: string): number {
+    const cleaned = s.trim().replace(/[^\d.,-]/g, "").replace(",", ".");
+    return cleaned === "" ? NaN : parseFloat(cleaned);
+  }
+
   function applyImport() {
-    const lines = importText
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) return;
+    const rawLines = importText.split("\n").map((l) => l.replace(/\r$/, ""));
+    while (rawLines.length && !rawLines[0].trim()) rawLines.shift();
+    while (rawLines.length && !rawLines[rawLines.length - 1].trim()) rawLines.pop();
+    if (rawLines.length === 0) return;
+
+    const lines = rawLines.map((l) => l.trim()).filter(Boolean);
 
     const parseLine = (line: string): string[] => {
       let parts = line
@@ -4376,9 +4387,44 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const payableRows = groupedRows.filter((row) => !isFopContractor(row.employee));
     const payableEmployees = employees.filter((e) => !isFopContractor(e));
 
-    if (allSingleColumn) {
+    // Detected independently of allSingleColumn/parseLine (which split on 2+
+    // consecutive spaces) — a name with an accidental double space, like
+    // "VORONINSKYI  YEVHENII", would otherwise be misread as its own
+    // "Nom [tab] Montant" pair and break detection for the whole paste.
+    const looksTwoBlock = (() => {
+      if (rawLines.length < 4 || rawLines.length % 2 !== 0) return false;
+      const half = rawLines.length / 2;
+      const firstNonBlank = rawLines.slice(0, half).filter((l) => l.trim());
+      const secondNonBlank = rawLines.slice(half).filter((l) => l.trim());
+      if (firstNonBlank.length === 0 || secondNonBlank.length === 0) return false;
+      const firstAllNonNumeric = firstNonBlank.every((l) => isNaN(parseImportAmount(l)));
+      const secondNumericRatio =
+        secondNonBlank.filter((l) => !isNaN(parseImportAmount(l))).length / secondNonBlank.length;
+      return firstAllNonNumeric && secondNumericRatio >= 0.5;
+    })();
+
+    if (looksTwoBlock) {
+      const half = rawLines.length / 2;
+      const namesHalf = rawLines.slice(0, half);
+      const amountsHalf = rawLines.slice(half);
+      for (let i = 0; i < half; i++) {
+        const name = namesHalf[i].trim();
+        const amount = parseImportAmount(amountsHalf[i]);
+        if (!name || isNaN(amount)) continue;
+        const nameWords = normalizePaieNameWords(name);
+        const match = payableEmployees.find((e) =>
+          samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords)
+        );
+        if (!match) {
+          unmatchedLines.push(`${name} — ${amountsHalf[i].trim()}`);
+          continue;
+        }
+        updates[match.id] = String(amount);
+        matchedNames.push(employeeName(match));
+      }
+    } else if (allSingleColumn) {
       lines.forEach((line, i) => {
-        const amount = parseFloat(line.replace(/[^\d.,-]/g, "").replace(",", "."));
+        const amount = parseImportAmount(line);
         const row = payableRows[i];
         if (!row || isNaN(amount)) {
           unmatchedLines.push(line);
@@ -4394,7 +4440,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           unmatchedLines.push(line);
           return;
         }
-        const amount = parseFloat(parts[parts.length - 1].replace(/[^\d.,-]/g, "").replace(",", "."));
+        const amount = parseImportAmount(parts[parts.length - 1]);
         const nameWords = normalizePaieNameWords(parts[0]);
         const match = payableEmployees.find((e) =>
           samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords)
@@ -4919,8 +4965,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       >
         <p className="text-sm text-slate-500 mb-2">
           Collez une colonne <strong>Nom Prénom</strong> et une colonne <strong>Montant</strong> copiées
-          ensemble depuis Excel/Numbers (une ligne par salarié) — ou juste une colonne de montants, dans
-          l&apos;ordre du tableau ci-dessous. Les montants sont appliqués au champ « Net souhaité ».
+          ensemble depuis Excel/Numbers (une ligne par salarié) ; ou, si les deux colonnes ne sont pas
+          côte à côte dans le fichier source, collez toute la colonne <strong>Nom Prénom</strong> puis,
+          juste après, toute la colonne <strong>Montant</strong> pour la même plage de lignes ; ou juste
+          une colonne de montants, dans l&apos;ordre du tableau ci-dessous. Les montants sont appliqués au
+          champ « Net souhaité ».
         </p>
         <textarea
           className="input font-mono text-xs"
