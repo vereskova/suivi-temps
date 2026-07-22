@@ -4303,7 +4303,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           .select(
             "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), contract_type"
           )
-          .eq("status", "active")
+          // A employee terminated mid-month (end_date within this month or
+          // later) still worked part of it and needs a partial-month line —
+          // excluding them outright as soon as status flips to "terminated"
+          // would drop their last paycheck entirely.
+          .or(`status.eq.active,and(status.eq.terminated,end_date.gte.${monthIso})`)
           .order("last_name"),
         supabase.from("payroll_parameters").select("*").limit(1).maybeSingle(),
       ]);
