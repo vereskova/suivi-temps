@@ -4088,7 +4088,15 @@ type PaieEmployee = {
   bureau_role: string | null;
   team_id: string | null;
   teams: { name: string } | null;
+  contract_type: string | null;
 };
+
+/** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
+ *  employees — their compensation is worked out entirely outside this system,
+ *  so their row is excluded from every formula/bulk-apply/import/sync path. */
+function isFopContractor(e: PaieEmployee): boolean {
+  return e.contract_type === "FOP";
+}
 
 const PAIE_CONTROL_FORMATION_ROLES = new Set(["control", "formation_officer"]);
 const PAIE_TEAM_COLOR_PALETTE = [
@@ -4208,7 +4216,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       const [{ data: emp }, { data: paramRow }] = await Promise.all([
         supabase
           .from("employees")
-          .select("id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name)")
+          .select(
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), contract_type"
+          )
           .eq("status", "active")
           .order("last_name"),
         supabase.from("payroll_parameters").select("*").limit(1).maybeSingle(),
@@ -4263,6 +4273,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         const map: Record<string, PaieLineInput> = {};
         (emp ?? []).forEach((e) => {
           const l = savedByEmployee.get(e.id);
+          if (isFopContractor(e as unknown as PaieEmployee)) {
+            map[e.id] = { ...EMPTY_PAIE_LINE };
+            return;
+          }
           map[e.id] = {
             netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
@@ -4275,7 +4289,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       } else {
         const map: Record<string, PaieLineInput> = {};
         (emp ?? []).forEach((e) => {
-          map[e.id] = { ...EMPTY_PAIE_LINE, joursRepas: defaultJoursRepas };
+          map[e.id] = {
+            ...EMPTY_PAIE_LINE,
+            joursRepas: isFopContractor(e as unknown as PaieEmployee) ? "" : defaultJoursRepas,
+          };
         });
         setInputs(map);
       }
@@ -4307,6 +4324,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     setInputs((prev) => {
       const next = { ...prev };
       employees.forEach((e) => {
+        if (isFopContractor(e)) return;
         next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), joursRepas: defaultJoursRepas };
       });
       return next;
@@ -4318,6 +4336,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     setInputs((prev) => {
       const next = { ...prev };
       employees.forEach((e) => {
+        if (isFopContractor(e)) return;
         next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), majJoursFeries: holidayBonusSelection };
       });
       return next;
@@ -4353,11 +4372,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const updates: Record<string, string> = {};
     const matchedNames: string[] = [];
     const unmatchedLines: string[] = [];
+    // FOP contractors have no formula row to paste an amount into.
+    const payableRows = groupedRows.filter((row) => !isFopContractor(row.employee));
+    const payableEmployees = employees.filter((e) => !isFopContractor(e));
 
     if (allSingleColumn) {
       lines.forEach((line, i) => {
         const amount = parseFloat(line.replace(/[^\d.,-]/g, "").replace(",", "."));
-        const row = groupedRows[i];
+        const row = payableRows[i];
         if (!row || isNaN(amount)) {
           unmatchedLines.push(line);
           return;
@@ -4374,7 +4396,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         }
         const amount = parseFloat(parts[parts.length - 1].replace(/[^\d.,-]/g, "").replace(",", "."));
         const nameWords = normalizePaieNameWords(parts[0]);
-        const match = employees.find((e) => samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords));
+        const match = payableEmployees.find((e) =>
+          samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords)
+        );
         if (!match || isNaN(amount)) {
           unmatchedLines.push(line);
           return;
@@ -4412,6 +4436,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const computed = useMemo(() => {
     const map: Record<string, ReturnType<typeof computePayrollLine>> = {};
     employees.forEach((e) => {
+      if (isFopContractor(e)) {
+        map[e.id] = { hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 };
+        return;
+      }
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
       map[e.id] = computePayrollLine(
         {
@@ -4426,20 +4454,22 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   }, [employees, inputs, params]);
 
   const totals = useMemo(() => {
-    return employees.reduce(
-      (acc, e) => {
-        const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
-        const c = computed[e.id];
-        acc.netSouhaite += Number(line.netSouhaite) || 0;
-        acc.majJoursFeries += Number(line.majJoursFeries) || 0;
-        acc.joursRepas += Number(line.joursRepas) || 0;
-        acc.hs25Heures += c?.hs25Heures ?? 0;
-        acc.hs50Heures += c?.hs50Heures ?? 0;
-        acc.primeExceptionnelle += c?.primeExceptionnelle ?? 0;
-        return acc;
-      },
-      { netSouhaite: 0, majJoursFeries: 0, joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 }
-    );
+    return employees
+      .filter((e) => !isFopContractor(e))
+      .reduce(
+        (acc, e) => {
+          const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+          const c = computed[e.id];
+          acc.netSouhaite += Number(line.netSouhaite) || 0;
+          acc.majJoursFeries += Number(line.majJoursFeries) || 0;
+          acc.joursRepas += Number(line.joursRepas) || 0;
+          acc.hs25Heures += c?.hs25Heures ?? 0;
+          acc.hs50Heures += c?.hs50Heures ?? 0;
+          acc.primeExceptionnelle += c?.primeExceptionnelle ?? 0;
+          return acc;
+        },
+        { netSouhaite: 0, majJoursFeries: 0, joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 }
+      );
   }, [employees, inputs, computed]);
 
   async function save() {
@@ -4473,6 +4503,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   function exportExcel() {
     const exportRows: Record<string, string | number>[] = groupedRows.map((row, i) => {
       const e = row.employee;
+      if (isFopContractor(e)) {
+        return {
+          "#": i + 1,
+          Groupe: row.groupLabel,
+          "Nom Prénom": employeeName(e),
+          "Net souhaité €": "FOP — rémunération hors paie, calcul non applicable",
+          "Maj. jours fériés €": "",
+          "Jours repas": "",
+          "HS+25% h": "",
+          "HS+50% h": "",
+          "Prime except. €": "",
+        };
+      }
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
       const c = computed[e.id];
       return {
@@ -4525,6 +4568,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const skipped: string[] = [];
 
     for (const e of employees) {
+      if (isFopContractor(e)) continue;
       const c = computed[e.id];
       const totalHsMinutes = Math.round(((c?.hs25Heures ?? 0) + (c?.hs50Heures ?? 0)) * 60);
       if (totalHsMinutes === 0) continue;
@@ -4754,6 +4798,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                         </td>
                       </tr>
                     )}
+                    {isFopContractor(e) ? (
+                      <tr className={`border-t border-slate-100 ${row.colorClass}`}>
+                        <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
+                        <td colSpan={6} className="py-2 pr-4 italic text-slate-500">
+                          FOP — rémunération hors paie, calcul non applicable
+                        </td>
+                      </tr>
+                    ) : (
                     <tr className={`border-t border-slate-100 ${row.colorClass}`}>
                     <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
                     <td className="py-2 pr-4">
@@ -4809,6 +4861,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                       {(c?.primeExceptionnelle ?? 0).toFixed(2)} €
                     </td>
                     </tr>
+                    )}
                   </Fragment>
                 );
               })}
