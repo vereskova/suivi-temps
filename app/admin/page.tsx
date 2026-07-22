@@ -26,6 +26,7 @@ import {
   LogOut,
   Network,
   Plane,
+  RefreshCw,
   ShieldCheck,
   Shirt,
   Trash2,
@@ -4101,6 +4102,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [inputs, setInputs] = useState<Record<string, PaieLineInput>>({});
   const [showParams, setShowParams] = useState(false);
   const [holidayBonusSelection, setHolidayBonusSelection] = useState("");
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -4334,6 +4337,65 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     URL.revokeObjectURL(url);
   }
 
+  // Replaces each already-logged day's overtime_minutes with an even split of
+  // this month's computed HS+25%/HS+50% total — pointage_entries doesn't track
+  // the 25%/50% split per day, only a single overtime figure, so both get
+  // combined before distributing. Employees with no pointage entry this month
+  // are skipped (nothing to distribute across) and reported back.
+  async function syncHoursToPointage() {
+    setSyncing(true);
+    const { start, end } = monthRange(year, month);
+    let updatedCount = 0;
+    const skipped: string[] = [];
+
+    for (const e of employees) {
+      const c = computed[e.id];
+      const totalHsMinutes = Math.round(((c?.hs25Heures ?? 0) + (c?.hs50Heures ?? 0)) * 60);
+      if (totalHsMinutes === 0) continue;
+
+      const { data: rows } = await supabase
+        .from("pointage_entries")
+        .select("id")
+        .eq("employee_id", e.id)
+        .eq("is_absent", false)
+        .gte("work_date", start)
+        .lte("work_date", end)
+        .order("work_date");
+
+      if (!rows || rows.length === 0) {
+        skipped.push(employeeName(e));
+        continue;
+      }
+
+      const n = rows.length;
+      const base = Math.floor(totalHsMinutes / n);
+      const remainder = totalHsMinutes % n;
+      const results = await Promise.all(
+        rows.map((r, i) =>
+          supabase
+            .from("pointage_entries")
+            .update({ overtime_minutes: base + (i < remainder ? 1 : 0) })
+            .eq("id", r.id)
+        )
+      );
+      if (results.some((r) => r.error)) {
+        toast.error(`Erreur pour ${employeeName(e)} : ${results.find((r) => r.error)?.error?.message}`);
+        continue;
+      }
+      updatedCount++;
+    }
+
+    setSyncing(false);
+    setShowSyncModal(false);
+    if (skipped.length > 0) {
+      toast.warning(
+        `${updatedCount} employé(s) mis à jour. Ignorés (aucune journée pointée ce mois) : ${skipped.join(", ")}`
+      );
+    } else {
+      toast.success(`Heures HS réparties dans le pointage de ${updatedCount} employé(s).`);
+    }
+  }
+
   return (
     <div>
       <div className="card mb-4 flex flex-wrap items-end justify-between gap-4">
@@ -4371,6 +4433,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           </button>
           <button className="btn btn-primary text-sm" disabled={saving} onClick={save}>
             {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+          <button className="btn btn-dark text-sm" onClick={() => setShowSyncModal(true)}>
+            <RefreshCw size={15} /> Appliquer au pointage
           </button>
         </div>
       </div>
@@ -4571,6 +4636,27 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           </table>
         </div>
       )}
+
+      <Modal
+        open={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        title="Appliquer les heures au pointage"
+        maxWidth="max-w-md"
+      >
+        <p className="text-sm text-slate-600 mb-4">
+          Pour chaque employé, les heures HS+25% et HS+50% calculées ce mois-ci seront réparties
+          également entre les journées déjà pointées, en <strong>remplaçant</strong> les heures
+          supplémentaires que les chefs d&apos;équipe ont saisies. Cette action est irréversible.
+        </p>
+        <div className="flex gap-3">
+          <button className="btn btn-red text-sm px-3 py-2" disabled={syncing} onClick={syncHoursToPointage}>
+            {syncing ? "Application…" : "Confirmer et appliquer"}
+          </button>
+          <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowSyncModal(false)}>
+            Annuler
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
