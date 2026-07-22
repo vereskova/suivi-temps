@@ -4100,10 +4100,12 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, PaieLineInput>>({});
   const [showParams, setShowParams] = useState(false);
+  const [holidayBonusSelection, setHolidayBonusSelection] = useState("");
 
   useEffect(() => {
     async function load() {
       setLoading(true);
+      setHolidayBonusSelection("");
       const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
 
       const [{ data: emp }, { data: paramRow }] = await Promise.all([
@@ -4184,6 +4186,15 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
   const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
+  // Suggested bonus for working a public holiday: one standard day's pay (35h/5j
+  // week, per the reference workbook's params) at the current hourly rate. Not
+  // a verified formula — the source spreadsheet always had this as a blank,
+  // hand-typed field — just a starting point RH can override per employee.
+  const holidayDailyBonus = useMemo(() => {
+    const weeklyHours = (params.heuresNormalesMois * 12) / 52;
+    const dailyHours = weeklyHours / 5;
+    return Math.round(dailyHours * params.tauxHoraireBase * 100) / 100;
+  }, [params]);
 
   function applyWorkingDaysToAll() {
     const defaultJoursRepas = String(workingDaysInMonth);
@@ -4191,6 +4202,17 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       const next = { ...prev };
       employees.forEach((e) => {
         next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), joursRepas: defaultJoursRepas };
+      });
+      return next;
+    });
+  }
+
+  function applyHolidayBonusToAll() {
+    if (!holidayBonusSelection) return;
+    setInputs((prev) => {
+      const next = { ...prev };
+      employees.forEach((e) => {
+        next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), majJoursFeries: holidayBonusSelection };
       });
       return next;
     });
@@ -4356,13 +4378,41 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           </button>
         </div>
         {monthHolidays.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            {monthHolidays.map((h) => (
-              <span key={h.date} className="badge badge-primary">
-                {h.label} — {weekdayLabelFr(h.date)} {h.date.slice(8, 10)}
-              </span>
-            ))}
-          </div>
+          <>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {monthHolidays.map((h) => (
+                <span key={h.date} className="badge badge-primary">
+                  {h.label} — {weekdayLabelFr(h.date)} {h.date.slice(8, 10)}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
+              <p className="text-sm text-slate-500">
+                Majoration jour férié suggérée :{" "}
+                <span className="font-bold text-slate-700">{holidayDailyBonus.toFixed(2)} €</span> / jour travaillé
+              </p>
+              <select
+                className="input text-xs"
+                style={{ width: "auto" }}
+                value={holidayBonusSelection}
+                onChange={(e) => setHolidayBonusSelection(e.target.value)}
+              >
+                <option value="">Choisir un jour férié…</option>
+                {monthHolidays.map((h) => (
+                  <option key={h.date} value={holidayDailyBonus}>
+                    {h.label} — {holidayDailyBonus.toFixed(2)} €
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-secondary text-xs px-3 py-1.5"
+                disabled={!holidayBonusSelection}
+                onClick={applyHolidayBonusToAll}
+              >
+                Appliquer à tous
+              </button>
+            </div>
+          </>
         )}
       </div>
 
@@ -4444,13 +4494,24 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                       />
                     </td>
                     <td className="py-2 pr-4">
-                      <input
-                        type="number"
+                      <select
                         className="input bg-warning-50/60"
-                        style={{ width: "8rem" }}
+                        style={{ width: "11rem" }}
                         value={line.majJoursFeries}
                         onChange={(ev) => updateInput(e.id, "majJoursFeries", ev.target.value)}
-                      />
+                      >
+                        <option value="">0 (aucun)</option>
+                        {monthHolidays.map((h) => (
+                          <option key={h.date} value={holidayDailyBonus}>
+                            {h.label} — {holidayDailyBonus.toFixed(2)} €
+                          </option>
+                        ))}
+                        {monthHolidays.length >= 2 && (
+                          <option value={holidayDailyBonus * 2}>
+                            2 jours fériés travaillés — {(holidayDailyBonus * 2).toFixed(2)} €
+                          </option>
+                        )}
+                      </select>
                     </td>
                     <td className="py-2 pr-4">
                       <select
