@@ -4129,6 +4129,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           maxJoursRepas: Number(paramRow.max_jours_repas),
           maxHs25Heures: Number(paramRow.max_hs25_heures),
           maxHs50Heures: Number(paramRow.max_hs50_heures),
+          majorationJourFerie:
+            paramRow.majoration_jour_ferie != null
+              ? Number(paramRow.majoration_jour_ferie)
+              : DEFAULT_PAYROLL_PARAMS.majorationJourFerie,
         });
       }
 
@@ -4186,15 +4190,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
   const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
-  // Suggested bonus for working a public holiday: one standard day's pay (35h/5j
-  // week, per the reference workbook's params) at the current hourly rate. Not
-  // a verified formula — the source spreadsheet always had this as a blank,
-  // hand-typed field — just a starting point RH can override per employee.
-  const holidayDailyBonus = useMemo(() => {
+  // Suggested bonus for working a public holiday: majorationJourFerie% of one
+  // standard day's base pay (35h/5j week, per the reference workbook's params;
+  // its own column note read "jours fériés réellement travaillés × taux ×
+  // 100%"). Not a verified formula — the source spreadsheet always had this as
+  // a blank, hand-typed field — just a starting point RH can override per
+  // employee.
+  const holidayDailyBaseRate = useMemo(() => {
     const weeklyHours = (params.heuresNormalesMois * 12) / 52;
     const dailyHours = weeklyHours / 5;
-    return Math.round(dailyHours * params.tauxHoraireBase * 100) / 100;
+    return dailyHours * params.tauxHoraireBase;
   }, [params]);
+  const holidayMajorationPercent = params.majorationJourFerie * 100;
+  const holidayDailyBonus = Math.round(holidayDailyBaseRate * params.majorationJourFerie * 100) / 100;
 
   function applyWorkingDaysToAll() {
     const defaultJoursRepas = String(workingDaysInMonth);
@@ -4389,7 +4397,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
               <p className="text-sm text-slate-500">
                 Majoration jour férié suggérée :{" "}
-                <span className="font-bold text-slate-700">{holidayDailyBonus.toFixed(2)} €</span> / jour travaillé
+                <span className="font-bold text-slate-700">
+                  {holidayMajorationPercent}% d&apos;une journée de base ({holidayDailyBonus.toFixed(2)} €)
+                </span>{" "}
+                / jour travaillé
               </p>
               <select
                 className="input text-xs"
@@ -4400,7 +4411,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 <option value="">Choisir un jour férié…</option>
                 {monthHolidays.map((h) => (
                   <option key={h.date} value={holidayDailyBonus}>
-                    {h.label} — {holidayDailyBonus.toFixed(2)} €
+                    {h.label} — {holidayMajorationPercent}% ({holidayDailyBonus.toFixed(2)} €)
                   </option>
                 ))}
               </select>
@@ -4438,10 +4449,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               Majoration HS+50% <span className="block font-bold">{params.majorationHs50 * 100}%</span>
             </p>
             <p>
-              Taux retenues <span className="block font-bold">{params.tauxRetenues * 100}%</span>
-            </p>
-            <p>
-              Exonération HS fixe <span className="block font-bold">{params.exonerationHsFixe} €</span>
+              Majoration jour férié <span className="block font-bold">{params.majorationJourFerie * 100}%</span>
             </p>
             <p>
               Tarif repas/jour <span className="block font-bold">{params.tarifRepasJour} €</span>
@@ -4503,12 +4511,12 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                         <option value="">0 (aucun)</option>
                         {monthHolidays.map((h) => (
                           <option key={h.date} value={holidayDailyBonus}>
-                            {h.label} — {holidayDailyBonus.toFixed(2)} €
+                            {h.label} — {holidayMajorationPercent}% ({holidayDailyBonus.toFixed(2)} €)
                           </option>
                         ))}
                         {monthHolidays.length >= 2 && (
                           <option value={holidayDailyBonus * 2}>
-                            2 jours fériés travaillés — {(holidayDailyBonus * 2).toFixed(2)} €
+                            2 jours fériés — {holidayMajorationPercent * 2}% ({(holidayDailyBonus * 2).toFixed(2)} €)
                           </option>
                         )}
                       </select>

@@ -20,6 +20,9 @@ export type PayrollParams = {
   maxJoursRepas: number;
   maxHs25Heures: number;
   maxHs50Heures: number;
+  /** % of one day's base pay suggested as a bonus for working a public holiday
+   *  (RH enters the final amount by hand — this only drives the suggestion). */
+  majorationJourFerie: number;
 };
 
 export type PayrollInput = {
@@ -91,4 +94,5 @@ export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
   maxJoursRepas: 22,
   maxHs25Heures: 32,
   maxHs50Heures: 8,
+  majorationJourFerie: 1.0,
 };
