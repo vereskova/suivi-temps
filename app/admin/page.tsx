@@ -4145,8 +4145,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       }
       setRunId(run?.id ?? null);
 
-      const maxJoursRepas = paramRow ? Number(paramRow.max_jours_repas) : DEFAULT_PAYROLL_PARAMS.maxJoursRepas;
-      const defaultJoursRepas = String(Math.min(countWorkingDaysInMonth(year, month), maxJoursRepas));
+      // "Max jours repas" is the usual reimbursement reference (22, per the
+      // source spreadsheet), not a hard ceiling — some months genuinely have
+      // more working days than that, so the default shouldn't clip below the
+      // real calendar count.
+      const defaultJoursRepas = String(countWorkingDaysInMonth(year, month));
 
       if (run?.id) {
         const { data: lines } = await supabase
@@ -4183,7 +4186,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
 
   function applyWorkingDaysToAll() {
-    const defaultJoursRepas = String(Math.min(workingDaysInMonth, params.maxJoursRepas));
+    const defaultJoursRepas = String(workingDaysInMonth);
     setInputs((prev) => {
       const next = { ...prev };
       employees.forEach((e) => {
@@ -4457,7 +4460,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                         onChange={(ev) => updateInput(e.id, "joursRepas", ev.target.value)}
                       >
                         <option value="">0</option>
-                        {Array.from({ length: params.maxJoursRepas }, (_, i) => i + 1).map((n) => (
+                        {Array.from(
+                          { length: Math.max(params.maxJoursRepas, workingDaysInMonth) },
+                          (_, i) => i + 1
+                        ).map((n) => (
                           <option key={n} value={n}>
                             {n}
                           </option>
