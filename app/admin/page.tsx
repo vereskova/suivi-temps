@@ -300,7 +300,8 @@ export default function AdminPage() {
     );
   }
 
-  // Comptable only ever needs Paie — no sidebar, no other admin sections.
+  // Comptable only ever needs Paie — same shell as the full admin view, just
+  // with a single-item sidebar instead of the full NAV_GROUPS.
   if (role === "comptable") {
     return (
       <main className="min-h-screen p-4 md:p-8">
@@ -312,7 +313,7 @@ export default function AdminPage() {
               </div>
               <div>
                 <p className="text-lg font-extrabold tracking-tight text-slate-900 leading-tight">VLADIS</p>
-                <p className="text-xs font-semibold text-slate-400 leading-tight">Comptabilité — Paie</p>
+                <p className="text-xs font-semibold text-slate-400 leading-tight">Comptabilité</p>
               </div>
             </div>
             <button
@@ -326,7 +327,21 @@ export default function AdminPage() {
               Déconnexion
             </button>
           </div>
-          <PaieView supabase={supabase} />
+
+          <div className="flex gap-6 items-start">
+            <aside className="w-60 shrink-0">
+              <nav className="card p-3 space-y-4 sticky top-4">
+                <SidebarSection title="RH">
+                  <SidebarLink icon={Wallet} active>
+                    Paie
+                  </SidebarLink>
+                </SidebarSection>
+              </nav>
+            </aside>
+            <div className="flex-1 min-w-0">
+              <PaieView supabase={supabase} />
+            </div>
+          </div>
         </div>
       </main>
     );
