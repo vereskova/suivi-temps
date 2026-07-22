@@ -68,15 +68,16 @@ export function frenchHolidaysInMonth(year: number, month: number): Holiday[] {
   return frenchHolidaysForYear(year).filter((h) => h.date.startsWith(prefix));
 }
 
-/** Weekdays (Mon–Fri) in the month, minus any public holiday that falls on one. */
+/** Weekdays (Mon–Fri) in the month. Public holidays are surfaced separately via
+ *  frenchHolidaysInMonth() rather than subtracted here — whether a holiday
+ *  reduces someone's actual working days depends on whether they were made to
+ *  work it (tracked via "Maj. jours fériés"), not something this count assumes. */
 export function countWorkingDaysInMonth(year: number, month: number): number {
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const holidayDates = new Set(frenchHolidaysInMonth(year, month).map((h) => h.date));
   let count = 0;
   for (let day = 1; day <= daysInMonth; day++) {
     const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
     if (dow === 0 || dow === 6) continue;
-    if (holidayDates.has(iso(year, month, day))) continue;
     count++;
   }
   return count;
