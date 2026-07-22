@@ -47,6 +47,7 @@ import {
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
 import { computePayrollLine, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
+import { countWorkingDaysInMonth, frenchHolidaysInMonth, weekdayLabelFr } from "@/lib/payroll/frenchHolidays";
 import { isForeignNationality } from "@/lib/nationality";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
@@ -4144,28 +4145,53 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       }
       setRunId(run?.id ?? null);
 
+      const maxJoursRepas = paramRow ? Number(paramRow.max_jours_repas) : DEFAULT_PAYROLL_PARAMS.maxJoursRepas;
+      const defaultJoursRepas = String(Math.min(countWorkingDaysInMonth(year, month), maxJoursRepas));
+
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
           .select("employee_id, net_souhaite, maj_jours_feries, jours_repas")
           .eq("run_id", run.id);
+        const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
         const map: Record<string, PaieLineInput> = {};
-        (lines ?? []).forEach((l) => {
-          map[l.employee_id] = {
-            netSouhaite: l.net_souhaite ? String(l.net_souhaite) : "",
-            majJoursFeries: l.maj_jours_feries ? String(l.maj_jours_feries) : "",
-            joursRepas: l.jours_repas ? String(l.jours_repas) : "",
+        (emp ?? []).forEach((e) => {
+          const l = savedByEmployee.get(e.id);
+          map[e.id] = {
+            netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
+            majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
+            // No saved line yet for this employee this month — suggest the
+            // computed working-day count instead of leaving it blank.
+            joursRepas: l ? String(l.jours_repas ?? 0) : defaultJoursRepas,
           };
         });
         setInputs(map);
       } else {
-        setInputs({});
+        const map: Record<string, PaieLineInput> = {};
+        (emp ?? []).forEach((e) => {
+          map[e.id] = { ...EMPTY_PAIE_LINE, joursRepas: defaultJoursRepas };
+        });
+        setInputs(map);
       }
 
       setLoading(false);
     }
     load();
   }, [supabase, year, month]);
+
+  const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
+  const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
+
+  function applyWorkingDaysToAll() {
+    const defaultJoursRepas = String(Math.min(workingDaysInMonth, params.maxJoursRepas));
+    setInputs((prev) => {
+      const next = { ...prev };
+      employees.forEach((e) => {
+        next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), joursRepas: defaultJoursRepas };
+      });
+      return next;
+    });
+  }
 
   function updateInput(employeeId: string, field: keyof PaieLineInput, value: string) {
     setInputs((prev) => ({
@@ -4314,6 +4340,27 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm">
+            <span className="font-bold">{workingDaysInMonth} jours ouvrés</span>
+            <span className="text-slate-400"> ce mois-ci — utilisé comme valeur par défaut pour « Jours repas ».</span>
+          </p>
+          <button className="btn btn-secondary text-xs px-3 py-1.5" onClick={applyWorkingDaysToAll}>
+            Appliquer à tous
+          </button>
+        </div>
+        {monthHolidays.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {monthHolidays.map((h) => (
+              <span key={h.date} className="badge badge-primary">
+                {h.label} — {weekdayLabelFr(h.date)} {h.date.slice(8, 10)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {showParams && (
