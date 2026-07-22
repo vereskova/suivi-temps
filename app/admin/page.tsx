@@ -4080,7 +4080,98 @@ function formatDateShortDMY(iso: string): string {
 }
 
 // ── Vue "Paie" — table de saisie net→brut (repas → HS+25% → HS+50% → prime) ──
-type PaieEmployee = { id: string; first_name: string; last_name: string };
+type PaieEmployee = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  category: "chantier" | "bureau";
+  bureau_role: string | null;
+  team_id: string | null;
+  teams: { name: string } | null;
+};
+
+const PAIE_CONTROL_FORMATION_ROLES = new Set(["control", "formation_officer"]);
+const PAIE_TEAM_COLOR_PALETTE = [
+  "bg-blue-50",
+  "bg-amber-50",
+  "bg-purple-50",
+  "bg-rose-50",
+  "bg-cyan-50",
+  "bg-orange-50",
+  "bg-lime-50",
+  "bg-fuchsia-50",
+  "bg-teal-50",
+  "bg-indigo-50",
+];
+
+type PaieGroupedRow = { employee: PaieEmployee; groupKey: string; groupLabel: string; colorClass: string };
+
+/** Bureau first, then Contrôle/Formation staff, then chantier teams in numeric
+ *  order — mirrors the reference org sheet's layout so RH can scan the same
+ *  way they're used to, with a colored band per team. */
+function groupPaieEmployees(employees: PaieEmployee[]): PaieGroupedRow[] {
+  const bureauCore = employees.filter(
+    (e) => e.category === "bureau" && !PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "")
+  );
+  const controlFormation = employees.filter(
+    (e) => e.category === "bureau" && PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "")
+  );
+  const chantier = employees.filter((e) => e.category === "chantier");
+  const other = employees.filter((e) => e.category !== "bureau" && e.category !== "chantier");
+
+  bureauCore.sort((a, b) => {
+    const ai = BUREAU_ROLE_ORDER.indexOf(a.bureau_role ?? "");
+    const bi = BUREAU_ROLE_ORDER.indexOf(b.bureau_role ?? "");
+    if (ai !== bi) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    return employeeName(a).localeCompare(employeeName(b));
+  });
+  controlFormation.sort((a, b) => employeeName(a).localeCompare(employeeName(b)));
+
+  const byTeam = new Map<string, PaieEmployee[]>();
+  const noTeam: PaieEmployee[] = [];
+  chantier.forEach((e) => {
+    const teamName = e.teams?.name;
+    if (!e.team_id || !teamName) {
+      noTeam.push(e);
+      return;
+    }
+    if (!byTeam.has(teamName)) byTeam.set(teamName, []);
+    byTeam.get(teamName)!.push(e);
+  });
+  const teamNames = Array.from(byTeam.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  const rows: PaieGroupedRow[] = [];
+  bureauCore.forEach((e) => rows.push({ employee: e, groupKey: "bureau", groupLabel: "Bureau", colorClass: "bg-slate-50" }));
+  controlFormation.forEach((e) =>
+    rows.push({ employee: e, groupKey: "control", groupLabel: "Contrôle & Formation", colorClass: "bg-emerald-50" })
+  );
+  teamNames.forEach((name, i) => {
+    const members = byTeam.get(name)!.sort((a, b) => employeeName(a).localeCompare(employeeName(b)));
+    const colorClass = PAIE_TEAM_COLOR_PALETTE[i % PAIE_TEAM_COLOR_PALETTE.length];
+    members.forEach((e) => rows.push({ employee: e, groupKey: `team:${name}`, groupLabel: name, colorClass }));
+  });
+  noTeam.forEach((e) => rows.push({ employee: e, groupKey: "unassigned", groupLabel: "Sans équipe", colorClass: "bg-white" }));
+  other.forEach((e) => rows.push({ employee: e, groupKey: "other", groupLabel: "Autre", colorClass: "bg-white" }));
+
+  return rows;
+}
+
+/** Uppercased, accent-stripped, sorted word list — lets "CIOBANU Valeriu" match
+ *  "Valeriu CIOBANU" or extra whitespace/case differences from a pasted sheet. */
+function normalizePaieNameWords(s: string): string[] {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .sort();
+}
+
+function samePaieNameWords(a: string[], b: string[]): boolean {
+  return a.length > 0 && a.length === b.length && a.every((w, i) => w === b[i]);
+}
 
 type PaieLineInput = {
   netSouhaite: string;
@@ -4104,6 +4195,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [holidayBonusSelection, setHolidayBonusSelection] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importResult, setImportResult] = useState<{ matchedCount: number; unmatched: string[] } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -4114,12 +4208,12 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       const [{ data: emp }, { data: paramRow }] = await Promise.all([
         supabase
           .from("employees")
-          .select("id, first_name, last_name")
+          .select("id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name)")
           .eq("status", "active")
           .order("last_name"),
         supabase.from("payroll_parameters").select("*").limit(1).maybeSingle(),
       ]);
-      setEmployees((emp as PaieEmployee[]) ?? []);
+      setEmployees((emp as unknown as PaieEmployee[]) ?? []);
       if (paramRow) {
         setParams({
           tauxHoraireBase: Number(paramRow.taux_horaire_base),
@@ -4193,6 +4287,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
   const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
+  const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
   // Suggested bonus for working a public holiday: majorationJourFerie% of one
   // standard day's base pay (35h/5j week, per the reference workbook's params;
   // its own column note read "jours fériés réellement travaillés × taux ×
@@ -4227,6 +4322,84 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       });
       return next;
     });
+  }
+
+  // Accepts either "Nom [tab] Montant" pairs (matched by name, robust to word
+  // order/case/accents) or a bare list of amounts (applied in the table's
+  // current visual/grouped order) — covers pasting straight out of Excel or
+  // Numbers without asking the accountant to reformat anything first.
+  function applyImport() {
+    const lines = importText
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return;
+
+    const parseLine = (line: string): string[] => {
+      let parts = line
+        .split("\t")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      if (parts.length < 2) {
+        parts = line
+          .split(/\s{2,}/)
+          .map((p) => p.trim())
+          .filter(Boolean);
+      }
+      return parts;
+    };
+
+    const allSingleColumn = lines.every((l) => parseLine(l).length < 2);
+    const updates: Record<string, string> = {};
+    const matchedNames: string[] = [];
+    const unmatchedLines: string[] = [];
+
+    if (allSingleColumn) {
+      lines.forEach((line, i) => {
+        const amount = parseFloat(line.replace(/[^\d.,-]/g, "").replace(",", "."));
+        const row = groupedRows[i];
+        if (!row || isNaN(amount)) {
+          unmatchedLines.push(line);
+          return;
+        }
+        updates[row.employee.id] = String(amount);
+        matchedNames.push(employeeName(row.employee));
+      });
+    } else {
+      lines.forEach((line) => {
+        const parts = parseLine(line);
+        if (parts.length < 2) {
+          unmatchedLines.push(line);
+          return;
+        }
+        const amount = parseFloat(parts[parts.length - 1].replace(/[^\d.,-]/g, "").replace(",", "."));
+        const nameWords = normalizePaieNameWords(parts[0]);
+        const match = employees.find((e) => samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords));
+        if (!match || isNaN(amount)) {
+          unmatchedLines.push(line);
+          return;
+        }
+        updates[match.id] = String(amount);
+        matchedNames.push(employeeName(match));
+      });
+    }
+
+    if (Object.keys(updates).length > 0) {
+      setInputs((prev) => {
+        const next = { ...prev };
+        Object.entries(updates).forEach(([id, amount]) => {
+          next[id] = { ...(next[id] ?? EMPTY_PAIE_LINE), netSouhaite: amount };
+        });
+        return next;
+      });
+    }
+
+    setImportResult({ matchedCount: matchedNames.length, unmatched: unmatchedLines });
+    if (unmatchedLines.length === 0) {
+      toast.success(`${matchedNames.length} montant(s) appliqué(s).`);
+    } else {
+      toast.warning(`${matchedNames.length} appliqué(s), ${unmatchedLines.length} ligne(s) non reconnue(s).`);
+    }
   }
 
   function updateInput(employeeId: string, field: keyof PaieLineInput, value: string) {
@@ -4298,11 +4471,13 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   }
 
   function exportExcel() {
-    const exportRows = employees.map((e, i) => {
+    const exportRows: Record<string, string | number>[] = groupedRows.map((row, i) => {
+      const e = row.employee;
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
       const c = computed[e.id];
       return {
         "#": i + 1,
+        Groupe: row.groupLabel,
         "Nom Prénom": employeeName(e),
         "Net souhaité €": Number(line.netSouhaite) || 0,
         "Maj. jours fériés €": Number(line.majJoursFeries) || 0,
@@ -4314,6 +4489,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     });
     exportRows.push({
       "#": 0,
+      Groupe: "",
       "Nom Prénom": "TOTAL",
       "Net souhaité €": Math.round(totals.netSouhaite * 100) / 100,
       "Maj. jours fériés €": Math.round(totals.majJoursFeries * 100) / 100,
@@ -4427,6 +4603,16 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         <div className="flex gap-3">
           <button className="btn btn-secondary text-sm" onClick={() => setShowParams((s) => !s)}>
             Paramètres de calcul
+          </button>
+          <button
+            className="btn btn-secondary text-sm"
+            onClick={() => {
+              setImportText("");
+              setImportResult(null);
+              setShowImportModal(true);
+            }}
+          >
+            <Upload size={15} /> Importer
           </button>
           <button className="btn btn-secondary text-sm" onClick={exportExcel}>
             <FileSpreadsheet size={15} /> Exporter Excel
@@ -4551,11 +4737,24 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               </tr>
             </thead>
             <tbody>
-              {employees.map((e) => {
+              {groupedRows.map((row, idx) => {
+                const e = row.employee;
                 const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
                 const c = computed[e.id];
+                const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
                 return (
-                  <tr key={e.id} className="border-t border-slate-100">
+                  <Fragment key={e.id}>
+                    {showGroupHeader && (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-slate-400"
+                        >
+                          {row.groupLabel}
+                        </td>
+                      </tr>
+                    )}
+                    <tr className={`border-t border-slate-100 ${row.colorClass}`}>
                     <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
                     <td className="py-2 pr-4">
                       <input
@@ -4609,7 +4808,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     <td className="py-2 pr-4 font-semibold text-primary-700">
                       {(c?.primeExceptionnelle ?? 0).toFixed(2)} €
                     </td>
-                  </tr>
+                    </tr>
+                  </Fragment>
                 );
               })}
               {employees.length === 0 && (
@@ -4654,6 +4854,49 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           </button>
           <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowSyncModal(false)}>
             Annuler
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="Importer depuis Excel"
+        maxWidth="max-w-lg"
+      >
+        <p className="text-sm text-slate-500 mb-2">
+          Collez une colonne <strong>Nom Prénom</strong> et une colonne <strong>Montant</strong> copiées
+          ensemble depuis Excel/Numbers (une ligne par salarié) — ou juste une colonne de montants, dans
+          l&apos;ordre du tableau ci-dessous. Les montants sont appliqués au champ « Net souhaité ».
+        </p>
+        <textarea
+          className="input font-mono text-xs"
+          rows={10}
+          placeholder={"CIOBANU Valeriu\t2530\nSTAFII Boris\t2945.50"}
+          value={importText}
+          onChange={(e) => setImportText(e.target.value)}
+        />
+        {importResult && (
+          <div className="mt-3 text-sm">
+            <p className="text-success-600 font-semibold">{importResult.matchedCount} montant(s) appliqué(s).</p>
+            {importResult.unmatched.length > 0 && (
+              <div className="mt-1 text-error-600">
+                <p className="font-semibold">Non reconnu(s) :</p>
+                <ul className="list-disc pl-5">
+                  {importResult.unmatched.map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex gap-3 mt-4">
+          <button className="btn btn-primary text-sm px-3 py-2" disabled={!importText.trim()} onClick={applyImport}>
+            Appliquer
+          </button>
+          <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowImportModal(false)}>
+            Fermer
           </button>
         </div>
       </Modal>
