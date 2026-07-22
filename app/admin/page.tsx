@@ -4208,6 +4208,26 @@ function permuteWords(words: string[]): string[][] {
   return result;
 }
 
+// Known name variants that a Levenshtein distance can't safely bridge —
+// nicknames ("SASHA" for "ALEXANDR") aren't a spelling typo of each other,
+// and some transliteration pairs (LEVCHUK/LEVCIUC) differ by more letters
+// than is safe to allow generically. Extend as new confirmed pairs come up;
+// each entry is treated as an exact match (distance 0) in both directions.
+const PAIE_NAME_ALIASES: Record<string, string[]> = {
+  SASHA: ["ALEXANDR"],
+  ALEXANDR: ["SASHA"],
+  VASYL: ["VASILII"],
+  VASILII: ["VASYL"],
+  LEVCHUK: ["LEVCIUC"],
+  LEVCIUC: ["LEVCHUK"],
+};
+
+function wordDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (PAIE_NAME_ALIASES[a]?.includes(b)) return 0;
+  return levenshteinDistance(a, b);
+}
+
 // Same word count required; tries every word-to-word pairing (cheap for the
 // 1-3 word names here) and keeps the cheapest, since a spelling difference
 // can shift which word sorts first (normalizePaieNameWords sorts A-Z).
@@ -4216,7 +4236,7 @@ function wordListDistance(a: string[], b: string[]): number {
   let best = Infinity;
   for (const perm of permuteWords(b)) {
     let total = 0;
-    for (let i = 0; i < a.length; i++) total += levenshteinDistance(a[i], perm[i]);
+    for (let i = 0; i < a.length; i++) total += wordDistance(a[i], perm[i]);
     if (total < best) best = total;
   }
   return best;
@@ -4242,7 +4262,7 @@ function fuzzyMatchPayableEmployee(nameWords: string[], payableEmployees: PaieEm
   if (nameWords.length === 1) {
     const word = nameWords[0];
     const hits = payableEmployees.filter((e) =>
-      normalizePaieNameWords(employeeName(e)).some((w) => levenshteinDistance(w, word) <= 1)
+      normalizePaieNameWords(employeeName(e)).some((w) => wordDistance(w, word) <= 1)
     );
     if (hits.length === 1) return hits[0];
   }
