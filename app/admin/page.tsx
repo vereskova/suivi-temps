@@ -4181,6 +4181,86 @@ function samePaieNameWords(a: string[], b: string[]): boolean {
   return a.length > 0 && a.length === b.length && a.every((w, i) => w === b[i]);
 }
 
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function permuteWords(words: string[]): string[][] {
+  if (words.length <= 1) return [words];
+  const result: string[][] = [];
+  words.forEach((w, i) => {
+    const rest = [...words.slice(0, i), ...words.slice(i + 1)];
+    permuteWords(rest).forEach((p) => result.push([w, ...p]));
+  });
+  return result;
+}
+
+// Same word count required; tries every word-to-word pairing (cheap for the
+// 1-3 word names here) and keeps the cheapest, since a spelling difference
+// can shift which word sorts first (normalizePaieNameWords sorts A-Z).
+function wordListDistance(a: string[], b: string[]): number {
+  if (a.length !== b.length) return Infinity;
+  let best = Infinity;
+  for (const perm of permuteWords(b)) {
+    let total = 0;
+    for (let i = 0; i < a.length; i++) total += levenshteinDistance(a[i], perm[i]);
+    if (total < best) best = total;
+  }
+  return best;
+}
+
+// Falls back to approximate matching when no employee has the exact same
+// word set — covers transliteration/spelling variants between the pasted
+// sheet and the database (e.g. "KOBZAR" vs "COBZARI", "ILIN" vs "ILIIN").
+// Only ever returns a match that's unambiguous (no other employee comes
+// nearly as close), since this assigns real payroll amounts.
+function fuzzyMatchPayableEmployee(nameWords: string[], payableEmployees: PaieEmployee[]): PaieEmployee | null {
+  const sameCount = payableEmployees
+    .map((e) => ({ employee: e, distance: wordListDistance(nameWords, normalizePaieNameWords(employeeName(e))) }))
+    .filter((c) => c.distance <= nameWords.length * 2)
+    .sort((a, b) => a.distance - b.distance);
+  if (sameCount.length > 0 && (sameCount.length === 1 || sameCount[0].distance < sameCount[1].distance)) {
+    return sameCount[0].employee;
+  }
+
+  // A single pasted word (e.g. just a first or last name) matching exactly
+  // one word of exactly one employee's full name — still requires the hit
+  // to be unique across the whole payable list.
+  if (nameWords.length === 1) {
+    const word = nameWords[0];
+    const hits = payableEmployees.filter((e) =>
+      normalizePaieNameWords(employeeName(e)).some((w) => levenshteinDistance(w, word) <= 1)
+    );
+    if (hits.length === 1) return hits[0];
+  }
+
+  return null;
+}
+
+// Exact match first, approximate match as a fallback flagged for review.
+function matchPayableEmployee(
+  nameWords: string[],
+  payableEmployees: PaieEmployee[]
+): { employee: PaieEmployee; fuzzy: boolean } | null {
+  const exact = payableEmployees.find((e) => samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords));
+  if (exact) return { employee: exact, fuzzy: false };
+  const fuzzy = fuzzyMatchPayableEmployee(nameWords, payableEmployees);
+  return fuzzy ? { employee: fuzzy, fuzzy: true } : null;
+}
+
 type PaieLineInput = {
   netSouhaite: string;
   majJoursFeries: string;
@@ -4205,7 +4285,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [syncing, setSyncing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState("");
-  const [importResult, setImportResult] = useState<{ matchedCount: number; unmatched: string[] } | null>(null);
+  const [importResult, setImportResult] = useState<{
+    matchedCount: number;
+    fuzzyMatches: { pasted: string; employee: string }[];
+    unmatched: string[];
+  } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -4383,6 +4467,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const updates: Record<string, string> = {};
     const matchedNames: string[] = [];
     const unmatchedLines: string[] = [];
+    const fuzzyMatches: { pasted: string; employee: string }[] = [];
     // FOP contractors have no formula row to paste an amount into.
     const payableRows = groupedRows.filter((row) => !isFopContractor(row.employee));
     const payableEmployees = employees.filter((e) => !isFopContractor(e));
@@ -4412,15 +4497,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         const amount = parseImportAmount(amountsHalf[i]);
         if (!name || isNaN(amount)) continue;
         const nameWords = normalizePaieNameWords(name);
-        const match = payableEmployees.find((e) =>
-          samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords)
-        );
+        const match = matchPayableEmployee(nameWords, payableEmployees);
         if (!match) {
           unmatchedLines.push(`${name} — ${amountsHalf[i].trim()}`);
           continue;
         }
-        updates[match.id] = String(amount);
-        matchedNames.push(employeeName(match));
+        updates[match.employee.id] = String(amount);
+        matchedNames.push(employeeName(match.employee));
+        if (match.fuzzy) fuzzyMatches.push({ pasted: name, employee: employeeName(match.employee) });
       }
     } else if (allSingleColumn) {
       lines.forEach((line, i) => {
@@ -4442,15 +4526,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         }
         const amount = parseImportAmount(parts[parts.length - 1]);
         const nameWords = normalizePaieNameWords(parts[0]);
-        const match = payableEmployees.find((e) =>
-          samePaieNameWords(normalizePaieNameWords(employeeName(e)), nameWords)
-        );
+        const match = matchPayableEmployee(nameWords, payableEmployees);
         if (!match || isNaN(amount)) {
           unmatchedLines.push(line);
           return;
         }
-        updates[match.id] = String(amount);
-        matchedNames.push(employeeName(match));
+        updates[match.employee.id] = String(amount);
+        matchedNames.push(employeeName(match.employee));
+        if (match.fuzzy) fuzzyMatches.push({ pasted: parts[0], employee: employeeName(match.employee) });
       });
     }
 
@@ -4464,11 +4547,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       });
     }
 
-    setImportResult({ matchedCount: matchedNames.length, unmatched: unmatchedLines });
+    setImportResult({ matchedCount: matchedNames.length, fuzzyMatches, unmatched: unmatchedLines });
+    const fuzzyNote = fuzzyMatches.length > 0 ? ` (dont ${fuzzyMatches.length} par correspondance approximative — à vérifier)` : "";
     if (unmatchedLines.length === 0) {
-      toast.success(`${matchedNames.length} montant(s) appliqué(s).`);
+      toast.success(`${matchedNames.length} montant(s) appliqué(s)${fuzzyNote}.`);
     } else {
-      toast.warning(`${matchedNames.length} appliqué(s), ${unmatchedLines.length} ligne(s) non reconnue(s).`);
+      toast.warning(
+        `${matchedNames.length} appliqué(s)${fuzzyNote}, ${unmatchedLines.length} ligne(s) non reconnue(s).`
+      );
     }
   }
 
@@ -4981,6 +5067,18 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         {importResult && (
           <div className="mt-3 text-sm">
             <p className="text-success-600 font-semibold">{importResult.matchedCount} montant(s) appliqué(s).</p>
+            {importResult.fuzzyMatches.length > 0 && (
+              <div className="mt-1 text-warning-700">
+                <p className="font-semibold">Correspondance approximative — à vérifier :</p>
+                <ul className="list-disc pl-5">
+                  {importResult.fuzzyMatches.map((m, i) => (
+                    <li key={i}>
+                      « {m.pasted} » → {m.employee}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {importResult.unmatched.length > 0 && (
               <div className="mt-1 text-error-600">
                 <p className="font-semibold">Non reconnu(s) :</p>
