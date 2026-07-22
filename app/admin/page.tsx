@@ -217,7 +217,7 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>("jour");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
@@ -252,10 +252,9 @@ export default function AdminPage() {
         .eq("auth_user_id", user.id)
         .maybeSingle();
 
-      const admin = roleRow?.role === "rh_admin";
-      setIsAdmin(admin);
+      setRole(roleRow?.role ?? null);
 
-      if (admin) {
+      if (roleRow?.role === "rh_admin") {
         const [, { data: absenceRows }, { data: teamRows }] = await Promise.all([
           loadActiveEmployees(),
           supabase.from("absence_types").select("id, code, label").order("label"),
@@ -284,7 +283,7 @@ export default function AdminPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (role !== "rh_admin" && role !== "comptable") {
     return (
       <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
         <div className="card max-w-sm text-center">
@@ -296,6 +295,38 @@ export default function AdminPage() {
           <Link href="/" className="btn btn-dark mt-4 inline-flex">
             Retour
           </Link>
+        </div>
+      </main>
+    );
+  }
+
+  // Comptable only ever needs Paie — no sidebar, no other admin sections.
+  if (role === "comptable") {
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-[1400px]">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+                <LogoMark size={24} />
+              </div>
+              <div>
+                <p className="text-lg font-extrabold tracking-tight text-slate-900 leading-tight">VLADIS</p>
+                <p className="text-xs font-semibold text-slate-400 leading-tight">Comptabilité — Paie</p>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary text-sm"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                router.replace("/login");
+              }}
+            >
+              <LogOut size={15} />
+              Déconnexion
+            </button>
+          </div>
+          <PaieView supabase={supabase} />
         </div>
       </main>
     );
