@@ -47,7 +47,7 @@ log "Starting backup into $DEST"
 
 # ── Database dump ──────────────────────────────────────────────────────
 log "Dumping Postgres..."
-docker run --rm postgres:16-alpine \
+docker run --rm postgres:17-alpine \
   pg_dump --no-owner --no-privileges "$SUPABASE_DB_URL" \
   | gzip > "$DEST/vladis_db_$DATE.sql.gz"
 log "Database dump done: $(du -h "$DEST/vladis_db_$DATE.sql.gz" | cut -f1)"
