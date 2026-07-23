@@ -33,6 +33,9 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# NAS backup credentials — real values only ever live on the NAS itself
+scripts/nas-backup/vladis-backup.env
+
 # vercel
 .vercel
 
