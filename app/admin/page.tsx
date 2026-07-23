@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   CreditCard,
   Download,
+  Eye,
   FileSignature,
   FileSpreadsheet,
   FileText,
@@ -25,6 +26,7 @@ import {
   Languages,
   LogOut,
   Network,
+  Pencil,
   Plane,
   RefreshCw,
   ShieldCheck,
@@ -35,6 +37,7 @@ import {
   User,
   Users,
   Wallet,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -152,6 +155,55 @@ function fmtMinutes(min: number | null | undefined) {
 
 function employeeName(e: { first_name: string; last_name: string }) {
   return `${e.last_name} ${e.first_name}`.trim();
+}
+
+/** French label with a small, muted Russian translation stacked underneath —
+ * the bilingual pattern established in the sidebar nav and Organigramme. */
+function Bi({
+  fr,
+  ru,
+  className = "",
+}: {
+  fr: React.ReactNode;
+  ru?: string;
+  className?: string;
+}) {
+  return (
+    <span className={`inline-block leading-tight align-middle ${className}`}>
+      <span className="block truncate">{fr}</span>
+      {ru && (
+        <span className="block truncate text-[0.6rem] font-medium normal-case opacity-60">
+          {ru}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Icon-only row action (edit/view) — used instead of a bilingual text label
+ * for links that repeat on every table row, to avoid duplicating text dozens
+ * of times per screen. */
+function RowAction({
+  icon: Icon,
+  title,
+  titleRu,
+  onClick,
+}: {
+  icon: LucideIcon;
+  title: string;
+  titleRu: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${title} / ${titleRu}`}
+      className="inline-flex items-center justify-center rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+    >
+      <Icon size={15} />
+    </button>
+  );
 }
 
 function monthRange(year: number, month: number) {
@@ -640,7 +692,7 @@ function JourView({
     <div>
       <div className="card mb-4 flex flex-wrap items-end gap-3">
         <label className="font-bold text-sm">
-          Date
+          <Bi fr="Date" ru="Дата" />
           <input
             type="date"
             className="input mt-2"
@@ -649,7 +701,7 @@ function JourView({
           />
         </label>
         <label className="font-bold text-sm">
-          Recherche
+          <Bi fr="Recherche" ru="Поиск" />
           <input
             className="input mt-2"
             placeholder="Nom, prénom…"
@@ -658,7 +710,7 @@ function JourView({
           />
         </label>
         <label className="font-bold text-sm">
-          Équipe
+          <Bi fr="Équipe" ru="Бригада" />
           <select
             className="input mt-2"
             value={teamFilter}
@@ -680,7 +732,7 @@ function JourView({
         </div>
       ) : filteredGrouped.length === 0 ? (
         <div className="card">
-          <EmptyState description="Aucun résultat pour ces filtres." />
+          <EmptyState titleRu="Нет результатов" description="Aucun résultat pour ces filtres." />
         </div>
       ) : (
         filteredGrouped.map(([teamName, members]) => (
@@ -689,13 +741,13 @@ function JourView({
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-stone-400">
-                  <th className="pb-2 pr-4">Nom</th>
-                  <th className="pb-2 pr-4">Début</th>
-                  <th className="pb-2 pr-4">Fin</th>
-                  <th className="pb-2 pr-4">Pause</th>
-                  <th className="pb-2 pr-4">H. Supp</th>
-                  <th className="pb-2 pr-4">Total</th>
-                  <th className="pb-2 pr-4">Statut</th>
+                  <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Début" ru="Начало" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Fin" ru="Конец" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Pause" ru="Перерыв" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="H. Supp" ru="Сверхур." /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Total" ru="Итого" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Statut" ru="Статус" /></th>
                   <th className="pb-2" />
                 </tr>
               </thead>
@@ -722,7 +774,7 @@ function JourView({
                                   : "bg-stone-200"
                               }`}
                             >
-                              Absent
+                              <Bi fr="Absent" ru="Отсутствует" />
                             </button>
 
                             {editForm.absent ? (
@@ -748,21 +800,25 @@ function JourView({
                               <>
                                 <EditTime
                                   label="Début"
+                                  labelRu="Начало"
                                   value={editForm.start}
                                   onChange={(v) => setEditForm({ ...editForm, start: v })}
                                 />
                                 <EditTime
                                   label="Fin"
+                                  labelRu="Конец"
                                   value={editForm.end}
                                   onChange={(v) => setEditForm({ ...editForm, end: v })}
                                 />
                                 <EditTime
                                   label="Pause"
+                                  labelRu="Перерыв"
                                   value={editForm.pause}
                                   onChange={(v) => setEditForm({ ...editForm, pause: v })}
                                 />
                                 <EditTime
                                   label="H. Supp"
+                                  labelRu="Сверхур."
                                   value={editForm.extra}
                                   onChange={(v) => setEditForm({ ...editForm, extra: v })}
                                 />
@@ -774,13 +830,13 @@ function JourView({
                               disabled={saving}
                               className="btn btn-green text-xs px-3 py-2"
                             >
-                              Enregistrer
+                              <Bi fr="Enregistrer" ru="Сохранить" />
                             </button>
                             <button
                               onClick={() => setEditingId(null)}
                               className="text-xs text-stone-400 underline"
                             >
-                              Annuler
+                              <Bi fr="Annuler" ru="Отмена" />
                             </button>
                           </div>
                         </td>
@@ -795,11 +851,17 @@ function JourView({
                       </td>
                       {!r ? (
                         <td colSpan={5} className="py-2 text-stone-300 italic">
-                          — non saisi —
+                          — non saisi{" "}
+                          <span className="not-italic text-[0.85em] opacity-70">
+                            / не указано
+                          </span>{" "}
+                          —
                         </td>
                       ) : r.is_absent ? (
                         <td colSpan={5} className="py-2 text-error-600 font-semibold">
-                          Absent{r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                          Absent{" "}
+                          <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
+                          {r.absence_types ? ` — ${r.absence_types.label}` : ""}
                         </td>
                       ) : (
                         <>
@@ -824,12 +886,12 @@ function JourView({
                         {r ? "OK" : ""}
                       </td>
                       <td className="py-2">
-                        <button
+                        <RowAction
+                          icon={Pencil}
+                          title="Modifier"
+                          titleRu="Изменить"
                           onClick={() => startEdit(e)}
-                          className="text-xs text-stone-400 underline"
-                        >
-                          Modifier
-                        </button>
+                        />
                       </td>
                     </tr>
                   );
@@ -851,16 +913,20 @@ function timeStrToMinutes(v: string | null) {
 
 function EditTime({
   label,
+  labelRu,
   value,
   onChange,
 }: {
   label: string;
+  labelRu?: string;
   value: string;
   onChange: (v: string) => void;
 }) {
   return (
     <div>
-      <label className="block text-[10px] font-bold text-stone-400">{label}</label>
+      <label className="block text-[10px] font-bold text-stone-400">
+        <Bi fr={label} ru={labelRu} />
+      </label>
       <input
         type="text"
         inputMode="numeric"
@@ -926,7 +992,7 @@ function EmployeView({
     <div>
       <div className="card mb-4 flex flex-wrap gap-4 items-end">
         <label className="font-bold text-sm">
-          Employé
+          <Bi fr="Employé" ru="Сотрудник" />
           <select
             className="input mt-2"
             value={employeeId}
@@ -942,7 +1008,7 @@ function EmployeView({
         </label>
 
         <label className="font-bold text-sm">
-          Mois
+          <Bi fr="Mois" ru="Месяц" />
           <select
             className="input mt-2"
             value={month}
@@ -957,7 +1023,7 @@ function EmployeView({
         </label>
 
         <label className="font-bold text-sm">
-          Année
+          <Bi fr="Année" ru="Год" />
           <input
             type="number"
             className="input mt-2"
@@ -969,7 +1035,7 @@ function EmployeView({
 
       {!employeeId ? (
         <div className="card">
-          <EmptyState title="Sélectionnez un employé" />
+          <EmptyState title="Sélectionnez un employé" titleRu="Выберите сотрудника" />
         </div>
       ) : loading ? (
         <div className="card">
@@ -980,13 +1046,13 @@ function EmployeView({
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4">Jour</th>
-                <th className="pb-2 pr-4">Date</th>
-                <th className="pb-2 pr-4">Début</th>
-                <th className="pb-2 pr-4">Fin</th>
-                <th className="pb-2 pr-4">Pause</th>
-                <th className="pb-2 pr-4">H. Supp</th>
-                <th className="pb-2">Total</th>
+                <th className="pb-2 pr-4"><Bi fr="Jour" ru="День" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Date" ru="Дата" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Début" ru="Начало" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Fin" ru="Конец" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Pause" ru="Перерыв" /></th>
+                <th className="pb-2 pr-4"><Bi fr="H. Supp" ru="Сверхур." /></th>
+                <th className="pb-2"><Bi fr="Total" ru="Итого" /></th>
               </tr>
             </thead>
             <tbody>
@@ -1012,7 +1078,9 @@ function EmployeView({
                       </td>
                     ) : r.is_absent ? (
                       <td colSpan={4} className="py-1.5 text-error-600 font-semibold">
-                        Absent{r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                        Absent{" "}
+                        <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
+                        {r.absence_types ? ` — ${r.absence_types.label}` : ""}
                       </td>
                     ) : (
                       <>
@@ -1036,7 +1104,8 @@ function EmployeView({
             <tfoot>
               <tr className="border-t-2 border-stone-200">
                 <td colSpan={6} className="pt-3 text-right font-bold">
-                  Total du mois
+                  Total du mois{" "}
+                  <span className="text-xs font-medium opacity-60">/ Итого за месяц</span>
                 </td>
                 <td className="pt-3 font-black">{fmtMinutes(totalMinutes)}</td>
               </tr>
@@ -1102,7 +1171,7 @@ function MoisView({
     <div>
       <div className="card mb-4 flex flex-wrap gap-4 items-end max-w-md">
         <label className="font-bold text-sm">
-          Mois
+          <Bi fr="Mois" ru="Месяц" />
           <select
             className="input mt-2"
             value={month}
@@ -1117,7 +1186,7 @@ function MoisView({
         </label>
 
         <label className="font-bold text-sm">
-          Année
+          <Bi fr="Année" ru="Год" />
           <input
             type="number"
             className="input mt-2"
@@ -1136,10 +1205,10 @@ function MoisView({
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4">Nom</th>
-                <th className="pb-2 pr-4">Équipe</th>
-                <th className="pb-2 pr-4">Heures totales</th>
-                <th className="pb-2">Statut</th>
+                <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Heures totales" ru="Часы всего" /></th>
+                <th className="pb-2"><Bi fr="Statut" ru="Статус" /></th>
               </tr>
             </thead>
             <tbody>
@@ -1161,7 +1230,14 @@ function MoisView({
                         total ? "text-success-600" : "text-stone-300"
                       }`}
                     >
-                      {total ? "OK" : "Aucune donnée"}
+                      {total ? (
+                        "OK"
+                      ) : (
+                        <>
+                          Aucune donnée{" "}
+                          <span className="text-[0.85em] opacity-70">/ Нет данных</span>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1392,14 +1468,14 @@ function ExportImportView({
   return (
     <div className="space-y-6">
       <div className="card">
-        <p className="font-bold mb-1">Exporter</p>
+        <p className="font-bold mb-1"><Bi fr="Exporter" ru="Экспорт" /></p>
         <p className="text-xs text-stone-400 mb-4">
           Télécharge un fichier Excel des pointages sur une période — à
           modifier puis réimporter si besoin.
         </p>
         <div className="flex flex-wrap items-end gap-4">
           <label className="font-bold text-sm">
-            Du
+            <Bi fr="Du" ru="С" />
             <input
               type="date"
               className="input mt-2"
@@ -1408,7 +1484,7 @@ function ExportImportView({
             />
           </label>
           <label className="font-bold text-sm">
-            Au
+            <Bi fr="Au" ru="По" />
             <input
               type="date"
               className="input mt-2"
@@ -1421,13 +1497,13 @@ function ExportImportView({
             disabled={exporting}
             className="btn btn-primary"
           >
-            {exporting ? "Export…" : "Exporter (.xlsx)"}
+            {exporting ? "Export…" : <Bi fr="Exporter (.xlsx)" ru="Экспортировать" />}
           </button>
         </div>
       </div>
 
       <div className="card">
-        <p className="font-bold mb-1">Importer</p>
+        <p className="font-bold mb-1"><Bi fr="Importer" ru="Импорт" /></p>
         <p className="text-xs text-stone-400 mb-4">
           Réimporte un fichier au même format que l&apos;export — les lignes
           remplacent les données existantes pour la même date et le même
@@ -1443,7 +1519,11 @@ function ExportImportView({
             if (file) handleImportFile(file);
           }}
         />
-        {importing && <p className="text-sm text-stone-400 mt-3">Import en cours…</p>}
+        {importing && (
+          <p className="text-sm text-stone-400 mt-3">
+            Import en cours… <span className="opacity-70">/ Импорт…</span>
+          </p>
+        )}
         {importSummary && (
           <p className="text-sm font-semibold text-success-600 mt-3">
             {importSummary}
@@ -1451,7 +1531,7 @@ function ExportImportView({
         )}
         {importErrors.length > 0 && (
           <div className="mt-3 text-sm text-error-600">
-            <p className="font-semibold">Erreurs :</p>
+            <p className="font-semibold"><Bi fr="Erreurs :" ru="Ошибки:" /></p>
             <ul className="list-disc pl-5">
               {importErrors.map((err, i) => (
                 <li key={i}>{err}</li>
@@ -1469,6 +1549,11 @@ const STATUS_LABELS: Record<EmployeeStatus, string> = {
   active: "Actif",
   on_leave: "En congé",
   terminated: "Sorti",
+};
+const STATUS_LABELS_RU: Record<EmployeeStatus, string> = {
+  active: "Активен",
+  on_leave: "В отпуске",
+  terminated: "Уволен",
 };
 
 type EmployeeEditForm = {
@@ -1636,7 +1721,7 @@ function EmployeesView({
             className="btn btn-primary text-sm px-3 py-2"
             onClick={() => setShowAddForm((v) => !v)}
           >
-            + Nouvel employé
+            <Bi fr="+ Nouvel employé" ru="Новый сотрудник" />
           </button>
         </div>
 
@@ -1649,7 +1734,7 @@ function EmployeesView({
                 : "bg-success-50 text-success-700"
             }`}
           >
-            {counts.active} actifs
+            {counts.active} actifs <span className="opacity-70">/ активны</span>
           </button>
           <button
             onClick={() => setStatusFilter("on_leave")}
@@ -1659,7 +1744,7 @@ function EmployeesView({
                 : "bg-warning-50 text-warning-700"
             }`}
           >
-            {counts.on_leave} en congé
+            {counts.on_leave} en congé <span className="opacity-70">/ в отпуске</span>
           </button>
           <button
             onClick={() => setStatusFilter("terminated")}
@@ -1669,7 +1754,7 @@ function EmployeesView({
                 : "bg-error-50 text-error-700"
             }`}
           >
-            {counts.terminated} sortis
+            {counts.terminated} sortis <span className="opacity-70">/ уволены</span>
           </button>
           <button
             onClick={() => setStatusFilter("all")}
@@ -1679,14 +1764,14 @@ function EmployeesView({
                 : "bg-stone-100 text-stone-500"
             }`}
           >
-            Tous ({employees.length})
+            Tous ({employees.length}) <span className="opacity-70">/ все</span>
           </button>
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Recherche
+              <Bi fr="Recherche" ru="Поиск" />
             </label>
             <input
               className="input"
@@ -1697,7 +1782,7 @@ function EmployeesView({
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Équipe
+              <Bi fr="Équipe" ru="Бригада" />
             </label>
             <select
               className="input"
@@ -1715,7 +1800,7 @@ function EmployeesView({
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Catégorie
+              <Bi fr="Catégorie" ru="Категория" />
             </label>
             <select
               className="input"
@@ -1736,7 +1821,7 @@ function EmployeesView({
         <div className="card mb-4 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Prénom
+              <Bi fr="Prénom" ru="Имя" />
             </label>
             <input
               className="input"
@@ -1747,7 +1832,9 @@ function EmployeesView({
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-stone-400">Nom</label>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Nom" ru="Фамилия" />
+            </label>
             <input
               className="input"
               value={newEmployee.lastName}
@@ -1758,7 +1845,7 @@ function EmployeesView({
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Équipe
+              <Bi fr="Équipe" ru="Бригада" />
             </label>
             <select
               className="input"
@@ -1780,7 +1867,7 @@ function EmployeesView({
             disabled={adding}
             onClick={addEmployee}
           >
-            {adding ? "…" : "Ajouter"}
+            {adding ? "…" : <Bi fr="Ajouter" ru="Добавить" />}
           </button>
         </div>
       )}
@@ -1791,21 +1878,27 @@ function EmployeesView({
         </div>
       ) : filtered.length === 0 ? (
         <div className="card">
-          <EmptyState description="Aucun employé ne correspond à ces filtres." />
+          <EmptyState titleRu="Нет результатов" description="Aucun employé ne correspond à ces filtres." />
         </div>
       ) : (
         groupedFiltered.map(([sectionLabel, members]) => (
         <div key={sectionLabel} className="card mb-4 overflow-x-auto">
-          <p className="font-bold mb-3">{sectionLabel}</p>
+          <p className="font-bold mb-3">
+            <Bi fr={sectionLabel} ru={sectionLabel === "Bureau" ? "Офис" : "Стройка"} />
+          </p>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4">Nom</th>
+                <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
                 <th className="pb-2 pr-4">
-                  {sectionLabel === "Bureau" ? "Poste" : "Équipe"}
+                  {sectionLabel === "Bureau" ? (
+                    <Bi fr="Poste" ru="Должность" />
+                  ) : (
+                    <Bi fr="Équipe" ru="Бригада" />
+                  )}
                 </th>
-                <th className="pb-2 pr-4">Statut</th>
-                <th className="pb-2 pr-4">Date de fin</th>
+                <th className="pb-2 pr-4"><Bi fr="Statut" ru="Статус" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Date de fin" ru="Дата увольнения" /></th>
                 <th className="pb-2" />
               </tr>
             </thead>
@@ -1853,7 +1946,7 @@ function EmployeesView({
                               ["active", "on_leave", "terminated"] as EmployeeStatus[]
                             ).map((s) => (
                               <option key={s} value={s}>
-                                {STATUS_LABELS[s]}
+                                {STATUS_LABELS[s]} / {STATUS_LABELS_RU[s]}
                               </option>
                             ))}
                           </select>
@@ -1876,13 +1969,13 @@ function EmployeesView({
                             disabled={saving}
                             onClick={() => saveEdit(e)}
                           >
-                            Enregistrer
+                            <Bi fr="Enregistrer" ru="Сохранить" />
                           </button>
                           <button
                             className="text-xs text-stone-400 underline"
                             onClick={() => setEditingId(null)}
                           >
-                            Annuler
+                            <Bi fr="Annuler" ru="Отмена" />
                           </button>
                         </td>
                       </>
@@ -1906,20 +1999,20 @@ function EmployeesView({
                           {e.end_date ?? "—"}
                         </td>
                         <td className="py-2 whitespace-nowrap">
-                          <button
-                            className="text-xs text-stone-400 underline mr-3"
+                          <RowAction
+                            icon={Pencil}
+                            title="Modifier"
+                            titleRu="Изменить"
                             onClick={() => startEdit(e)}
-                          >
-                            Modifier
-                          </button>
-                          <button
-                            className="text-xs text-stone-400 underline"
+                          />
+                          <RowAction
+                            icon={expandedId === e.id ? X : Eye}
+                            title={expandedId === e.id ? "Fermer" : "Détails"}
+                            titleRu={expandedId === e.id ? "Закрыть" : "Подробнее"}
                             onClick={() =>
                               setExpandedId(expandedId === e.id ? null : e.id)
                             }
-                          >
-                            {expandedId === e.id ? "Fermer" : "Détails"}
-                          </button>
+                          />
                         </td>
                       </>
                     )}
@@ -2015,10 +2108,12 @@ const STATUS_TONE: Record<EmployeeStatus, string> = {
 
 function DetailSection({
   title,
+  titleRu,
   tone,
   children,
 }: {
   title: string;
+  titleRu?: string;
   tone?: "warning";
   children: React.ReactNode;
 }) {
@@ -2029,7 +2124,7 @@ function DetailSection({
           tone === "warning" ? "text-error-500" : "text-stone-400"
         }`}
       >
-        {title}
+        <Bi fr={title} ru={titleRu} />
       </p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{children}</div>
     </div>
@@ -2126,96 +2221,112 @@ function EmployeeDetailPanel({
         </div>
       </div>
 
-      <DetailSection title="Identité">
+      <DetailSection title="Identité" titleRu="Личные данные">
         <DetailField
           label="Sexe"
+          labelRu="Пол"
           value={profile.sex}
           onChange={(v) => setProfile({ ...profile, sex: v })}
         />
         <DetailField
           label="Date de naissance"
+          labelRu="Дата рождения"
           type="date"
           value={profile.date_of_birth}
           onChange={(v) => setProfile({ ...profile, date_of_birth: v })}
         />
         <DetailField
           label="Lieu de naissance"
+          labelRu="Место рождения"
           value={profile.birth_place}
           onChange={(v) => setProfile({ ...profile, birth_place: v })}
         />
         <DetailField
           label="Nationalité"
+          labelRu="Гражданство"
           value={confidential.nationality}
           onChange={(v) => setConfidential({ ...confidential, nationality: v })}
         />
       </DetailSection>
 
-      <DetailSection title="Poste">
+      <DetailSection title="Poste" titleRu="Должность">
         <DetailField
           label="Qualification"
+          labelRu="Квалификация"
           value={profile.qualification}
           onChange={(v) => setProfile({ ...profile, qualification: v })}
         />
         <DetailField
           label="Poste / Emploi"
+          labelRu="Должность"
           value={profile.job_title}
           onChange={(v) => setProfile({ ...profile, job_title: v })}
         />
         <DetailField
           label="Type de contrat"
+          labelRu="Тип контракта"
           value={profile.contract_type}
           onChange={(v) => setProfile({ ...profile, contract_type: v })}
         />
         <DetailField
           label="Date d'embauche"
+          labelRu="Дата приёма на работу"
           type="date"
           value={profile.hire_date}
           onChange={(v) => setProfile({ ...profile, hire_date: v })}
         />
         <DetailField
           label="Classification (groupe A–I)"
+          labelRu="Классификация (группа A–I)"
           value={profile.classification}
           onChange={(v) => setProfile({ ...profile, classification: v })}
         />
         <DetailField
           label="Classe (coefficient)"
+          labelRu="Класс (коэффициент)"
           value={profile.classe}
           onChange={(v) => setProfile({ ...profile, classe: v })}
         />
         <DetailField
           label="Heures hebdomadaires"
+          labelRu="Часов в неделю"
           type="number"
           value={profile.weekly_hours?.toString() ?? null}
           onChange={(v) => setProfile({ ...profile, weekly_hours: v === "" ? null : Number(v) })}
         />
       </DetailSection>
 
-      <DetailSection title="Contact">
+      <DetailSection title="Contact" titleRu="Контакты">
         <DetailField
           label="Téléphone"
+          labelRu="Телефон"
           value={profile.phone}
           onChange={(v) => setProfile({ ...profile, phone: v })}
         />
         <DetailField
           label="Email"
+          labelRu="Эл. почта"
           value={profile.email}
           onChange={(v) => setProfile({ ...profile, email: v })}
         />
         <DetailField
           label="Adresse"
+          labelRu="Адрес"
           value={profile.address}
           onChange={(v) => setProfile({ ...profile, address: v })}
         />
       </DetailSection>
 
-      <DetailSection title="Confidentiel — RH uniquement" tone="warning">
+      <DetailSection title="Confidentiel — RH uniquement" titleRu="Конфиденциально — только для кадров" tone="warning">
         <DetailField
           label="RIB"
+          labelRu="Банковские реквизиты"
           value={confidential.rib}
           onChange={(v) => setConfidential({ ...confidential, rib: v })}
         />
         <DetailField
           label="Sécurité sociale"
+          labelRu="Соц. страхование"
           value={confidential.securite_sociale}
           onChange={(v) =>
             setConfidential({ ...confidential, securite_sociale: v })
@@ -2223,21 +2334,25 @@ function EmployeeDetailPanel({
         />
         <DetailField
           label="Statut Ameli"
+          labelRu="Статус Ameli"
           value={confidential.status_ameli}
           onChange={(v) => setConfidential({ ...confidential, status_ameli: v })}
         />
         <DetailField
           label="Carte Vitale"
+          labelRu="Карта Vitale"
           value={confidential.carte_vitale}
           onChange={(v) => setConfidential({ ...confidential, carte_vitale: v })}
         />
         <DetailField
           label="Mutuelle"
+          labelRu="Страховка"
           value={confidential.mutuelle}
           onChange={(v) => setConfidential({ ...confidential, mutuelle: v })}
         />
         <DetailField
           label="Type de titre de séjour"
+          labelRu="Тип вида на жительство"
           value={confidential.residence_permit_type}
           onChange={(v) =>
             setConfidential({ ...confidential, residence_permit_type: v })
@@ -2245,6 +2360,7 @@ function EmployeeDetailPanel({
         />
         <DetailField
           label="N° du titre"
+          labelRu="Номер документа"
           value={confidential.residence_permit_number}
           onChange={(v) =>
             setConfidential({ ...confidential, residence_permit_number: v })
@@ -2252,6 +2368,7 @@ function EmployeeDetailPanel({
         />
         <DetailField
           label="Salaire mensuel brut (€)"
+          labelRu="Оклад брутто в месяц (€)"
           type="number"
           value={confidential.monthly_gross_salary?.toString() ?? null}
           onChange={(v) =>
@@ -2269,7 +2386,7 @@ function EmployeeDetailPanel({
           disabled={saving}
           onClick={save}
         >
-          {saving ? "…" : "Enregistrer"}
+          {saving ? "…" : <Bi fr="Enregistrer" ru="Сохранить" />}
         </button>
         {savedAt && (
           <span className="ml-3 text-xs font-semibold text-success-600">
@@ -2283,11 +2400,13 @@ function EmployeeDetailPanel({
 
 function DetailField({
   label,
+  labelRu,
   value,
   onChange,
   type = "text",
 }: {
   label: string;
+  labelRu?: string;
   value: string | null;
   onChange: (v: string) => void;
   type?: string;
@@ -2295,7 +2414,7 @@ function DetailField({
   return (
     <div>
       <label className="block text-[10px] font-bold uppercase text-stone-400">
-        {label}
+        <Bi fr={label} ru={labelRu} />
       </label>
       <input
         type={type}
@@ -2413,7 +2532,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Recherche
+              <Bi fr="Recherche" ru="Поиск" />
             </label>
             <input
               className="input"
@@ -2424,7 +2543,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Équipe
+              <Bi fr="Équipe" ru="Бригада" />
             </label>
             <select
               className="input"
@@ -2448,17 +2567,17 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         </div>
       ) : filteredVisits.length === 0 ? (
         <div className="card">
-          <EmptyState description="Aucune visite ne correspond à ces filtres." />
+          <EmptyState titleRu="Нет результатов" description="Aucune visite ne correspond à ces filtres." />
         </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4">Nom</th>
-                <th className="pb-2 pr-4">Dernière visite</th>
-                <th className="pb-2 pr-4">Prochaine visite</th>
-                <th className="pb-2 pr-4">Sous-type</th>
+                <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Dernière visite" ru="Последний визит" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Prochaine visite" ru="Следующий визит" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Sous-type" ru="Подтип" /></th>
                 <th className="pb-2" />
               </tr>
             </thead>
@@ -2508,13 +2627,13 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             disabled={saving}
                             onClick={() => saveEdit(v)}
                           >
-                            Enregistrer
+                            <Bi fr="Enregistrer" ru="Сохранить" />
                           </button>
                           <button
                             className="text-xs text-stone-400 underline"
                             onClick={() => setEditingId(null)}
                           >
-                            Annuler
+                            <Bi fr="Annuler" ru="Отмена" />
                           </button>
                         </td>
                       </>
@@ -2532,12 +2651,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           {v.visit_subtype ?? "—"}
                         </td>
                         <td className="py-2">
-                          <button
-                            className="text-xs text-stone-400 underline"
+                          <RowAction
+                            icon={Pencil}
+                            title="Modifier"
+                            titleRu="Изменить"
                             onClick={() => startEdit(v)}
-                          >
-                            Modifier
-                          </button>
+                          />
                         </td>
                       </>
                     )}
@@ -2646,12 +2765,13 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
           Formations & habilitations ({filteredEmployees.length}/{employees.length})
         </p>
         <p className="text-xs text-stone-400 mb-3">
-          Cliquer une cellule pour basculer OK / KO.
+          Cliquer une cellule pour basculer OK / KO.{" "}
+          <span className="opacity-70">/ Нажмите на ячейку, чтобы переключить OK / KO.</span>
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Recherche
+              <Bi fr="Recherche" ru="Поиск" />
             </label>
             <input
               className="input"
@@ -2662,7 +2782,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Équipe
+              <Bi fr="Équipe" ru="Бригада" />
             </label>
             <select
               className="input"
@@ -2686,15 +2806,15 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         </div>
       ) : filteredEmployees.length === 0 ? (
         <div className="card">
-          <EmptyState description="Aucun employé ne correspond à ces filtres." />
+          <EmptyState titleRu="Нет результатов" description="Aucun employé ne correspond à ces filtres." />
         </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4">Nom</th>
-                <th className="pb-2 pr-4">Équipe</th>
+                <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
                 {types.map((t) => (
                   <th key={t.id} className="pb-2 px-2 text-center" title={t.label}>
                     {t.code}
@@ -2852,7 +2972,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Recherche
+              <Bi fr="Recherche" ru="Поиск" />
             </label>
             <input
               className="input"
@@ -2863,7 +2983,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </div>
           <div>
             <label className="block text-xs font-bold text-stone-400">
-              Équipe
+              <Bi fr="Équipe" ru="Бригада" />
             </label>
             <select
               className="input"
@@ -2887,18 +3007,18 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
         </div>
       ) : filteredEmployees.length === 0 ? (
         <div className="card">
-          <EmptyState description="Aucun employé ne correspond à ces filtres." />
+          <EmptyState titleRu="Нет результатов" description="Aucun employé ne correspond à ces filtres." />
         </div>
       ) : (
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4">Nom</th>
-                <th className="pb-2 pr-4">Chaussures</th>
-                <th className="pb-2 pr-4">Pantalon</th>
-                <th className="pb-2 pr-4">T-shirt</th>
-                <th className="pb-2 pr-4">Notes</th>
+                <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Chaussures" ru="Обувь" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Pantalon" ru="Брюки" /></th>
+                <th className="pb-2 pr-4"><Bi fr="T-shirt" ru="Футболка" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Notes" ru="Заметки" /></th>
                 <th className="pb-2" />
               </tr>
             </thead>
@@ -2956,13 +3076,13 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             disabled={saving}
                             onClick={() => saveEdit(e.id)}
                           >
-                            Enregistrer
+                            <Bi fr="Enregistrer" ru="Сохранить" />
                           </button>
                           <button
                             className="text-xs text-stone-400 underline"
                             onClick={() => setEditingId(null)}
                           >
-                            Annuler
+                            <Bi fr="Annuler" ru="Отмена" />
                           </button>
                         </td>
                       </>
@@ -2979,12 +3099,12 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2 pr-4 text-stone-500">{s?.notes ?? "—"}</td>
                         <td className="py-2">
-                          <button
-                            className="text-xs text-stone-400 underline"
+                          <RowAction
+                            icon={Pencil}
+                            title="Modifier"
+                            titleRu="Изменить"
                             onClick={() => startEdit(e.id)}
-                          >
-                            Modifier
-                          </button>
+                          />
                         </td>
                       </>
                     )}
@@ -3145,7 +3265,9 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <p className="font-bold mb-3">Employés ({filteredEmployees.length})</p>
+        <p className="font-bold mb-3">
+          <Bi fr={`Employés (${filteredEmployees.length})`} ru="Сотрудники" />
+        </p>
         <input
           className="input mb-2"
           placeholder="Rechercher…"
@@ -3157,10 +3279,10 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
         >
-          <option value="active">Actifs</option>
-          <option value="on_leave">En congé</option>
-          <option value="terminated">Sortis</option>
-          <option value="all">Tous</option>
+          <option value="active">Actifs / Активны</option>
+          <option value="on_leave">En congé / В отпуске</option>
+          <option value="terminated">Sortis / Уволены</option>
+          <option value="all">Tous / Все</option>
         </select>
 
         {loadingEmployees ? (
@@ -3184,7 +3306,9 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
               </button>
             ))}
             {filteredEmployees.length === 0 && (
-              <p className="text-sm text-stone-400 px-1">Aucun résultat.</p>
+              <p className="text-sm text-stone-400 px-1">
+                Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
+              </p>
             )}
           </div>
         )}
@@ -3192,7 +3316,10 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
 
       <div className="flex-1 min-w-0 card">
         {!selectedEmployeeId ? (
-          <p className="text-stone-400">Sélectionnez un employé à gauche.</p>
+          <p className="text-stone-400">
+            Sélectionnez un employé à gauche.{" "}
+            <span className="opacity-70">/ Выберите сотрудника слева.</span>
+          </p>
         ) : (
           <>
             <div className="flex items-center justify-between mb-4">
@@ -3221,7 +3348,10 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
             )}
 
             {loadingDetail || !employeeDoc || !companyDoc ? (
-              <p className="text-stone-400">Chargement des données de l&apos;employé…</p>
+              <p className="text-stone-400">
+                Chargement des données de l&apos;employé…{" "}
+                <span className="opacity-70">/ Загрузка данных сотрудника…</span>
+              </p>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -3311,14 +3441,18 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                     disabled={missingRequired.length > 0 || generating !== null}
                     onClick={() => download("docx")}
                   >
-                    {generating === "docx" ? "Génération…" : "Télécharger Word (.docx)"}
+                    {generating === "docx" ? (
+                      "Génération…"
+                    ) : (
+                      <Bi fr="Télécharger Word (.docx)" ru="Скачать Word (.docx)" />
+                    )}
                   </button>
                   <button
                     className="btn btn-primary"
                     disabled={missingRequired.length > 0 || generating !== null}
                     onClick={() => download("pdf")}
                   >
-                    {generating === "pdf" ? "Génération…" : "Télécharger PDF"}
+                    {generating === "pdf" ? "Génération…" : <Bi fr="Télécharger PDF" ru="Скачать PDF" />}
                   </button>
                 </div>
               </>
@@ -3431,20 +3565,20 @@ function validateRegistreEditForm(form: RegistreEditForm): string[] {
   return errors;
 }
 
-const REGISTRE_FIELD_LABELS: { key: keyof RegistreEditForm; label: string; type: "text" | "date" | "select" }[] = [
-  { key: "numero", label: "N°", type: "text" },
-  { key: "nom_prenom", label: "Nom Prénom", type: "text" },
-  { key: "date_entree", label: "Date d'entrée", type: "date" },
-  { key: "nationalite", label: "Nationalité", type: "select" },
-  { key: "date_naissance", label: "Date de naissance", type: "date" },
-  { key: "sexe", label: "Sexe (M/F)", type: "select" },
-  { key: "emploi", label: "Emploi", type: "text" },
-  { key: "qualification", label: "Qualification", type: "text" },
-  { key: "type_titre", label: "Type de titre", type: "select" },
-  { key: "numero_titre", label: "N° du titre", type: "text" },
-  { key: "type_contrat", label: "Type de contrat", type: "select" },
-  { key: "temps_partiel", label: "Temps partiel", type: "text" },
-  { key: "date_sortie", label: "Date de sortie", type: "date" },
+const REGISTRE_FIELD_LABELS: { key: keyof RegistreEditForm; label: string; labelRu: string; type: "text" | "date" | "select" }[] = [
+  { key: "numero", label: "N°", labelRu: "№", type: "text" },
+  { key: "nom_prenom", label: "Nom Prénom", labelRu: "Фамилия Имя", type: "text" },
+  { key: "date_entree", label: "Date d'entrée", labelRu: "Дата приёма", type: "date" },
+  { key: "nationalite", label: "Nationalité", labelRu: "Гражданство", type: "select" },
+  { key: "date_naissance", label: "Date de naissance", labelRu: "Дата рождения", type: "date" },
+  { key: "sexe", label: "Sexe (M/F)", labelRu: "Пол (M/F)", type: "select" },
+  { key: "emploi", label: "Emploi", labelRu: "Должность", type: "text" },
+  { key: "qualification", label: "Qualification", labelRu: "Квалификация", type: "text" },
+  { key: "type_titre", label: "Type de titre", labelRu: "Тип документа", type: "select" },
+  { key: "numero_titre", label: "N° du titre", labelRu: "Номер документа", type: "text" },
+  { key: "type_contrat", label: "Type de contrat", labelRu: "Тип контракта", type: "select" },
+  { key: "temps_partiel", label: "Temps partiel", labelRu: "Неполная занятость", type: "text" },
+  { key: "date_sortie", label: "Date de sortie", labelRu: "Дата увольнения", type: "date" },
 ];
 
 const SEXE_SELECT_OPTIONS = ["M", "F"];
@@ -3660,7 +3794,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             Registre unique du personnel ({filtered.length}/{counts.total})
           </p>
           <button className="btn btn-dark text-sm px-3 py-2" onClick={exportExcel}>
-            Exporter Excel
+            <Bi fr="Exporter Excel" ru="Экспорт в Excel" />
           </button>
         </div>
         <p className="text-xs text-stone-400 mb-4">
@@ -3676,7 +3810,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               statusFilter === "all" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
             }`}
           >
-            {counts.total} au total
+            {counts.total} au total <span className="opacity-70">/ всего</span>
           </button>
           <button
             onClick={() => setStatusFilter("present")}
@@ -3684,7 +3818,8 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               statusFilter === "present" ? "bg-success-600 text-white" : "bg-success-50 text-success-700"
             }`}
           >
-            {counts.present} sans date de sortie
+            {counts.present} sans date de sortie{" "}
+            <span className="opacity-70">/ без даты увольнения</span>
           </button>
           <button
             onClick={() => setStatusFilter("sorti")}
@@ -3692,7 +3827,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               statusFilter === "sorti" ? "bg-error-600 text-white" : "bg-error-50 text-error-700"
             }`}
           >
-            {counts.sorti} sortis
+            {counts.sorti} sortis <span className="opacity-70">/ уволены</span>
           </button>
           <button
             onClick={() => setForeignersOnly((v) => !v)}
@@ -3700,7 +3835,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               foreignersOnly ? "bg-warning-600 text-white" : "bg-warning-50 text-warning-700"
             }`}
           >
-            {counts.foreigners} étrangers
+            {counts.foreigners} étrangers <span className="opacity-70">/ иностранцы</span>
           </button>
         </div>
 
@@ -3716,7 +3851,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             value={nationaliteFilter}
             onChange={(e) => setNationaliteFilter(e.target.value)}
           >
-            <option value="all">Toutes nationalités</option>
+            <option value="all">Toutes nationalités / Все национальности</option>
             {nationaliteOptions.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -3728,9 +3863,9 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             value={sexeFilter}
             onChange={(e) => setSexeFilter(e.target.value as "all" | "M" | "F")}
           >
-            <option value="all">Tous sexes</option>
-            <option value="M">Homme</option>
-            <option value="F">Femme</option>
+            <option value="all">Tous sexes / Все полы</option>
+            <option value="M">Homme / Мужской</option>
+            <option value="F">Femme / Женский</option>
           </select>
         </div>
       </div>
@@ -3741,7 +3876,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {REGISTRE_FIELD_LABELS.map((f) => (
                 <label key={f.key} className="text-xs font-bold text-stone-500">
-                  {f.label}
+                  <Bi fr={f.label} ru={f.labelRu} />
                   {f.type === "select" ? (
                     <select
                       className="input mt-1"
@@ -3775,10 +3910,10 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             )}
             <div className="flex gap-3 mt-4">
               <button className="btn btn-green text-sm px-3 py-2" disabled={saving} onClick={saveEdit}>
-                {saving ? "Enregistrement…" : "Enregistrer"}
+                {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
               </button>
               <button className="btn btn-secondary text-sm px-3 py-2" onClick={cancelEdit}>
-                Annuler
+                <Bi fr="Annuler" ru="Отмена" />
               </button>
             </div>
           </>
@@ -3794,19 +3929,11 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400 whitespace-nowrap">
-                <th className="py-2 pr-4">N°</th>
-                <th className="py-2 pr-4">Nom Prénom</th>
-                <th className="py-2 pr-4">Date d&apos;entrée</th>
-                <th className="py-2 pr-4">Nationalité</th>
-                <th className="py-2 pr-4">Date de naissance</th>
-                <th className="py-2 pr-4">Sexe</th>
-                <th className="py-2 pr-4">Emploi</th>
-                <th className="py-2 pr-4">Qualification</th>
-                <th className="py-2 pr-4">Type de titre</th>
-                <th className="py-2 pr-4">N° du titre</th>
-                <th className="py-2 pr-4">Type de contrat</th>
-                <th className="py-2 pr-4">Temps partiel</th>
-                <th className="py-2 pr-4">Date de sortie</th>
+                {REGISTRE_FIELD_LABELS.map((f) => (
+                  <th key={f.key} className="py-2 pr-4">
+                    <Bi fr={f.label} ru={f.labelRu} />
+                  </th>
+                ))}
                 <th className="py-2 pr-4"></th>
               </tr>
             </thead>
@@ -3832,12 +3959,12 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
                     <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
                     <td className="py-2 pr-2 whitespace-nowrap">
-                      <button
-                        className="text-xs text-stone-400 underline"
+                      <RowAction
+                        icon={Pencil}
+                        title="Modifier"
+                        titleRu="Изменить"
                         onClick={() => startEdit(r)}
-                      >
-                        Modifier
-                      </button>
+                      />
                     </td>
                   </tr>
                 );
@@ -4027,7 +4154,10 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         <p className="font-bold">
           Bureau <span className="ml-1 font-normal text-stone-400">Бюро</span>
         </p>
-        <p className="text-xs text-stone-400 mb-3">Glissez une personne pour la réordonner dans sa colonne.</p>
+        <p className="text-xs text-stone-400 mb-3">
+          Glissez une personne pour la réordonner dans sa colonne.{" "}
+          <span className="opacity-70">/ Перетащите, чтобы изменить порядок в колонке.</span>
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {bureauColumns.map((c) => (
             <OrgColumn
@@ -4045,7 +4175,8 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           Chantier — par équipe <span className="ml-1 font-normal text-stone-400">Стройка — по бригадам</span>
         </p>
         <p className="text-xs text-stone-400 mb-3">
-          Glissez-déposez une personne pour changer son ordre dans son équipe.
+          Glissez-déposez une personne pour changer son ordre dans son équipe.{" "}
+          <span className="opacity-70">/ Перетащите, чтобы изменить порядок в бригаде.</span>
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {teamColumns.map((c) => (
@@ -4285,7 +4416,11 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
     return (
       <p className="card text-center text-stone-400">
         Aucune séance programmée. Exécutez la migration des cours de français pour importer le
-        calendrier.
+        calendrier.{" "}
+        <span className="opacity-70">
+          / Нет запланированных занятий. Выполните миграцию курсов французского, чтобы
+          импортировать календарь.
+        </span>
       </p>
     );
   }
@@ -4294,7 +4429,7 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
     <div>
       <div className="card mb-4 flex flex-wrap items-end gap-3">
         <label className="font-bold text-sm">
-          Séance
+          <Bi fr="Séance" ru="Занятие" />
           <select
             className="input mt-2"
             value={sessionId}
@@ -4307,14 +4442,18 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
             ))}
           </select>
         </label>
-        {saving && <span className="text-xs text-stone-400">Enregistrement…</span>}
+        {saving && (
+          <span className="text-xs text-stone-400">
+            Enregistrement… <span className="opacity-70">/ Сохранение…</span>
+          </span>
+        )}
       </div>
 
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-stone-400">
-              <th className="py-2 pr-4">Élève</th>
+              <th className="py-2 pr-4"><Bi fr="Élève" ru="Ученик" /></th>
               <th className="py-2 pr-4">Absent (Н)</th>
               <th className="py-2 pr-4">Devoir fait (ДЗ)</th>
               <th className="py-2 pr-4">Contrôle (К)</th>
@@ -5060,7 +5199,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       <div className="card mb-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap gap-4 items-end">
           <label className="font-bold text-sm">
-            Mois
+            <Bi fr="Mois" ru="Месяц" />
             <select
               className="input mt-2"
               value={month}
@@ -5074,7 +5213,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             </select>
           </label>
           <label className="font-bold text-sm">
-            Année
+            <Bi fr="Année" ru="Год" />
             <input
               type="number"
               className="input mt-2"
@@ -5085,7 +5224,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         </div>
         <div className="flex gap-3">
           <button className="btn btn-secondary text-sm" onClick={() => setShowParams((s) => !s)}>
-            Paramètres de calcul
+            <Bi fr="Paramètres de calcul" ru="Параметры расчёта" />
           </button>
           <button
             className="btn btn-secondary text-sm"
@@ -5095,16 +5234,16 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               setShowImportModal(true);
             }}
           >
-            <Upload size={15} /> Importer
+            <Upload size={15} /> <Bi fr="Importer" ru="Импорт" />
           </button>
           <button className="btn btn-secondary text-sm" onClick={exportExcel}>
-            <FileSpreadsheet size={15} /> Exporter Excel
+            <FileSpreadsheet size={15} /> <Bi fr="Exporter Excel" ru="Экспорт в Excel" />
           </button>
           <button className="btn btn-primary text-sm" disabled={saving} onClick={save}>
-            {saving ? "Enregistrement…" : "Enregistrer"}
+            {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
           </button>
           <button className="btn btn-dark text-sm" onClick={() => setShowSyncModal(true)}>
-            <RefreshCw size={15} /> Appliquer au pointage
+            <RefreshCw size={15} /> <Bi fr="Appliquer au pointage" ru="Применить к табелю" />
           </button>
         </div>
       </div>
@@ -5116,7 +5255,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             <span className="text-stone-400"> ce mois-ci — utilisé comme valeur par défaut pour « Jours repas ».</span>
           </p>
           <button className="btn btn-secondary text-xs px-3 py-1.5" onClick={applyWorkingDaysToAll}>
-            Appliquer à tous
+            <Bi fr="Appliquer à tous" ru="Применить ко всем" />
           </button>
         </div>
         {monthHolidays.length > 0 && (
@@ -5154,7 +5293,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 disabled={!holidayBonusSelection}
                 onClick={applyHolidayBonusToAll}
               >
-                Appliquer à tous
+                <Bi fr="Appliquer à tous" ru="Применить ко всем" />
               </button>
             </div>
           </>
@@ -5163,7 +5302,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
       {showParams && (
         <div className="card mb-4">
-          <p className="font-bold mb-3">Paramètres de calcul</p>
+          <p className="font-bold mb-3">
+            <Bi fr="Paramètres de calcul" ru="Параметры расчёта" />
+          </p>
           <p className="text-xs text-stone-400 mb-3">
             Ces valeurs viennent du classeur Excel de référence. À ajuster seulement si le taux
             horaire, le SMIC ou les cotisations changent — le calcul ci-dessous s&apos;appuiera
@@ -5171,31 +5312,40 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <p>
-              Taux horaire base <span className="block font-bold">{params.tauxHoraireBase} €/h</span>
+              <Bi fr="Taux horaire base" ru="Базовая ставка/ч" />{" "}
+              <span className="block font-bold">{params.tauxHoraireBase} €/h</span>
             </p>
             <p>
-              Heures normales/mois <span className="block font-bold">{params.heuresNormalesMois} h</span>
+              <Bi fr="Heures normales/mois" ru="Обычные часы/мес" />{" "}
+              <span className="block font-bold">{params.heuresNormalesMois} h</span>
             </p>
             <p>
-              Majoration HS+25% <span className="block font-bold">{params.majorationHs25 * 100}%</span>
+              <Bi fr="Majoration HS+25%" ru="Надбавка СЧ+25%" />{" "}
+              <span className="block font-bold">{params.majorationHs25 * 100}%</span>
             </p>
             <p>
-              Majoration HS+50% <span className="block font-bold">{params.majorationHs50 * 100}%</span>
+              <Bi fr="Majoration HS+50%" ru="Надбавка СЧ+50%" />{" "}
+              <span className="block font-bold">{params.majorationHs50 * 100}%</span>
             </p>
             <p>
-              Majoration jour férié <span className="block font-bold">{params.majorationJourFerie * 100}%</span>
+              <Bi fr="Majoration jour férié" ru="Надбавка за праздник" />{" "}
+              <span className="block font-bold">{params.majorationJourFerie * 100}%</span>
             </p>
             <p>
-              Tarif repas/jour <span className="block font-bold">{params.tarifRepasJour} €</span>
+              <Bi fr="Tarif repas/jour" ru="Тариф питания/день" />{" "}
+              <span className="block font-bold">{params.tarifRepasJour} €</span>
             </p>
             <p>
-              Max jours repas/mois <span className="block font-bold">{params.maxJoursRepas}</span>
+              <Bi fr="Max jours repas/mois" ru="Макс. дней питания/мес" />{" "}
+              <span className="block font-bold">{params.maxJoursRepas}</span>
             </p>
             <p>
-              Max HS+25% h/mois <span className="block font-bold">{params.maxHs25Heures} h</span>
+              <Bi fr="Max HS+25% h/mois" ru="Макс. ч СЧ+25%/мес" />{" "}
+              <span className="block font-bold">{params.maxHs25Heures} h</span>
             </p>
             <p>
-              Max HS+50% h/mois <span className="block font-bold">{params.maxHs50Heures} h</span>
+              <Bi fr="Max HS+50% h/mois" ru="Макс. ч СЧ+50%/мес" />{" "}
+              <span className="block font-bold">{params.maxHs50Heures} h</span>
             </p>
           </div>
         </div>
@@ -5210,13 +5360,13 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400 whitespace-nowrap">
-                <th className="py-2 pr-4">Nom Prénom</th>
-                <th className="py-2 pr-4 text-warning-700">Net souhaité €</th>
-                <th className="py-2 pr-4 text-warning-700">Maj. jours fériés €</th>
-                <th className="py-2 pr-4 text-warning-700">Jours repas</th>
-                <th className="py-2 pr-4 text-primary-600">HS+25% h</th>
-                <th className="py-2 pr-4 text-primary-600">HS+50% h</th>
-                <th className="py-2 pr-4 text-primary-600">Prime except. €</th>
+                <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Net souhaité €" ru="Желаемый нетто €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Maj. jours fériés €" ru="Надбавка праздники €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours repas" ru="Дней питания" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+25% h" ru="СЧ+25% ч" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+50% h" ru="СЧ+50% ч" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Prime except. €" ru="Премия €" /></th>
               </tr>
             </thead>
             <tbody>
@@ -5307,7 +5457,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               {employees.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-6 text-center text-stone-400">
-                    Aucun résultat.
+                    Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
               )}
@@ -5315,7 +5465,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             {employees.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-stone-200 font-bold">
-                  <td className="py-2 pr-4">TOTAL</td>
+                  <td className="py-2 pr-4">
+                    TOTAL <span className="font-normal opacity-60">/ ИТОГО</span>
+                  </td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.majJoursFeries.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.joursRepas}</td>
@@ -5342,10 +5494,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         </p>
         <div className="flex gap-3">
           <button className="btn btn-red text-sm px-3 py-2" disabled={syncing} onClick={syncHoursToPointage}>
-            {syncing ? "Application…" : "Confirmer et appliquer"}
+            {syncing ? "Application…" : <Bi fr="Confirmer et appliquer" ru="Подтвердить и применить" />}
           </button>
           <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowSyncModal(false)}>
-            Annuler
+            <Bi fr="Annuler" ru="Отмена" />
           </button>
         </div>
       </Modal>
@@ -5400,10 +5552,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         )}
         <div className="flex gap-3 mt-4">
           <button className="btn btn-primary text-sm px-3 py-2" disabled={!importText.trim()} onClick={applyImport}>
-            Appliquer
+            <Bi fr="Appliquer" ru="Применить" />
           </button>
           <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowImportModal(false)}>
-            Fermer
+            <Bi fr="Fermer" ru="Закрыть" />
           </button>
         </div>
       </Modal>
@@ -5500,9 +5652,16 @@ function DossierPeriodCategory({
       </p>
       {entries.length === 0 ? (
         <p className="text-xs text-stone-400">
-          {category.code === "rupture"
-            ? "Aucune sortie enregistrée."
-            : "Aucune période d'embauche trouvée dans le Registre du personnel."}
+          {category.code === "rupture" ? (
+            <>
+              Aucune sortie enregistrée. <span className="opacity-70">/ Нет зарегистрированного увольнения.</span>
+            </>
+          ) : (
+            <>
+              Aucune période d&apos;embauche trouvée dans le Registre du personnel.{" "}
+              <span className="opacity-70">/ Период трудоустройства не найден в реестре персонала.</span>
+            </>
+          )}
         </p>
       ) : (
         <div className="space-y-3">
@@ -5523,7 +5682,7 @@ function DossierPeriodCategory({
                       "Envoi…"
                     ) : (
                       <>
-                        <Upload size={12} /> Ajouter
+                        <Upload size={12} /> <Bi fr="Ajouter" ru="Добавить" />
                       </>
                     )}
                     <input
@@ -5539,7 +5698,9 @@ function DossierPeriodCategory({
                   </label>
                 </div>
                 {docs.length === 0 ? (
-                  <p className="text-xs text-stone-400">Aucun document.</p>
+                  <p className="text-xs text-stone-400">
+                    Aucun document. <span className="opacity-70">/ Нет документов.</span>
+                  </p>
                 ) : (
                   <ul className="space-y-1">
                     {docs.map((doc) => (
@@ -5552,14 +5713,14 @@ function DossierPeriodCategory({
                           <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
                           <button
                             onClick={() => onDownload(doc)}
-                            title="Télécharger"
+                            title="Télécharger / Скачать"
                             className="text-stone-400 hover:text-primary-600"
                           >
                             <Download size={14} />
                           </button>
                           <button
                             onClick={() => onDelete(doc)}
-                            title="Supprimer"
+                            title="Supprimer / Удалить"
                             className="text-stone-400 hover:text-error-600"
                           >
                             <Trash2 size={14} />
@@ -5764,7 +5925,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <p className="font-bold mb-3">Employés</p>
+        <p className="font-bold mb-3"><Bi fr="Employés" ru="Сотрудники" /></p>
         <input
           className="input mb-2"
           placeholder="Rechercher un nom…"
@@ -5776,10 +5937,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
         >
-          <option value="active">Actifs</option>
-          <option value="on_leave">En congé</option>
-          <option value="terminated">Sortis</option>
-          <option value="all">Tous</option>
+          <option value="active">Actifs / Активны</option>
+          <option value="on_leave">En congé / В отпуске</option>
+          <option value="terminated">Sortis / Уволены</option>
+          <option value="all">Tous / Все</option>
         </select>
         {loadingEmployees ? (
           <SkeletonRows rows={4} cols={1} />
@@ -5799,14 +5960,17 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 >
                   <span className="truncate">{employeeName(e)}</span>
                   {overdueCount > 0 && (
-                    <span className="badge badge-error shrink-0" title="Documents en retard">
+                    <span
+                      className="badge badge-error shrink-0"
+                      title="Documents en retard / Просроченные документы"
+                    >
                       {overdueCount}
                     </span>
                   )}
                 </button>
               );
             })}
-            {filtered.length === 0 && <EmptyState title="Aucun employé" />}
+            {filtered.length === 0 && <EmptyState title="Aucun employé" titleRu="Нет сотрудников" />}
           </div>
         )}
       </div>
@@ -5816,6 +5980,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <div className="card">
             <EmptyState
               title="Sélectionnez un employé"
+              titleRu="Выберите сотрудника"
               description="Choisissez un employé dans la liste pour voir et gérer son dossier."
             />
           </div>
@@ -5855,14 +6020,18 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         <p className="text-sm font-bold flex items-center gap-2">
                           <Icon size={15} className="text-stone-400" />
                           {cat.label}
-                          {cat.sensitive && <span className="badge badge-warning">confidentiel</span>}
+                          {cat.sensitive && (
+                            <span className="badge badge-warning">
+                              <Bi fr="confidentiel" ru="конфиденциально" />
+                            </span>
+                          )}
                         </p>
                         <label className="btn btn-secondary text-xs px-3 py-1.5 cursor-pointer">
                           {uploadingKey === key ? (
                             "Envoi…"
                           ) : (
                             <>
-                              <Upload size={13} /> Ajouter
+                              <Upload size={13} /> <Bi fr="Ajouter" ru="Добавить" />
                             </>
                           )}
                           <input
@@ -5886,17 +6055,20 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
                       {cat.code === "rib" && confidential?.rib && (
                         <p className="text-xs text-stone-500 mb-2">
-                          IBAN enregistré : <span className="font-semibold">{confidential.rib}</span>
+                          IBAN enregistré <span className="opacity-70">/ Зарегистрированный IBAN</span> :{" "}
+                          <span className="font-semibold">{confidential.rib}</span>
                         </p>
                       )}
                       {cat.code === "assurance_maladie" && confidential?.status_ameli && (
                         <p className="text-xs text-stone-500 mb-2">
-                          Statut Ameli : <span className="font-semibold">{confidential.status_ameli}</span>
+                          Statut Ameli <span className="opacity-70">/ Статус Ameli</span> :{" "}
+                          <span className="font-semibold">{confidential.status_ameli}</span>
                         </p>
                       )}
                       {cat.code === "carte_vitale" && confidential?.carte_vitale && (
                         <p className="text-xs text-stone-500 mb-2">
-                          N° Carte Vitale : <span className="font-semibold">{confidential.carte_vitale}</span>
+                          N° Carte Vitale <span className="opacity-70">/ № карты Vitale</span> :{" "}
+                          <span className="font-semibold">{confidential.carte_vitale}</span>
                         </p>
                       )}
                       {cat.code === "titre_visa" &&
@@ -5908,7 +6080,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         )}
                       {cat.code === "medical_prevaly" &&
                         (medicalVisits.length === 0 ? (
-                          <p className="text-xs text-stone-400 mb-2">Aucune visite enregistrée dans le suivi médical.</p>
+                          <p className="text-xs text-stone-400 mb-2">
+                            Aucune visite enregistrée dans le suivi médical.{" "}
+                            <span className="opacity-70">/ Нет визитов в медицинском учёте.</span>
+                          </p>
                         ) : (
                           <div className="mb-2 space-y-1">
                             {medicalVisits.map((v) => {
@@ -5927,7 +6102,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         ))}
 
                       {docs.length === 0 ? (
-                        <p className="text-xs text-stone-400">Aucun document.</p>
+                        <p className="text-xs text-stone-400">
+                          Aucun document. <span className="opacity-70">/ Нет документов.</span>
+                        </p>
                       ) : (
                         <ul className="space-y-1">
                           {docs.map((doc) => {
@@ -5948,14 +6125,14 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                                   <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
                                   <button
                                     onClick={() => downloadFile(doc)}
-                                    title="Télécharger"
+                                    title="Télécharger / Скачать"
                                     className="text-stone-400 hover:text-primary-600"
                                   >
                                     <Download size={15} />
                                   </button>
                                   <button
                                     onClick={() => deleteFile(doc)}
-                                    title="Supprimer"
+                                    title="Supprimer / Удалить"
                                     className="text-stone-400 hover:text-error-600"
                                   >
                                     <Trash2 size={15} />
@@ -5984,10 +6161,11 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
         {expiryModal && (
           <>
             <p className="text-sm text-stone-500 mb-3">
-              Fichier : <span className="font-semibold">{expiryModal.file.name}</span>
+              Fichier <span className="opacity-70">/ Файл</span> :{" "}
+              <span className="font-semibold">{expiryModal.file.name}</span>
             </p>
             <label className="text-xs font-bold text-stone-500">
-              Date d&apos;expiration
+              <Bi fr="Date d'expiration" ru="Дата истечения" />
               <input
                 type="date"
                 className="input mt-1"
@@ -6004,10 +6182,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   setExpiryModal(null);
                 }}
               >
-                Ajouter
+                <Bi fr="Ajouter" ru="Добавить" />
               </button>
               <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setExpiryModal(null)}>
-                Annuler
+                <Bi fr="Annuler" ru="Отмена" />
               </button>
             </div>
           </>
