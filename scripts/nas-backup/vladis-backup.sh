@@ -55,7 +55,7 @@ log "Database dump done: $(du -h "$DEST/vladis_db_$DATE.sql.gz" | cut -f1)"
 # ── Storage bucket mirror ───────────────────────────────────────────────
 log "Syncing Storage bucket '$SUPABASE_S3_BUCKET'..."
 docker run --rm -v "$DEST/storage:/data" rclone/rclone:latest sync \
-  ":s3,provider=Other,endpoint=$SUPABASE_S3_ENDPOINT,access_key_id=$SUPABASE_S3_ACCESS_KEY_ID,secret_access_key=$SUPABASE_S3_SECRET_ACCESS_KEY,region=$SUPABASE_S3_REGION:$SUPABASE_S3_BUCKET" \
+  ":s3,provider=Other,endpoint=\"$SUPABASE_S3_ENDPOINT\",access_key_id=$SUPABASE_S3_ACCESS_KEY_ID,secret_access_key=$SUPABASE_S3_SECRET_ACCESS_KEY,region=$SUPABASE_S3_REGION:$SUPABASE_S3_BUCKET" \
   /data
 log "Storage sync done: $(du -sh "$DEST/storage" | cut -f1)"
 
