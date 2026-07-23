@@ -199,7 +199,7 @@ function RowAction({
       type="button"
       onClick={onClick}
       title={`${title} / ${titleRu}`}
-      className="inline-flex items-center justify-center rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+      className="inline-flex items-center justify-center rounded-md p-1.5 bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-700"
     >
       <Icon size={15} />
     </button>
