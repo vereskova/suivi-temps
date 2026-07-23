@@ -70,6 +70,7 @@ type EmployeeStatus = "active" | "on_leave" | "terminated";
 type EmployeeFull = Employee & {
   status: EmployeeStatus;
   category: "chantier" | "bureau";
+  bureau_role: string | null;
   hire_date: string | null;
   end_date: string | null;
 };
@@ -1513,7 +1514,7 @@ function EmployeesView({
       const { data } = await supabase
         .from("employees")
         .select(
-          "id, first_name, last_name, team_id, status, category, hire_date, end_date, teams!employees_team_id_fkey(name)"
+          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, teams!employees_team_id_fkey(name)"
         )
         .order("category")
         .order("status")
@@ -1915,14 +1916,14 @@ function EmployeesView({
       <Modal
         open={!!expandedId}
         onClose={() => setExpandedId(null)}
-        title={
-          expandedId
-            ? `Détails — ${employeeName(filtered.find((e) => e.id === expandedId) ?? { first_name: "", last_name: "" })}`
-            : "Détails"
-        }
+        title="Fiche salarié"
         maxWidth="max-w-3xl"
       >
-        {expandedId && <EmployeeDetailPanel supabase={supabase} employeeId={expandedId} />}
+        {expandedId &&
+          (() => {
+            const found = filtered.find((e) => e.id === expandedId);
+            return found ? <EmployeeDetailPanel supabase={supabase} employee={found} /> : null;
+          })()}
       </Modal>
     </div>
   );
@@ -1970,13 +1971,59 @@ const EMPTY_CONFIDENTIAL: ConfidentialFields = {
   monthly_gross_salary: null,
 };
 
+const AVATAR_PALETTE = [
+  "bg-primary-100 text-primary-700",
+  "bg-success-100 text-success-700",
+  "bg-warning-100 text-warning-800",
+  "bg-error-100 text-error-700",
+  "bg-stone-200 text-stone-700",
+];
+function avatarColorClass(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length];
+}
+function initialsOf(firstName: string, lastName: string): string {
+  return `${firstName[0] ?? ""}${lastName[0] ?? ""}`.toUpperCase();
+}
+
+const STATUS_TONE: Record<EmployeeStatus, string> = {
+  active: "bg-success-50 text-success-700",
+  on_leave: "bg-warning-50 text-warning-700",
+  terminated: "bg-error-50 text-error-700",
+};
+
+function DetailSection({
+  title,
+  tone,
+  children,
+}: {
+  title: string;
+  tone?: "warning";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`mb-5 rounded-xl ${tone === "warning" ? "bg-error-50/40 p-4" : ""}`}>
+      <p
+        className={`text-xs font-bold uppercase tracking-wide mb-2 ${
+          tone === "warning" ? "text-error-500" : "text-stone-400"
+        }`}
+      >
+        {title}
+      </p>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{children}</div>
+    </div>
+  );
+}
+
 function EmployeeDetailPanel({
   supabase,
-  employeeId,
+  employee,
 }: {
   supabase: ReturnType<typeof createClient>;
-  employeeId: string;
+  employee: EmployeeFull;
 }) {
+  const employeeId = employee.id;
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<EmployeeProfileFields | null>(null);
   const [confidential, setConfidential] =
@@ -2033,41 +2080,37 @@ function EmployeeDetailPanel({
   if (loading) return <SkeletonRows rows={3} cols={2} />;
   if (!profile) return null;
 
+  const roleOrTeam =
+    employee.category === "bureau"
+      ? BUREAU_ROLE_LABELS[employee.bureau_role ?? ""] ?? "Bureau"
+      : employee.teams?.name ?? "Sans équipe";
+
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-        Profil
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <div className="flex items-center gap-3 mb-5 pb-5 border-b border-stone-100">
+        <div
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-extrabold ${avatarColorClass(
+            employee.id
+          )}`}
+        >
+          {initialsOf(employee.first_name, employee.last_name)}
+        </div>
+        <div className="min-w-0">
+          <p className="text-lg font-extrabold tracking-tight text-stone-900 truncate">
+            {employeeName(employee)}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            <span className="badge badge-neutral">{roleOrTeam}</span>
+            <span className={`badge ${STATUS_TONE[employee.status]}`}>{STATUS_LABELS[employee.status]}</span>
+          </div>
+        </div>
+      </div>
+
+      <DetailSection title="Identité">
         <DetailField
           label="Sexe"
           value={profile.sex}
           onChange={(v) => setProfile({ ...profile, sex: v })}
-        />
-        <DetailField
-          label="Qualification"
-          value={profile.qualification}
-          onChange={(v) => setProfile({ ...profile, qualification: v })}
-        />
-        <DetailField
-          label="Type de contrat"
-          value={profile.contract_type}
-          onChange={(v) => setProfile({ ...profile, contract_type: v })}
-        />
-        <DetailField
-          label="Poste / Emploi"
-          value={profile.job_title}
-          onChange={(v) => setProfile({ ...profile, job_title: v })}
-        />
-        <DetailField
-          label="Téléphone"
-          value={profile.phone}
-          onChange={(v) => setProfile({ ...profile, phone: v })}
-        />
-        <DetailField
-          label="Email"
-          value={profile.email}
-          onChange={(v) => setProfile({ ...profile, email: v })}
         />
         <DetailField
           label="Date de naissance"
@@ -2076,20 +2119,38 @@ function EmployeeDetailPanel({
           onChange={(v) => setProfile({ ...profile, date_of_birth: v })}
         />
         <DetailField
-          label="Date d'embauche"
-          type="date"
-          value={profile.hire_date}
-          onChange={(v) => setProfile({ ...profile, hire_date: v })}
-        />
-        <DetailField
           label="Lieu de naissance"
           value={profile.birth_place}
           onChange={(v) => setProfile({ ...profile, birth_place: v })}
         />
         <DetailField
-          label="Adresse"
-          value={profile.address}
-          onChange={(v) => setProfile({ ...profile, address: v })}
+          label="Nationalité"
+          value={confidential.nationality}
+          onChange={(v) => setConfidential({ ...confidential, nationality: v })}
+        />
+      </DetailSection>
+
+      <DetailSection title="Poste">
+        <DetailField
+          label="Qualification"
+          value={profile.qualification}
+          onChange={(v) => setProfile({ ...profile, qualification: v })}
+        />
+        <DetailField
+          label="Poste / Emploi"
+          value={profile.job_title}
+          onChange={(v) => setProfile({ ...profile, job_title: v })}
+        />
+        <DetailField
+          label="Type de contrat"
+          value={profile.contract_type}
+          onChange={(v) => setProfile({ ...profile, contract_type: v })}
+        />
+        <DetailField
+          label="Date d'embauche"
+          type="date"
+          value={profile.hire_date}
+          onChange={(v) => setProfile({ ...profile, hire_date: v })}
         />
         <DetailField
           label="Classification (groupe A–I)"
@@ -2107,17 +2168,27 @@ function EmployeeDetailPanel({
           value={profile.weekly_hours?.toString() ?? null}
           onChange={(v) => setProfile({ ...profile, weekly_hours: v === "" ? null : Number(v) })}
         />
-      </div>
+      </DetailSection>
 
-      <p className="text-xs font-bold uppercase tracking-wide text-error-500 mb-2">
-        Confidentiel — RH uniquement
-      </p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+      <DetailSection title="Contact">
         <DetailField
-          label="Nationalité"
-          value={confidential.nationality}
-          onChange={(v) => setConfidential({ ...confidential, nationality: v })}
+          label="Téléphone"
+          value={profile.phone}
+          onChange={(v) => setProfile({ ...profile, phone: v })}
         />
+        <DetailField
+          label="Email"
+          value={profile.email}
+          onChange={(v) => setProfile({ ...profile, email: v })}
+        />
+        <DetailField
+          label="Adresse"
+          value={profile.address}
+          onChange={(v) => setProfile({ ...profile, address: v })}
+        />
+      </DetailSection>
+
+      <DetailSection title="Confidentiel — RH uniquement" tone="warning">
         <DetailField
           label="RIB"
           value={confidential.rib}
@@ -2170,20 +2241,22 @@ function EmployeeDetailPanel({
             })
           }
         />
-      </div>
+      </DetailSection>
 
-      <button
-        className="btn btn-green text-sm px-4 py-2"
-        disabled={saving}
-        onClick={save}
-      >
-        {saving ? "…" : "Enregistrer"}
-      </button>
-      {savedAt && (
-        <span className="ml-3 text-xs font-semibold text-success-600">
-          Enregistré à {savedAt}
-        </span>
-      )}
+      <div className="pt-1 border-t border-stone-100 mt-1">
+        <button
+          className="btn btn-green text-sm px-4 py-2 mt-4"
+          disabled={saving}
+          onClick={save}
+        >
+          {saving ? "…" : "Enregistrer"}
+        </button>
+        {savedAt && (
+          <span className="ml-3 text-xs font-semibold text-success-600">
+            Enregistré à {savedAt}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
