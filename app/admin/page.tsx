@@ -727,7 +727,7 @@ function JourView({
 
                             {editForm.absent ? (
                               <select
-                                className="input"
+                                className="input text-sm px-2 py-1"
                                 style={{ width: "auto" }}
                                 value={editForm.absenceTypeId}
                                 onChange={(ev) =>
@@ -1803,7 +1803,7 @@ function EmployeesView({
                       <>
                         <td className="py-2 pr-4">
                           <select
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             style={{ width: "auto" }}
                             value={editForm.teamId}
                             onChange={(ev) =>
@@ -1820,7 +1820,7 @@ function EmployeesView({
                         </td>
                         <td className="py-2 pr-4">
                           <select
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             style={{ width: "auto" }}
                             value={editForm.status}
                             onChange={(ev) =>
@@ -1843,7 +1843,7 @@ function EmployeesView({
                           {editForm.status === "terminated" && (
                             <input
                               type="date"
-                              className="input"
+                              className="input text-sm px-2 py-1"
                               value={editForm.endDate}
                               onChange={(ev) =>
                                 setEditForm({ ...editForm, endDate: ev.target.value })
@@ -2456,7 +2456,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         <td className="py-2 pr-4">
                           <input
                             type="date"
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             value={editForm.last}
                             onChange={(e) =>
                               setEditForm({ ...editForm, last: e.target.value })
@@ -2466,7 +2466,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         <td className="py-2 pr-4">
                           <input
                             type="date"
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             value={editForm.next}
                             onChange={(e) =>
                               setEditForm({ ...editForm, next: e.target.value })
@@ -2475,7 +2475,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2 pr-4">
                           <input
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             value={editForm.subtype}
                             onChange={(e) =>
                               setEditForm({ ...editForm, subtype: e.target.value })
@@ -2893,7 +2893,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       <>
                         <td className="py-2 pr-4">
                           <input
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             style={{ width: "5rem" }}
                             value={editForm.chaussures}
                             onChange={(ev) =>
@@ -2903,7 +2903,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2 pr-4">
                           <input
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             style={{ width: "5rem" }}
                             value={editForm.pantalon}
                             onChange={(ev) =>
@@ -2913,7 +2913,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2 pr-4">
                           <input
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             style={{ width: "5rem" }}
                             value={editForm.tshirt}
                             onChange={(ev) =>
@@ -2923,7 +2923,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2 pr-4">
                           <input
-                            className="input"
+                            className="input text-sm px-2 py-1"
                             value={editForm.notes}
                             onChange={(ev) =>
                               setEditForm({ ...editForm, notes: ev.target.value })
