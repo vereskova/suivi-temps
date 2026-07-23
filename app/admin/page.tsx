@@ -1552,6 +1552,21 @@ function EmployeesView({
     [teams]
   );
 
+  const groupedFiltered = useMemo(() => {
+    const bureau = filtered.filter((e) => e.category === "bureau");
+    const chantier = filtered.filter((e) => e.category !== "bureau");
+    return ([["Bureau", bureau] as const, ["Chantier", chantier] as const]).filter(
+      ([, members]) => members.length > 0
+    );
+  }, [filtered]);
+
+  function equipeOrPoste(e: EmployeeFull) {
+    if (e.category === "bureau") {
+      return BUREAU_ROLE_LABELS[e.bureau_role ?? ""] ?? "Bureau";
+    }
+    return e.team_id ? teamsById.get(e.team_id) ?? "—" : "—";
+  }
+
   function startEdit(e: EmployeeFull) {
     setEditingId(e.id);
     setEditForm({
@@ -1779,19 +1794,23 @@ function EmployeesView({
           <EmptyState description="Aucun employé ne correspond à ces filtres." />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        groupedFiltered.map(([sectionLabel, members]) => (
+        <div key={sectionLabel} className="card mb-4 overflow-x-auto">
+          <p className="font-bold mb-3">{sectionLabel}</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Nom</th>
-                <th className="pb-2 pr-4">Équipe</th>
+                <th className="pb-2 pr-4">
+                  {sectionLabel === "Bureau" ? "Poste" : "Équipe"}
+                </th>
                 <th className="pb-2 pr-4">Statut</th>
                 <th className="pb-2 pr-4">Date de fin</th>
                 <th className="pb-2" />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((e) => {
+              {members.map((e) => {
                 const isEditing = editingId === e.id;
                 return (
                   <Fragment key={e.id}>
@@ -1870,7 +1889,7 @@ function EmployeesView({
                     ) : (
                       <>
                         <td className="py-2 pr-4 text-stone-500">
-                          {e.team_id ? teamsById.get(e.team_id) ?? "—" : "—"}
+                          {equipeOrPoste(e)}
                         </td>
                         <td
                           className={`py-2 pr-4 font-semibold ${
@@ -1911,6 +1930,7 @@ function EmployeesView({
             </tbody>
           </table>
         </div>
+        ))
       )}
 
       <Modal
