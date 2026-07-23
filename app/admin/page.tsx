@@ -29,6 +29,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Shirt,
+  Star,
   Trash2,
   Upload,
   User,
@@ -3776,7 +3777,7 @@ type OrgEmployee = {
   teams: { name: string } | null;
 };
 
-type OrgTeam = { id: string; name: string };
+type OrgTeam = { id: string; name: string; chef_employee_id: string | null };
 
 /** Groups employees into fixed columns (one per role/team id) and pads every column to
  *  the same row count so the whole thing renders as a rectangular <table>. */
@@ -3814,7 +3815,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           )
           .eq("status", "active")
           .order("last_name"),
-        supabase.from("teams").select("id, name").eq("active", true).order("name"),
+        supabase.from("teams").select("id, name, chef_employee_id").eq("active", true).order("name"),
       ]);
       setEmployees((emp as unknown as OrgEmployee[]) ?? []);
       setTeams((tm as OrgTeam[]) ?? []);
@@ -3846,6 +3847,10 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
     () => buildOrgGrid(teamColumns, (e) => e.team_id, chantierEmployees),
     [teamColumns, chantierEmployees]
   );
+  const teamChefMap = useMemo(
+    () => new Map(teams.map((t) => [t.id, t.chef_employee_id])),
+    [teams]
+  );
 
   const unassignedBureau = useMemo(
     () => bureauEmployees.filter((e) => !e.bureau_role),
@@ -3865,83 +3870,100 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
 
   return (
     <div>
-      <div className="card mb-4 overflow-x-auto">
+      <div className="card mb-4">
         <p className="font-bold mb-3">Bureau</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-stone-400 whitespace-nowrap">
-              {bureauColumns.map((c) => (
-                <th key={c.key} className="py-2 pr-4">
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {bureauGrid.rows.map((row, r) => (
-              <tr key={r} className="border-t border-stone-100">
-                {row.map((e, c) => (
-                  <td key={bureauColumns[c].key} className="py-2 pr-4 whitespace-nowrap font-bold">
-                    {e ? employeeName(e) : ""}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {bureauGrid.maxRows === 0 && (
-              <tr>
-                <td colSpan={bureauColumns.length} className="py-6 text-center text-stone-400">
-                  Aucun résultat.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {bureauColumns.map((c) => (
+            <OrgColumn key={c.key} header={c.label} employees={bureauGrid.byColumn.get(c.key) ?? []} />
+          ))}
+        </div>
       </div>
 
-      <div className="card mb-4 overflow-x-auto">
+      <div className="card mb-4">
         <p className="font-bold mb-3">Chantier — par équipe</p>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-stone-400 whitespace-nowrap">
-              {teamColumns.map((c) => (
-                <th key={c.key} className="py-2 pr-4">
-                  {c.label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {teamGrid.rows.map((row, r) => (
-              <tr key={r} className="border-t border-stone-100">
-                {row.map((e, c) => (
-                  <td key={teamColumns[c].key} className="py-2 pr-4 whitespace-nowrap">
-                    {e ? employeeName(e) : ""}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {teamGrid.maxRows === 0 && (
-              <tr>
-                <td colSpan={teamColumns.length} className="py-6 text-center text-stone-400">
-                  Aucun résultat.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          {teamColumns.map((c) => (
+            <OrgColumn
+              key={c.key}
+              header={c.label}
+              employees={teamGrid.byColumn.get(c.key) ?? []}
+              chefId={teamChefMap.get(c.key)}
+            />
+          ))}
+        </div>
       </div>
 
       {(unassignedBureau.length > 0 || unassignedChantier.length > 0) && (
         <div className="card">
-          <p className="font-bold mb-2 text-error-500">
+          <p className="font-bold mb-3 text-error-600">
             Sans rôle ni équipe ({unassignedBureau.length + unassignedChantier.length})
           </p>
-          {[...unassignedBureau, ...unassignedChantier].map((e) => (
-            <p key={e.id} className="text-sm">
-              {employeeName(e)}
-            </p>
-          ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {[...unassignedBureau, ...unassignedChantier].map((e) => (
+              <OrgTile key={e.id} label={employeeName(e)} tone="member" />
+            ))}
+          </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Colored square tile — hierarchy tier is conveyed by color rather than by
+ *  which column it's in: boss (brand blue) > bureau staff (amber) > team lead
+ *  (green) > regular team member (plain), matching how the org chart is read
+ *  at a glance. */
+function OrgTile({ label, tone }: { label: string; tone: "boss" | "bureau" | "lead" | "member" }) {
+  const toneClasses: Record<typeof tone, string> = {
+    boss: "bg-primary-600 border-primary-600 text-white",
+    bureau: "bg-warning-50 border-warning-200 text-warning-800",
+    lead: "bg-success-50 border-success-200 text-success-800",
+    member: "bg-white border-stone-200 text-stone-800",
+  };
+  return (
+    <div
+      className={`flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold leading-tight ${toneClasses[tone]}`}
+    >
+      {tone === "lead" && <Star size={11} className="shrink-0 fill-current" />}
+      <span className="truncate">{label}</span>
+    </div>
+  );
+}
+
+function OrgColumn({
+  header,
+  employees,
+  chefId,
+}: {
+  header: string;
+  employees: OrgEmployee[];
+  chefId?: string | null;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="truncate rounded-lg bg-stone-800 px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white">
+        {header}
+      </div>
+      {employees.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-stone-200 px-2.5 py-2 text-center text-xs text-stone-300">
+          —
+        </div>
+      ) : (
+        employees.map((e) => (
+          <OrgTile
+            key={e.id}
+            label={employeeName(e)}
+            tone={
+              e.bureau_role === "boss"
+                ? "boss"
+                : chefId && e.id === chefId
+                ? "lead"
+                : e.category === "bureau"
+                ? "bureau"
+                : "member"
+            }
+          />
+        ))
       )}
     </div>
   );
