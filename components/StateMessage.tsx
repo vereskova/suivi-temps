@@ -15,13 +15,13 @@ function StateMessage({
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
       <div
         className={`flex h-11 w-11 items-center justify-center rounded-full ${
-          tone === "error" ? "bg-error-50 text-error-500" : "bg-slate-100 text-slate-400"
+          tone === "error" ? "bg-error-50 text-error-500" : "bg-stone-100 text-stone-400"
         }`}
       >
         <Icon size={20} />
       </div>
-      <p className="font-bold text-slate-700">{title}</p>
-      {description && <p className="text-sm text-slate-400 max-w-sm">{description}</p>}
+      <p className="font-bold text-stone-700">{title}</p>
+      {description && <p className="text-sm text-stone-400 max-w-sm">{description}</p>}
     </div>
   );
 }

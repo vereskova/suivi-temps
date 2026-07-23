@@ -228,7 +228,7 @@ export default function Home() {
     return (
       <main className="relative min-h-screen overflow-hidden p-4 flex items-start justify-center pt-16">
         <BackgroundGlow />
-        <div className="relative w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-xl space-y-3">
+        <div className="relative w-full max-w-md rounded-3xl border border-stone-100 bg-white p-6 shadow-xl space-y-3">
           <Skeleton className="h-6 w-1/2" />
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-full" />
@@ -241,17 +241,17 @@ export default function Home() {
     <main className="relative min-h-screen overflow-hidden p-4 flex items-start justify-center pt-10 sm:pt-16">
       <BackgroundGlow />
 
-      <div className="relative w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-xl">
+      <div className="relative w-full max-w-md rounded-3xl border border-stone-100 bg-white p-6 shadow-xl">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-white">
               <LogoMark size={22} />
             </div>
             <div>
-              <h1 className="text-lg font-extrabold leading-tight tracking-tight text-slate-900">
+              <h1 className="text-lg font-extrabold leading-tight tracking-tight text-stone-900">
                 Suivi des heures
               </h1>
-              <p className="text-xs font-semibold text-slate-400">Учёт времени</p>
+              <p className="text-xs font-semibold text-stone-400">Учёт времени</p>
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5 pt-1">
@@ -262,7 +262,7 @@ export default function Home() {
             )}
             <button
               onClick={signOut}
-              className="flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-slate-600"
+              className="flex items-center gap-1 text-xs font-semibold text-stone-400 hover:text-stone-600"
             >
               <LogOut size={12} />
               Déconnexion
@@ -272,9 +272,9 @@ export default function Home() {
 
         {isAdmin && (
           <div className="mt-6">
-            <label className="font-bold text-sm text-slate-700">
+            <label className="font-bold text-sm text-stone-700">
               Équipe
-              <span className="block text-xs font-medium text-slate-400">Бригада</span>
+              <span className="block text-xs font-medium text-stone-400">Бригада</span>
             </label>
 
             <select
@@ -296,9 +296,9 @@ export default function Home() {
         )}
 
         <div className="mt-4">
-          <label className="font-bold text-sm text-slate-700">
+          <label className="font-bold text-sm text-stone-700">
             Date
-            <span className="block text-xs font-medium text-slate-400">Дата</span>
+            <span className="block text-xs font-medium text-stone-400">Дата</span>
           </label>
 
           <input
@@ -322,7 +322,7 @@ export default function Home() {
         </div>
 
         {workers.length === 0 && (
-          <div className="mt-6 rounded-2xl bg-slate-50">
+          <div className="mt-6 rounded-2xl bg-stone-50">
             <EmptyState
               title={isAdmin ? "Sélectionnez une équipe" : "Aucune équipe assignée"}
               description={
@@ -343,7 +343,7 @@ export default function Home() {
                 <button
                   onClick={() => toggleAbsent(i)}
                   className={`rounded-full px-3 py-1 text-sm font-bold transition-colors ${
-                    w.absent ? "bg-error-50 text-error-600" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    w.absent ? "bg-error-50 text-error-600" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
                   }`}
                 >
                   Absent
@@ -441,9 +441,9 @@ function Time({
 }) {
   return (
     <div>
-      <label className="text-xs font-bold text-slate-500">
+      <label className="text-xs font-bold text-stone-500">
         {label}
-        <span className="block text-[10px] font-medium text-slate-400">{ru}</span>
+        <span className="block text-[10px] font-medium text-stone-400">{ru}</span>
       </label>
 
       <input

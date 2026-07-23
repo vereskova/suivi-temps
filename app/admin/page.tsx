@@ -290,8 +290,8 @@ export default function AdminPage() {
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white">
             <LogoMark size={22} />
           </div>
-          <p className="font-bold text-slate-900">Accès réservé RH</p>
-          <p className="text-sm text-slate-400 mt-1">Доступ только для RH.</p>
+          <p className="font-bold text-stone-900">Accès réservé RH</p>
+          <p className="text-sm text-stone-400 mt-1">Доступ только для RH.</p>
           <Link href="/" className="btn btn-dark mt-4 inline-flex">
             Retour
           </Link>
@@ -312,8 +312,8 @@ export default function AdminPage() {
                 <LogoMark size={24} />
               </div>
               <div>
-                <p className="text-lg font-extrabold tracking-tight text-slate-900 leading-tight">VLADIS</p>
-                <p className="text-xs font-semibold text-slate-400 leading-tight">Comptabilité</p>
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">VLADIS</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight">Comptabilité</p>
               </div>
             </div>
             <button
@@ -356,10 +356,10 @@ export default function AdminPage() {
               <LogoMark size={24} />
             </div>
             <div>
-              <p className="text-lg font-extrabold tracking-tight text-slate-900 leading-tight">
+              <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">
                 VLADIS
               </p>
-              <p className="text-xs font-semibold text-slate-400 leading-tight">
+              <p className="text-xs font-semibold text-stone-400 leading-tight">
                 Tableau de bord RH
               </p>
             </div>
@@ -443,7 +443,7 @@ function SidebarSection({
 }) {
   return (
     <div>
-      <p className="px-3 pb-1 text-[0.68rem] font-bold uppercase tracking-wider text-slate-400">
+      <p className="px-3 pb-1 text-[0.68rem] font-bold uppercase tracking-wider text-stone-400">
         {title}
       </p>
       <div className="space-y-0.5">{children}</div>
@@ -470,10 +470,10 @@ function SidebarLink({
       disabled={disabled}
       className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
         disabled
-          ? "text-slate-300 cursor-not-allowed"
+          ? "text-stone-300 cursor-not-allowed"
           : active
           ? "bg-primary-50 text-primary-700"
-          : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+          : "text-stone-500 hover:bg-stone-50 hover:text-stone-800"
       }`}
     >
       {Icon && (
@@ -481,10 +481,10 @@ function SidebarLink({
           size={16}
           className={
             disabled
-              ? "text-slate-300"
+              ? "text-stone-300"
               : active
               ? "text-primary-600"
-              : "text-slate-400 group-hover:text-slate-500"
+              : "text-stone-400 group-hover:text-stone-500"
           }
         />
       )}
@@ -668,7 +668,7 @@ function JourView({
             <p className="font-bold mb-3">{teamName}</p>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-slate-400">
+                <tr className="text-left text-stone-400">
                   <th className="pb-2 pr-4">Nom</th>
                   <th className="pb-2 pr-4">Début</th>
                   <th className="pb-2 pr-4">Fin</th>
@@ -686,7 +686,7 @@ function JourView({
 
                   if (isEditing && editForm) {
                     return (
-                      <tr key={e.id} className="border-t border-slate-100 bg-slate-50">
+                      <tr key={e.id} className="border-t border-stone-100 bg-stone-50">
                         <td className="py-2 pr-4 font-semibold align-top">
                           {employeeName(e)}
                         </td>
@@ -699,7 +699,7 @@ function JourView({
                               className={`rounded-full px-3 py-1 text-xs font-bold ${
                                 editForm.absent
                                   ? "bg-error-600 text-white"
-                                  : "bg-slate-200"
+                                  : "bg-stone-200"
                               }`}
                             >
                               Absent
@@ -758,7 +758,7 @@ function JourView({
                             </button>
                             <button
                               onClick={() => setEditingId(null)}
-                              className="text-xs text-slate-400 underline"
+                              className="text-xs text-stone-400 underline"
                             >
                               Annuler
                             </button>
@@ -769,12 +769,12 @@ function JourView({
                   }
 
                   return (
-                    <tr key={e.id} className="border-t border-slate-100">
+                    <tr key={e.id} className="border-t border-stone-100">
                       <td className="py-2 pr-4 font-semibold">
                         {employeeName(e)}
                       </td>
                       {!r ? (
-                        <td colSpan={5} className="py-2 text-slate-300 italic">
+                        <td colSpan={5} className="py-2 text-stone-300 italic">
                           — non saisi —
                         </td>
                       ) : r.is_absent ? (
@@ -806,7 +806,7 @@ function JourView({
                       <td className="py-2">
                         <button
                           onClick={() => startEdit(e)}
-                          className="text-xs text-slate-400 underline"
+                          className="text-xs text-stone-400 underline"
                         >
                           Modifier
                         </button>
@@ -840,7 +840,7 @@ function EditTime({
 }) {
   return (
     <div>
-      <label className="block text-[10px] font-bold text-slate-400">{label}</label>
+      <label className="block text-[10px] font-bold text-stone-400">{label}</label>
       <input
         type="text"
         inputMode="numeric"
@@ -959,7 +959,7 @@ function EmployeView({
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Jour</th>
                 <th className="pb-2 pr-4">Date</th>
                 <th className="pb-2 pr-4">Début</th>
@@ -978,16 +978,16 @@ function EmployeView({
                 return (
                   <tr
                     key={iso}
-                    className={`border-t border-slate-100 ${
-                      isWeekend ? "bg-slate-50" : ""
+                    className={`border-t border-stone-100 ${
+                      isWeekend ? "bg-stone-50" : ""
                     }`}
                   >
-                    <td className="py-1.5 pr-4 capitalize text-slate-500">
+                    <td className="py-1.5 pr-4 capitalize text-stone-500">
                       {weekday}
                     </td>
                     <td className="py-1.5 pr-4">{d.getUTCDate()}</td>
                     {!r ? (
-                      <td colSpan={4} className="py-1.5 text-slate-300 italic">
+                      <td colSpan={4} className="py-1.5 text-stone-300 italic">
                         —
                       </td>
                     ) : r.is_absent ? (
@@ -1014,7 +1014,7 @@ function EmployeView({
               })}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-slate-200">
+              <tr className="border-t-2 border-stone-200">
                 <td colSpan={6} className="pt-3 text-right font-bold">
                   Total du mois
                 </td>
@@ -1115,7 +1115,7 @@ function MoisView({
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Nom</th>
                 <th className="pb-2 pr-4">Équipe</th>
                 <th className="pb-2 pr-4">Heures totales</th>
@@ -1126,11 +1126,11 @@ function MoisView({
               {sorted.map((e) => {
                 const total = totalsByEmployee.get(e.id);
                 return (
-                  <tr key={e.id} className="border-t border-slate-100">
+                  <tr key={e.id} className="border-t border-stone-100">
                     <td className="py-2 pr-4 font-semibold">
                       {employeeName(e)}
                     </td>
-                    <td className="py-2 pr-4 text-slate-500">
+                    <td className="py-2 pr-4 text-stone-500">
                       {e.teams?.name ?? "—"}
                     </td>
                     <td className="py-2 pr-4 font-bold">
@@ -1138,7 +1138,7 @@ function MoisView({
                     </td>
                     <td
                       className={`py-2 font-semibold ${
-                        total ? "text-success-600" : "text-slate-300"
+                        total ? "text-success-600" : "text-stone-300"
                       }`}
                     >
                       {total ? "OK" : "Aucune donnée"}
@@ -1373,7 +1373,7 @@ function ExportImportView({
     <div className="space-y-6">
       <div className="card">
         <p className="font-bold mb-1">Exporter</p>
-        <p className="text-xs text-slate-400 mb-4">
+        <p className="text-xs text-stone-400 mb-4">
           Télécharge un fichier Excel des pointages sur une période — à
           modifier puis réimporter si besoin.
         </p>
@@ -1408,7 +1408,7 @@ function ExportImportView({
 
       <div className="card">
         <p className="font-bold mb-1">Importer</p>
-        <p className="text-xs text-slate-400 mb-4">
+        <p className="text-xs text-stone-400 mb-4">
           Réimporte un fichier au même format que l&apos;export — les lignes
           remplacent les données existantes pour la même date et le même
           employé (identifiées par la colonne <code>employee_id</code>).
@@ -1423,7 +1423,7 @@ function ExportImportView({
             if (file) handleImportFile(file);
           }}
         />
-        {importing && <p className="text-sm text-slate-400 mt-3">Import en cours…</p>}
+        {importing && <p className="text-sm text-stone-400 mt-3">Import en cours…</p>}
         {importSummary && (
           <p className="text-sm font-semibold text-success-600 mt-3">
             {importSummary}
@@ -1640,8 +1640,8 @@ function EmployeesView({
             onClick={() => setStatusFilter("all")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
               statusFilter === "all"
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-500"
+                ? "bg-stone-900 text-white"
+                : "bg-stone-100 text-stone-500"
             }`}
           >
             Tous ({employees.length})
@@ -1650,7 +1650,7 @@ function EmployeesView({
 
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Recherche
             </label>
             <input
@@ -1661,7 +1661,7 @@ function EmployeesView({
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Équipe
             </label>
             <select
@@ -1679,7 +1679,7 @@ function EmployeesView({
             </select>
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Catégorie
             </label>
             <select
@@ -1700,7 +1700,7 @@ function EmployeesView({
       {showAddForm && (
         <div className="card mb-4 flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Prénom
             </label>
             <input
@@ -1712,7 +1712,7 @@ function EmployeesView({
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">Nom</label>
+            <label className="block text-xs font-bold text-stone-400">Nom</label>
             <input
               className="input"
               value={newEmployee.lastName}
@@ -1722,7 +1722,7 @@ function EmployeesView({
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Équipe
             </label>
             <select
@@ -1762,7 +1762,7 @@ function EmployeesView({
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Nom</th>
                 <th className="pb-2 pr-4">Équipe</th>
                 <th className="pb-2 pr-4">Statut</th>
@@ -1775,7 +1775,7 @@ function EmployeesView({
                 const isEditing = editingId === e.id;
                 return (
                   <Fragment key={e.id}>
-                  <tr className="border-t border-slate-100">
+                  <tr className="border-t border-stone-100">
                     <td className="py-2 pr-4 font-semibold">
                       {employeeName(e)}
                     </td>
@@ -1840,7 +1840,7 @@ function EmployeesView({
                             Enregistrer
                           </button>
                           <button
-                            className="text-xs text-slate-400 underline"
+                            className="text-xs text-stone-400 underline"
                             onClick={() => setEditingId(null)}
                           >
                             Annuler
@@ -1849,7 +1849,7 @@ function EmployeesView({
                       </>
                     ) : (
                       <>
-                        <td className="py-2 pr-4 text-slate-500">
+                        <td className="py-2 pr-4 text-stone-500">
                           {e.team_id ? teamsById.get(e.team_id) ?? "—" : "—"}
                         </td>
                         <td
@@ -1863,18 +1863,18 @@ function EmployeesView({
                         >
                           {STATUS_LABELS[e.status]}
                         </td>
-                        <td className="py-2 pr-4 text-slate-500">
+                        <td className="py-2 pr-4 text-stone-500">
                           {e.end_date ?? "—"}
                         </td>
                         <td className="py-2 whitespace-nowrap">
                           <button
-                            className="text-xs text-slate-400 underline mr-3"
+                            className="text-xs text-stone-400 underline mr-3"
                             onClick={() => startEdit(e)}
                           >
                             Modifier
                           </button>
                           <button
-                            className="text-xs text-slate-400 underline"
+                            className="text-xs text-stone-400 underline"
                             onClick={() =>
                               setExpandedId(expandedId === e.id ? null : e.id)
                             }
@@ -2016,7 +2016,7 @@ function EmployeeDetailPanel({
 
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
         Profil
       </p>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -2182,7 +2182,7 @@ function DetailField({
 }) {
   return (
     <div>
-      <label className="block text-[10px] font-bold uppercase text-slate-400">
+      <label className="block text-[10px] font-bold uppercase text-stone-400">
         {label}
       </label>
       <input
@@ -2300,7 +2300,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         </p>
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Recherche
             </label>
             <input
@@ -2311,7 +2311,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Équipe
             </label>
             <select
@@ -2342,7 +2342,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Nom</th>
                 <th className="pb-2 pr-4">Dernière visite</th>
                 <th className="pb-2 pr-4">Prochaine visite</th>
@@ -2355,7 +2355,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 const isEditing = editingId === v.id;
                 const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
                 return (
-                  <tr key={v.id} className="border-t border-slate-100">
+                  <tr key={v.id} className="border-t border-stone-100">
                     <td className="py-2 pr-4 font-semibold">
                       {v.employees ? employeeName(v.employees) : "—"}
                     </td>
@@ -2399,7 +2399,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             Enregistrer
                           </button>
                           <button
-                            className="text-xs text-slate-400 underline"
+                            className="text-xs text-stone-400 underline"
                             onClick={() => setEditingId(null)}
                           >
                             Annuler
@@ -2416,12 +2416,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         >
                           {v.next_visit_date ?? "—"}
                         </td>
-                        <td className="py-2 pr-4 text-slate-500">
+                        <td className="py-2 pr-4 text-stone-500">
                           {v.visit_subtype ?? "—"}
                         </td>
                         <td className="py-2">
                           <button
-                            className="text-xs text-slate-400 underline"
+                            className="text-xs text-stone-400 underline"
                             onClick={() => startEdit(v)}
                           >
                             Modifier
@@ -2533,12 +2533,12 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         <p className="font-bold">
           Formations & habilitations ({filteredEmployees.length}/{employees.length})
         </p>
-        <p className="text-xs text-slate-400 mb-3">
+        <p className="text-xs text-stone-400 mb-3">
           Cliquer une cellule pour basculer OK / KO.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Recherche
             </label>
             <input
@@ -2549,7 +2549,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Équipe
             </label>
             <select
@@ -2580,7 +2580,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Nom</th>
                 <th className="pb-2 pr-4">Équipe</th>
                 {types.map((t) => (
@@ -2592,9 +2592,9 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
             </thead>
             <tbody>
               {filteredEmployees.map((e) => (
-                <tr key={e.id} className="border-t border-slate-100">
+                <tr key={e.id} className="border-t border-stone-100">
                   <td className="py-2 pr-4 font-semibold">{employeeName(e)}</td>
-                  <td className="py-2 pr-4 text-slate-500">
+                  <td className="py-2 pr-4 text-stone-500">
                     {e.teams?.name ?? "—"}
                   </td>
                   {types.map((t) => {
@@ -2610,7 +2610,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
                               ? "bg-success-100 text-success-700"
                               : status === "ko"
                               ? "bg-error-100 text-error-700"
-                              : "bg-slate-100 text-slate-400"
+                              : "bg-stone-100 text-stone-400"
                           }`}
                         >
                           {status ? status.toUpperCase() : "—"}
@@ -2739,7 +2739,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
         </p>
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Recherche
             </label>
             <input
@@ -2750,7 +2750,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400">
+            <label className="block text-xs font-bold text-stone-400">
               Équipe
             </label>
             <select
@@ -2781,7 +2781,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400">
+              <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4">Nom</th>
                 <th className="pb-2 pr-4">Chaussures</th>
                 <th className="pb-2 pr-4">Pantalon</th>
@@ -2795,7 +2795,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 const s = sizeByEmployee.get(e.id);
                 const isEditing = editingId === e.id;
                 return (
-                  <tr key={e.id} className="border-t border-slate-100">
+                  <tr key={e.id} className="border-t border-stone-100">
                     <td className="py-2 pr-4 font-semibold">{employeeName(e)}</td>
                     {isEditing && editForm ? (
                       <>
@@ -2847,7 +2847,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             Enregistrer
                           </button>
                           <button
-                            className="text-xs text-slate-400 underline"
+                            className="text-xs text-stone-400 underline"
                             onClick={() => setEditingId(null)}
                           >
                             Annuler
@@ -2856,19 +2856,19 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </>
                     ) : (
                       <>
-                        <td className="py-2 pr-4 text-slate-500">
+                        <td className="py-2 pr-4 text-stone-500">
                           {s?.chaussures ?? "—"}
                         </td>
-                        <td className="py-2 pr-4 text-slate-500">
+                        <td className="py-2 pr-4 text-stone-500">
                           {s?.pantalon ?? "—"}
                         </td>
-                        <td className="py-2 pr-4 text-slate-500">
+                        <td className="py-2 pr-4 text-stone-500">
                           {s?.tshirt ?? "—"}
                         </td>
-                        <td className="py-2 pr-4 text-slate-500">{s?.notes ?? "—"}</td>
+                        <td className="py-2 pr-4 text-stone-500">{s?.notes ?? "—"}</td>
                         <td className="py-2">
                           <button
-                            className="text-xs text-slate-400 underline"
+                            className="text-xs text-stone-400 underline"
                             onClick={() => startEdit(e.id)}
                           >
                             Modifier
@@ -3061,8 +3061,8 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                 onClick={() => setSelectedEmployeeId(e.id)}
                 className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
                   selectedEmployeeId === e.id
-                    ? "bg-slate-900 text-white font-bold"
-                    : "hover:bg-slate-50 text-slate-600"
+                    ? "bg-stone-900 text-white font-bold"
+                    : "hover:bg-stone-50 text-stone-600"
                 }`}
               >
                 {employeeName(e)}
@@ -3072,7 +3072,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
               </button>
             ))}
             {filteredEmployees.length === 0 && (
-              <p className="text-sm text-slate-400 px-1">Aucun résultat.</p>
+              <p className="text-sm text-stone-400 px-1">Aucun résultat.</p>
             )}
           </div>
         )}
@@ -3080,7 +3080,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
 
       <div className="flex-1 min-w-0 card">
         {!selectedEmployeeId ? (
-          <p className="text-slate-400">Sélectionnez un employé à gauche.</p>
+          <p className="text-stone-400">Sélectionnez un employé à gauche.</p>
         ) : (
           <>
             <div className="flex items-center justify-between mb-4">
@@ -3109,7 +3109,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
             )}
 
             {loadingDetail || !employeeDoc || !companyDoc ? (
-              <p className="text-slate-400">Chargement des données de l&apos;employé…</p>
+              <p className="text-stone-400">Chargement des données de l&apos;employé…</p>
             ) : (
               <>
                 <div className="grid grid-cols-2 gap-4 mb-4">
@@ -3177,7 +3177,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                         />
                       )}
                       {f.help && (
-                        <span className="block text-xs font-normal text-slate-400 mt-1">
+                        <span className="block text-xs font-normal text-stone-400 mt-1">
                           {f.help}
                         </span>
                       )}
@@ -3551,7 +3551,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             Exporter Excel
           </button>
         </div>
-        <p className="text-xs text-slate-400 mb-4">
+        <p className="text-xs text-stone-400 mb-4">
           Copie fidèle du registre — un enregistrement par embauche (un salarié réembauché
           apparaît plusieurs fois). Les lignes surlignées correspondent aux salariés de
           nationalité étrangère.
@@ -3561,7 +3561,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <button
             onClick={() => setStatusFilter("all")}
             className={`rounded-full px-3 py-1 text-xs font-bold ${
-              statusFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"
+              statusFilter === "all" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
             }`}
           >
             {counts.total} au total
@@ -3628,7 +3628,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               {REGISTRE_FIELD_LABELS.map((f) => (
-                <label key={f.key} className="text-xs font-bold text-slate-500">
+                <label key={f.key} className="text-xs font-bold text-stone-500">
                   {f.label}
                   {f.type === "select" ? (
                     <select
@@ -3681,7 +3681,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400 whitespace-nowrap">
+              <tr className="text-left text-stone-400 whitespace-nowrap">
                 <th className="py-2 pr-4">N°</th>
                 <th className="py-2 pr-4">Nom Prénom</th>
                 <th className="py-2 pr-4">Date d&apos;entrée</th>
@@ -3704,9 +3704,9 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                 return (
                   <tr
                     key={r.id}
-                    className={`border-t border-slate-100 ${foreign ? "bg-warning-50" : ""}`}
+                    className={`border-t border-stone-100 ${foreign ? "bg-warning-50" : ""}`}
                   >
-                    <td className="py-2 pr-4 text-slate-400 whitespace-nowrap">{r.numero ?? "—"}</td>
+                    <td className="py-2 pr-4 text-stone-400 whitespace-nowrap">{r.numero ?? "—"}</td>
                     <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
                     <td className="py-2 pr-4 whitespace-nowrap">{r.date_entree ?? "—"}</td>
                     <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "—"}</td>
@@ -3721,7 +3721,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
                     <td className="py-2 pr-2 whitespace-nowrap">
                       <button
-                        className="text-xs text-slate-400 underline"
+                        className="text-xs text-stone-400 underline"
                         onClick={() => startEdit(r)}
                       >
                         Modifier
@@ -3732,7 +3732,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={14} className="py-6 text-center text-slate-400">
+                  <td colSpan={14} className="py-6 text-center text-stone-400">
                     Aucun résultat.
                   </td>
                 </tr>
@@ -3866,7 +3866,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         <p className="font-bold mb-3">Bureau</p>
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-400 whitespace-nowrap">
+            <tr className="text-left text-stone-400 whitespace-nowrap">
               {bureauColumns.map((c) => (
                 <th key={c.key} className="py-2 pr-4">
                   {c.label}
@@ -3876,7 +3876,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           </thead>
           <tbody>
             {bureauGrid.rows.map((row, r) => (
-              <tr key={r} className="border-t border-slate-100">
+              <tr key={r} className="border-t border-stone-100">
                 {row.map((e, c) => (
                   <td key={bureauColumns[c].key} className="py-2 pr-4 whitespace-nowrap font-bold">
                     {e ? employeeName(e) : ""}
@@ -3886,7 +3886,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
             ))}
             {bureauGrid.maxRows === 0 && (
               <tr>
-                <td colSpan={bureauColumns.length} className="py-6 text-center text-slate-400">
+                <td colSpan={bureauColumns.length} className="py-6 text-center text-stone-400">
                   Aucun résultat.
                 </td>
               </tr>
@@ -3899,7 +3899,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         <p className="font-bold mb-3">Chantier — par équipe</p>
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-400 whitespace-nowrap">
+            <tr className="text-left text-stone-400 whitespace-nowrap">
               {teamColumns.map((c) => (
                 <th key={c.key} className="py-2 pr-4">
                   {c.label}
@@ -3909,7 +3909,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           </thead>
           <tbody>
             {teamGrid.rows.map((row, r) => (
-              <tr key={r} className="border-t border-slate-100">
+              <tr key={r} className="border-t border-stone-100">
                 {row.map((e, c) => (
                   <td key={teamColumns[c].key} className="py-2 pr-4 whitespace-nowrap">
                     {e ? employeeName(e) : ""}
@@ -3919,7 +3919,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
             ))}
             {teamGrid.maxRows === 0 && (
               <tr>
-                <td colSpan={teamColumns.length} className="py-6 text-center text-slate-400">
+                <td colSpan={teamColumns.length} className="py-6 text-center text-stone-400">
                   Aucun résultat.
                 </td>
               </tr>
@@ -4046,7 +4046,7 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
 
   if (sessions.length === 0) {
     return (
-      <p className="card text-center text-slate-400">
+      <p className="card text-center text-stone-400">
         Aucune séance programmée. Exécutez la migration des cours de français pour importer le
         calendrier.
       </p>
@@ -4070,13 +4070,13 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
             ))}
           </select>
         </label>
-        {saving && <span className="text-xs text-slate-400">Enregistrement…</span>}
+        {saving && <span className="text-xs text-stone-400">Enregistrement…</span>}
       </div>
 
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-400">
+            <tr className="text-left text-stone-400">
               <th className="py-2 pr-4">Élève</th>
               <th className="py-2 pr-4">Absent (Н)</th>
               <th className="py-2 pr-4">Devoir fait (ДЗ)</th>
@@ -4087,7 +4087,7 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
             {students.map((s) => {
               const a = attendanceByEmployee.get(s.employee_id);
               return (
-                <tr key={s.employee_id} className="border-t border-slate-100">
+                <tr key={s.employee_id} className="border-t border-stone-100">
                   <td className="py-2 pr-4 font-bold">{employeeName(s.employees)}</td>
                   <td className="py-2 pr-4">
                     <input
@@ -4195,7 +4195,7 @@ function groupPaieEmployees(employees: PaieEmployee[]): PaieGroupedRow[] {
   const teamNames = Array.from(byTeam.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
   const rows: PaieGroupedRow[] = [];
-  bureauCore.forEach((e) => rows.push({ employee: e, groupKey: "bureau", groupLabel: "Bureau", colorClass: "bg-slate-50" }));
+  bureauCore.forEach((e) => rows.push({ employee: e, groupKey: "bureau", groupLabel: "Bureau", colorClass: "bg-stone-50" }));
   controlFormation.forEach((e) =>
     rows.push({ employee: e, groupKey: "control", groupLabel: "Contrôle & Formation", colorClass: "bg-emerald-50" })
   );
@@ -4876,7 +4876,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm">
             <span className="font-bold">{workingDaysInMonth} jours ouvrés</span>
-            <span className="text-slate-400"> ce mois-ci — utilisé comme valeur par défaut pour « Jours repas ».</span>
+            <span className="text-stone-400"> ce mois-ci — utilisé comme valeur par défaut pour « Jours repas ».</span>
           </p>
           <button className="btn btn-secondary text-xs px-3 py-1.5" onClick={applyWorkingDaysToAll}>
             Appliquer à tous
@@ -4891,10 +4891,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 </span>
               ))}
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3">
-              <p className="text-sm text-slate-500">
+            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-stone-100 pt-3">
+              <p className="text-sm text-stone-500">
                 Majoration jour férié suggérée :{" "}
-                <span className="font-bold text-slate-700">
+                <span className="font-bold text-stone-700">
                   {holidayMajorationPercent}% d&apos;une journée de base ({holidayDailyBonus.toFixed(2)} €)
                 </span>{" "}
                 / jour travaillé
@@ -4927,7 +4927,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       {showParams && (
         <div className="card mb-4">
           <p className="font-bold mb-3">Paramètres de calcul</p>
-          <p className="text-xs text-slate-400 mb-3">
+          <p className="text-xs text-stone-400 mb-3">
             Ces valeurs viennent du classeur Excel de référence. À ajuster seulement si le taux
             horaire, le SMIC ou les cotisations changent — le calcul ci-dessous s&apos;appuiera
             immédiatement sur les nouvelles valeurs.
@@ -4972,7 +4972,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400 whitespace-nowrap">
+              <tr className="text-left text-stone-400 whitespace-nowrap">
                 <th className="py-2 pr-4">Nom Prénom</th>
                 <th className="py-2 pr-4 text-warning-700">Net souhaité €</th>
                 <th className="py-2 pr-4 text-warning-700">Maj. jours fériés €</th>
@@ -4994,21 +4994,21 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                       <tr>
                         <td
                           colSpan={7}
-                          className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-slate-400"
+                          className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400"
                         >
                           {row.groupLabel}
                         </td>
                       </tr>
                     )}
                     {isFopContractor(e) ? (
-                      <tr className={`border-t border-slate-100 ${row.colorClass}`}>
+                      <tr className={`border-t border-stone-100 ${row.colorClass}`}>
                         <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
-                        <td colSpan={6} className="py-2 pr-4 italic text-slate-500">
+                        <td colSpan={6} className="py-2 pr-4 italic text-stone-500">
                           FOP — rémunération hors paie, calcul non applicable
                         </td>
                       </tr>
                     ) : (
-                    <tr className={`border-t border-slate-100 ${row.colorClass}`}>
+                    <tr className={`border-t border-stone-100 ${row.colorClass}`}>
                     <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
                     <td className="py-2 pr-4">
                       <input
@@ -5069,7 +5069,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-slate-400">
+                  <td colSpan={7} className="py-6 text-center text-stone-400">
                     Aucun résultat.
                   </td>
                 </tr>
@@ -5077,7 +5077,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             </tbody>
             {employees.length > 0 && (
               <tfoot>
-                <tr className="border-t-2 border-slate-200 font-bold">
+                <tr className="border-t-2 border-stone-200 font-bold">
                   <td className="py-2 pr-4">TOTAL</td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.majJoursFeries.toFixed(2)} €</td>
@@ -5098,7 +5098,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         title="Appliquer les heures au pointage"
         maxWidth="max-w-md"
       >
-        <p className="text-sm text-slate-600 mb-4">
+        <p className="text-sm text-stone-600 mb-4">
           Pour chaque employé, les heures HS+25% et HS+50% calculées ce mois-ci seront réparties
           également entre les journées déjà pointées, en <strong>remplaçant</strong> les heures
           supplémentaires que les chefs d&apos;équipe ont saisies. Cette action est irréversible.
@@ -5119,7 +5119,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         title="Importer depuis Excel"
         maxWidth="max-w-lg"
       >
-        <p className="text-sm text-slate-500 mb-2">
+        <p className="text-sm text-stone-500 mb-2">
           Collez une colonne <strong>Nom Prénom</strong> et une colonne <strong>Montant</strong> copiées
           ensemble depuis Excel/Numbers (une ligne par salarié) ; ou, si les deux colonnes ne sont pas
           côte à côte dans le fichier source, collez toute la colonne <strong>Nom Prénom</strong> puis,
@@ -5256,13 +5256,13 @@ function DossierPeriodCategory({
   onDelete: (doc: EmployeeDocumentRow) => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-100 p-3">
+    <div className="rounded-xl border border-stone-100 p-3">
       <p className="text-sm font-bold flex items-center gap-2 mb-2">
-        <Icon size={15} className="text-slate-400" />
+        <Icon size={15} className="text-stone-400" />
         {category.label}
       </p>
       {entries.length === 0 ? (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-stone-400">
           {category.code === "rupture"
             ? "Aucune sortie enregistrée."
             : "Aucune période d'embauche trouvée dans le Registre du personnel."}
@@ -5275,9 +5275,9 @@ function DossierPeriodCategory({
             );
             const key = `${category.code}:${entry.id}`;
             return (
-              <div key={entry.id} className="rounded-lg bg-slate-50 p-2.5">
+              <div key={entry.id} className="rounded-lg bg-stone-50 p-2.5">
                 <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-xs font-semibold text-slate-500">
+                  <p className="text-xs font-semibold text-stone-500">
                     {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
                     {entry.date_sortie ? formatDateShortDMY(entry.date_sortie) : "en cours"}
                   </p>
@@ -5302,7 +5302,7 @@ function DossierPeriodCategory({
                   </label>
                 </div>
                 {docs.length === 0 ? (
-                  <p className="text-xs text-slate-400">Aucun document.</p>
+                  <p className="text-xs text-stone-400">Aucun document.</p>
                 ) : (
                   <ul className="space-y-1">
                     {docs.map((doc) => (
@@ -5312,18 +5312,18 @@ function DossierPeriodCategory({
                       >
                         <span className="truncate">{doc.file_name}</span>
                         <span className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-slate-400">{formatFileSize(doc.file_size)}</span>
+                          <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
                           <button
                             onClick={() => onDownload(doc)}
                             title="Télécharger"
-                            className="text-slate-400 hover:text-primary-600"
+                            className="text-stone-400 hover:text-primary-600"
                           >
                             <Download size={14} />
                           </button>
                           <button
                             onClick={() => onDelete(doc)}
                             title="Supprimer"
-                            className="text-slate-400 hover:text-error-600"
+                            className="text-stone-400 hover:text-error-600"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -5557,7 +5557,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   className={`w-full flex items-center justify-between gap-2 text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
                     selectedEmployeeId === e.id
                       ? "bg-primary-50 text-primary-700"
-                      : "text-slate-600 hover:bg-slate-50"
+                      : "text-stone-600 hover:bg-stone-50"
                   }`}
                 >
                   <span className="truncate">{employeeName(e)}</span>
@@ -5613,10 +5613,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   const key = `${cat.code}:`;
 
                   return (
-                    <div key={cat.code} className="rounded-xl border border-slate-100 p-3">
+                    <div key={cat.code} className="rounded-xl border border-stone-100 p-3">
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-bold flex items-center gap-2">
-                          <Icon size={15} className="text-slate-400" />
+                          <Icon size={15} className="text-stone-400" />
                           {cat.label}
                           {cat.sensitive && <span className="badge badge-warning">confidentiel</span>}
                         </p>
@@ -5648,36 +5648,36 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </div>
 
                       {cat.code === "rib" && confidential?.rib && (
-                        <p className="text-xs text-slate-500 mb-2">
+                        <p className="text-xs text-stone-500 mb-2">
                           IBAN enregistré : <span className="font-semibold">{confidential.rib}</span>
                         </p>
                       )}
                       {cat.code === "assurance_maladie" && confidential?.status_ameli && (
-                        <p className="text-xs text-slate-500 mb-2">
+                        <p className="text-xs text-stone-500 mb-2">
                           Statut Ameli : <span className="font-semibold">{confidential.status_ameli}</span>
                         </p>
                       )}
                       {cat.code === "carte_vitale" && confidential?.carte_vitale && (
-                        <p className="text-xs text-slate-500 mb-2">
+                        <p className="text-xs text-stone-500 mb-2">
                           N° Carte Vitale : <span className="font-semibold">{confidential.carte_vitale}</span>
                         </p>
                       )}
                       {cat.code === "titre_visa" &&
                         (confidential?.residence_permit_type || confidential?.residence_permit_number) && (
-                          <p className="text-xs text-slate-500 mb-2">
+                          <p className="text-xs text-stone-500 mb-2">
                             {confidential.residence_permit_type ?? "Titre"}
                             {confidential.residence_permit_number ? ` — n° ${confidential.residence_permit_number}` : ""}
                           </p>
                         )}
                       {cat.code === "medical_prevaly" &&
                         (medicalVisits.length === 0 ? (
-                          <p className="text-xs text-slate-400 mb-2">Aucune visite enregistrée dans le suivi médical.</p>
+                          <p className="text-xs text-stone-400 mb-2">Aucune visite enregistrée dans le suivi médical.</p>
                         ) : (
                           <div className="mb-2 space-y-1">
                             {medicalVisits.map((v) => {
                               const urgency = dateUrgency(v.next_visit_date);
                               return (
-                                <p key={v.id} className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                                <p key={v.id} className="text-xs text-stone-500 flex items-center gap-2 flex-wrap">
                                   <span>
                                     {v.visit_subtype ?? "Visite"} — dernière : {v.last_visit_date ?? "—"} · prochaine :{" "}
                                     {v.next_visit_date ?? "—"}
@@ -5690,7 +5690,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         ))}
 
                       {docs.length === 0 ? (
-                        <p className="text-xs text-slate-400">Aucun document.</p>
+                        <p className="text-xs text-stone-400">Aucun document.</p>
                       ) : (
                         <ul className="space-y-1">
                           {docs.map((doc) => {
@@ -5698,28 +5698,28 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             return (
                               <li
                                 key={doc.id}
-                                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50"
+                                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-stone-50"
                               >
                                 <span className="truncate flex items-center gap-2 flex-wrap">
                                   {doc.file_name}
                                   {doc.valid_until && (
-                                    <span className="text-xs text-slate-400">expire le {doc.valid_until}</span>
+                                    <span className="text-xs text-stone-400">expire le {doc.valid_until}</span>
                                   )}
                                   {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
                                 </span>
                                 <span className="flex items-center gap-2 shrink-0">
-                                  <span className="text-xs text-slate-400">{formatFileSize(doc.file_size)}</span>
+                                  <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
                                   <button
                                     onClick={() => downloadFile(doc)}
                                     title="Télécharger"
-                                    className="text-slate-400 hover:text-primary-600"
+                                    className="text-stone-400 hover:text-primary-600"
                                   >
                                     <Download size={15} />
                                   </button>
                                   <button
                                     onClick={() => deleteFile(doc)}
                                     title="Supprimer"
-                                    className="text-slate-400 hover:text-error-600"
+                                    className="text-stone-400 hover:text-error-600"
                                   >
                                     <Trash2 size={15} />
                                   </button>
@@ -5746,10 +5746,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       >
         {expiryModal && (
           <>
-            <p className="text-sm text-slate-500 mb-3">
+            <p className="text-sm text-stone-500 mb-3">
               Fichier : <span className="font-semibold">{expiryModal.file.name}</span>
             </p>
-            <label className="text-xs font-bold text-slate-500">
+            <label className="text-xs font-bold text-stone-500">
               Date d&apos;expiration
               <input
                 type="date"

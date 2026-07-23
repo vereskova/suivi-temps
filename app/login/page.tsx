@@ -31,22 +31,22 @@ export default function LoginPage() {
       <div className="pointer-events-none absolute -top-24 -left-24 h-72 w-72 rounded-full bg-primary-200/40 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 -right-24 h-80 w-80 rounded-full bg-primary-100/60 blur-3xl" />
 
-      <div className="relative w-full max-w-sm rounded-3xl border border-slate-100 bg-white p-7 shadow-xl">
+      <div className="relative w-full max-w-sm rounded-3xl border border-stone-100 bg-white p-7 shadow-xl">
         <div className="flex flex-col items-center text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
             <LogoMark size={30} />
           </div>
-          <h1 className="mt-4 text-xl font-extrabold tracking-tight text-slate-900">
+          <h1 className="mt-4 text-xl font-extrabold tracking-tight text-stone-900">
             VLADIS
           </h1>
-          <p className="text-sm font-semibold text-slate-400">
+          <p className="text-sm font-semibold text-stone-400">
             Suivi des heures
-            <span className="mx-1.5 text-slate-300">·</span>
+            <span className="mx-1.5 text-stone-300">·</span>
             Вход
           </p>
         </div>
 
-        <label className="mt-7 block text-sm font-bold text-slate-700">
+        <label className="mt-7 block text-sm font-bold text-stone-700">
           Email
           <input
             type="email"
