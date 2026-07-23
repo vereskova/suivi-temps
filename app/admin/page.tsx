@@ -3780,7 +3780,28 @@ const BUREAU_ROLE_LABELS: Record<string, string> = {
   hotel: "Hôtel",
   logement: "Logement",
 };
+const BUREAU_ROLE_LABELS_RU: Record<string, string> = {
+  boss: "Босс",
+  rh: "Кадры",
+  assistant: "Ассистент руководителя",
+  coach: "Коуч",
+  production: "Производство",
+  planning: "Планирование",
+  comptable: "Бухгалтер",
+  marketing: "Маркетинг",
+  control: "Контроль качества",
+  formation_officer: "Обучение",
+  depot: "Склад",
+  hotel: "Отель",
+  logement: "Жильё",
+};
 const BUREAU_ROLE_ORDER = Object.keys(BUREAU_ROLE_LABELS);
+
+/** "Equipe 3" -> "Бригада 3" — team names are DB data (not a lookup table),
+ *  so the Russian label is derived rather than mapped. */
+function teamLabelRu(name: string): string {
+  return name.replace(/^équipe/i, "Бригада").replace(/^equipe/i, "Бригада");
+}
 
 type OrgEmployee = {
   id: string;
@@ -3790,6 +3811,7 @@ type OrgEmployee = {
   bureau_role: string | null;
   team_id: string | null;
   teams: { name: string } | null;
+  org_sort_order: number | null;
 };
 
 type OrgTeam = { id: string; name: string; chef_employee_id: string | null };
@@ -3826,7 +3848,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name)"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order"
           )
           .eq("status", "active")
           .order("last_name"),
@@ -3840,7 +3862,32 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
   }, [supabase]);
 
   const bureauEmployees = useMemo(() => employees.filter((e) => e.category === "bureau"), [employees]);
-  const chantierEmployees = useMemo(() => employees.filter((e) => e.category === "chantier"), [employees]);
+  // Manual drag order first (nulls last), alphabetical as the fallback/tiebreak.
+  const chantierEmployees = useMemo(
+    () =>
+      [...employees]
+        .filter((e) => e.category === "chantier")
+        .sort(
+          (a, b) =>
+            (a.org_sort_order ?? Number.MAX_SAFE_INTEGER) - (b.org_sort_order ?? Number.MAX_SAFE_INTEGER) ||
+            a.last_name.localeCompare(b.last_name)
+        ),
+    [employees]
+  );
+
+  async function handleReorderTeam(newOrder: OrgEmployee[]) {
+    const ids = new Set(newOrder.map((e) => e.id));
+    setEmployees((prev) => {
+      const rank = new Map(newOrder.map((e, i) => [e.id, i]));
+      return prev.map((e) => (ids.has(e.id) ? { ...e, org_sort_order: rank.get(e.id)! } : e));
+    });
+    const results = await Promise.all(
+      newOrder.map((e, i) => supabase.from("employees").update({ org_sort_order: i }).eq("id", e.id))
+    );
+    if (results.some((r) => r.error)) {
+      toast.error("Erreur lors de l'enregistrement de l'ordre.");
+    }
+  }
 
   const teamColumns = useMemo(
     () =>
@@ -3886,23 +3933,38 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold mb-3">Bureau</p>
+        <p className="font-bold">
+          Bureau <span className="ml-1 font-normal text-stone-400">Бюро</span>
+        </p>
+        <p className="text-xs text-stone-400 mb-3">Glissez une personne pour la réordonner dans sa colonne.</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {bureauColumns.map((c) => (
-            <OrgColumn key={c.key} header={c.label} employees={bureauGrid.byColumn.get(c.key) ?? []} />
+            <OrgColumn
+              key={c.key}
+              header={c.label}
+              headerRu={BUREAU_ROLE_LABELS_RU[c.key]}
+              employees={bureauGrid.byColumn.get(c.key) ?? []}
+            />
           ))}
         </div>
       </div>
 
       <div className="card mb-4">
-        <p className="font-bold mb-3">Chantier — par équipe</p>
+        <p className="font-bold">
+          Chantier — par équipe <span className="ml-1 font-normal text-stone-400">Стройка — по бригадам</span>
+        </p>
+        <p className="text-xs text-stone-400 mb-3">
+          Glissez-déposez une personne pour changer son ordre dans son équipe.
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {teamColumns.map((c) => (
             <OrgColumn
               key={c.key}
               header={c.label}
+              headerRu={teamLabelRu(c.label)}
               employees={teamGrid.byColumn.get(c.key) ?? []}
               chefId={teamChefMap.get(c.key)}
+              onReorder={handleReorderTeam}
             />
           ))}
         </div>
@@ -3911,7 +3973,8 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
       {(unassignedBureau.length > 0 || unassignedChantier.length > 0) && (
         <div className="card">
           <p className="font-bold mb-3 text-error-600">
-            Sans rôle ni équipe ({unassignedBureau.length + unassignedChantier.length})
+            Sans rôle ni équipe <span className="font-normal text-error-400">Без роли и бригады</span> (
+            {unassignedBureau.length + unassignedChantier.length})
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {[...unassignedBureau, ...unassignedChantier].map((e) => (
@@ -3947,37 +4010,80 @@ function OrgTile({ label, tone }: { label: string; tone: "boss" | "bureau" | "le
 
 function OrgColumn({
   header,
+  headerRu,
   employees,
   chefId,
+  onReorder,
 }: {
   header: string;
+  headerRu?: string;
   employees: OrgEmployee[];
   chefId?: string | null;
+  /** When provided, tiles become drag-and-drop reorderable within this column. */
+  onReorder?: (newOrder: OrgEmployee[]) => void;
 }) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  function handleDrop(dropIndex: number) {
+    if (dragIndex === null || dragIndex === dropIndex || !onReorder) {
+      setDragIndex(null);
+      setOverIndex(null);
+      return;
+    }
+    const next = [...employees];
+    const [moved] = next.splice(dragIndex, 1);
+    next.splice(dropIndex, 0, moved);
+    onReorder(next);
+    setDragIndex(null);
+    setOverIndex(null);
+  }
+
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="truncate rounded-lg bg-stone-800 px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white">
         {header}
+        {headerRu && <span className="block truncate text-[0.6rem] font-medium normal-case opacity-60">{headerRu}</span>}
       </div>
       {employees.length === 0 ? (
         <div className="rounded-lg border border-dashed border-stone-200 px-2.5 py-2 text-center text-xs text-stone-300">
           —
         </div>
       ) : (
-        employees.map((e) => (
-          <OrgTile
+        employees.map((e, i) => (
+          <div
             key={e.id}
-            label={employeeName(e)}
-            tone={
-              e.bureau_role === "boss"
-                ? "boss"
-                : chefId && e.id === chefId
-                ? "lead"
-                : e.category === "bureau"
-                ? "bureau"
-                : "member"
+            draggable={!!onReorder}
+            onDragStart={() => setDragIndex(i)}
+            onDragOver={(ev) => {
+              if (!onReorder) return;
+              ev.preventDefault();
+              setOverIndex(i);
+            }}
+            onDragEnd={() => {
+              setDragIndex(null);
+              setOverIndex(null);
+            }}
+            onDrop={() => handleDrop(i)}
+            className={
+              onReorder
+                ? `cursor-grab active:cursor-grabbing ${overIndex === i && dragIndex !== i ? "opacity-60" : ""}`
+                : undefined
             }
-          />
+          >
+            <OrgTile
+              label={employeeName(e)}
+              tone={
+                e.bureau_role === "boss"
+                  ? "boss"
+                  : chefId && e.id === chefId
+                  ? "lead"
+                  : e.category === "bureau"
+                  ? "bureau"
+                  : "member"
+              }
+            />
+          </div>
         ))
       )}
     </div>
