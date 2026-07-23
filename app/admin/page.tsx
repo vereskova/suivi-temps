@@ -3778,7 +3778,6 @@ const BUREAU_ROLE_LABELS: Record<string, string> = {
   formation_officer: "Formation",
   depot: "Dépôt",
   hotel: "Hôtel",
-  logement: "Logement",
 };
 const BUREAU_ROLE_LABELS_RU: Record<string, string> = {
   boss: "Босс",
@@ -3793,7 +3792,6 @@ const BUREAU_ROLE_LABELS_RU: Record<string, string> = {
   formation_officer: "Обучение",
   depot: "Склад",
   hotel: "Отель",
-  logement: "Жильё",
 };
 const BUREAU_ROLE_ORDER = Object.keys(BUREAU_ROLE_LABELS);
 
