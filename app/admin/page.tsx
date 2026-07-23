@@ -255,7 +255,7 @@ export default function AdminPage() {
 
       setRole(roleRow?.role ?? null);
 
-      if (roleRow?.role === "rh_admin") {
+      if (roleRow?.role === "rh_admin" || roleRow?.role === "rh") {
         const [, { data: absenceRows }, { data: teamRows }] = await Promise.all([
           loadActiveEmployees(),
           supabase.from("absence_types").select("id, code, label").order("label"),
@@ -263,6 +263,12 @@ export default function AdminPage() {
         ]);
         setAbsenceTypes(absenceRows ?? []);
         setTeams(teamRows ?? []);
+      }
+
+      // The "rh" role has no Pointage/Paie access, so it can't land on the
+      // "jour" default — send it to Employés instead.
+      if (roleRow?.role === "rh") {
+        setView("effectif");
       }
 
       setLoading(false);
@@ -284,7 +290,7 @@ export default function AdminPage() {
     );
   }
 
-  if (role !== "rh_admin" && role !== "comptable") {
+  if (role !== "rh_admin" && role !== "comptable" && role !== "rh") {
     return (
       <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
         <div className="card max-w-sm text-center">
@@ -346,6 +352,15 @@ export default function AdminPage() {
     );
   }
 
+  // rh: Effectif + RH sections only — no Pointage group, no Paie item.
+  const visibleNavGroups =
+    role === "rh"
+      ? NAV_GROUPS.filter((g) => g.title !== "Pointage").map((g) => ({
+          ...g,
+          items: g.items.filter((item) => item.key !== "paie"),
+        }))
+      : NAV_GROUPS;
+
   return (
     <main className="min-h-screen p-4 md:p-8">
       <div className="mx-auto max-w-[1400px]">
@@ -372,7 +387,7 @@ export default function AdminPage() {
         <div className="flex gap-6 items-start">
           <aside className="w-60 shrink-0">
             <nav className="card p-3 space-y-4 sticky top-4">
-              {NAV_GROUPS.map((group) => (
+              {visibleNavGroups.map((group) => (
                 <SidebarSection key={group.title} title={group.title}>
                   {group.items.map((item) => (
                     <SidebarLink
