@@ -178,36 +178,36 @@ type ViewKey =
   | "dossier"
   | "paie";
 
-type NavItem = { key: ViewKey; label: string; icon: LucideIcon };
+type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon };
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Pointage",
     items: [
-      { key: "jour", label: "Par jour", icon: CalendarDays },
-      { key: "employe", label: "Par employé", icon: User },
-      { key: "mois", label: "Totaux du mois", icon: BarChart3 },
-      { key: "export", label: "Export / Import", icon: FileSpreadsheet },
+      { key: "jour", label: "Par jour", labelRu: "По дням", icon: CalendarDays },
+      { key: "employe", label: "Par employé", labelRu: "По сотруднику", icon: User },
+      { key: "mois", label: "Totaux du mois", labelRu: "Итоги за месяц", icon: BarChart3 },
+      { key: "export", label: "Export / Import", labelRu: "Экспорт / Импорт", icon: FileSpreadsheet },
     ],
   },
   {
     title: "Effectif",
     items: [
-      { key: "effectif", label: "Employés", icon: Users },
-      { key: "medical", label: "Médical", icon: HeartPulse },
-      { key: "formations", label: "Formations", icon: GraduationCap },
-      { key: "tailles", label: "Tailles", icon: Shirt },
+      { key: "effectif", label: "Employés", labelRu: "Сотрудники", icon: Users },
+      { key: "medical", label: "Médical", labelRu: "Медицина", icon: HeartPulse },
+      { key: "formations", label: "Formations", labelRu: "Обучение", icon: GraduationCap },
+      { key: "tailles", label: "Tailles", labelRu: "Размеры", icon: Shirt },
     ],
   },
   {
     title: "RH",
     items: [
-      { key: "documents", label: "Documents", icon: FileText },
-      { key: "registre", label: "Registre du personnel", icon: BookText },
-      { key: "organigramme", label: "Organigramme", icon: Network },
-      { key: "francais", label: "Cours de français", icon: Languages },
-      { key: "dossier", label: "Dossier salarié", icon: FolderLock },
-      { key: "paie", label: "Paie", icon: Wallet },
+      { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
+      { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
+      { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
+      { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
+      { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
+      { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
     ],
   },
 ];
@@ -332,9 +332,7 @@ export default function AdminPage() {
             <aside className="w-60 shrink-0">
               <nav className="card p-3 space-y-4 sticky top-4">
                 <SidebarSection title="RH">
-                  <SidebarLink icon={Wallet} active>
-                    Paie
-                  </SidebarLink>
+                  <SidebarLink icon={Wallet} active label="Paie" labelRu="Зарплата" />
                 </SidebarSection>
               </nav>
             </aside>
@@ -381,9 +379,9 @@ export default function AdminPage() {
                       icon={item.icon}
                       active={view === item.key}
                       onClick={() => setView(item.key)}
-                    >
-                      {item.label}
-                    </SidebarLink>
+                      label={item.label}
+                      labelRu={item.labelRu}
+                    />
                   ))}
                 </SidebarSection>
               ))}
@@ -456,19 +454,21 @@ function SidebarLink({
   disabled,
   onClick,
   icon: Icon,
-  children,
+  label,
+  labelRu,
 }: {
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   icon?: LucideIcon;
-  children: React.ReactNode;
+  label: string;
+  labelRu?: string;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+      className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-colors ${
         disabled
           ? "text-stone-300 cursor-not-allowed"
           : active
@@ -479,16 +479,19 @@ function SidebarLink({
       {Icon && (
         <Icon
           size={16}
-          className={
+          className={`shrink-0 ${
             disabled
               ? "text-stone-300"
               : active
               ? "text-primary-600"
               : "text-stone-400 group-hover:text-stone-500"
-          }
+          }`}
         />
       )}
-      {children}
+      <span className="min-w-0 leading-tight">
+        <span className="block truncate text-sm font-semibold">{label}</span>
+        {labelRu && <span className="block truncate text-[0.68rem] font-medium opacity-60">{labelRu}</span>}
+      </span>
     </button>
   );
 }
