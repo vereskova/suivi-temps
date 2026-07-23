@@ -33,8 +33,8 @@ export default function LoginPage() {
 
       <div className="relative w-full max-w-sm rounded-3xl border border-stone-100 bg-white p-7 shadow-xl">
         <div className="flex flex-col items-center text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
-            <LogoMark size={30} />
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+            <LogoMark size={56} />
           </div>
           <h1 className="mt-4 text-xl font-extrabold tracking-tight text-stone-900">
             VLADIS

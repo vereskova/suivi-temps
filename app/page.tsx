@@ -244,8 +244,8 @@ export default function Home() {
       <div className="relative w-full max-w-md rounded-3xl border border-stone-100 bg-white p-6 shadow-xl">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-600 text-white">
-              <LogoMark size={22} />
+            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-primary-600 text-white">
+              <LogoMark size={40} />
             </div>
             <div>
               <h1 className="text-lg font-extrabold leading-tight tracking-tight text-stone-900">

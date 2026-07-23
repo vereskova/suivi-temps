@@ -287,8 +287,8 @@ export default function AdminPage() {
     return (
       <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
         <div className="card max-w-sm text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white">
-            <LogoMark size={22} />
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-primary-600 text-white">
+            <LogoMark size={44} />
           </div>
           <p className="font-bold text-stone-900">Accès réservé RH</p>
           <p className="text-sm text-stone-400 mt-1">Доступ только для RH.</p>
@@ -352,8 +352,8 @@ export default function AdminPage() {
       <div className="mx-auto max-w-[1400px]">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
-              <LogoMark size={24} />
+            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+              <LogoMark size={44} />
             </div>
             <div>
               <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">
