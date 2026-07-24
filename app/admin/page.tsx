@@ -2230,6 +2230,70 @@ function EmployeesView({
 }
 
 // ── Panneau détail employé — profil étendu + confidentiel (RIB, SS, visa) ───
+
+const SEX_OPTIONS = [
+  { value: "M", label: "Homme" },
+  { value: "F", label: "Femme" },
+];
+
+const CLASSIFICATION_OPTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"].map((v) => ({
+  value: v,
+  label: v,
+}));
+
+const CONTRACT_TYPE_OPTIONS = [
+  { value: "CDI", label: "CDI" },
+  { value: "CDD", label: "CDD" },
+  { value: "Intérim", label: "Intérim" },
+  { value: "Apprentissage", label: "Apprentissage" },
+  { value: "Contrat de professionnalisation", label: "Contrat de professionnalisation" },
+  { value: "FOP", label: "FOP (sous-traitant)" },
+];
+
+const TSHIRT_SIZE_OPTIONS = ["S", "M", "L", "XL", "XXL", "XXXL"].map((v) => ({
+  value: v,
+  label: v,
+}));
+
+const NATIONALITY_SUGGESTIONS = [
+  "France",
+  "Roumanie",
+  "Ukraine",
+  "Moldavie",
+  "Russie",
+  "Biélorussie",
+  "Lituanie",
+  "Kazakhstan",
+];
+
+const RESIDENCE_PERMIT_TYPE_SUGGESTIONS = [
+  "Carte de séjour temporaire",
+  "Carte de séjour pluriannuelle",
+  "Carte de résident",
+  "Autorisation provisoire de séjour (APS)",
+  "Récépissé de demande de titre de séjour",
+  "VLS-TS valant titre de séjour",
+  "Passeport talent",
+];
+
+const QUALIFICATION_SUGGESTIONS = ["Salarié", "Intérimaire", "Stagiaire", "Apprenti"];
+
+const JOB_TITLE_SUGGESTIONS = [
+  "Ouvrier Poseur Système Photovoltaïque / Aide Électricien",
+  "Assistante de direction",
+  "Assistante opérationnelle",
+  "Assistante administrative et opérationnelle",
+  "Responsable du service planification",
+  "Responsable finance",
+  "Directrice des opérations",
+  "Comptable",
+  "Employé administratif",
+  "RH",
+];
+
+const SHOE_SIZE_SUGGESTIONS = Array.from({ length: 11 }, (_, i) => String(38 + i));
+const PANTALON_SIZE_SUGGESTIONS = ["38", "40", "42", "44", "46", "48", "50", "52", "S", "M", "L", "XL", "XXL"];
+
 type EmployeeProfileFields = {
   sex: string | null;
   qualification: string | null;
@@ -2432,11 +2496,12 @@ function EmployeeDetailPanel({
       </DetailSection>
 
       <DetailSection title="Identité" titleRu="Личные данные">
-        <DetailField
+        <DetailSelectField
           label="Sexe"
           labelRu="Пол"
           value={profile.sex}
           onChange={(v) => setProfile({ ...profile, sex: v })}
+          options={SEX_OPTIONS}
         />
         <DetailField
           label="Date de naissance"
@@ -2456,6 +2521,7 @@ function EmployeeDetailPanel({
           labelRu="Гражданство"
           value={confidential.nationality}
           onChange={(v) => setConfidential({ ...confidential, nationality: v })}
+          suggestions={NATIONALITY_SUGGESTIONS}
         />
       </DetailSection>
 
@@ -2465,18 +2531,21 @@ function EmployeeDetailPanel({
           labelRu="Квалификация"
           value={profile.qualification}
           onChange={(v) => setProfile({ ...profile, qualification: v })}
+          suggestions={QUALIFICATION_SUGGESTIONS}
         />
         <DetailField
           label="Poste / Emploi"
           labelRu="Должность"
           value={profile.job_title}
           onChange={(v) => setProfile({ ...profile, job_title: v })}
+          suggestions={JOB_TITLE_SUGGESTIONS}
         />
-        <DetailField
+        <DetailSelectField
           label="Type de contrat"
           labelRu="Тип контракта"
           value={profile.contract_type}
           onChange={(v) => setProfile({ ...profile, contract_type: v })}
+          options={CONTRACT_TYPE_OPTIONS}
         />
         <DetailField
           label="Date d'embauche"
@@ -2485,11 +2554,12 @@ function EmployeeDetailPanel({
           value={profile.hire_date}
           onChange={(v) => setProfile({ ...profile, hire_date: v })}
         />
-        <DetailField
+        <DetailSelectField
           label="Classification (groupe A–I)"
           labelRu="Классификация (группа A–I)"
           value={profile.classification}
           onChange={(v) => setProfile({ ...profile, classification: v })}
+          options={CLASSIFICATION_OPTIONS}
         />
         <DetailField
           label="Classe (coefficient)"
@@ -2567,6 +2637,7 @@ function EmployeeDetailPanel({
           onChange={(v) =>
             setConfidential({ ...confidential, residence_permit_type: v })
           }
+          suggestions={RESIDENCE_PERMIT_TYPE_SUGGESTIONS}
         />
         <DetailField
           label="N° du titre"
@@ -2614,13 +2685,16 @@ function DetailField({
   value,
   onChange,
   type = "text",
+  suggestions,
 }: {
   label: string;
   labelRu?: string;
   value: string | null;
   onChange: (v: string) => void;
   type?: string;
+  suggestions?: string[];
 }) {
+  const listId = suggestions ? `dl-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}` : undefined;
   return (
     <div>
       <label className="block text-[10px] font-bold uppercase text-stone-400">
@@ -2631,12 +2705,64 @@ function DetailField({
         className="input"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value)}
+        list={listId}
       />
+      {suggestions && (
+        <datalist id={listId}>
+          {suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      )}
+    </div>
+  );
+}
+
+function DetailSelectField({
+  label,
+  labelRu,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  labelRu?: string;
+  value: string | null;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  const knownValue = value != null && value !== "" && !options.some((o) => o.value === value);
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase text-stone-400">
+        <Bi fr={label} ru={labelRu} />
+      </label>
+      <select className="input" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
+        <option value="">—</option>
+        {knownValue && <option value={value!}>{value}</option>}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
 
 // ── Vue "Médical" — RDV médecine du travail ─────────────────────────────────
+
+const VISIT_SUBTYPE_OPTIONS = [
+  "Embauche",
+  "Visite périodique",
+  "Visite intermédiaire (salarié SIR)",
+  "Visite de mi-carrière",
+  "Visite de reprise",
+  "Visite de pré-reprise",
+  "Affectation à un poste à risque non SIR",
+  "Visite occasionnelle / à la demande",
+].map((v) => ({ value: v, label: v }));
+
 type MedicalVisit = {
   id: string;
   employee_id: string;
@@ -3001,13 +3127,24 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           </div>
                         </td>
                         <td className="py-2 pr-4">
-                          <input
+                          <select
                             className="input text-sm px-2 py-1"
                             value={editForm.subtype}
                             onChange={(e) =>
                               setEditForm({ ...editForm, subtype: e.target.value })
                             }
-                          />
+                          >
+                            <option value="">—</option>
+                            {editForm.subtype &&
+                              !VISIT_SUBTYPE_OPTIONS.some((o) => o.value === editForm.subtype) && (
+                                <option value={editForm.subtype}>{editForm.subtype}</option>
+                              )}
+                            {VISIT_SUBTYPE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="py-2 whitespace-nowrap">
                           <button
@@ -3496,6 +3633,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             className="input text-sm px-2 py-1"
                             style={{ width: "5rem" }}
                             value={editForm.chaussures}
+                            list="dl-chaussures"
                             onChange={(ev) =>
                               setEditForm({ ...editForm, chaussures: ev.target.value })
                             }
@@ -3506,20 +3644,32 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             className="input text-sm px-2 py-1"
                             style={{ width: "5rem" }}
                             value={editForm.pantalon}
+                            list="dl-pantalon"
                             onChange={(ev) =>
                               setEditForm({ ...editForm, pantalon: ev.target.value })
                             }
                           />
                         </td>
                         <td className="py-2 pr-4">
-                          <input
+                          <select
                             className="input text-sm px-2 py-1"
                             style={{ width: "5rem" }}
                             value={editForm.tshirt}
                             onChange={(ev) =>
                               setEditForm({ ...editForm, tshirt: ev.target.value })
                             }
-                          />
+                          >
+                            <option value="">—</option>
+                            {editForm.tshirt &&
+                              !TSHIRT_SIZE_OPTIONS.some((o) => o.value === editForm.tshirt) && (
+                                <option value={editForm.tshirt}>{editForm.tshirt}</option>
+                              )}
+                            {TSHIRT_SIZE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="py-2 pr-4">
                           <input
@@ -3573,6 +3723,16 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
               })}
             </tbody>
           </table>
+          <datalist id="dl-chaussures">
+            {SHOE_SIZE_SUGGESTIONS.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+          <datalist id="dl-pantalon">
+            {PANTALON_SIZE_SUGGESTIONS.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
         </div>
       )}
     </div>
