@@ -77,6 +77,8 @@ type EmployeeFull = Employee & {
   bureau_role: string | null;
   hire_date: string | null;
   end_date: string | null;
+  badge_emoji: string | null;
+  badge_label: string | null;
 };
 
 type Team = { id: string; name: string; chef_employee_id: string | null };
@@ -1633,7 +1635,7 @@ function EmployeesView({
       const { data } = await supabase
         .from("employees")
         .select(
-          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, teams!employees_team_id_fkey(name)"
+          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, badge_emoji, badge_label, teams!employees_team_id_fkey(name)"
         )
         .order("category")
         .order("status")
@@ -1982,6 +1984,9 @@ function EmployeesView({
                           />
                         )}
                         {employeeName(e)}
+                        {e.badge_emoji && (
+                          <span title={e.badge_label ?? undefined}>{e.badge_emoji}</span>
+                        )}
                       </span>
                     </td>
                     {isEditing && editForm ? (
@@ -2140,6 +2145,8 @@ type EmployeeProfileFields = {
   classification: string | null;
   classe: string | null;
   weekly_hours: number | null;
+  badge_emoji: string | null;
+  badge_label: string | null;
 };
 
 type ConfidentialFields = {
@@ -2235,7 +2242,7 @@ function EmployeeDetailPanel({
         supabase
           .from("employees")
           .select(
-            "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours"
+            "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label"
           )
           .eq("id", employeeId)
           .single(),
@@ -2295,13 +2302,34 @@ function EmployeeDetailPanel({
         <div className="min-w-0">
           <p className="text-lg font-extrabold tracking-tight text-stone-900 truncate">
             {employeeName(employee)}
+            {profile.badge_emoji && (
+              <span className="ml-1.5" title={profile.badge_label ?? undefined}>
+                {profile.badge_emoji}
+              </span>
+            )}
           </p>
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
             <span className="badge badge-neutral">{roleOrTeam}</span>
             <span className={`badge ${STATUS_TONE[employee.status]}`}>{STATUS_LABELS[employee.status]}</span>
+            {profile.badge_label && <span className="badge badge-primary">{profile.badge_label}</span>}
           </div>
         </div>
       </div>
+
+      <DetailSection title="Badge" titleRu="Значок">
+        <DetailField
+          label="Emoji / Icône"
+          labelRu="Эмодзи / Значок"
+          value={profile.badge_emoji}
+          onChange={(v) => setProfile({ ...profile, badge_emoji: v })}
+        />
+        <DetailField
+          label="Libellé du badge"
+          labelRu="Подпись значка"
+          value={profile.badge_label}
+          onChange={(v) => setProfile({ ...profile, badge_label: v })}
+        />
+      </DetailSection>
 
       <DetailSection title="Identité" titleRu="Личные данные">
         <DetailField
@@ -4290,6 +4318,7 @@ type OrgEmployee = {
   team_id: string | null;
   teams: { name: string } | null;
   org_sort_order: number | null;
+  badge_emoji: string | null;
 };
 
 type OrgTeam = { id: string; name: string; chef_employee_id: string | null };
@@ -4326,7 +4355,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji"
           )
           .eq("status", "active")
           .order("last_name"),
@@ -4476,7 +4505,11 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
             {[...unassignedBureau, ...unassignedChantier].map((e) => (
-              <OrgTile key={e.id} label={employeeName(e)} tone="member" />
+              <OrgTile
+                key={e.id}
+                label={e.badge_emoji ? `${employeeName(e)} ${e.badge_emoji}` : employeeName(e)}
+                tone="member"
+              />
             ))}
           </div>
         </div>
@@ -4573,7 +4606,7 @@ function OrgColumn({
             } ${onToggleChef ? "cursor-pointer" : ""}`}
           >
             <OrgTile
-              label={employeeName(e)}
+              label={e.badge_emoji ? `${employeeName(e)} ${e.badge_emoji}` : employeeName(e)}
               tone={
                 e.bureau_role === "boss"
                   ? "boss"
