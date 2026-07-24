@@ -290,6 +290,10 @@ type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon 
 
 const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
+    title: "",
+    items: [{ key: "echeances", label: "Notifications", labelRu: "Уведомления", icon: Bell }],
+  },
+  {
     title: "Pointage",
     items: [
       { key: "jour", label: "Par jour", labelRu: "По дням", icon: CalendarDays },
@@ -311,7 +315,6 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "RH",
     items: [
       { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
-      { key: "echeances", label: "Notifications", labelRu: "Уведомления", icon: Bell },
       { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
@@ -333,6 +336,7 @@ export default function AdminPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [seenNotificationKeys, setSeenNotificationKeys] = useState<Set<string>>(new Set());
 
   async function loadNotifications() {
     setNotificationsLoading(true);
@@ -340,6 +344,41 @@ export default function AdminPage() {
     setNotifications(rows);
     setNotificationsLoading(false);
   }
+
+  const hasUnreadNotifications = notifications.some(
+    (r) => !seenNotificationKeys.has(notificationKey(r))
+  );
+
+  useEffect(() => {
+    async function load() {
+      await Promise.resolve();
+      try {
+        const raw = localStorage.getItem(NOTIFICATIONS_SEEN_STORAGE_KEY);
+        if (raw) setSeenNotificationKeys(new Set(JSON.parse(raw)));
+      } catch {
+        // ignore malformed/unavailable localStorage
+      }
+    }
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (view !== "echeances" || notifications.length === 0) return;
+    async function markSeen() {
+      await Promise.resolve();
+      setSeenNotificationKeys((prev) => {
+        const next = new Set(prev);
+        notifications.forEach((r) => next.add(notificationKey(r)));
+        try {
+          localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore malformed/unavailable localStorage
+        }
+        return next;
+      });
+    }
+    markSeen();
+  }, [view, notifications]);
 
   async function loadActiveEmployees() {
     const { data } = await supabase
@@ -526,7 +565,7 @@ export default function AdminPage() {
                       onClick={() => setView(item.key)}
                       label={item.label}
                       labelRu={item.labelRu}
-                      badge={item.key === "echeances" ? notifications.length : undefined}
+                      dot={item.key === "echeances" ? hasUnreadNotifications : false}
                     />
                   ))}
                 </SidebarSection>
@@ -591,9 +630,11 @@ function SidebarSection({
 }) {
   return (
     <div>
-      <p className="px-3 pb-1 text-[0.68rem] font-bold uppercase tracking-wider text-stone-400">
-        {title}
-      </p>
+      {title && (
+        <p className="px-3 pb-1 text-[0.68rem] font-bold uppercase tracking-wider text-stone-400">
+          {title}
+        </p>
+      )}
       <div className="space-y-0.5">{children}</div>
     </div>
   );
@@ -606,7 +647,7 @@ function SidebarLink({
   icon: Icon,
   label,
   labelRu,
-  badge,
+  dot,
 }: {
   active?: boolean;
   disabled?: boolean;
@@ -614,7 +655,7 @@ function SidebarLink({
   icon?: LucideIcon;
   label: string;
   labelRu?: string;
-  badge?: number;
+  dot?: boolean;
 }) {
   return (
     <button
@@ -644,11 +685,7 @@ function SidebarLink({
         <span className="block truncate text-sm font-semibold">{label}</span>
         {labelRu && <span className="block truncate text-[0.68rem] font-medium opacity-60">{labelRu}</span>}
       </span>
-      {!!badge && (
-        <span className="ml-auto shrink-0 rounded-full bg-error-500 px-1.5 py-0.5 text-[0.65rem] font-bold leading-none text-white">
-          {badge}
-        </span>
-      )}
+      {dot && <span className="ml-auto h-2 w-2 shrink-0 rounded-full bg-error-500" />}
     </button>
   );
 }
@@ -4063,6 +4100,12 @@ function notificationTier(dateIso: string): NotificationTier | null {
   return null;
 }
 
+const NOTIFICATIONS_SEEN_STORAGE_KEY = "vladis_notifications_seen";
+
+function notificationKey(r: NotificationRow): string {
+  return `${r.employeeId}|${r.type}|${r.date}`;
+}
+
 /** Single source of truth for the notification list — called once from
  *  AdminPage (for the sidebar badge count) and handed down to
  *  NotificationsView as a prop, rather than fetched twice. */
@@ -4192,14 +4235,17 @@ function NotificationsView({
           </span>
         </p>
         <div className="flex flex-wrap gap-2 mb-4">
-          <span className="badge badge-error">
-            {counts.day} <Bi fr="aujourd'hui/demain" ru="сегодня/завтра" />
+          <span className="badge badge-error gap-2 px-3 py-1.5">
+            <span className="text-xl font-extrabold leading-none">{counts.day}</span>
+            <Bi fr="aujourd'hui/demain" ru="сегодня/завтра" />
           </span>
-          <span className="badge badge-warning">
-            {counts.week} <Bi fr="cette semaine" ru="на неделе" />
+          <span className="badge badge-warning gap-2 px-3 py-1.5">
+            <span className="text-xl font-extrabold leading-none">{counts.week}</span>
+            <Bi fr="cette semaine" ru="на неделе" />
           </span>
-          <span className="badge badge-neutral">
-            {counts.month} <Bi fr="ce mois-ci" ru="в этом месяце" />
+          <span className="badge badge-neutral gap-2 px-3 py-1.5">
+            <span className="text-xl font-extrabold leading-none">{counts.month}</span>
+            <Bi fr="ce mois-ci" ru="в этом месяце" />
           </span>
         </div>
         <label className="block text-xs font-bold text-stone-400">
