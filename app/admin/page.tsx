@@ -2801,6 +2801,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   function visitGroupKey(v: MedicalVisit): "urgent" | "later" {
     return v.next_visit_date && v.next_visit_date <= visitHorizon ? "urgent" : "later";
   }
+  /** Visite médicale obligatoire tous les 3 ans — signale qu'il faut prendre
+   *  un nouveau rendez-vous dès que 3 ans se sont écoulés depuis la dernière visite. */
+  function needsNewAppointment(v: MedicalVisit): boolean {
+    if (!v.last_visit_date) return false;
+    return v.last_visit_date <= addDaysIsoLocal(todayIso, -3 * 365);
+  }
 
   return (
     <div>
@@ -2881,21 +2887,20 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   <Fragment key={v.id}>
                   {showGroupHeader && (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className={`pt-4 pb-1 text-xs font-bold uppercase tracking-wide ${
-                          groupKey === "urgent" ? "text-warning-600" : "text-stone-400"
-                        }`}
-                      >
+                      <td colSpan={5} className="pt-4 pb-1">
                         {groupKey === "urgent" ? (
-                          <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
+                          <p className="rounded-lg bg-warning-500 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white">
+                            <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
+                          </p>
                         ) : (
-                          <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
+                          <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+                            <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
+                          </p>
                         )}
                       </td>
                     </tr>
                   )}
-                  <tr className={`border-t border-stone-100 ${groupKey === "urgent" ? "bg-warning-50/40" : ""}`}>
+                  <tr className={`border-t border-stone-100 ${groupKey === "urgent" ? "bg-warning-100" : ""}`}>
                     <td className="py-2 pr-4 font-semibold">
                       {v.employees ? employeeName(v.employees) : "—"}
                     </td>
@@ -2960,7 +2965,17 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </>
                     ) : (
                       <>
-                        <td className="py-2 pr-4">{v.last_visit_date ?? "—"}</td>
+                        <td className="py-2 pr-4">
+                          {v.last_visit_date ?? "—"}
+                          {needsNewAppointment(v) && (
+                            <span
+                              className="ml-1 inline-block align-text-bottom text-error-600"
+                              title="Plus de 3 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 3 лет с последнего визита — нужно записаться"
+                            >
+                              <AlertTriangle size={14} className="inline shrink-0" />
+                            </span>
+                          )}
+                        </td>
                         <td
                           className={`py-2 pr-4 font-semibold ${
                             isOverdue ? "text-error-600" : ""
