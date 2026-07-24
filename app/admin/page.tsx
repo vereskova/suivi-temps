@@ -1509,16 +1509,25 @@ function ExportImportView({
           remplacent les données existantes pour la même date et le même
           employé (identifiées par la colonne <code>employee_id</code>).
         </p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          disabled={importing}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) handleImportFile(file);
-          }}
-        />
+        <label className={`btn btn-secondary inline-flex ${importing ? "" : "cursor-pointer"}`}>
+          <Upload size={14} />{" "}
+          {importing ? (
+            "Import en cours…"
+          ) : (
+            <Bi fr="Choisir un fichier" ru="Выбрать файл" />
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            disabled={importing}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleImportFile(file);
+            }}
+          />
+        </label>
         {importing && (
           <p className="text-sm text-stone-400 mt-3">
             Import en cours… <span className="opacity-70">/ Импорт…</span>
