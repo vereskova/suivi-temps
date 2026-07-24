@@ -13,6 +13,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   CreditCard,
+  Crown,
   Download,
   Eye,
   FileSignature,
@@ -32,7 +33,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Shirt,
-  Star,
   Trash2,
   Upload,
   User,
@@ -79,7 +79,7 @@ type EmployeeFull = Employee & {
   end_date: string | null;
 };
 
-type Team = { id: string; name: string };
+type Team = { id: string; name: string; chef_employee_id: string | null };
 
 type AbsenceType = { id: string; code: string; label: string };
 
@@ -189,20 +189,27 @@ function RowAction({
   title,
   titleRu,
   onClick,
+  active,
 }: {
   icon: LucideIcon;
   title: string;
   titleRu: string;
   onClick: () => void;
+  /** Highlights the button to reflect an on/off state (e.g. a toggle already applied). */
+  active?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={`${title} / ${titleRu}`}
-      className="inline-flex items-center justify-center rounded-md p-1.5 bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-700"
+      className={`inline-flex items-center justify-center rounded-md p-1.5 ${
+        active
+          ? "bg-success-100 text-success-700 hover:bg-success-200"
+          : "bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-700"
+      }`}
     >
-      <Icon size={15} />
+      <Icon size={15} className={active ? "fill-current" : ""} />
     </button>
   );
 }
@@ -292,6 +299,17 @@ export default function AdminPage() {
     setEmployees((data as unknown as Employee[]) ?? []);
   }
 
+  async function handleToggleChef(teamId: string, employeeId: string) {
+    const current = teams.find((t) => t.id === teamId)?.chef_employee_id ?? null;
+    const nextChef = current === employeeId ? null : employeeId;
+    setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, chef_employee_id: nextChef } : t)));
+    const { error } = await supabase.from("teams").update({ chef_employee_id: nextChef }).eq("id", teamId);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, chef_employee_id: current } : t)));
+    }
+  }
+
   useEffect(() => {
     async function init() {
       const {
@@ -315,7 +333,7 @@ export default function AdminPage() {
         const [, { data: absenceRows }, { data: teamRows }] = await Promise.all([
           loadActiveEmployees(),
           supabase.from("absence_types").select("id, code, label").order("label"),
-          supabase.from("teams").select("id, name").eq("active", true).order("name"),
+          supabase.from("teams").select("id, name, chef_employee_id").eq("active", true).order("name"),
         ]);
         setAbsenceTypes(absenceRows ?? []);
         setTeams(teamRows ?? []);
@@ -486,6 +504,7 @@ export default function AdminPage() {
                 supabase={supabase}
                 teams={teams}
                 onChanged={loadActiveEmployees}
+                onToggleChef={handleToggleChef}
               />
             )}
             {view === "medical" && <MedicalView supabase={supabase} />}
@@ -1579,10 +1598,12 @@ function EmployeesView({
   supabase,
   teams,
   onChanged,
+  onToggleChef,
 }: {
   supabase: ReturnType<typeof createClient>;
   teams: Team[];
   onChanged: () => void;
+  onToggleChef: (teamId: string, employeeId: string) => void;
 }) {
   const [employees, setEmployees] = useState<EmployeeFull[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1659,6 +1680,15 @@ function EmployeesView({
     if (e.category === "bureau" || !e.team_id) return "";
     const teamName = teamsById.get(e.team_id);
     return (teamName && teamColorByName.get(teamName)) || "";
+  }
+
+  const chefIdByTeamId = useMemo(
+    () => new Map(teams.map((t) => [t.id, t.chef_employee_id])),
+    [teams]
+  );
+
+  function isChef(e: EmployeeFull): boolean {
+    return !!e.team_id && chefIdByTeamId.get(e.team_id) === e.id;
   }
 
   const groupedFiltered = useMemo(() => {
@@ -1944,7 +1974,15 @@ function EmployeesView({
                   <Fragment key={e.id}>
                   <tr className={`border-t border-stone-100 ${chantierRowColor(e)}`}>
                     <td className="py-2 pr-4 font-semibold">
-                      {employeeName(e)}
+                      <span className="inline-flex items-center gap-1.5">
+                        {isChef(e) && (
+                          <Crown
+                            size={13}
+                            className="shrink-0 fill-current text-success-600"
+                          />
+                        )}
+                        {employeeName(e)}
+                      </span>
                     </td>
                     {isEditing && editForm ? (
                       <>
@@ -2034,6 +2072,15 @@ function EmployeesView({
                           {e.end_date ?? "—"}
                         </td>
                         <td className="py-2 whitespace-nowrap">
+                          {e.team_id && (
+                            <RowAction
+                              icon={Crown}
+                              title={isChef(e) ? "Retirer chef d'équipe" : "Désigner chef d'équipe"}
+                              titleRu={isChef(e) ? "Снять бригадира" : "Назначить бригадиром"}
+                              active={isChef(e)}
+                              onClick={() => onToggleChef(e.team_id!, e.id)}
+                            />
+                          )}
                           <RowAction
                             icon={Pencil}
                             title="Modifier"
@@ -4306,6 +4353,17 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
     [employees]
   );
 
+  async function handleToggleChef(teamId: string, employeeId: string) {
+    const current = teams.find((t) => t.id === teamId)?.chef_employee_id ?? null;
+    const nextChef = current === employeeId ? null : employeeId;
+    setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, chef_employee_id: nextChef } : t)));
+    const { error } = await supabase.from("teams").update({ chef_employee_id: nextChef }).eq("id", teamId);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      setTeams((prev) => prev.map((t) => (t.id === teamId ? { ...t, chef_employee_id: current } : t)));
+    }
+  }
+
   async function handleReorderTeam(newOrder: OrgEmployee[]) {
     const ids = new Set(newOrder.map((e) => e.id));
     setEmployees((prev) => {
@@ -4388,8 +4446,12 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
           Chantier — par équipe <span className="ml-1 font-normal text-stone-400">Стройка — по бригадам</span>
         </p>
         <p className="text-xs text-stone-400 mb-3">
-          Glissez-déposez une personne pour changer son ordre dans son équipe.{" "}
-          <span className="opacity-70">/ Перетащите, чтобы изменить порядок в бригаде.</span>
+          Glissez-déposez une personne pour changer son ordre dans son équipe. Cliquez sur une
+          personne pour la désigner (ou non) comme chef d&apos;équipe.{" "}
+          <span className="opacity-70">
+            / Перетащите, чтобы изменить порядок в бригаде. Нажмите на человека, чтобы назначить
+            (или снять) бригадиром.
+          </span>
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {teamColumns.map((c) => (
@@ -4400,6 +4462,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
               employees={teamGrid.byColumn.get(c.key) ?? []}
               chefId={teamChefMap.get(c.key)}
               onReorder={handleReorderTeam}
+              onToggleChef={(employeeId) => handleToggleChef(c.key, employeeId)}
             />
           ))}
         </div>
@@ -4437,7 +4500,7 @@ function OrgTile({ label, tone }: { label: string; tone: "boss" | "bureau" | "le
     <div
       className={`flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold leading-tight ${toneClasses[tone]}`}
     >
-      {tone === "lead" && <Star size={11} className="shrink-0 fill-current" />}
+      {tone === "lead" && <Crown size={11} className="shrink-0 fill-current" />}
       <span className="truncate">{label}</span>
     </div>
   );
@@ -4449,6 +4512,7 @@ function OrgColumn({
   employees,
   chefId,
   onReorder,
+  onToggleChef,
 }: {
   header: string;
   headerRu?: string;
@@ -4456,6 +4520,8 @@ function OrgColumn({
   chefId?: string | null;
   /** When provided, tiles become drag-and-drop reorderable within this column. */
   onReorder?: (newOrder: OrgEmployee[]) => void;
+  /** When provided, clicking a tile toggles that person as the team's chef. */
+  onToggleChef?: (employeeId: string) => void;
 }) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -4500,11 +4566,11 @@ function OrgColumn({
               setOverIndex(null);
             }}
             onDrop={() => handleDrop(i)}
-            className={
-              onReorder
-                ? `cursor-grab active:cursor-grabbing ${overIndex === i && dragIndex !== i ? "opacity-60" : ""}`
-                : undefined
-            }
+            onClick={() => onToggleChef?.(e.id)}
+            title={onToggleChef ? "Cliquer pour désigner/retirer comme chef d'équipe / Нажмите, чтобы назначить/снять бригадира" : undefined}
+            className={`${onReorder ? "cursor-grab active:cursor-grabbing" : ""} ${
+              overIndex === i && dragIndex !== i ? "opacity-60" : ""
+            } ${onToggleChef ? "cursor-pointer" : ""}`}
           >
             <OrgTile
               label={employeeName(e)}
@@ -4722,13 +4788,23 @@ type PaieEmployee = {
   category: "chantier" | "bureau";
   bureau_role: string | null;
   team_id: string | null;
-  teams: { name: string } | null;
+  teams: { name: string; chef_employee_id: string | null } | null;
   contract_type: string | null;
 };
 
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
  *  employees — their compensation is worked out entirely outside this system,
  *  so their row is excluded from every formula/bulk-apply/import/sync path. */
+function PaieEmployeeName({ employee: e }: { employee: PaieEmployee }) {
+  const isChef = !!e.team_id && e.teams?.chef_employee_id === e.id;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {isChef && <Crown size={12} className="shrink-0 fill-current text-success-600" />}
+      {employeeName(e)}
+    </span>
+  );
+}
+
 function isFopContractor(e: PaieEmployee): boolean {
   return e.contract_type === "FOP";
 }
@@ -4956,7 +5032,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), contract_type"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type"
           )
           // A employee terminated mid-month (end_date within this month or
           // later) still worked part of it and needs a partial-month line —
@@ -5602,14 +5678,18 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     )}
                     {isFopContractor(e) ? (
                       <tr className={`border-t border-stone-100 ${row.colorClass}`}>
-                        <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
+                        <td className="py-2 pr-4 font-semibold whitespace-nowrap">
+                          <PaieEmployeeName employee={e} />
+                        </td>
                         <td colSpan={6} className="py-2 pr-4 italic text-stone-500">
                           FOP — rémunération hors paie, calcul non applicable
                         </td>
                       </tr>
                     ) : (
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
-                    <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
+                    <td className="py-2 pr-4 font-semibold whitespace-nowrap">
+                      <PaieEmployeeName employee={e} />
+                    </td>
                     <td className="py-2 pr-4">
                       <input
                         type="number"
