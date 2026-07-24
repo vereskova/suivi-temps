@@ -1650,6 +1650,17 @@ function EmployeesView({
     [teams]
   );
 
+  const teamColorByName = useMemo(() => {
+    const sorted = [...teams].map((t) => t.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return new Map(sorted.map((name, i) => [name, PAIE_TEAM_COLOR_PALETTE[i % PAIE_TEAM_COLOR_PALETTE.length]]));
+  }, [teams]);
+
+  function chantierRowColor(e: EmployeeFull): string {
+    if (e.category === "bureau" || !e.team_id) return "";
+    const teamName = teamsById.get(e.team_id);
+    return (teamName && teamColorByName.get(teamName)) || "";
+  }
+
   const groupedFiltered = useMemo(() => {
     const bureau = filtered.filter((e) => e.category === "bureau");
     const chantier = filtered
@@ -1931,7 +1942,7 @@ function EmployeesView({
                 const isEditing = editingId === e.id;
                 return (
                   <Fragment key={e.id}>
-                  <tr className="border-t border-stone-100">
+                  <tr className={`border-t border-stone-100 ${chantierRowColor(e)}`}>
                     <td className="py-2 pr-4 font-semibold">
                       {employeeName(e)}
                     </td>
