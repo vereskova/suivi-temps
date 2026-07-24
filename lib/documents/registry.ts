@@ -4,6 +4,7 @@ import { contratChantier } from "./templates/contratChantier";
 import { contratBureau } from "./templates/contratBureau";
 import { nda } from "./templates/nda";
 import { attestationConges } from "./templates/attestationConges";
+import { demandeCongesSansSolde } from "./templates/demandeCongesSansSolde";
 import { accuseDemission } from "./templates/accuseDemission";
 import { lettreDemission } from "./templates/lettreDemission";
 import { convocationEntretien } from "./templates/convocationEntretien";
@@ -244,6 +245,34 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       { key: "issueDate", label: "Date de délivrance", type: "date", required: true, defaultValue: () => todayIso() },
     ],
     generate: attestationConges,
+  },
+  {
+    code: "demande_conges_sans_solde",
+    label: "Demande de congé sans solde (rédigée pour le salarié)",
+    category: "conges",
+    legalRisk: false,
+    fields: [
+      { key: "startDate", label: "Début du congé", type: "date", required: true },
+      { key: "endDate", label: "Fin du congé", type: "date", required: true },
+      {
+        key: "reason",
+        label: "Motif",
+        type: "text",
+        required: true,
+        defaultValue: () => "raisons personnelles",
+      },
+      {
+        key: "signingCity",
+        label: "Ville de signature",
+        type: "text",
+        required: true,
+        defaultValue: (_e, c) => c.signingCity,
+      },
+      { key: "issueDate", label: "Date du courrier", type: "date", required: true, defaultValue: () => todayIso() },
+      SEX_FIELD,
+      employeeField("address", "Adresse du salarié", "text"),
+    ],
+    generate: demandeCongesSansSolde,
   },
   {
     code: "lettre_demission",
