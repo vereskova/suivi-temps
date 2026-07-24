@@ -2887,16 +2887,20 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   <Fragment key={v.id}>
                   {showGroupHeader && (
                     <tr>
-                      <td colSpan={5} className="pt-4 pb-1">
-                        {groupKey === "urgent" ? (
-                          <p className="rounded-lg bg-warning-500 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white">
+                      <td colSpan={5} className={idx === 0 ? "p-0" : "pt-4 p-0"}>
+                        <p
+                          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide ${
+                            groupKey === "urgent"
+                              ? "bg-warning-500 text-white"
+                              : "bg-stone-100 text-stone-500"
+                          }`}
+                        >
+                          {groupKey === "urgent" ? (
                             <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
-                          </p>
-                        ) : (
-                          <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+                          ) : (
                             <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
-                          </p>
-                        )}
+                          )}
+                        </p>
                       </td>
                     </tr>
                   )}
