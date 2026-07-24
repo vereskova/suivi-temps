@@ -9,6 +9,7 @@ import {
   ArrowLeft,
   BarChart3,
   Banknote,
+  Bell,
   BookText,
   CalendarDays,
   ClipboardCheck,
@@ -310,7 +311,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "RH",
     items: [
       { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
-      { key: "echeances", label: "Échéances", labelRu: "Сроки", icon: AlertTriangle },
+      { key: "echeances", label: "Notifications", labelRu: "Уведомления", icon: Bell },
       { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
@@ -330,6 +331,15 @@ export default function AdminPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+
+  async function loadNotifications() {
+    setNotificationsLoading(true);
+    const rows = await fetchNotificationRows(supabase);
+    setNotifications(rows);
+    setNotificationsLoading(false);
+  }
 
   async function loadActiveEmployees() {
     const { data } = await supabase
@@ -381,6 +391,7 @@ export default function AdminPage() {
         ]);
         setAbsenceTypes(absenceRows ?? []);
         setTeams(teamRows ?? []);
+        loadNotifications();
       }
 
       // The "rh" role has no Pointage/Paie access, so it can't land on the
@@ -515,6 +526,7 @@ export default function AdminPage() {
                       onClick={() => setView(item.key)}
                       label={item.label}
                       labelRu={item.labelRu}
+                      badge={item.key === "echeances" ? notifications.length : undefined}
                     />
                   ))}
                 </SidebarSection>
@@ -555,7 +567,9 @@ export default function AdminPage() {
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
-            {view === "echeances" && <EcheancesView supabase={supabase} />}
+            {view === "echeances" && (
+              <NotificationsView notifications={notifications} loading={notificationsLoading} />
+            )}
             {view === "registre" && <RegistreView supabase={supabase} />}
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
             {view === "francais" && <FrancaisView supabase={supabase} />}
@@ -592,6 +606,7 @@ function SidebarLink({
   icon: Icon,
   label,
   labelRu,
+  badge,
 }: {
   active?: boolean;
   disabled?: boolean;
@@ -599,6 +614,7 @@ function SidebarLink({
   icon?: LucideIcon;
   label: string;
   labelRu?: string;
+  badge?: number;
 }) {
   return (
     <button
@@ -624,10 +640,15 @@ function SidebarLink({
           }`}
         />
       )}
-      <span className="min-w-0 leading-tight">
+      <span className="min-w-0 leading-tight flex-1">
         <span className="block truncate text-sm font-semibold">{label}</span>
         {labelRu && <span className="block truncate text-[0.68rem] font-medium opacity-60">{labelRu}</span>}
       </span>
+      {!!badge && (
+        <span className="ml-auto shrink-0 rounded-full bg-error-500 px-1.5 py-0.5 text-[0.65rem] font-bold leading-none text-white">
+          {badge}
+        </span>
+      )}
     </button>
   );
 }
@@ -4021,118 +4042,164 @@ const CURATED_TYPE_CONTRAT_OPTIONS = [
 ];
 
 // ── Vue "Échéances" — vue d'ensemble des documents/visites à renouveler ─────
-type EcheanceRow = {
+type NotificationTier = "day" | "week" | "month";
+
+type NotificationRow = {
   employeeId: string;
   employeeName: string;
   type: string;
   date: string;
   time?: string | null;
+  tier: NotificationTier;
 };
 
-const ECHEANCE_HORIZON_DAYS = 90;
+/** month/week/day thresholds — an item only ever appears in its most urgent
+ *  matching tier, never duplicated across tiers. */
+function notificationTier(dateIso: string): NotificationTier | null {
+  const days = daysUntil(dateIso);
+  if (days <= 1) return "day";
+  if (days <= 7) return "week";
+  if (days <= 30) return "month";
+  return null;
+}
 
-function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [rows, setRows] = useState<EcheanceRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+/** Single source of truth for the notification list — called once from
+ *  AdminPage (for the sidebar badge count) and handed down to
+ *  NotificationsView as a prop, rather than fetched twice. */
+async function fetchNotificationRows(
+  supabase: ReturnType<typeof createClient>
+): Promise<NotificationRow[]> {
+  const [{ data: docs }, { data: visits }] = await Promise.all([
+    supabase
+      .from("employee_documents")
+      .select(
+        "employee_id, valid_until, document_categories(label), employees(first_name, last_name, status)"
+      )
+      .not("valid_until", "is", null),
+    supabase
+      .from("medical_visits")
+      .select(
+        "employee_id, last_visit_date, next_visit_date, next_visit_time, employees(first_name, last_name, status)"
+      ),
+  ]);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      const [{ data: docs }, { data: visits }] = await Promise.all([
-        supabase
-          .from("employee_documents")
-          .select(
-            "employee_id, valid_until, document_categories(label), employees(first_name, last_name, status)"
-          )
-          .not("valid_until", "is", null),
-        supabase
-          .from("medical_visits")
-          .select("employee_id, next_visit_date, next_visit_time, employees(first_name, last_name, status)")
-          .not("next_visit_date", "is", null),
-      ]);
+  type DocRow = {
+    employee_id: string;
+    valid_until: string | null;
+    document_categories: { label: string } | { label: string }[] | null;
+    employees: { first_name: string; last_name: string; status: string } | null;
+  };
+  type VisitRow = {
+    employee_id: string;
+    last_visit_date: string | null;
+    next_visit_date: string | null;
+    next_visit_time: string | null;
+    employees: { first_name: string; last_name: string; status: string } | null;
+  };
 
-      type DocRow = {
-        employee_id: string;
-        valid_until: string | null;
-        document_categories: { label: string } | { label: string }[] | null;
-        employees: { first_name: string; last_name: string; status: string } | null;
-      };
-      type VisitRow = {
-        employee_id: string;
-        next_visit_date: string | null;
-        next_visit_time: string | null;
-        employees: { first_name: string; last_name: string; status: string } | null;
-      };
+  const rows: NotificationRow[] = [];
 
-      const docItems: EcheanceRow[] = ((docs as unknown as DocRow[]) ?? [])
-        .filter((d) => d.employees && d.employees.status !== "terminated" && d.valid_until)
-        .map((d) => {
-          const cat = Array.isArray(d.document_categories) ? d.document_categories[0] : d.document_categories;
-          return {
-            employeeId: d.employee_id,
-            employeeName: employeeName(d.employees!),
-            type: cat?.label ?? "Document",
-            date: d.valid_until as string,
-          };
-        });
+  ((docs as unknown as DocRow[]) ?? []).forEach((d) => {
+    if (!d.employees || d.employees.status === "terminated" || !d.valid_until) return;
+    const tier = notificationTier(d.valid_until);
+    if (!tier) return;
+    const cat = Array.isArray(d.document_categories) ? d.document_categories[0] : d.document_categories;
+    rows.push({
+      employeeId: d.employee_id,
+      employeeName: employeeName(d.employees),
+      type: cat?.label ?? "Document",
+      date: d.valid_until,
+      tier,
+    });
+  });
 
-      const visitItems: EcheanceRow[] = ((visits as unknown as VisitRow[]) ?? [])
-        .filter((v) => v.employees && v.employees.status !== "terminated" && v.next_visit_date)
-        .map((v) => ({
+  ((visits as unknown as VisitRow[]) ?? []).forEach((v) => {
+    if (!v.employees || v.employees.status === "terminated") return;
+
+    if (v.next_visit_date) {
+      const tier = notificationTier(v.next_visit_date);
+      if (tier) {
+        rows.push({
           employeeId: v.employee_id,
-          employeeName: employeeName(v.employees!),
+          employeeName: employeeName(v.employees),
           type: "Visite médicale",
-          date: v.next_visit_date as string,
+          date: v.next_visit_date,
           time: v.next_visit_time,
-        }));
-
-      const horizon = addDaysIsoLocal(today(), ECHEANCE_HORIZON_DAYS);
-      const combined = [...docItems, ...visitItems]
-        .filter((r) => r.date <= horizon)
-        .sort((a, b) => a.date.localeCompare(b.date));
-
-      setRows(combined);
-      setLoading(false);
+          tier,
+        });
+      }
     }
-    load();
-  }, [supabase]);
+
+    if (v.last_visit_date) {
+      const legalDeadline = addDaysIsoLocal(v.last_visit_date, 3 * 365);
+      const tier = notificationTier(legalDeadline);
+      if (tier) {
+        rows.push({
+          employeeId: v.employee_id,
+          employeeName: employeeName(v.employees),
+          type: "Rappel légal — visite médicale (3 ans)",
+          date: legalDeadline,
+          tier,
+        });
+      }
+    }
+  });
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+const NOTIFICATION_TIER_LABELS: Record<NotificationTier, { fr: string; ru: string; barClass: string }> = {
+  day: { fr: "Aujourd'hui / demain", ru: "Сегодня / завтра", barClass: "bg-error-500 text-white" },
+  week: { fr: "Cette semaine", ru: "На этой неделе", barClass: "bg-warning-500 text-white" },
+  month: { fr: "Ce mois-ci", ru: "В этом месяце", barClass: "bg-warning-200 text-warning-900" },
+};
+
+function NotificationsView({
+  notifications,
+  loading,
+}: {
+  notifications: NotificationRow[];
+  loading: boolean;
+}) {
+  const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
+    if (!q) return notifications;
+    return notifications.filter(
       (r) => r.employeeName.toLowerCase().includes(q) || r.type.toLowerCase().includes(q)
     );
-  }, [rows, search]);
+  }, [notifications, search]);
 
   const counts = useMemo(() => {
-    const todayIso = today();
-    let overdue = 0;
-    let soon = 0;
-    rows.forEach((r) => (r.date < todayIso ? overdue++ : soon++));
-    return { overdue, soon };
-  }, [rows]);
+    const c: Record<NotificationTier, number> = { day: 0, week: 0, month: 0 };
+    notifications.forEach((r) => c[r.tier]++);
+    return c;
+  }, [notifications]);
 
   return (
     <div>
       <div className="card mb-4">
         <p className="font-bold mb-1">
-          <Bi fr="Échéances" ru="Сроки" />
+          <Bi fr="Notifications" ru="Уведомления" />
         </p>
         <p className="text-xs text-stone-400 mb-3">
-          Documents et visites médicales expirés ou arrivant à échéance dans les {ECHEANCE_HORIZON_DAYS} jours,
+          Documents, visites médicales et rappels légaux (3 ans) arrivant à échéance dans le mois,
           tous employés confondus.{" "}
           <span className="opacity-70">
-            / Документы и медосмотры, срок которых истёк или истекает в течение {ECHEANCE_HORIZON_DAYS} дней, по всем сотрудникам.
+            / Документы, медосмотры и юридические напоминания (3 года), срок которых истекает в
+            течение месяца, по всем сотрудникам.
           </span>
         </p>
         <div className="flex flex-wrap gap-2 mb-4">
           <span className="badge badge-error">
-            {counts.overdue} en retard <span className="opacity-70">/ просрочено</span>
+            {counts.day} <Bi fr="aujourd'hui/demain" ru="сегодня/завтра" />
           </span>
           <span className="badge badge-warning">
-            {counts.soon} bientôt <span className="opacity-70">/ скоро</span>
+            {counts.week} <Bi fr="cette semaine" ru="на неделе" />
+          </span>
+          <span className="badge badge-neutral">
+            {counts.month} <Bi fr="ce mois-ci" ru="в этом месяце" />
           </span>
         </div>
         <label className="block text-xs font-bold text-stone-400">
@@ -4155,7 +4222,7 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
           <EmptyState
             title="Rien à signaler"
             titleRu="Нечего отметить"
-            description={`Aucun document ni visite médicale à échéance dans les ${ECHEANCE_HORIZON_DAYS} prochains jours.`}
+            description="Aucun document, visite médicale ou rappel légal à échéance dans le mois qui vient."
           />
         </div>
       ) : (
@@ -4164,7 +4231,7 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
             <thead>
               <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4"><Bi fr="Employé" ru="Сотрудник" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Document / Visite" ru="Документ / Визит" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Type" ru="Тип" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Échéance" ru="Срок" /></th>
                 <th className="pb-2">Statut</th>
               </tr>
@@ -4172,22 +4239,35 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
             <tbody>
               {filtered.map((r, i) => {
                 const urgency = dateUrgency(r.date);
+                const showTierHeader = i === 0 || filtered[i - 1].tier !== r.tier;
+                const tierInfo = NOTIFICATION_TIER_LABELS[r.tier];
                 return (
-                  <tr key={`${r.employeeId}-${r.type}-${r.date}-${i}`} className="border-t border-stone-100">
-                    <td className="py-2 pr-4 font-semibold">{r.employeeName}</td>
-                    <td className="py-2 pr-4 text-stone-500">{r.type}</td>
-                    <td className="py-2 pr-4">
-                      {formatDateShortDMY(r.date)}
-                      {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
-                    </td>
-                    <td className="py-2">
-                      {urgency ? (
-                        <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={`${r.employeeId}-${r.type}-${r.date}-${i}`}>
+                    {showTierHeader && (
+                      <tr>
+                        <td colSpan={4} className={i === 0 ? "p-0" : "pt-4 p-0"}>
+                          <p className={`px-4 py-2 text-xs font-bold uppercase tracking-wide ${tierInfo.barClass}`}>
+                            <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
+                          </p>
+                        </td>
+                      </tr>
+                    )}
+                    <tr className="border-t border-stone-100">
+                      <td className="py-2 pr-4 font-semibold">{r.employeeName}</td>
+                      <td className="py-2 pr-4 text-stone-500">{r.type}</td>
+                      <td className="py-2 pr-4">
+                        {formatDateShortDMY(r.date)}
+                        {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
+                      </td>
+                      <td className="py-2">
+                        {urgency ? (
+                          <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    </tr>
+                  </Fragment>
                 );
               })}
             </tbody>
