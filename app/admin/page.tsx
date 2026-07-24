@@ -2584,6 +2584,7 @@ type MedicalVisit = {
   employee_id: string;
   last_visit_date: string | null;
   next_visit_date: string | null;
+  next_visit_time: string | null;
   visit_subtype: string | null;
   employees: {
     first_name: string;
@@ -2600,6 +2601,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [editForm, setEditForm] = useState<{
     last: string;
     next: string;
+    nextTime: string;
     subtype: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -2619,7 +2621,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       const { data } = await supabase
         .from("medical_visits")
         .select(
-          "id, employee_id, last_visit_date, next_visit_date, visit_subtype, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
+          "id, employee_id, last_visit_date, next_visit_date, next_visit_time, visit_subtype, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
         )
         .order("next_visit_date", { ascending: true, nullsFirst: false });
       setVisits((data as unknown as MedicalVisit[]) ?? []);
@@ -2766,6 +2768,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     setEditForm({
       last: v.last_visit_date ?? "",
       next: v.next_visit_date ?? "",
+      nextTime: v.next_visit_time ? v.next_visit_time.slice(0, 5) : "",
       subtype: v.visit_subtype ?? "",
     });
   }
@@ -2778,6 +2781,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       .update({
         last_visit_date: editForm.last || null,
         next_visit_date: editForm.next || null,
+        next_visit_time: editForm.nextTime || null,
         visit_subtype: editForm.subtype || null,
       })
       .eq("id", v.id);
@@ -2885,14 +2889,26 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           />
                         </td>
                         <td className="py-2 pr-4">
-                          <input
-                            type="date"
-                            className="input text-sm px-2 py-1"
-                            value={editForm.next}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm, next: e.target.value })
-                            }
-                          />
+                          <div className="flex gap-1">
+                            <input
+                              type="date"
+                              className="input text-sm px-2 py-1"
+                              value={editForm.next}
+                              onChange={(e) =>
+                                setEditForm({ ...editForm, next: e.target.value })
+                              }
+                            />
+                            <input
+                              type="time"
+                              title="Heure du rendez-vous / Время встречи"
+                              className="input text-sm px-2 py-1"
+                              style={{ width: "6rem" }}
+                              value={editForm.nextTime}
+                              onChange={(e) =>
+                                setEditForm({ ...editForm, nextTime: e.target.value })
+                              }
+                            />
+                          </div>
                         </td>
                         <td className="py-2 pr-4">
                           <input
@@ -2928,6 +2944,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           }`}
                         >
                           {v.next_visit_date ?? "—"}
+                          {v.next_visit_date && v.next_visit_time && (
+                            <span className="ml-1 font-normal text-stone-400">
+                              {v.next_visit_time.slice(0, 5)}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2 pr-4 text-stone-500">
                           {v.visit_subtype ?? "—"}
@@ -3962,6 +3983,7 @@ type EcheanceRow = {
   employeeName: string;
   type: string;
   date: string;
+  time?: string | null;
 };
 
 const ECHEANCE_HORIZON_DAYS = 90;
@@ -3983,7 +4005,7 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
           .not("valid_until", "is", null),
         supabase
           .from("medical_visits")
-          .select("employee_id, next_visit_date, employees(first_name, last_name, status)")
+          .select("employee_id, next_visit_date, next_visit_time, employees(first_name, last_name, status)")
           .not("next_visit_date", "is", null),
       ]);
 
@@ -3996,6 +4018,7 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
       type VisitRow = {
         employee_id: string;
         next_visit_date: string | null;
+        next_visit_time: string | null;
         employees: { first_name: string; last_name: string; status: string } | null;
       };
 
@@ -4018,6 +4041,7 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
           employeeName: employeeName(v.employees!),
           type: "Visite médicale",
           date: v.next_visit_date as string,
+          time: v.next_visit_time,
         }));
 
       const horizon = addDaysIsoLocal(today(), ECHEANCE_HORIZON_DAYS);
@@ -4109,7 +4133,10 @@ function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient>
                   <tr key={`${r.employeeId}-${r.type}-${r.date}-${i}`} className="border-t border-stone-100">
                     <td className="py-2 pr-4 font-semibold">{r.employeeName}</td>
                     <td className="py-2 pr-4 text-stone-500">{r.type}</td>
-                    <td className="py-2 pr-4">{formatDateShortDMY(r.date)}</td>
+                    <td className="py-2 pr-4">
+                      {formatDateShortDMY(r.date)}
+                      {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
+                    </td>
                     <td className="py-2">
                       {urgency ? (
                         <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
@@ -6152,6 +6179,7 @@ type DossierMedicalVisit = {
   id: string;
   last_visit_date: string | null;
   next_visit_date: string | null;
+  next_visit_time: string | null;
   visit_subtype: string | null;
 };
 type RegistreEntry = { id: string; date_entree: string | null; date_sortie: string | null; nationalite: string | null };
@@ -6387,7 +6415,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           .maybeSingle(),
         supabase
           .from("medical_visits")
-          .select("id, last_visit_date, next_visit_date, visit_subtype")
+          .select("id, last_visit_date, next_visit_date, next_visit_time, visit_subtype")
           .eq("employee_id", selectedEmployeeId)
           .order("next_visit_date", { ascending: false }),
         supabase
@@ -6657,6 +6685,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                                   <span>
                                     {v.visit_subtype ?? "Visite"} — dernière : {v.last_visit_date ?? "—"} · prochaine :{" "}
                                     {v.next_visit_date ?? "—"}
+                                    {v.next_visit_date && v.next_visit_time && ` ${v.next_visit_time.slice(0, 5)}`}
                                   </span>
                                   {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
                                 </p>
