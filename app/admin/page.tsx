@@ -2797,6 +2797,10 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   }
 
   const todayIso = today();
+  const visitHorizon = addDaysIsoLocal(todayIso, 90);
+  function visitGroupKey(v: MedicalVisit): "urgent" | "later" {
+    return v.next_visit_date && v.next_visit_date <= visitHorizon ? "urgent" : "later";
+  }
 
   return (
     <div>
@@ -2868,11 +2872,30 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               </tr>
             </thead>
             <tbody>
-              {filteredVisits.map((v) => {
+              {filteredVisits.map((v, idx) => {
                 const isEditing = editingId === v.id;
                 const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
+                const groupKey = visitGroupKey(v);
+                const showGroupHeader = idx === 0 || visitGroupKey(filteredVisits[idx - 1]) !== groupKey;
                 return (
-                  <tr key={v.id} className="border-t border-stone-100">
+                  <Fragment key={v.id}>
+                  {showGroupHeader && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className={`pt-4 pb-1 text-xs font-bold uppercase tracking-wide ${
+                          groupKey === "urgent" ? "text-warning-600" : "text-stone-400"
+                        }`}
+                      >
+                        {groupKey === "urgent" ? (
+                          <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
+                        ) : (
+                          <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  <tr className={`border-t border-stone-100 ${groupKey === "urgent" ? "bg-warning-50/40" : ""}`}>
                     <td className="py-2 pr-4 font-semibold">
                       {v.employees ? employeeName(v.employees) : "—"}
                     </td>
@@ -2964,6 +2987,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </>
                     )}
                   </tr>
+                  </Fragment>
                 );
               })}
             </tbody>
