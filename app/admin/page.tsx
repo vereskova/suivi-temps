@@ -1648,11 +1648,22 @@ function EmployeesView({
 
   const groupedFiltered = useMemo(() => {
     const bureau = filtered.filter((e) => e.category === "bureau");
-    const chantier = filtered.filter((e) => e.category !== "bureau");
+    const chantier = filtered
+      .filter((e) => e.category !== "bureau")
+      .sort((a, b) => {
+        const teamA = a.team_id ? teamsById.get(a.team_id) ?? "" : "";
+        const teamB = b.team_id ? teamsById.get(b.team_id) ?? "" : "";
+        if (!teamA && teamB) return 1;
+        if (teamA && !teamB) return -1;
+        return (
+          teamA.localeCompare(teamB, undefined, { numeric: true }) ||
+          a.last_name.localeCompare(b.last_name)
+        );
+      });
     return ([["Bureau", bureau] as const, ["Chantier", chantier] as const]).filter(
       ([, members]) => members.length > 0
     );
-  }, [filtered]);
+  }, [filtered, teamsById]);
 
   function equipeOrPoste(e: EmployeeFull) {
     if (e.category === "bureau") {
