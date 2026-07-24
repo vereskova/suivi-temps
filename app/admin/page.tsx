@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
+  AlertTriangle,
   ArrowLeft,
   BarChart3,
   Banknote,
@@ -226,6 +227,7 @@ type ViewKey =
   | "formations"
   | "tailles"
   | "documents"
+  | "echeances"
   | "registre"
   | "organigramme"
   | "francais"
@@ -257,6 +259,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "RH",
     items: [
       { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
+      { key: "echeances", label: "Échéances", labelRu: "Сроки", icon: AlertTriangle },
       { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
@@ -489,6 +492,7 @@ export default function AdminPage() {
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
+            {view === "echeances" && <EcheancesView supabase={supabase} />}
             {view === "registre" && <RegistreView supabase={supabase} />}
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
             {view === "francais" && <FrancaisView supabase={supabase} />}
@@ -3638,6 +3642,184 @@ const CURATED_TYPE_CONTRAT_OPTIONS = [
   "Stage",
 ];
 
+// ── Vue "Échéances" — vue d'ensemble des documents/visites à renouveler ─────
+type EcheanceRow = {
+  employeeId: string;
+  employeeName: string;
+  type: string;
+  date: string;
+};
+
+const ECHEANCE_HORIZON_DAYS = 90;
+
+function EcheancesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [rows, setRows] = useState<EcheanceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [{ data: docs }, { data: visits }] = await Promise.all([
+        supabase
+          .from("employee_documents")
+          .select(
+            "employee_id, valid_until, document_categories(label), employees(first_name, last_name, status)"
+          )
+          .not("valid_until", "is", null),
+        supabase
+          .from("medical_visits")
+          .select("employee_id, next_visit_date, employees(first_name, last_name, status)")
+          .not("next_visit_date", "is", null),
+      ]);
+
+      type DocRow = {
+        employee_id: string;
+        valid_until: string | null;
+        document_categories: { label: string } | { label: string }[] | null;
+        employees: { first_name: string; last_name: string; status: string } | null;
+      };
+      type VisitRow = {
+        employee_id: string;
+        next_visit_date: string | null;
+        employees: { first_name: string; last_name: string; status: string } | null;
+      };
+
+      const docItems: EcheanceRow[] = ((docs as unknown as DocRow[]) ?? [])
+        .filter((d) => d.employees && d.employees.status !== "terminated" && d.valid_until)
+        .map((d) => {
+          const cat = Array.isArray(d.document_categories) ? d.document_categories[0] : d.document_categories;
+          return {
+            employeeId: d.employee_id,
+            employeeName: employeeName(d.employees!),
+            type: cat?.label ?? "Document",
+            date: d.valid_until as string,
+          };
+        });
+
+      const visitItems: EcheanceRow[] = ((visits as unknown as VisitRow[]) ?? [])
+        .filter((v) => v.employees && v.employees.status !== "terminated" && v.next_visit_date)
+        .map((v) => ({
+          employeeId: v.employee_id,
+          employeeName: employeeName(v.employees!),
+          type: "Visite médicale",
+          date: v.next_visit_date as string,
+        }));
+
+      const horizon = addDaysIsoLocal(today(), ECHEANCE_HORIZON_DAYS);
+      const combined = [...docItems, ...visitItems]
+        .filter((r) => r.date <= horizon)
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      setRows(combined);
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) => r.employeeName.toLowerCase().includes(q) || r.type.toLowerCase().includes(q)
+    );
+  }, [rows, search]);
+
+  const counts = useMemo(() => {
+    const todayIso = today();
+    let overdue = 0;
+    let soon = 0;
+    rows.forEach((r) => (r.date < todayIso ? overdue++ : soon++));
+    return { overdue, soon };
+  }, [rows]);
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <p className="font-bold mb-1">
+          <Bi fr="Échéances" ru="Сроки" />
+        </p>
+        <p className="text-xs text-stone-400 mb-3">
+          Documents et visites médicales expirés ou arrivant à échéance dans les {ECHEANCE_HORIZON_DAYS} jours,
+          tous employés confondus.{" "}
+          <span className="opacity-70">
+            / Документы и медосмотры, срок которых истёк или истекает в течение {ECHEANCE_HORIZON_DAYS} дней, по всем сотрудникам.
+          </span>
+        </p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <span className="badge badge-error">
+            {counts.overdue} en retard <span className="opacity-70">/ просрочено</span>
+          </span>
+          <span className="badge badge-warning">
+            {counts.soon} bientôt <span className="opacity-70">/ скоро</span>
+          </span>
+        </div>
+        <label className="block text-xs font-bold text-stone-400">
+          <Bi fr="Recherche" ru="Поиск" />
+        </label>
+        <input
+          className="input mt-1 max-w-sm"
+          placeholder="Nom, prénom, type de document…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={3} />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            title="Rien à signaler"
+            titleRu="Нечего отметить"
+            description={`Aucun document ni visite médicale à échéance dans les ${ECHEANCE_HORIZON_DAYS} prochains jours.`}
+          />
+        </div>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-stone-400">
+                <th className="pb-2 pr-4"><Bi fr="Employé" ru="Сотрудник" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Document / Visite" ru="Документ / Визит" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Échéance" ru="Срок" /></th>
+                <th className="pb-2">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r, i) => {
+                const urgency = dateUrgency(r.date);
+                return (
+                  <tr key={`${r.employeeId}-${r.type}-${r.date}-${i}`} className="border-t border-stone-100">
+                    <td className="py-2 pr-4 font-semibold">{r.employeeName}</td>
+                    <td className="py-2 pr-4 text-stone-500">{r.type}</td>
+                    <td className="py-2 pr-4">{formatDateShortDMY(r.date)}</td>
+                    <td className="py-2">
+                      {urgency ? (
+                        <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function addDaysIsoLocal(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [rows, setRows] = useState<RegistreRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -5638,6 +5820,15 @@ const DOSSIER_CATEGORY_ICONS: Record<string, LucideIcon> = {
   photo: ImageIcon,
 };
 
+/** Short, consistent display name for an uploaded document — "Catégorie - DD-MM-YYYY.ext" —
+ *  instead of whatever the source file happened to be called (IMG_2026.pdf, scan1.pdf...). */
+function standardFileName(categoryLabel: string, originalName: string): string {
+  const dot = originalName.lastIndexOf(".");
+  const ext = dot > 0 ? originalName.slice(dot) : "";
+  const dateStr = today().split("-").reverse().join("-");
+  return `${categoryLabel} - ${dateStr}${ext}`;
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} o`;
@@ -5893,10 +6084,11 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       toast.error("Erreur d'envoi : " + uploadError.message);
       return;
     }
+    const categoryLabel = categories.find((c) => c.code === categoryCode)?.label ?? categoryCode;
     const { error: insertError } = await supabase.from("employee_documents").insert({
       employee_id: selectedEmployeeId,
       category_code: categoryCode,
-      file_name: file.name,
+      file_name: standardFileName(categoryLabel, file.name),
       storage_path: path,
       file_size: file.size,
       mime_type: file.type || null,
