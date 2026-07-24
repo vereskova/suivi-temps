@@ -133,6 +133,48 @@ function uniqueFileToken() {
   return Date.now();
 }
 
+/** Splits one delimited line, honoring double-quoted fields (so a quoted
+ *  value can contain the delimiter itself) — used for Prevaly's CSV export. */
+function parseCsvLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === delimiter) {
+      result.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+/** "31/03/2025" -> "2025-03-31"; "-", empty, or unparseable -> null. */
+function parseFrDateToIso(s: string): string | null {
+  const t = s.trim();
+  if (!t || t === "-") return null;
+  const m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
 function daysUntil(iso: string): number {
   const now = new Date(today() + "T00:00:00Z").getTime();
   const target = new Date(iso + "T00:00:00Z").getTime();
@@ -2564,6 +2606,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [showPrevalyModal, setShowPrevalyModal] = useState(false);
+  const [importingPrevaly, setImportingPrevaly] = useState(false);
+  const [prevalyResult, setPrevalyResult] = useState<{
+    updatedCount: number;
+    unmatched: string[];
+  } | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -2579,6 +2627,119 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     }
     load();
   }, [supabase, refreshKey]);
+
+  async function applyPrevalyImport(file: File) {
+    setImportingPrevaly(true);
+    setPrevalyResult(null);
+    try {
+      const rawText = await file.text();
+      const text = rawText.charCodeAt(0) === 0xfeff ? rawText.slice(1) : rawText;
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (lines.length < 2) {
+        toast.error("Fichier vide.");
+        return;
+      }
+      const headers = parseCsvLine(lines[0], ";").map((h) => h.trim());
+      const iPrenom = headers.indexOf("Prénom");
+      const iNom = headers.indexOf("Nom");
+      const iNomNaissance = headers.indexOf("Nom_de_naissance");
+      const iLastVisit = headers.indexOf("Date_de_dernière_visite");
+      const iNextVisit = headers.indexOf("Date_de_prochaine_visite_estimée");
+      const iSubtype = headers.indexOf("Sous_type_de_prochaine_visite_estimé");
+      const iType = headers.indexOf("Type_de_prochaine_visite_estimé");
+
+      if (iPrenom === -1 || iNom === -1) {
+        toast.error("Colonnes Prénom/Nom introuvables dans le fichier.");
+        return;
+      }
+
+      const [{ data: empRows }, { data: existingVisits }] = await Promise.all([
+        supabase.from("employees").select("id, first_name, last_name"),
+        supabase.from("medical_visits").select("id, employee_id"),
+      ]);
+
+      const byName = new Map<string, string>();
+      ((empRows ?? []) as { id: string; first_name: string; last_name: string }[]).forEach((e) =>
+        byName.set(`${e.first_name.trim().toLowerCase()}|${e.last_name.trim().toLowerCase()}`, e.id)
+      );
+      const existingByEmployee = new Map<string, string>();
+      ((existingVisits ?? []) as { id: string; employee_id: string }[]).forEach((v) =>
+        existingByEmployee.set(v.employee_id, v.id)
+      );
+
+      const unmatched: string[] = [];
+      const updates: {
+        id: string;
+        last_visit_date: string | null;
+        next_visit_date: string | null;
+        visit_subtype: string | null;
+      }[] = [];
+      const inserts: {
+        employee_id: string;
+        last_visit_date: string | null;
+        next_visit_date: string | null;
+        visit_subtype: string | null;
+      }[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i], ";");
+        const prenom = (cols[iPrenom] ?? "").trim();
+        const nom = (cols[iNom] ?? "").trim();
+        if (!prenom && !nom) continue;
+
+        let employeeId = byName.get(`${prenom.toLowerCase()}|${nom.toLowerCase()}`);
+        if (!employeeId && iNomNaissance !== -1) {
+          const nomNaissance = (cols[iNomNaissance] ?? "").trim();
+          employeeId = byName.get(`${prenom.toLowerCase()}|${nomNaissance.toLowerCase()}`);
+        }
+        if (!employeeId) {
+          unmatched.push(`${nom} ${prenom}`.trim());
+          continue;
+        }
+
+        const lastVisit = iLastVisit !== -1 ? parseFrDateToIso(cols[iLastVisit] ?? "") : null;
+        const nextVisit = iNextVisit !== -1 ? parseFrDateToIso(cols[iNextVisit] ?? "") : null;
+        let subtype = iSubtype !== -1 ? (cols[iSubtype] ?? "").trim() : "";
+        if (!subtype && iType !== -1) subtype = (cols[iType] ?? "").trim();
+        const visitSubtype = subtype && subtype !== "-" ? subtype : null;
+
+        const existingId = existingByEmployee.get(employeeId);
+        if (existingId) {
+          updates.push({ id: existingId, last_visit_date: lastVisit, next_visit_date: nextVisit, visit_subtype: visitSubtype });
+        } else {
+          inserts.push({ employee_id: employeeId, last_visit_date: lastVisit, next_visit_date: nextVisit, visit_subtype: visitSubtype });
+        }
+      }
+
+      const results = await Promise.all([
+        ...updates.map((u) =>
+          supabase
+            .from("medical_visits")
+            .update({
+              last_visit_date: u.last_visit_date,
+              next_visit_date: u.next_visit_date,
+              visit_subtype: u.visit_subtype,
+            })
+            .eq("id", u.id)
+        ),
+        inserts.length > 0
+          ? supabase.from("medical_visits").insert(inserts)
+          : Promise.resolve({ error: null } as { error: { message: string } | null }),
+      ]);
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        toast.error("Erreur : " + failed.error.message);
+      } else {
+        toast.success(`${updates.length + inserts.length} visite(s) mise(s) à jour.`);
+      }
+      setPrevalyResult({ updatedCount: updates.length + inserts.length, unmatched });
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      toast.error("Erreur de lecture du fichier : " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImportingPrevaly(false);
+    }
+  }
 
   const teamOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -2636,9 +2797,20 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">
-          Visites médicales ({filteredVisits.length}/{visits.length})
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="font-bold">
+            Visites médicales ({filteredVisits.length}/{visits.length})
+          </p>
+          <button
+            className="btn btn-secondary text-sm"
+            onClick={() => {
+              setPrevalyResult(null);
+              setShowPrevalyModal(true);
+            }}
+          >
+            <Upload size={15} /> <Bi fr="Importer Prevaly" ru="Импорт из Prevaly" />
+          </button>
+        </div>
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
@@ -2777,6 +2949,62 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </table>
         </div>
       )}
+
+      <Modal
+        open={showPrevalyModal}
+        onClose={() => setShowPrevalyModal(false)}
+        title="Importer depuis Prevaly"
+        maxWidth="max-w-lg"
+      >
+        <p className="text-sm text-stone-500 mb-3">
+          Sélectionnez l&apos;export CSV de Prevaly (salaries-….csv). On y récupère le nom, la
+          date de dernière visite, la date de prochaine visite estimée et son sous-type — le
+          reste des colonnes est ignoré.{" "}
+          <span className="opacity-70">
+            / Выберите CSV-выгрузку из Prevaly. Оттуда берутся имя, дата последнего визита, дата
+            следующего визита и его подтип — остальные столбцы игнорируются.
+          </span>
+        </p>
+        <label className={`btn btn-secondary inline-flex ${importingPrevaly ? "" : "cursor-pointer"}`}>
+          <Upload size={14} />{" "}
+          {importingPrevaly ? "Import en cours…" : <Bi fr="Choisir un fichier" ru="Выбрать файл" />}
+          <input
+            type="file"
+            accept=".csv"
+            className="hidden"
+            disabled={importingPrevaly}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) applyPrevalyImport(file);
+            }}
+          />
+        </label>
+        {prevalyResult && (
+          <div className="mt-3 text-sm">
+            <p className="text-success-600 font-semibold">
+              {prevalyResult.updatedCount} visite(s) mise(s) à jour.
+            </p>
+            {prevalyResult.unmatched.length > 0 && (
+              <div className="mt-1 text-error-600">
+                <p className="font-semibold">
+                  Non reconnu(s) : <span className="opacity-70">/ Не найдено:</span>
+                </p>
+                <ul className="list-disc pl-5">
+                  {prevalyResult.unmatched.map((name, i) => (
+                    <li key={i}>{name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex gap-3 mt-4">
+          <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowPrevalyModal(false)}>
+            <Bi fr="Fermer" ru="Закрыть" />
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
