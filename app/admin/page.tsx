@@ -25,6 +25,7 @@ import {
   GraduationCap,
   HardHat,
   HeartPulse,
+  History,
   Image as ImageIcon,
   Languages,
   LogOut,
@@ -6495,6 +6496,15 @@ type EmployeeDocumentRow = {
   created_at: string;
   valid_until: string | null;
   registre_entry_id: string | null;
+  uploaded_by_email: string | null;
+};
+type DocumentActionLogRow = {
+  id: string;
+  category_code: string;
+  file_name: string;
+  action: "upload" | "delete";
+  actor_email: string | null;
+  created_at: string;
 };
 type DossierConfidential = {
   nationality: string | null;
@@ -6545,6 +6555,12 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
+/** "Ajouté le DD/MM/YYYY · uploader@mail" — shown under each document's name. */
+function docMetaLine(doc: EmployeeDocumentRow): string {
+  const date = new Date(doc.created_at).toLocaleDateString("fr-FR");
+  return doc.uploaded_by_email ? `Ajouté le ${date} · ${doc.uploaded_by_email}` : `Ajouté le ${date}`;
+}
+
 function DossierPeriodCategory({
   category,
   icon: Icon,
@@ -6552,6 +6568,7 @@ function DossierPeriodCategory({
   documents,
   uploadingKey,
   onUpload,
+  onPreview,
   onDownload,
   onDelete,
 }: {
@@ -6561,6 +6578,7 @@ function DossierPeriodCategory({
   documents: EmployeeDocumentRow[];
   uploadingKey: string | null;
   onUpload: (categoryCode: string, file: File, registreEntryId: string) => void;
+  onPreview: (doc: EmployeeDocumentRow) => void;
   onDownload: (doc: EmployeeDocumentRow) => void;
   onDelete: (doc: EmployeeDocumentRow) => void;
 }) {
@@ -6628,9 +6646,21 @@ function DossierPeriodCategory({
                         key={doc.id}
                         className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm hover:bg-white"
                       >
-                        <span className="truncate">{doc.file_name}</span>
+                        <span className="min-w-0 truncate">
+                          <span className="truncate">{doc.file_name}</span>
+                          <span className="block text-[10px] font-medium text-stone-400 truncate">
+                            {docMetaLine(doc)}
+                          </span>
+                        </span>
                         <span className="flex items-center gap-2 shrink-0">
                           <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
+                          <button
+                            onClick={() => onPreview(doc)}
+                            title="Visualiser / Просмотреть"
+                            className="text-stone-400 hover:text-primary-600"
+                          >
+                            <Eye size={14} />
+                          </button>
                           <button
                             onClick={() => onDownload(doc)}
                             title="Télécharger / Скачать"
@@ -6671,6 +6701,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [confidential, setConfidential] = useState<DossierConfidential | null>(null);
   const [medicalVisits, setMedicalVisits] = useState<DossierMedicalVisit[]>([]);
   const [registreEntries, setRegistreEntries] = useState<RegistreEntry[]>([]);
+  const [actionLog, setActionLog] = useState<DocumentActionLogRow[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -6712,11 +6744,22 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     const { data } = await supabase
       .from("employee_documents")
       .select(
-        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id"
+        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
       )
       .eq("employee_id", selectedEmployeeId)
       .order("created_at", { ascending: false });
     setDocuments((data as EmployeeDocumentRow[]) ?? []);
+  }
+
+  async function reloadActionLog() {
+    if (!selectedEmployeeId) return;
+    const { data } = await supabase
+      .from("document_action_log")
+      .select("id, category_code, file_name, action, actor_email, created_at")
+      .eq("employee_id", selectedEmployeeId)
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setActionLog((data as DocumentActionLogRow[]) ?? []);
   }
 
   useEffect(() => {
@@ -6726,14 +6769,15 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
         setConfidential(null);
         setMedicalVisits([]);
         setRegistreEntries([]);
+        setActionLog([]);
         return;
       }
       setLoadingDetail(true);
-      const [{ data: docs }, { data: conf }, { data: visits }, { data: registre }] = await Promise.all([
+      const [{ data: docs }, { data: conf }, { data: visits }, { data: registre }, { data: log }] = await Promise.all([
         supabase
           .from("employee_documents")
           .select(
-            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id"
+            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
           )
           .eq("employee_id", selectedEmployeeId)
           .order("created_at", { ascending: false }),
@@ -6752,11 +6796,18 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           .select("id, date_entree, date_sortie, nationalite")
           .eq("employee_id", selectedEmployeeId)
           .order("date_entree", { ascending: false }),
+        supabase
+          .from("document_action_log")
+          .select("id, category_code, file_name, action, actor_email, created_at")
+          .eq("employee_id", selectedEmployeeId)
+          .order("created_at", { ascending: false })
+          .limit(100),
       ]);
       setDocuments((docs as EmployeeDocumentRow[]) ?? []);
       setConfidential((conf as DossierConfidential) ?? null);
       setMedicalVisits((visits as DossierMedicalVisit[]) ?? []);
       setRegistreEntries((registre as RegistreEntry[]) ?? []);
+      setActionLog((log as DocumentActionLogRow[]) ?? []);
       setLoadingDetail(false);
     }
     loadDetail();
@@ -6809,7 +6860,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       toast.error("Erreur : " + insertError.message);
       return;
     }
-    await Promise.all([reloadDocuments(), reloadOverdueCounts()]);
+    await Promise.all([reloadDocuments(), reloadOverdueCounts(), reloadActionLog()]);
     toast.success("Document ajouté");
   }
 
@@ -6827,6 +6878,17 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     URL.revokeObjectURL(url);
   }
 
+  async function previewFile(doc: EmployeeDocumentRow) {
+    const { data, error } = await supabase.storage
+      .from(DOSSIER_BUCKET)
+      .createSignedUrl(doc.storage_path, 60);
+    if (error || !data) {
+      toast.error("Erreur d'aperçu : " + (error?.message ?? "fichier introuvable"));
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
   async function deleteFile(doc: EmployeeDocumentRow) {
     if (!confirm(`Supprimer « ${doc.file_name} » ?`)) return;
     const { error: storageError } = await supabase.storage.from(DOSSIER_BUCKET).remove([doc.storage_path]);
@@ -6839,7 +6901,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       toast.error("Erreur : " + dbError.message);
       return;
     }
-    await Promise.all([reloadDocuments(), reloadOverdueCounts()]);
+    await Promise.all([reloadDocuments(), reloadOverdueCounts(), reloadActionLog()]);
     toast.success("Document supprimé");
   }
 
@@ -6872,7 +6934,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
               return (
                 <button
                   key={e.id}
-                  onClick={() => setSelectedEmployeeId(e.id)}
+                  onClick={() => {
+                    setSelectedEmployeeId(e.id);
+                    setShowHistory(false);
+                  }}
                   className={`w-full flex items-center justify-between gap-2 text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
                     selectedEmployeeId === e.id
                       ? "bg-primary-50 text-primary-700"
@@ -6907,7 +6972,46 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </div>
         ) : (
           <div className="card">
-            <p className="font-bold mb-4">Dossier — {employeeName(selectedEmployee)}</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="font-bold">Dossier — {employeeName(selectedEmployee)}</p>
+              <button
+                onClick={() => setShowHistory((v) => !v)}
+                className="btn btn-secondary text-xs px-3 py-1.5"
+              >
+                <History size={13} />
+                <Bi fr="Historique" ru="История" />
+              </button>
+            </div>
+            {showHistory && (
+              <div className="mb-4 rounded-xl border border-stone-100 p-3 max-h-64 overflow-y-auto">
+                {actionLog.length === 0 ? (
+                  <p className="text-xs text-stone-400">
+                    Aucune action enregistrée. <span className="opacity-70">/ Нет зарегистрированных действий.</span>
+                  </p>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {actionLog.map((entry) => (
+                      <li key={entry.id} className="text-xs text-stone-500 flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`badge ${entry.action === "upload" ? "badge-success" : "badge-error"}`}
+                        >
+                          {entry.action === "upload" ? (
+                            <Bi fr="Ajouté" ru="Добавлен" />
+                          ) : (
+                            <Bi fr="Supprimé" ru="Удалён" />
+                          )}
+                        </span>
+                        <span className="font-semibold">{entry.file_name}</span>
+                        <span className="opacity-70">
+                          {new Date(entry.created_at).toLocaleString("fr-FR")}
+                          {entry.actor_email ? ` · ${entry.actor_email}` : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             {loadingDetail ? (
               <SkeletonRows rows={4} cols={3} />
             ) : (
@@ -6926,6 +7030,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         documents={documents}
                         uploadingKey={uploadingKey}
                         onUpload={(code, file, registreEntryId) => uploadFile(code, file, { registreEntryId })}
+                        onPreview={previewFile}
                         onDownload={downloadFile}
                         onDelete={deleteFile}
                       />
@@ -7036,15 +7141,27 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                                 key={doc.id}
                                 className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-stone-50"
                               >
-                                <span className="truncate flex items-center gap-2 flex-wrap">
-                                  {doc.file_name}
-                                  {doc.valid_until && (
-                                    <span className="text-xs text-stone-400">expire le {doc.valid_until}</span>
-                                  )}
-                                  {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
+                                <span className="min-w-0 truncate">
+                                  <span className="flex items-center gap-2 flex-wrap">
+                                    {doc.file_name}
+                                    {doc.valid_until && (
+                                      <span className="text-xs text-stone-400">expire le {doc.valid_until}</span>
+                                    )}
+                                    {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
+                                  </span>
+                                  <span className="block text-[10px] font-medium text-stone-400 truncate">
+                                    {docMetaLine(doc)}
+                                  </span>
                                 </span>
                                 <span className="flex items-center gap-2 shrink-0">
                                   <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
+                                  <button
+                                    onClick={() => previewFile(doc)}
+                                    title="Visualiser / Просмотреть"
+                                    className="text-stone-400 hover:text-primary-600"
+                                  >
+                                    <Eye size={15} />
+                                  </button>
                                   <button
                                     onClick={() => downloadFile(doc)}
                                     title="Télécharger / Скачать"
