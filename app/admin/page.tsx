@@ -6548,6 +6548,17 @@ function standardFileName(categoryLabel: string, originalName: string): string {
   return `${categoryLabel} - ${dateStr}${ext}`;
 }
 
+/** Contracts carry more useful info than an upload date — whether it's signed,
+ *  and the actual hire date from the Registre entry — "Contrat de travail -
+ *  Signé - DD-MM-YYYY.ext". Other categories (RIB, etc.) don't need this. */
+function standardContractFileName(originalName: string, signed: boolean, hireDateIso: string | null): string {
+  const dot = originalName.lastIndexOf(".");
+  const ext = dot > 0 ? originalName.slice(dot) : "";
+  const signedLabel = signed ? "Signé" : "Non signé";
+  const dateStr = hireDateIso ? hireDateIso.split("-").reverse().join("-") : "date-inconnue";
+  return `Contrat de travail - ${signedLabel} - ${dateStr}${ext}`;
+}
+
 function formatFileSize(bytes: number | null): string {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} o`;
@@ -6708,6 +6719,12 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
+  const [contractModal, setContractModal] = useState<{
+    file: File;
+    registreEntryId: string;
+    hireDate: string | null;
+  } | null>(null);
+  const [contractSigned, setContractSigned] = useState(true);
 
   const [overdueCounts, setOverdueCounts] = useState<Map<string, number>>(new Map());
 
@@ -6832,7 +6849,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   async function uploadFile(
     categoryCode: string,
     file: File,
-    opts?: { validUntil?: string; registreEntryId?: string }
+    opts?: { validUntil?: string; registreEntryId?: string; fileNameOverride?: string }
   ) {
     if (!selectedEmployeeId) return;
     const key = `${categoryCode}:${opts?.registreEntryId ?? ""}`;
@@ -6848,7 +6865,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     const { error: insertError } = await supabase.from("employee_documents").insert({
       employee_id: selectedEmployeeId,
       category_code: categoryCode,
-      file_name: standardFileName(categoryLabel, file.name),
+      file_name: opts?.fileNameOverride ?? standardFileName(categoryLabel, file.name),
       storage_path: path,
       file_size: file.size,
       mime_type: file.type || null,
@@ -7029,7 +7046,15 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         entries={entries}
                         documents={documents}
                         uploadingKey={uploadingKey}
-                        onUpload={(code, file, registreEntryId) => uploadFile(code, file, { registreEntryId })}
+                        onUpload={(code, file, registreEntryId) => {
+                          if (code === "contrat") {
+                            const entry = entries.find((en) => en.id === registreEntryId);
+                            setContractModal({ file, registreEntryId, hireDate: entry?.date_entree ?? null });
+                            setContractSigned(true);
+                          } else {
+                            uploadFile(code, file, { registreEntryId });
+                          }
+                        }}
                         onPreview={previewFile}
                         onDownload={downloadFile}
                         onDelete={deleteFile}
@@ -7224,6 +7249,67 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 <Bi fr="Ajouter" ru="Добавить" />
               </button>
               <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setExpiryModal(null)}>
+                <Bi fr="Annuler" ru="Отмена" />
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!contractModal}
+        onClose={() => setContractModal(null)}
+        title="Contrat de travail"
+        maxWidth="max-w-sm"
+      >
+        {contractModal && (
+          <>
+            <p className="text-sm text-stone-500 mb-3">
+              Fichier <span className="opacity-70">/ Файл</span> :{" "}
+              <span className="font-semibold">{contractModal.file.name}</span>
+            </p>
+            <p className="text-xs font-bold text-stone-500 mb-1">
+              <Bi fr="Ce contrat est-il signé ?" ru="Договор подписан?" />
+            </p>
+            <div className="flex gap-2">
+              <button
+                className={`btn text-sm px-3 py-2 ${contractSigned ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setContractSigned(true)}
+              >
+                <Bi fr="Signé" ru="Подписан" />
+              </button>
+              <button
+                className={`btn text-sm px-3 py-2 ${!contractSigned ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setContractSigned(false)}
+              >
+                <Bi fr="Non signé" ru="Не подписан" />
+              </button>
+            </div>
+            <p className="text-xs text-stone-400 mt-3">
+              Date d&apos;embauche <span className="opacity-70">/ Дата приёма</span> :{" "}
+              <span className="font-semibold text-stone-600">
+                {contractModal.hireDate ? formatDateShortDMY(contractModal.hireDate) : "—"}
+              </span>
+            </p>
+            <div className="flex gap-3 mt-4">
+              <button
+                className="btn btn-green text-sm px-3 py-2"
+                onClick={async () => {
+                  const fileName = standardContractFileName(
+                    contractModal.file.name,
+                    contractSigned,
+                    contractModal.hireDate
+                  );
+                  await uploadFile("contrat", contractModal.file, {
+                    registreEntryId: contractModal.registreEntryId,
+                    fileNameOverride: fileName,
+                  });
+                  setContractModal(null);
+                }}
+              >
+                <Bi fr="Ajouter" ru="Добавить" />
+              </button>
+              <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setContractModal(null)}>
                 <Bi fr="Annuler" ru="Отмена" />
               </button>
             </div>
