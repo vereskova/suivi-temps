@@ -210,14 +210,22 @@ function Bi({
   fr,
   ru,
   className = "",
+  after,
 }: {
   fr: React.ReactNode;
   ru?: string;
   className?: string;
+  /** Rendered inline right after `fr`, on the same line — e.g. an InfoNote
+   *  icon, which would otherwise vertically center against the full
+   *  two-line fr+ru block instead of lining up with the fr text itself. */
+  after?: React.ReactNode;
 }) {
   return (
     <span className={`inline-block leading-tight align-middle ${className}`}>
-      <span className="block truncate">{fr}</span>
+      <span className="block truncate">
+        {fr}
+        {after}
+      </span>
       {ru && (
         <span className="block truncate text-[0.6rem] font-medium normal-case opacity-60">
           {ru}
@@ -837,14 +845,19 @@ function JourView({
 
   return (
     <div>
-      <div className="mb-3 flex items-center font-bold">
-        <Bi fr="Par jour" ru="По дням" />
-        <InfoNote
-          title="Par jour"
-          text={
-            "Часы всех бригад за один выбранный день. Можно менять дату, искать по имени и фильтровать по бригаде.\n\n" +
-            "Нажмите на карандаш у сотрудника, чтобы вписать или исправить его часы, отметить отсутствие и его причину.\n\n" +
-            "Это те же данные, что бригадиры вводят через открытую форму на главной странице (без входа в систему) — здесь просто видно сразу всех, и можно всё поправить."
+      <div className="mb-3 font-bold">
+        <Bi
+          fr="Par jour"
+          ru="По дням"
+          after={
+            <InfoNote
+              title="Par jour"
+              text={
+                "Часы всех бригад за один выбранный день. Можно менять дату, искать по имени и фильтровать по бригаде.\n\n" +
+                "Нажмите на карандаш у сотрудника, чтобы вписать или исправить его часы, отметить отсутствие и его причину.\n\n" +
+                "Это те же данные, что бригадиры вводят через открытую форму на главной странице (без входа в систему) — здесь просто видно сразу всех, и можно всё поправить."
+              }
+            />
           }
         />
       </div>
@@ -1148,13 +1161,18 @@ function EmployeView({
 
   return (
     <div>
-      <div className="mb-3 flex items-center font-bold">
-        <Bi fr="Par employé" ru="По сотруднику" />
-        <InfoNote
-          title="Par employé"
-          text={
-            "Помесячный отчёт по одному сотруднику: выберите его, месяц и год — увидите все дни целиком (часы, переработки, отсутствия) и итог за месяц.\n\n" +
-            "Удобно, чтобы свериться по одному человеку, не листая общий список «Par jour» по дням."
+      <div className="mb-3 font-bold">
+        <Bi
+          fr="Par employé"
+          ru="По сотруднику"
+          after={
+            <InfoNote
+              title="Par employé"
+              text={
+                "Помесячный отчёт по одному сотруднику: выберите его, месяц и год — увидите все дни целиком (часы, переработки, отсутствия) и итог за месяц.\n\n" +
+                "Удобно, чтобы свериться по одному человеку, не листая общий список «Par jour» по дням."
+              }
+            />
           }
         />
       </div>
@@ -1337,13 +1355,18 @@ function MoisView({
 
   return (
     <div>
-      <div className="mb-3 flex items-center font-bold">
-        <Bi fr="Totaux du mois" ru="Итоги за месяц" />
-        <InfoNote
-          title="Totaux du mois"
-          text={
-            "Свод отработанных часов за месяц сразу по всем сотрудникам, сгруппированным по бригадам.\n\n" +
-            "Помогает быстро увидеть общую картину и заметить, у кого мало часов или совсем нет данных за месяц, прежде чем считать зарплату."
+      <div className="mb-3 font-bold">
+        <Bi
+          fr="Totaux du mois"
+          ru="Итоги за месяц"
+          after={
+            <InfoNote
+              title="Totaux du mois"
+              text={
+                "Свод отработанных часов за месяц сразу по всем сотрудникам, сгруппированным по бригадам.\n\n" +
+                "Помогает быстро увидеть общую картину и заметить, у кого мало часов или совсем нет данных за месяц, прежде чем считать зарплату."
+              }
+            />
           }
         />
       </div>
@@ -1646,13 +1669,18 @@ function ExportImportView({
   return (
     <div className="space-y-6">
       <div className="card">
-        <div className="font-bold mb-1 flex items-center">
-          <Bi fr="Exporter" ru="Экспорт" />
-          <InfoNote
-            title="Export / Import"
-            text={
-              "Экспорт выгружает часы за выбранный период в Excel-файл — для архива или чтобы передать бухгалтеру.\n\n" +
-              "Импорт — обратная операция: если часы были исправлены или посчитаны в Excel, загрузите файл обратно, и они запишутся в систему так же, как при ручном вводе через «Par jour»."
+        <div className="font-bold mb-1">
+          <Bi
+            fr="Exporter"
+            ru="Экспорт"
+            after={
+              <InfoNote
+                title="Export / Import"
+                text={
+                  "Экспорт выгружает часы за выбранный период в Excel-файл — для архива или чтобы передать бухгалтеру.\n\n" +
+                  "Импорт — обратная операция: если часы были исправлены или посчитаны в Excel, загрузите файл обратно, и они запишутся в систему так же, как при ручном вводе через «Par jour»."
+                }
+              />
             }
           />
         </div>
@@ -3977,13 +4005,18 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <div className="font-bold mb-3 flex items-center">
-          <Bi fr={`Employés (${filteredEmployees.length})`} ru="Сотрудники" />
-          <InfoNote
-            title="Documents"
-            text={
-              "Здесь создаются готовые документы: трудовые договоры, письма о расторжении, уведомления, приглашения на собеседование и т.д.\n\n" +
-              "Выберите сотрудника слева, тип документа сверху справа — часть полей уже подставится из карточки сотрудника, остальное впишите вручную — и скачайте готовый файл в PDF или Word."
+        <div className="font-bold mb-3">
+          <Bi
+            fr={`Employés (${filteredEmployees.length})`}
+            ru="Сотрудники"
+            after={
+              <InfoNote
+                title="Documents"
+                text={
+                  "Здесь создаются готовые документы: трудовые договоры, письма о расторжении, уведомления, приглашения на собеседование и т.д.\n\n" +
+                  "Выберите сотрудника слева, тип документа сверху справа — часть полей уже подставится из карточки сотрудника, остальное впишите вручную — и скачайте готовый файл в PDF или Word."
+                }
+              />
             }
           />
         </div>
@@ -4379,6 +4412,15 @@ function nextBirthdayIso(dobIso: string): string {
   return candidate < todayIso ? build(thisYear + 1) : candidate;
 }
 
+/** Russian pluralization for "года/лет/год" — e.g. 21 год, 22 года, 25 лет. */
+function ruYears(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "год";
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "года";
+  return "лет";
+}
+
 const NOTIFICATIONS_SEEN_STORAGE_KEY = "vladis_notifications_seen";
 
 function notificationKey(r: NotificationRow): string {
@@ -4487,7 +4529,7 @@ async function fetchNotificationRows(
     rows.push({
       employeeId: e.id,
       employeeName: employeeName(e),
-      type: `Anniversaire (${age} ans)`,
+      type: `Anniversaire (${age} ans) / День рождения (${age} ${ruYears(age)})`,
       date: nextBday,
       tier,
     });
@@ -4528,14 +4570,19 @@ function NotificationsView({
   return (
     <div>
       <div className="card mb-4">
-        <div className="font-bold mb-1 flex items-center">
-          <Bi fr="Notifications" ru="Уведомления" />
-          <InfoNote
-            title="Notifications"
-            text={
-              "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 3 года (по закону) — и дни рождения сотрудников.\n\n" +
-              "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
-              "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу."
+        <div className="font-bold mb-1">
+          <Bi
+            fr="Notifications"
+            ru="Уведомления"
+            after={
+              <InfoNote
+                title="Notifications"
+                text={
+                  "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 3 года (по закону) — и дни рождения сотрудников.\n\n" +
+                  "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
+                  "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу."
+                }
+              />
             }
           />
         </div>
@@ -5490,13 +5537,18 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
 
   return (
     <div>
-      <div className="mb-3 flex items-center font-bold">
-        <Bi fr="Cours de français" ru="Курсы французского" />
-        <InfoNote
-          title="Cours de français"
-          text={
-            "Учёт занятий по французскому языку: список сессий (дат занятий) и посещаемость.\n\n" +
-            "Выберите дату занятия сверху, затем отметьте по каждому сотруднику: отсутствовал ли он, сделал ли домашнее задание, прошёл ли контрольную."
+      <div className="mb-3 font-bold">
+        <Bi
+          fr="Cours de français"
+          ru="Курсы французского"
+          after={
+            <InfoNote
+              title="Cours de français"
+              text={
+                "Учёт занятий по французскому языку: список сессий (дат занятий) и посещаемость.\n\n" +
+                "Выберите дату занятия сверху, затем отметьте по каждому сотруднику: отсутствовал ли он, сделал ли домашнее задание, прошёл ли контрольную."
+              }
+            />
           }
         />
       </div>
@@ -6279,14 +6331,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
   return (
     <div>
-      <div className="mb-3 flex items-center font-bold">
-        <Bi fr="Paie" ru="Зарплата" />
-        <InfoNote
-          title="Paie"
-          text={
-            "Расчёт зарплаты: вы вводите желаемую сумму на руки (net souhaité), учитываете переработки, праздничные дни, тикеты-ресторан — система считает переработки +25%/+50% и итоговую сумму по каждому сотруднику.\n\n" +
-            "Здесь НЕ создаётся официальный расчётный листок (bulletin de paie) — это только подготовка цифр, которые потом передаются бухгалтеру.\n\n" +
-            "Сотрудники сгруппированы по офису/контролю-обучению/бригадам. У сотрудников-подрядчиков (FOP) эти формулы не применяются."
+      <div className="mb-3 font-bold">
+        <Bi
+          fr="Paie"
+          ru="Зарплата"
+          after={
+            <InfoNote
+              title="Paie"
+              text={
+                "Расчёт зарплаты: вы вводите желаемую сумму на руки (net souhaité), учитываете переработки, праздничные дни, тикеты-ресторан — система считает переработки +25%/+50% и итоговую сумму по каждому сотруднику.\n\n" +
+                "Здесь НЕ создаётся официальный расчётный листок (bulletin de paie) — это только подготовка цифр, которые потом передаются бухгалтеру.\n\n" +
+                "Сотрудники сгруппированы по офису/контролю-обучению/бригадам. У сотрудников-подрядчиков (FOP) эти формулы не применяются."
+              }
+            />
           }
         />
       </div>
@@ -7112,14 +7169,19 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <div className="font-bold mb-3 flex items-center">
-          <Bi fr="Employés" ru="Сотрудники" />
-          <InfoNote
-            title="Dossier salarié"
-            text={
-              "Личное дело сотрудника — все загруженные документы по категориям (контракт, RIB, медицина, вид на жительство и т.д.).\n\n" +
-              "Кнопка с глазом — посмотреть файл, не скачивая его. Кнопка «Historique» у карточки сотрудника показывает, кто и когда загрузил или удалил документ.\n\n" +
-              "Для некоторых категорий (например «Habilitation», «Titre de séjour») система попросит указать дату истечения — эти документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор — дата приёма подставляется автоматически из Registre du personnel."
+        <div className="font-bold mb-3">
+          <Bi
+            fr="Employés"
+            ru="Сотрудники"
+            after={
+              <InfoNote
+                title="Dossier salarié"
+                text={
+                  "Личное дело сотрудника — все загруженные документы по категориям (контракт, RIB, медицина, вид на жительство и т.д.).\n\n" +
+                  "Кнопка с глазом — посмотреть файл, не скачивая его. Кнопка «Historique» у карточки сотрудника показывает, кто и когда загрузил или удалил документ.\n\n" +
+                  "Для некоторых категорий (например «Habilitation», «Titre de séjour») система попросит указать дату истечения — эти документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор — дата приёма подставляется автоматически из Registre du personnel."
+                }
+              />
             }
           />
         </div>
