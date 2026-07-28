@@ -1,10 +1,18 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/confirm"];
+// Only /admin (the RH panel) requires login. The daily pointage form at "/" is
+// intentionally public — team leads found the magic-link email round-trip too
+// much friction on their phones, and there's no sensitive data on that form.
+const PROTECTED_PREFIX = "/admin";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+
+  const isProtectedPath = request.nextUrl.pathname.startsWith(PROTECTED_PREFIX);
+  if (!isProtectedPath) {
+    return response;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,11 +39,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublicPath = PUBLIC_PATHS.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
-  );
-
-  if (!user && !isPublicPath) {
+  if (!user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     return NextResponse.redirect(loginUrl);

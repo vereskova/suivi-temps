@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatLive, normalizeTime, timeToMinutes } from "@/lib/time";
 import { LogoMark } from "@/components/Logo";
@@ -49,10 +47,8 @@ const STATUS_TONE_CLASSES: Record<string, string> = {
 
 export default function Home() {
   const [supabase] = useState(() => createClient());
-  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
 
@@ -63,24 +59,6 @@ export default function Home() {
 
   useEffect(() => {
     async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
-      const { data: roleRow } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-      const admin = roleRow?.role === "rh_admin";
-      setIsAdmin(admin);
-
       const { data: teamRows, error: teamsError } = await supabase
         .from("teams")
         .select("id, name")
@@ -101,11 +79,6 @@ export default function Home() {
         .order("label");
       setAbsenceTypes(absenceRows ?? []);
 
-      // A chef sees only their own team via RLS, so a single row means auto-select it.
-      if (!admin && teamRows && teamRows.length === 1) {
-        await changeTeam(teamRows[0].id);
-      }
-
       setLoading(false);
     }
 
@@ -120,7 +93,7 @@ export default function Home() {
     setStatus("");
 
     const { data: employeeRows, error } = await supabase
-      .from("employees")
+      .from("pointage_roster")
       .select("id, first_name, last_name")
       .eq("team_id", teamId)
       .eq("status", "active")
@@ -219,11 +192,6 @@ export default function Home() {
     setStatus("✅ Отправлено · " + new Date().toLocaleTimeString("ru"));
   }
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    router.replace("/login");
-  }
-
   if (loading) {
     return (
       <main className="relative min-h-screen overflow-hidden p-4 flex items-start justify-center pt-16">
@@ -255,45 +223,34 @@ export default function Home() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5 pt-1">
-            {isAdmin && (
-              <Link href="/admin" className="text-xs font-bold text-primary-600 hover:text-primary-700">
-                Tableau RH
-              </Link>
-            )}
-            <button
-              onClick={signOut}
-              className="flex items-center gap-1 text-xs font-semibold text-stone-400 hover:text-stone-600"
-            >
-              <LogOut size={12} />
-              Déconnexion
-            </button>
+            <Link href="/admin" className="text-xs font-bold text-primary-600 hover:text-primary-700">
+              Espace RH
+            </Link>
           </div>
         </div>
 
-        {isAdmin && (
-          <div className="mt-6">
-            <label className="font-bold text-sm text-stone-700">
-              Équipe
-              <span className="block text-xs font-medium text-stone-400">Бригада</span>
-            </label>
+        <div className="mt-6">
+          <label className="font-bold text-sm text-stone-700">
+            Équipe
+            <span className="block text-xs font-medium text-stone-400">Бригада</span>
+          </label>
 
-            <select
-              className="input mt-2"
-              value={selectedTeamId}
-              onChange={(e) => changeTeam(e.target.value)}
-            >
-              <option value="" disabled>
-                Sélectionner une équipe / Выберите бригаду
+          <select
+            className="input mt-2"
+            value={selectedTeamId}
+            onChange={(e) => changeTeam(e.target.value)}
+          >
+            <option value="" disabled>
+              Sélectionner une équipe / Выберите бригаду
+            </option>
+
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
-
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+            ))}
+          </select>
+        </div>
 
         <div className="mt-4">
           <label className="font-bold text-sm text-stone-700">
@@ -323,14 +280,7 @@ export default function Home() {
 
         {workers.length === 0 && (
           <div className="mt-6 rounded-2xl bg-stone-50">
-            <EmptyState
-              title={isAdmin ? "Sélectionnez une équipe" : "Aucune équipe assignée"}
-              description={
-                isAdmin
-                  ? "Выберите бригаду"
-                  : "Бригада не назначена — обратитесь к RH"
-              }
-            />
+            <EmptyState title="Sélectionnez une équipe" description="Выберите бригаду" />
           </div>
         )}
 
