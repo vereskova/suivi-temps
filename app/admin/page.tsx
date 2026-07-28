@@ -227,6 +227,27 @@ function Bi({
   );
 }
 
+/** Small "i" button next to a section title — opens a modal with a full
+ *  Russian explanation of what the section is for and how to use it. */
+function InfoNote({ title, text }: { title: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Инструкция"
+        className="ml-1.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-stone-200 align-middle text-[10px] font-bold text-stone-500 hover:bg-primary-100 hover:text-primary-700"
+      >
+        i
+      </button>
+      <Modal open={open} onClose={() => setOpen(false)} title={title} maxWidth="max-w-md">
+        <p className="whitespace-pre-line text-sm text-stone-600">{text}</p>
+      </Modal>
+    </>
+  );
+}
+
 /** Icon-only row action (edit/view) — used instead of a bilingual text label
  * for links that repeat on every table row, to avoid duplicating text dozens
  * of times per screen. */
@@ -816,6 +837,17 @@ function JourView({
 
   return (
     <div>
+      <div className="mb-3 flex items-center font-bold">
+        <Bi fr="Par jour" ru="По дням" />
+        <InfoNote
+          title="Par jour"
+          text={
+            "Часы всех бригад за один выбранный день. Можно менять дату, искать по имени и фильтровать по бригаде.\n\n" +
+            "Нажмите на карандаш у сотрудника, чтобы вписать или исправить его часы, отметить отсутствие и его причину.\n\n" +
+            "Это те же данные, что бригадиры вводят через открытую форму на главной странице (без входа в систему) — здесь просто видно сразу всех, и можно всё поправить."
+          }
+        />
+      </div>
       <div className="card mb-4 flex flex-wrap items-end gap-3">
         <label className="font-bold text-sm">
           <Bi fr="Date" ru="Дата" />
@@ -1116,6 +1148,16 @@ function EmployeView({
 
   return (
     <div>
+      <div className="mb-3 flex items-center font-bold">
+        <Bi fr="Par employé" ru="По сотруднику" />
+        <InfoNote
+          title="Par employé"
+          text={
+            "Помесячный отчёт по одному сотруднику: выберите его, месяц и год — увидите все дни целиком (часы, переработки, отсутствия) и итог за месяц.\n\n" +
+            "Удобно, чтобы свериться по одному человеку, не листая общий список «Par jour» по дням."
+          }
+        />
+      </div>
       <div className="card mb-4 flex flex-wrap gap-4 items-end">
         <label className="font-bold text-sm">
           <Bi fr="Employé" ru="Сотрудник" />
@@ -1295,6 +1337,16 @@ function MoisView({
 
   return (
     <div>
+      <div className="mb-3 flex items-center font-bold">
+        <Bi fr="Totaux du mois" ru="Итоги за месяц" />
+        <InfoNote
+          title="Totaux du mois"
+          text={
+            "Свод отработанных часов за месяц сразу по всем сотрудникам, сгруппированным по бригадам.\n\n" +
+            "Помогает быстро увидеть общую картину и заметить, у кого мало часов или совсем нет данных за месяц, прежде чем считать зарплату."
+          }
+        />
+      </div>
       <div className="card mb-4 flex flex-wrap gap-4 items-end max-w-md">
         <label className="font-bold text-sm">
           <Bi fr="Mois" ru="Месяц" />
@@ -1594,7 +1646,16 @@ function ExportImportView({
   return (
     <div className="space-y-6">
       <div className="card">
-        <p className="font-bold mb-1"><Bi fr="Exporter" ru="Экспорт" /></p>
+        <div className="font-bold mb-1 flex items-center">
+          <Bi fr="Exporter" ru="Экспорт" />
+          <InfoNote
+            title="Export / Import"
+            text={
+              "Экспорт выгружает часы за выбранный период в Excel-файл — для архива или чтобы передать бухгалтеру.\n\n" +
+              "Импорт — обратная операция: если часы были исправлены или посчитаны в Excel, загрузите файл обратно, и они запишутся в систему так же, как при ручном вводе через «Par jour»."
+            }
+          />
+        </div>
         <p className="text-xs text-stone-400 mb-4">
           Télécharge un fichier Excel des pointages sur une période — à
           modifier puis réimporter si besoin.
@@ -1882,9 +1943,17 @@ function EmployeesView({
     <div>
       <div className="card mb-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="font-bold">
+          <div className="font-bold flex items-center">
             Employés ({filtered.length}/{employees.length})
-          </p>
+            <InfoNote
+              title="Employés"
+              text={
+                "Полный список сотрудников: бригада или должность в офисе, статус (активен / в отпуске / уволен), корона бригадира, личный значок.\n\n" +
+                "«Изменить» — быстрая правка прямо в строке (бригада, статус, даты). «Подробнее» — открывает полную карточку: паспортные данные, зарплата, RIB, вид на жительство и т.д.\n\n" +
+                "Корону бригадира можно поставить или снять здесь же, или в разделе «Organigramme» — это один и тот же параметр."
+              }
+            />
+          </div>
           <button
             className="btn btn-primary text-sm px-3 py-2"
             onClick={() => setShowAddForm((v) => !v)}
@@ -2997,9 +3066,17 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     <div>
       <div className="card mb-4">
         <div className="flex items-center justify-between">
-          <p className="font-bold">
+          <div className="font-bold flex items-center">
             Visites médicales ({filteredVisits.length}/{visits.length})
-          </p>
+            <InfoNote
+              title="Médical"
+              text={
+                "Медосмотры каждого сотрудника: дата последнего визита, дата и время следующего.\n\n" +
+                "Записи с визитом в ближайшие 3 месяца показаны отдельным блоком сверху. Восклицательный знак у даты последнего визита означает, что прошло больше 3 лет — по закону пора записываться на новый медосмотр.\n\n" +
+                "Кнопка «Importer Prevaly» загружает выгрузку из системы Prevaly и подставляет даты визитов автоматически, сопоставляя по имени и фамилии."
+              }
+            />
+          </div>
           <button
             className="btn btn-secondary text-sm"
             onClick={() => {
@@ -3359,9 +3436,16 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">
+        <div className="font-bold flex items-center">
           Formations & habilitations ({filteredEmployees.length}/{employees.length})
-        </p>
+          <InfoNote
+            title="Formations"
+            text={
+              "Отметки о пройденных обучениях по каждому сотруднику и виду обучения (например, CACES, работа на высоте). Нажмите на ячейку, чтобы переключить статус OK/KO.\n\n" +
+              "Здесь нет дат истечения. Если для документа важна дата действия (например, «Habilitation»), загружайте его в разделе «Dossier salarié» — оттуда он попадёт в «Notifications», когда срок будет подходить."
+            }
+          />
+        </div>
         <p className="text-xs text-stone-400 mb-3">
           Cliquer une cellule pour basculer OK / KO.{" "}
           <span className="opacity-70">/ Нажмите на ячейку, чтобы переключить OK / KO.</span>
@@ -3564,9 +3648,16 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">
+        <div className="font-bold flex items-center">
           Tailles / équipement ({filteredEmployees.length}/{employees.length})
-        </p>
+          <InfoNote
+            title="Tailles"
+            text={
+              "Размеры спецодежды и обуви по каждому сотруднику: обувь, брюки, футболка.\n\n" +
+              "У полей есть подсказки — начните вводить или откройте список, и появятся частые значения, но можно вписать и своё, если нужного размера нет в списке."
+            }
+          />
+        </div>
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
@@ -3886,9 +3977,16 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <p className="font-bold mb-3">
+        <div className="font-bold mb-3 flex items-center">
           <Bi fr={`Employés (${filteredEmployees.length})`} ru="Сотрудники" />
-        </p>
+          <InfoNote
+            title="Documents"
+            text={
+              "Здесь создаются готовые документы: трудовые договоры, письма о расторжении, уведомления, приглашения на собеседование и т.д.\n\n" +
+              "Выберите сотрудника слева, тип документа сверху справа — часть полей уже подставится из карточки сотрудника, остальное впишите вручную — и скачайте готовый файл в PDF или Word."
+            }
+          />
+        </div>
         <input
           className="input mb-2"
           placeholder="Rechercher…"
@@ -4261,6 +4359,26 @@ function notificationTier(dateIso: string): NotificationTier | null {
   return null;
 }
 
+function isLeapYear(y: number): boolean {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+/** Next occurrence (this year, or next year if already passed) of a
+ *  recurring birth date — clamps Feb 29 to Feb 28 on non-leap years. */
+function nextBirthdayIso(dobIso: string): string {
+  const [, moStr, dStr] = dobIso.split("-");
+  const mo = Number(moStr);
+  const d = Number(dStr);
+  const todayIso = today();
+  const thisYear = Number(todayIso.split("-")[0]);
+  function build(year: number): string {
+    const day = mo === 2 && d === 29 && !isLeapYear(year) ? 28 : d;
+    return `${year}-${moStr}-${String(day).padStart(2, "0")}`;
+  }
+  const candidate = build(thisYear);
+  return candidate < todayIso ? build(thisYear + 1) : candidate;
+}
+
 const NOTIFICATIONS_SEEN_STORAGE_KEY = "vladis_notifications_seen";
 
 function notificationKey(r: NotificationRow): string {
@@ -4273,7 +4391,7 @@ function notificationKey(r: NotificationRow): string {
 async function fetchNotificationRows(
   supabase: ReturnType<typeof createClient>
 ): Promise<NotificationRow[]> {
-  const [{ data: docs }, { data: visits }] = await Promise.all([
+  const [{ data: docs }, { data: visits }, { data: emps }] = await Promise.all([
     supabase
       .from("employee_documents")
       .select(
@@ -4285,6 +4403,10 @@ async function fetchNotificationRows(
       .select(
         "employee_id, last_visit_date, next_visit_date, next_visit_time, employees(first_name, last_name, status)"
       ),
+    supabase
+      .from("employees")
+      .select("id, first_name, last_name, status, date_of_birth")
+      .not("date_of_birth", "is", null),
   ]);
 
   type DocRow = {
@@ -4299,6 +4421,13 @@ async function fetchNotificationRows(
     next_visit_date: string | null;
     next_visit_time: string | null;
     employees: { first_name: string; last_name: string; status: string } | null;
+  };
+  type BirthdayRow = {
+    id: string;
+    first_name: string;
+    last_name: string;
+    status: string;
+    date_of_birth: string;
   };
 
   const rows: NotificationRow[] = [];
@@ -4349,6 +4478,21 @@ async function fetchNotificationRows(
     }
   });
 
+  ((emps as unknown as BirthdayRow[]) ?? []).forEach((e) => {
+    if (e.status === "terminated") return;
+    const nextBday = nextBirthdayIso(e.date_of_birth);
+    const tier = notificationTier(nextBday);
+    if (!tier) return;
+    const age = Number(nextBday.split("-")[0]) - Number(e.date_of_birth.split("-")[0]);
+    rows.push({
+      employeeId: e.id,
+      employeeName: employeeName(e),
+      type: `Anniversaire (${age} ans)`,
+      date: nextBday,
+      tier,
+    });
+  });
+
   return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -4384,15 +4528,23 @@ function NotificationsView({
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold mb-1">
+        <div className="font-bold mb-1 flex items-center">
           <Bi fr="Notifications" ru="Уведомления" />
-        </p>
+          <InfoNote
+            title="Notifications"
+            text={
+              "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 3 года (по закону) — и дни рождения сотрудников.\n\n" +
+              "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
+              "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу."
+            }
+          />
+        </div>
         <p className="text-xs text-stone-400 mb-3">
-          Documents, visites médicales et rappels légaux (3 ans) arrivant à échéance dans le mois,
-          tous employés confondus.{" "}
+          Documents, visites médicales, rappels légaux (3 ans) et anniversaires arrivant dans le
+          mois, tous employés confondus.{" "}
           <span className="opacity-70">
-            / Документы, медосмотры и юридические напоминания (3 года), срок которых истекает в
-            течение месяца, по всем сотрудникам.
+            / Документы, медосмотры, юридические напоминания (3 года) и дни рождения сотрудников,
+            наступающие в течение месяца.
           </span>
         </p>
         <div className="flex flex-wrap gap-2 mb-4">
@@ -4663,9 +4815,16 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
     <div>
       <div className="card mb-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <p className="font-bold">
+          <div className="font-bold flex items-center">
             Registre unique du personnel ({filtered.length}/{counts.total})
-          </p>
+            <InfoNote
+              title="Registre du personnel"
+              text={
+                "Официальный реестр личного состава (Registre Unique du Personnel), обязательный по французскому законодательству: даты приёма и увольнения, гражданство и другие сведения по каждому сотруднику.\n\n" +
+                "Даты приёма из этого реестра используются также в разделе «Dossier salarié» — например, чтобы подставить дату приёма на работу в название загруженного трудового договора."
+              }
+            />
+          </div>
           <button className="btn btn-dark text-sm px-3 py-2" onClick={exportExcel}>
             <Bi fr="Exporter Excel" ru="Экспорт в Excel" />
           </button>
@@ -5036,9 +5195,16 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
   return (
     <div>
       <div className="card mb-4">
-        <p className="font-bold">
+        <div className="font-bold flex items-center">
           Bureau <span className="ml-1 font-normal text-stone-400">Бюро</span>
-        </p>
+          <InfoNote
+            title="Organigramme"
+            text={
+              "Оргструктура компании: офис (Bureau) сверху, бригады на стройке (Chantier) ниже.\n\n" +
+              "Перетаскивайте карточки, чтобы менять порядок внутри колонки. В бригадах можно нажать на карточку сотрудника, чтобы назначить его бригадиром (корона) или снять — то же самое можно сделать в разделе «Employés», это один и тот же параметр."
+            }
+          />
+        </div>
         <p className="text-xs text-stone-400 mb-3">
           Glissez une personne pour la réordonner dans sa colonne.{" "}
           <span className="opacity-70">/ Перетащите, чтобы изменить порядок в колонке.</span>
@@ -5324,6 +5490,16 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
 
   return (
     <div>
+      <div className="mb-3 flex items-center font-bold">
+        <Bi fr="Cours de français" ru="Курсы французского" />
+        <InfoNote
+          title="Cours de français"
+          text={
+            "Учёт занятий по французскому языку: список сессий (дат занятий) и посещаемость.\n\n" +
+            "Выберите дату занятия сверху, затем отметьте по каждому сотруднику: отсутствовал ли он, сделал ли домашнее задание, прошёл ли контрольную."
+          }
+        />
+      </div>
       <div className="card mb-4 flex flex-wrap items-end gap-3">
         <label className="font-bold text-sm">
           <Bi fr="Séance" ru="Занятие" />
@@ -6103,6 +6279,17 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
   return (
     <div>
+      <div className="mb-3 flex items-center font-bold">
+        <Bi fr="Paie" ru="Зарплата" />
+        <InfoNote
+          title="Paie"
+          text={
+            "Расчёт зарплаты: вы вводите желаемую сумму на руки (net souhaité), учитываете переработки, праздничные дни, тикеты-ресторан — система считает переработки +25%/+50% и итоговую сумму по каждому сотруднику.\n\n" +
+            "Здесь НЕ создаётся официальный расчётный листок (bulletin de paie) — это только подготовка цифр, которые потом передаются бухгалтеру.\n\n" +
+            "Сотрудники сгруппированы по офису/контролю-обучению/бригадам. У сотрудников-подрядчиков (FOP) эти формулы не применяются."
+          }
+        />
+      </div>
       <div className="card mb-4 flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-wrap gap-4 items-end">
           <label className="font-bold text-sm">
@@ -6925,7 +7112,17 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <p className="font-bold mb-3"><Bi fr="Employés" ru="Сотрудники" /></p>
+        <div className="font-bold mb-3 flex items-center">
+          <Bi fr="Employés" ru="Сотрудники" />
+          <InfoNote
+            title="Dossier salarié"
+            text={
+              "Личное дело сотрудника — все загруженные документы по категориям (контракт, RIB, медицина, вид на жительство и т.д.).\n\n" +
+              "Кнопка с глазом — посмотреть файл, не скачивая его. Кнопка «Historique» у карточки сотрудника показывает, кто и когда загрузил или удалил документ.\n\n" +
+              "Для некоторых категорий (например «Habilitation», «Titre de séjour») система попросит указать дату истечения — эти документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор — дата приёма подставляется автоматически из Registre du personnel."
+            }
+          />
+        </div>
         <input
           className="input mb-2"
           placeholder="Rechercher un nom…"
