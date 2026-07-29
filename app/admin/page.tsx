@@ -34,6 +34,7 @@ import {
   Pencil,
   Plane,
   RefreshCw,
+  Scale,
   ShieldCheck,
   Shirt,
   Trash2,
@@ -47,6 +48,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
 import { DOCUMENT_TYPES, getDocumentType } from "@/lib/documents/registry";
+import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import {
   CompanyRow,
   EMPLOYEE_DOC_SELECT,
@@ -310,6 +312,7 @@ type ViewKey =
   | "formations"
   | "tailles"
   | "documents"
+  | "rupture"
   | "echeances"
   | "registre"
   | "organigramme"
@@ -346,6 +349,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "RH",
     items: [
       { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
+      { key: "rupture", label: "Calculateur de rupture", labelRu: "Калькулятор увольнения", icon: Scale },
       { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
@@ -637,6 +641,7 @@ export default function AdminPage() {
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
+            {view === "rupture" && <RuptureView supabase={supabase} />}
             {view === "echeances" && (
               <NotificationsView notifications={notifications} loading={notificationsLoading} />
             )}
@@ -4251,6 +4256,388 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                   </button>
                 </div>
               </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Vue "Calculateur de rupture" — préavis, procédure RC et indemnités ──────
+function ageFromBirthDate(dobIso: string, refIso: string): number {
+  const dob = new Date(dobIso + "T00:00:00Z");
+  const ref = new Date(refIso + "T00:00:00Z");
+  let age = ref.getUTCFullYear() - dob.getUTCFullYear();
+  const m = ref.getUTCMonth() - dob.getUTCMonth();
+  if (m < 0 || (m === 0 && ref.getUTCDate() < dob.getUTCDate())) age--;
+  return age;
+}
+
+const RUPTURE_TYPE_OPTIONS: { value: RuptureType; label: string; labelRu: string }[] = [
+  { value: "Démission", label: "Démission", labelRu: "По собственному желанию" },
+  { value: "Licenciement", label: "Licenciement", labelRu: "По инициативе работодателя" },
+  { value: "RC", label: "Rupture conventionnelle (RC)", labelRu: "По соглашению сторон (RC)" },
+];
+
+function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<DocEmployeeListRow[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+  const [search, setSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [employeeDoc, setEmployeeDoc] = useState<EmployeeDoc | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [group, setGroup] = useState("");
+  const [hireDate, setHireDate] = useState("");
+  const [age, setAge] = useState("");
+  const [monthlySalary, setMonthlySalary] = useState("");
+  const [cpBalanceDays, setCpBalanceDays] = useState("");
+  const [ruptureType, setRuptureType] = useState<RuptureType>("Démission");
+  const [desiredRuptureDate, setDesiredRuptureDate] = useState("");
+  const [dispensePreavis, setDispensePreavis] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoadingEmployees(true);
+      const { data } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, status, category")
+        .order("last_name");
+      setEmployees((data as unknown as DocEmployeeListRow[]) ?? []);
+      setLoadingEmployees(false);
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      if (!selectedEmployeeId) {
+        setEmployeeDoc(null);
+        return;
+      }
+      setLoadingDetail(true);
+      const { data } = await supabase
+        .from("employees")
+        .select(EMPLOYEE_DOC_SELECT)
+        .eq("id", selectedEmployeeId)
+        .maybeSingle<DocEmployeeRow>();
+      const doc = data ? mapEmployeeRow(data) : null;
+      setEmployeeDoc(doc);
+      setLoadingDetail(false);
+      setGroup(doc?.classification ?? "");
+      setHireDate(doc?.hireDate ?? "");
+      setAge(doc?.dateOfBirth ? String(ageFromBirthDate(doc.dateOfBirth, today())) : "");
+      setMonthlySalary(doc?.monthlyGrossSalary != null ? String(doc.monthlyGrossSalary) : "");
+      setCpBalanceDays("");
+      setRuptureType("Démission");
+      setDesiredRuptureDate("");
+      setDispensePreavis(false);
+    }
+    load();
+  }, [supabase, selectedEmployeeId]);
+
+  const result = useMemo(
+    () =>
+      computeRupture({
+        hireDate: hireDate || null,
+        group,
+        age: age === "" ? null : Number(age),
+        monthlyGrossSalary: monthlySalary === "" ? null : Number(monthlySalary),
+        cpBalanceDays: cpBalanceDays === "" ? null : Number(cpBalanceDays),
+        ruptureType,
+        desiredRuptureDate: desiredRuptureDate || null,
+        dispensePreavis,
+      }),
+    [hireDate, group, age, monthlySalary, cpBalanceDays, ruptureType, desiredRuptureDate, dispensePreavis]
+  );
+
+  const needsAgeForBracket =
+    ["F", "G", "H", "I"].includes(group) &&
+    ruptureType === "Licenciement" &&
+    result !== null &&
+    result.ancienneteDecimalYears >= 3 &&
+    age === "";
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, search]);
+
+  return (
+    <div className="flex gap-4 items-start">
+      <div className="card w-72 shrink-0">
+        <p className="font-bold mb-3 flex items-center">
+          <Bi fr="Employés" ru="Сотрудники" />
+          <InfoNote
+            title="Calculateur de rupture"
+            text={
+              "Считает срок предупреждения (préavis), процедуру расторжения по соглашению сторон (RC) и примерные выплаты при увольнении — по правилам Convention Collective Métallurgie.\n\n" +
+              "Выберите сотрудника слева — часть полей подставится автоматически (дата приёма, группа, возраст, зарплата), остальное впишите вручную: остаток отпуска, тип увольнения и желаемую дату.\n\n" +
+              "Это расчёт-подсказка, не готовый документ — для реального увольнения всегда проверяйте цифры и при спорных случаях консультируйтесь с юристом."
+            }
+          />
+        </p>
+        <input
+          className="input mb-2"
+          placeholder="Rechercher…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input mb-3"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
+        >
+          <option value="active">Actifs / Активны</option>
+          <option value="on_leave">En congé / В отпуске</option>
+          <option value="terminated">Sortis / Уволены</option>
+          <option value="all">Tous / Все</option>
+        </select>
+        {loadingEmployees ? (
+          <SkeletonRows rows={4} cols={1} />
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto -mx-1">
+            {filtered.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedEmployeeId(e.id)}
+                className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
+                  selectedEmployeeId === e.id
+                    ? "bg-stone-900 text-white font-bold"
+                    : "hover:bg-stone-50 text-stone-600"
+                }`}
+              >
+                {employeeName(e)}
+                <span className="block text-xs opacity-60">
+                  {e.category === "bureau" ? "Bureau" : "Chantier"}
+                </span>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-sm text-stone-400 px-1">
+                Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 card">
+        {!selectedEmployeeId ? (
+          <p className="text-stone-400">
+            Sélectionnez un employé à gauche.{" "}
+            <span className="opacity-70">/ Выберите сотрудника слева.</span>
+          </p>
+        ) : loadingDetail ? (
+          <SkeletonRows rows={4} cols={2} />
+        ) : (
+          <>
+            <p className="font-bold text-lg mb-4">
+              {employeeDoc ? employeeDoc.fullNameUpper : "…"}
+            </p>
+
+            <DetailSection title="Données salariées" titleRu="Данные сотрудника">
+              <DetailSelectField
+                label="Groupe d'emploi (A–I)"
+                labelRu="Группа занятости (A–I)"
+                value={group}
+                onChange={setGroup}
+                options={CLASSIFICATION_OPTIONS}
+              />
+              <DetailField
+                label="Date d'entrée"
+                labelRu="Дата приёма на работу"
+                type="date"
+                value={hireDate}
+                onChange={setHireDate}
+              />
+              <DetailField label="Âge (années)" labelRu="Возраст (лет)" type="number" value={age} onChange={setAge} />
+              <DetailField
+                label="Salaire brut mensuel (€)"
+                labelRu="Оклад брутто в месяц (€)"
+                type="number"
+                value={monthlySalary}
+                onChange={setMonthlySalary}
+              />
+              <DetailField
+                label="Solde de CP (jours ouvrés)"
+                labelRu="Остаток отпуска (раб. дни)"
+                type="number"
+                value={cpBalanceDays}
+                onChange={setCpBalanceDays}
+              />
+              <DetailSelectField
+                label="Type de rupture"
+                labelRu="Тип увольнения"
+                value={ruptureType}
+                onChange={(v) => setRuptureType(v as RuptureType)}
+                options={RUPTURE_TYPE_OPTIONS}
+              />
+              <DetailField
+                label="Date de rupture souhaitée"
+                labelRu="Желаемая дата увольнения"
+                type="date"
+                value={desiredRuptureDate}
+                onChange={setDesiredRuptureDate}
+              />
+              {ruptureType === "Licenciement" && (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-stone-400">
+                    <Bi fr="Dispensé de préavis ?" ru="Освобождение от отработки?" />
+                  </label>
+                  <input
+                    type="checkbox"
+                    className="mt-2"
+                    checked={dispensePreavis}
+                    onChange={(e) => setDispensePreavis(e.target.checked)}
+                  />
+                </div>
+              )}
+            </DetailSection>
+
+            {!hireDate || !desiredRuptureDate ? (
+              <p className="text-sm text-stone-400">
+                Renseignez la date d&apos;entrée et la date de rupture souhaitée pour voir le calcul.{" "}
+                <span className="opacity-70">
+                  / Укажите дату приёма на работу и желаемую дату увольнения, чтобы увидеть расчёт.
+                </span>
+              </p>
+            ) : (
+              result && (
+                <>
+                  <DetailSection title="Ancienneté & préavis" titleRu="Стаж и срок предупреждения">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-stone-400">
+                        <Bi fr="Ancienneté à la rupture" ru="Стаж на дату увольнения" />
+                      </label>
+                      <p className="mt-2 font-semibold text-stone-800">
+                        {result.ancienneteYears} an(s) {result.ancienneteMonths} mois
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-stone-400">
+                        <Bi fr="Durée du préavis" ru="Срок предупреждения" />
+                      </label>
+                      <p className="mt-2 font-semibold text-stone-800">
+                        {result.preavisDays === null ? "—" : `${result.preavisDays} jours calendaires`}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-stone-400">
+                        <Bi fr="Date de notification / début préavis" ru="Дата уведомления" />
+                      </label>
+                      <p className="mt-2 font-semibold text-stone-800">{result.notificationDate ?? "—"}</p>
+                    </div>
+                  </DetailSection>
+
+                  {needsAgeForBracket && (
+                    <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
+                      Groupe F–I avec 3 ans d&apos;ancienneté ou plus : l&apos;âge du salarié est
+                      nécessaire pour déterminer le préavis exact.{" "}
+                      <span className="opacity-70">
+                        / Группа F–I со стажем от 3 лет — нужен возраст сотрудника, чтобы точно
+                        определить срок предупреждения.
+                      </span>
+                    </div>
+                  )}
+
+                  {result.rc && (
+                    <DetailSection title="Procédure — Rupture conventionnelle" titleRu="Процедура RC">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Convocation — au plus tard" ru="Приглашение на встречу — не позднее" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.convocationDeadline}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Entretien + signature — au plus tard" ru="Собеседование + подпись — не позднее" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.entretienSignatureDeadline}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Fin du délai de rétractation" ru="Конец срока отзыва" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.finRetractation}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Dépôt auprès de la DREETS" ru="Подача в DREETS" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.depotDreets}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Début du délai d'instruction DREETS" ru="Начало срока рассмотрения" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.debutInstruction}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Validation tacite DREETS" ru="Молчаливое одобрение DREETS" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.validationTacite}</p>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Rupture effective du contrat" ru="Фактическая дата расторжения" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">{result.rc.ruptureEffective}</p>
+                      </div>
+                    </DetailSection>
+                  )}
+
+                  <DetailSection title="Indemnités & solde de tout compte" titleRu="Выплаты при увольнении">
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-stone-400">
+                        <Bi fr="Indemnité RC / légale de licenciement" ru="Выходное пособие RC / при увольнении" />
+                      </label>
+                      <p className="mt-2 font-semibold text-stone-800">
+                        {ruptureType === "Démission" ? "—" : `${result.indemniteRuptureOuLicenciement.toFixed(2)} €`}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-stone-400">
+                        <Bi fr="Indemnité compensatrice de CP" ru="Компенсация за неиспользованный отпуск" />
+                      </label>
+                      <p className="mt-2 font-semibold text-stone-800">{result.indemniteCP.toFixed(2)} €</p>
+                    </div>
+                    {dispensePreavis && (
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr="Indemnité compensatrice de préavis" ru="Компенсация за неотработанный срок" />
+                        </label>
+                        <p className="mt-2 font-semibold text-stone-800">
+                          {result.indemnitePreavisCompensatoire.toFixed(2)} €
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-stone-400">
+                        <Bi fr="TOTAL SOLDE DE TOUT COMPTE" ru="ИТОГО к выплате при увольнении" />
+                      </label>
+                      <p className="mt-2 font-extrabold text-lg text-stone-900">{result.total.toFixed(2)} € brut</p>
+                    </div>
+                  </DetailSection>
+
+                  <p className="text-xs text-stone-400 mt-2">
+                    ⚠ Ces calculs sont des estimations basées sur les règles de la convention
+                    collective Métallurgie et le Code du travail. Consultez un juriste pour tout
+                    dossier litigieux.
+                    <span className="block opacity-70">
+                      Это ориентировочный расчёт по правилам конвенции Métallurgie и трудового
+                      кодекса. По спорным случаям консультируйтесь с юристом.
+                    </span>
+                  </p>
+                </>
+              )
             )}
           </>
         )}
