@@ -4086,16 +4086,28 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                 {DOCUMENT_TYPES.map((d) => (
                   <option key={d.code} value={d.code}>
                     {d.label}
+                    {d.labelRu ? ` — ${d.labelRu}` : ""}
                   </option>
                 ))}
               </select>
             </div>
 
+            {definition?.descriptionRu && (
+              <p className="text-xs text-stone-400 mb-4 -mt-2">{definition.descriptionRu}</p>
+            )}
+
             {definition?.legalRisk && (
               <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
-                Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ;
-                relisez-le (et faites-le relire si besoin) avant signature ou envoi au
-                salarié.
+                <p>
+                  Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ;
+                  relisez-le (et faites-le relire si besoin) avant signature ou envoi au
+                  salarié.
+                </p>
+                <p className="opacity-70 mt-1">
+                  Черновик — проверьте перед отправкой. Этот документ юридически обязывает
+                  компанию; перечитайте его (и дайте перечитать кому-то ещё при необходимости)
+                  перед подписанием или отправкой сотруднику.
+                </p>
               </div>
             )}
 
@@ -4114,7 +4126,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                         f.type === "textarea" ? "col-span-2" : ""
                       }`}
                     >
-                      {f.label}
+                      <Bi fr={f.label} ru={f.labelRu} />
                       {f.required && <span className="text-error-500"> *</span>}
                       {f.type === "boolean" ? (
                         <div className="mt-2">
@@ -4149,6 +4161,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                           {f.options?.map((opt) => (
                             <option key={opt.value} value={opt.value}>
                               {opt.label}
+                              {opt.labelRu ? ` / ${opt.labelRu}` : ""}
                             </option>
                           ))}
                         </select>
@@ -4173,6 +4186,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                       {f.help && (
                         <span className="block text-xs font-normal text-stone-400 mt-1">
                           {f.help}
+                          {f.helpRu && <span className="block opacity-70">{f.helpRu}</span>}
                         </span>
                       )}
                     </label>
@@ -4181,8 +4195,8 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
 
                 {missingRequired.length > 0 && (
                   <p className="text-sm text-error-500 mb-3">
-                    Champs obligatoires manquants :{" "}
-                    {missingRequired.map((f) => f.label).join(", ")}
+                    Champs obligatoires manquants <span className="opacity-70">/ Не заполнены обязательные поля</span> :{" "}
+                    {missingRequired.map((f) => (f.labelRu ? `${f.label} / ${f.labelRu}` : f.label)).join(", ")}
                   </p>
                 )}
                 {errorMsg && <p className="text-sm text-error-500 mb-3">{errorMsg}</p>}
@@ -4194,7 +4208,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                     onClick={() => download("docx")}
                   >
                     {generating === "docx" ? (
-                      "Génération…"
+                      <Bi fr="Génération…" ru="Создание…" />
                     ) : (
                       <Bi fr="Télécharger Word (.docx)" ru="Скачать Word (.docx)" />
                     )}
@@ -4204,7 +4218,11 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                     disabled={missingRequired.length > 0 || generating !== null}
                     onClick={() => download("pdf")}
                   >
-                    {generating === "pdf" ? "Génération…" : <Bi fr="Télécharger PDF" ru="Скачать PDF" />}
+                    {generating === "pdf" ? (
+                      <Bi fr="Génération…" ru="Создание…" />
+                    ) : (
+                      <Bi fr="Télécharger PDF" ru="Скачать PDF" />
+                    )}
                   </button>
                 </div>
               </>
