@@ -14,6 +14,7 @@ import {
   Briefcase,
   CalendarDays,
   ChevronDown,
+  CircleAlert,
   ClipboardCheck,
   CreditCard,
   Crown,
@@ -42,6 +43,8 @@ import {
   Send,
   ShieldCheck,
   Shirt,
+  Square,
+  SquareCheck,
   Trash2,
   Upload,
   User,
@@ -4697,15 +4700,20 @@ const COMMERCIAL_STATUS_CYCLE: Record<CommercialItemStatus, CommercialItemStatus
   inactive: "pending",
   pending: "active",
 };
-const COMMERCIAL_STATUS_TONE: Record<CommercialItemStatus, string> = {
-  active: "bg-success-100 text-success-700",
-  inactive: "bg-stone-100 text-stone-400",
-  pending: "bg-warning-100 text-warning-800",
+const COMMERCIAL_STATUS_ICON: Record<CommercialItemStatus, LucideIcon> = {
+  active: SquareCheck,
+  inactive: Square,
+  pending: CircleAlert,
 };
-const COMMERCIAL_STATUS_LABEL: Record<CommercialItemStatus, string> = {
-  active: "Actif",
-  inactive: "Non applicable",
-  pending: "En question ⚠",
+const COMMERCIAL_STATUS_ICON_CLASS: Record<CommercialItemStatus, string> = {
+  active: "text-success-600",
+  inactive: "text-stone-300",
+  pending: "text-warning-600",
+};
+const COMMERCIAL_STATUS_LABEL_CLASS: Record<CommercialItemStatus, string> = {
+  active: "text-stone-700",
+  inactive: "text-stone-400 line-through",
+  pending: "text-warning-800 font-semibold",
 };
 
 const COMMERCIAL_CASE_SELECT =
@@ -4886,10 +4894,31 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   }
 
   async function markCategoryActive(categoryCode: string) {
-    const ids = items.filter((i) => i.category_code === categoryCode).map((i) => i.id);
-    if (ids.length === 0) return;
-    setItems((prev) => prev.map((i) => (i.category_code === categoryCode ? { ...i, status: "active" } : i)));
-    await supabase.from("commercial_case_items").update({ status: "active" }).in("id", ids);
+    const toChange = items.filter((i) => i.category_code === categoryCode && i.status !== "active");
+    if (toChange.length === 0) {
+      toast.info("Déjà tout actif dans cette catégorie.");
+      return;
+    }
+    const ids = toChange.map((i) => i.id);
+    setItems((prev) => prev.map((i) => (ids.includes(i.id) ? { ...i, status: "active" } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ status: "active" }).in("id", ids);
+    if (error) {
+      toast.error("Erreur lors de la mise à jour.");
+      return;
+    }
+    toast.success(`${toChange.length} ligne(s) marquée(s) actif.`);
+  }
+
+  async function deleteCase(caseToDelete: CommercialCaseRow) {
+    if (!confirm(`Supprimer le dossier « ${caseToDelete.title} » ? Cette action est irréversible.`)) return;
+    const { error } = await supabase.from("commercial_cases").delete().eq("id", caseToDelete.id);
+    if (error) {
+      toast.error("Erreur lors de la suppression du dossier.");
+      return;
+    }
+    setCases((prev) => prev.filter((c) => c.id !== caseToDelete.id));
+    if (selectedCaseId === caseToDelete.id) setSelectedCaseId(null);
+    toast.success("Dossier supprimé.");
   }
 
   async function saveNote(itemId: string) {
@@ -5031,26 +5060,36 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             ) : (
               <div className="space-y-1">
                 {cases.map((c) => (
-                  <button
+                  <div
                     key={c.id}
-                    onClick={() => setSelectedCaseId(c.id)}
-                    className={`w-full text-left rounded-xl px-3 py-2 text-sm ${
+                    className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm ${
                       selectedCaseId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
                     }`}
                   >
-                    <span className="block truncate">{c.title}</span>
-                    <span
-                      className={`badge mt-1 ${
-                        c.sinao_quote_id && !isSinaoStub(c.sinao_quote_id)
-                          ? "badge-success"
-                          : c.sinao_quote_id
-                            ? "badge-warning"
-                            : "badge-neutral"
+                    <button onClick={() => setSelectedCaseId(c.id)} className="flex-1 min-w-0 text-left">
+                      <span className="block truncate">{c.title}</span>
+                      <span
+                        className={`badge mt-1 ${
+                          c.sinao_quote_id && !isSinaoStub(c.sinao_quote_id)
+                            ? "badge-success"
+                            : c.sinao_quote_id
+                              ? "badge-warning"
+                              : "badge-neutral"
+                        }`}
+                      >
+                        {c.sinao_quote_id ? (isSinaoStub(c.sinao_quote_id) ? "Sinao (test)" : "Sinao ✓") : c.status}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => deleteCase(c)}
+                      className={`shrink-0 rounded-lg p-1.5 opacity-0 group-hover:opacity-100 ${
+                        selectedCaseId === c.id ? "text-white/60 hover:text-white" : "text-stone-300 hover:text-error-600"
                       }`}
+                      title="Supprimer"
                     >
-                      {c.sinao_quote_id ? (isSinaoStub(c.sinao_quote_id) ? "Sinao (test)" : "Sinao ✓") : c.status}
-                    </span>
-                  </button>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -5118,60 +5157,78 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               </div>
             )}
 
-            {groupedItems.map((group) => (
-              <div key={group.category.code} className="mb-5">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
-                    <Bi fr={group.category.label} ru={group.category.label_ru} />
-                  </p>
-                  <button
-                    className="text-xs text-primary-600 font-semibold hover:underline"
-                    onClick={() => markCategoryActive(group.category.code)}
-                  >
-                    Tout marquer actif
-                  </button>
-                </div>
-                <div className="rounded-xl border border-stone-100 divide-y divide-stone-100">
-                  {group.items.map((item) => (
-                    <div key={item.id} className="px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => cycleStatus(item)}
-                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold whitespace-nowrap ${COMMERCIAL_STATUS_TONE[item.status]}`}
-                        >
-                          {COMMERCIAL_STATUS_LABEL[item.status]}
-                        </button>
-                        <span className="flex-1 text-sm text-stone-700">{item.label}</span>
-                        <button
-                          onClick={() => {
-                            setNoteEditingId(noteEditingId === item.id ? null : item.id);
-                            setNoteDraft(item.note ?? "");
-                          }}
-                          className={`shrink-0 rounded-lg p-1.5 ${item.note ? "text-warning-600" : "text-stone-300 hover:text-stone-500"}`}
-                          title="Note"
-                        >
-                          <MessageSquare size={15} />
-                        </button>
-                      </div>
-                      {noteEditingId === item.id && (
-                        <div className="mt-2 flex gap-2">
-                          <input
-                            className="input flex-1 text-sm"
-                            placeholder="Note / précision…"
-                            value={noteDraft}
-                            onChange={(e) => setNoteDraft(e.target.value)}
-                            autoFocus
-                          />
-                          <button className="btn btn-dark text-xs px-3" onClick={() => saveNote(item.id)}>
-                            OK
-                          </button>
+            {groupedItems.map((group) => {
+              const allActive = group.items.every((i) => i.status === "active");
+              return (
+                <div key={group.category.code} className="mb-6">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+                      <Bi fr={group.category.label} ru={group.category.label_ru} />
+                    </p>
+                    <button
+                      className={`text-xs font-semibold ${
+                        allActive ? "text-stone-300 cursor-default" : "text-primary-600 hover:underline"
+                      }`}
+                      onClick={() => markCategoryActive(group.category.code)}
+                    >
+                      Tout marquer actif
+                    </button>
+                  </div>
+                  <div>
+                    {group.items.map((item) => {
+                      const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
+                      return (
+                        <div key={item.id} className="py-1">
+                          <div className="flex items-center gap-2.5">
+                            <button
+                              onClick={() => cycleStatus(item)}
+                              className={`shrink-0 ${COMMERCIAL_STATUS_ICON_CLASS[item.status]}`}
+                              title={
+                                item.status === "active"
+                                  ? "Actif — cliquer pour marquer non applicable"
+                                  : item.status === "inactive"
+                                    ? "Non applicable — cliquer pour marquer en question"
+                                    : "En question — cliquer pour marquer actif"
+                              }
+                            >
+                              <StatusIcon size={18} />
+                            </button>
+                            <span className={`flex-1 text-sm ${COMMERCIAL_STATUS_LABEL_CLASS[item.status]}`}>
+                              {item.label}
+                              {item.status === "pending" && " ⚠"}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setNoteEditingId(noteEditingId === item.id ? null : item.id);
+                                setNoteDraft(item.note ?? "");
+                              }}
+                              className={`shrink-0 rounded-lg p-1 ${item.note ? "text-warning-600" : "text-stone-300 hover:text-stone-500"}`}
+                              title="Note"
+                            >
+                              <MessageSquare size={14} />
+                            </button>
+                          </div>
+                          {noteEditingId === item.id && (
+                            <div className="mt-1.5 ml-7 flex gap-2">
+                              <input
+                                className="input flex-1 text-sm"
+                                placeholder="Note / précision…"
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                autoFocus
+                              />
+                              <button className="btn btn-dark text-xs px-3" onClick={() => saveNote(item.id)}>
+                                OK
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>
