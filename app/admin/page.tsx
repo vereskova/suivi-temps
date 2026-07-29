@@ -4293,11 +4293,8 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [group, setGroup] = useState("");
   const [hireDate, setHireDate] = useState("");
   const [age, setAge] = useState("");
-  const [monthlySalary, setMonthlySalary] = useState("");
-  const [cpBalanceDays, setCpBalanceDays] = useState("");
   const [ruptureType, setRuptureType] = useState<RuptureType>("Démission");
   const [desiredRuptureDate, setDesiredRuptureDate] = useState("");
-  const [dispensePreavis, setDispensePreavis] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -4330,11 +4327,8 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
       setGroup(doc?.classification ?? "");
       setHireDate(doc?.hireDate ?? "");
       setAge(doc?.dateOfBirth ? String(ageFromBirthDate(doc.dateOfBirth, today())) : "");
-      setMonthlySalary(doc?.monthlyGrossSalary != null ? String(doc.monthlyGrossSalary) : "");
-      setCpBalanceDays("");
       setRuptureType("Démission");
       setDesiredRuptureDate("");
-      setDispensePreavis(false);
     }
     load();
   }, [supabase, selectedEmployeeId]);
@@ -4345,13 +4339,13 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
         hireDate: hireDate || null,
         group,
         age: age === "" ? null : Number(age),
-        monthlyGrossSalary: monthlySalary === "" ? null : Number(monthlySalary),
-        cpBalanceDays: cpBalanceDays === "" ? null : Number(cpBalanceDays),
+        monthlyGrossSalary: null,
+        cpBalanceDays: null,
         ruptureType,
         desiredRuptureDate: desiredRuptureDate || null,
-        dispensePreavis,
+        dispensePreavis: false,
       }),
-    [hireDate, group, age, monthlySalary, cpBalanceDays, ruptureType, desiredRuptureDate, dispensePreavis]
+    [hireDate, group, age, ruptureType, desiredRuptureDate]
   );
 
   const needsAgeForBracket =
@@ -4378,8 +4372,8 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <InfoNote
             title="Calculateur de rupture"
             text={
-              "Считает срок предупреждения (préavis), процедуру расторжения по соглашению сторон (RC) и примерные выплаты при увольнении — по правилам Convention Collective Métallurgie.\n\n" +
-              "Выберите сотрудника слева — часть полей подставится автоматически (дата приёма, группа, возраст, зарплата), остальное впишите вручную: остаток отпуска, тип увольнения и желаемую дату.\n\n" +
+              "Считает дату уведомления (начало срока предупреждения) для démission/licenciement, и сроки процедуры расторжения по соглашению сторон (RC) — по правилам Convention Collective Métallurgie.\n\n" +
+              "Выберите сотрудника слева — дата приёма, группа и возраст подставятся автоматически, остальное впишите вручную: тип увольнения и желаемую дату.\n\n" +
               "Это расчёт-подсказка, не готовый документ — для реального увольнения всегда проверяйте цифры и при спорных случаях консультируйтесь с юристом."
             }
           />
@@ -4459,20 +4453,6 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 onChange={setHireDate}
               />
               <DetailField label="Âge (années)" labelRu="Возраст (лет)" type="number" value={age} onChange={setAge} />
-              <DetailField
-                label="Salaire brut mensuel (€)"
-                labelRu="Оклад брутто в месяц (€)"
-                type="number"
-                value={monthlySalary}
-                onChange={setMonthlySalary}
-              />
-              <DetailField
-                label="Solde de CP (jours ouvrés)"
-                labelRu="Остаток отпуска (раб. дни)"
-                type="number"
-                value={cpBalanceDays}
-                onChange={setCpBalanceDays}
-              />
               <DetailSelectField
                 label="Type de rupture"
                 labelRu="Тип увольнения"
@@ -4487,19 +4467,6 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 value={desiredRuptureDate}
                 onChange={setDesiredRuptureDate}
               />
-              {ruptureType === "Licenciement" && (
-                <div>
-                  <label className="block text-[10px] font-bold uppercase text-stone-400">
-                    <Bi fr="Dispensé de préavis ?" ru="Освобождение от отработки?" />
-                  </label>
-                  <input
-                    type="checkbox"
-                    className="mt-2"
-                    checked={dispensePreavis}
-                    onChange={(e) => setDispensePreavis(e.target.checked)}
-                  />
-                </div>
-              )}
             </DetailSection>
 
             {!hireDate || !desiredRuptureDate ? (
@@ -4594,39 +4561,6 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </div>
                     </DetailSection>
                   )}
-
-                  <DetailSection title="Indemnités & solde de tout compte" titleRu="Выплаты при увольнении">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-stone-400">
-                        <Bi fr="Indemnité RC / légale de licenciement" ru="Выходное пособие RC / при увольнении" />
-                      </label>
-                      <p className="mt-2 font-semibold text-stone-800">
-                        {ruptureType === "Démission" ? "—" : `${result.indemniteRuptureOuLicenciement.toFixed(2)} €`}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-stone-400">
-                        <Bi fr="Indemnité compensatrice de CP" ru="Компенсация за неиспользованный отпуск" />
-                      </label>
-                      <p className="mt-2 font-semibold text-stone-800">{result.indemniteCP.toFixed(2)} €</p>
-                    </div>
-                    {dispensePreavis && (
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Indemnité compensatrice de préavis" ru="Компенсация за неотработанный срок" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">
-                          {result.indemnitePreavisCompensatoire.toFixed(2)} €
-                        </p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-stone-400">
-                        <Bi fr="TOTAL SOLDE DE TOUT COMPTE" ru="ИТОГО к выплате при увольнении" />
-                      </label>
-                      <p className="mt-2 font-extrabold text-lg text-stone-900">{result.total.toFixed(2)} € brut</p>
-                    </div>
-                  </DetailSection>
 
                   <p className="text-xs text-stone-400 mt-2">
                     ⚠ Ces calculs sont des estimations basées sur les règles de la convention
