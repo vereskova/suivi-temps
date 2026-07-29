@@ -555,12 +555,13 @@ export default function AdminPage() {
     );
   }
 
-  // rh: Effectif + RH sections only — no Pointage group, no Paie item.
+  // rh: Effectif + RH sections only — no Pointage group, no Paie or
+  // Calculateur de rupture (admin-only for now).
   const visibleNavGroups =
     role === "rh"
       ? NAV_GROUPS.filter((g) => g.title !== "Pointage").map((g) => ({
           ...g,
-          items: g.items.filter((item) => item.key !== "paie"),
+          items: g.items.filter((item) => item.key !== "paie" && item.key !== "rupture"),
         }))
       : NAV_GROUPS;
 
