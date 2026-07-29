@@ -11,6 +11,7 @@ import {
   Banknote,
   Bell,
   BookText,
+  Briefcase,
   CalendarDays,
   ChevronDown,
   ClipboardCheck,
@@ -18,6 +19,7 @@ import {
   Crown,
   Download,
   Eye,
+  ExternalLink,
   FileSignature,
   FileSpreadsheet,
   FileText,
@@ -30,11 +32,14 @@ import {
   Image as ImageIcon,
   Languages,
   LogOut,
+  MessageSquare,
   Network,
   Pencil,
   Plane,
+  Plus,
   RefreshCw,
   Scale,
+  Send,
   ShieldCheck,
   Shirt,
   Trash2,
@@ -318,7 +323,8 @@ type ViewKey =
   | "organigramme"
   | "francais"
   | "dossier"
-  | "paie";
+  | "paie"
+  | "commercial";
 
 type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon };
 
@@ -355,6 +361,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
       { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
+      { key: "commercial", label: "Commercial", labelRu: "Коммерция", icon: Briefcase },
     ],
   },
 ];
@@ -493,7 +500,7 @@ export default function AdminPage() {
     );
   }
 
-  if (role !== "rh_admin" && role !== "comptable" && role !== "rh") {
+  if (role !== "rh_admin" && role !== "comptable" && role !== "rh" && role !== "commercial") {
     return (
       <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
         <div className="card max-w-sm text-center">
@@ -555,13 +562,58 @@ export default function AdminPage() {
     );
   }
 
-  // rh: Effectif + RH sections only — no Pointage group, no Paie or
-  // Calculateur de rupture (admin-only for now).
+  // Commercial only ever needs the client checklist section — same shell
+  // pattern as comptable above, single-item sidebar, no NAV_GROUPS.
+  if (role === "commercial") {
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-[1400px]">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+                <LogoMark size={24} />
+              </div>
+              <div>
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">VLADIS</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight">Commercial</p>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary text-sm"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                router.replace("/login");
+              }}
+            >
+              <LogOut size={15} />
+              Déconnexion
+            </button>
+          </div>
+
+          <div className="flex gap-6 items-start">
+            <aside className="w-60 shrink-0">
+              <nav className="card p-3 space-y-4 sticky top-4">
+                <SidebarSection title="">
+                  <SidebarLink icon={Briefcase} active label="Commercial" labelRu="Коммерция" />
+                </SidebarSection>
+              </nav>
+            </aside>
+            <div className="flex-1 min-w-0">
+              <CommercialView supabase={supabase} />
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // rh: Effectif + RH sections only — no Pointage group, no Paie,
+  // Calculateur de rupture, or Commercial (admin-only for now).
   const visibleNavGroups =
     role === "rh"
       ? NAV_GROUPS.filter((g) => g.title !== "Pointage").map((g) => ({
           ...g,
-          items: g.items.filter((item) => item.key !== "paie" && item.key !== "rupture"),
+          items: g.items.filter((item) => item.key !== "paie" && item.key !== "rupture" && item.key !== "commercial"),
         }))
       : NAV_GROUPS;
 
@@ -651,6 +703,7 @@ export default function AdminPage() {
             {view === "francais" && <FrancaisView supabase={supabase} />}
             {view === "dossier" && <DossierView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
+            {view === "commercial" && <CommercialView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -4612,6 +4665,524 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Vue "Commercial" — check-lists clients + dossiers + intégration Sinao ──
+type CommercialClientRow = { id: string; name: string; active: boolean };
+type CommercialCaseRow = {
+  id: string;
+  title: string;
+  status: string;
+  desired_start_date: string | null;
+  desired_end_date: string | null;
+  sinao_quote_id: string | null;
+  client_doc_sent_at: string | null;
+  team_doc_generated_at: string | null;
+};
+type CommercialCategoryRow = { code: string; label: string; label_ru: string; sort_order: number };
+type CommercialItemStatus = "active" | "inactive" | "pending";
+type CommercialItemRow = {
+  id: string;
+  category_code: string;
+  label: string;
+  status: CommercialItemStatus;
+  note: string | null;
+  position: number;
+};
+
+const COMMERCIAL_STATUS_CYCLE: Record<CommercialItemStatus, CommercialItemStatus> = {
+  active: "inactive",
+  inactive: "pending",
+  pending: "active",
+};
+const COMMERCIAL_STATUS_TONE: Record<CommercialItemStatus, string> = {
+  active: "bg-success-100 text-success-700",
+  inactive: "bg-stone-100 text-stone-400",
+  pending: "bg-warning-100 text-warning-800",
+};
+const COMMERCIAL_STATUS_LABEL: Record<CommercialItemStatus, string> = {
+  active: "Actif",
+  inactive: "Non applicable",
+  pending: "En question ⚠",
+};
+
+const COMMERCIAL_CASE_SELECT =
+  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at";
+
+function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [clients, setClients] = useState<CommercialClientRow[]>([]);
+  const [loadingClients, setLoadingClients] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+
+  const [cases, setCases] = useState<CommercialCaseRow[]>([]);
+  const [loadingCases, setLoadingCases] = useState(false);
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+
+  const [categories, setCategories] = useState<CommercialCategoryRow[]>([]);
+  const [items, setItems] = useState<CommercialItemRow[]>([]);
+  const [loadingItems, setLoadingItems] = useState(false);
+
+  const [newCaseOpen, setNewCaseOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newStart, setNewStart] = useState("");
+  const [newEnd, setNewEnd] = useState("");
+  const [creatingCase, setCreatingCase] = useState(false);
+
+  const [noteEditingId, setNoteEditingId] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  const [generating, setGenerating] = useState<"client" | "team" | null>(null);
+  const [pushingSinao, setPushingSinao] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from("commercial_categories")
+      .select("code, label, label_ru, sort_order")
+      .order("sort_order")
+      .then(({ data }) => setCategories(data ?? []));
+  }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      setLoadingClients(true);
+      const { data } = await supabase
+        .from("commercial_clients")
+        .select("id, name, active")
+        .eq("active", true)
+        .order("name");
+      setClients(data ?? []);
+      setLoadingClients(false);
+    }
+    load();
+  }, [supabase]);
+
+  const reloadCases = async (clientId: string) => {
+    const { data } = await supabase
+      .from("commercial_cases")
+      .select(COMMERCIAL_CASE_SELECT)
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false });
+    setCases((data as CommercialCaseRow[]) ?? []);
+  };
+
+  useEffect(() => {
+    async function load() {
+      if (!selectedClientId) {
+        setCases([]);
+        return;
+      }
+      setLoadingCases(true);
+      await reloadCases(selectedClientId);
+      setLoadingCases(false);
+    }
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, selectedClientId]);
+
+  useEffect(() => {
+    async function load() {
+      if (!selectedCaseId) {
+        setItems([]);
+        return;
+      }
+      setLoadingItems(true);
+      const { data } = await supabase
+        .from("commercial_case_items")
+        .select("id, category_code, label, status, note, position")
+        .eq("case_id", selectedCaseId)
+        .order("position");
+      setItems((data as CommercialItemRow[]) ?? []);
+      setLoadingItems(false);
+    }
+    load();
+  }, [supabase, selectedCaseId]);
+
+  const selectedClient = clients.find((c) => c.id === selectedClientId) ?? null;
+  const selectedCase = cases.find((c) => c.id === selectedCaseId) ?? null;
+
+  const filteredClients = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return clients.filter((c) => !q || c.name.toLowerCase().includes(q));
+  }, [clients, search]);
+
+  async function createCase() {
+    if (!selectedClientId || !newTitle.trim()) return;
+    setCreatingCase(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const { data: caseRow, error: caseError } = await supabase
+        .from("commercial_cases")
+        .insert({
+          client_id: selectedClientId,
+          title: newTitle.trim(),
+          desired_start_date: newStart || null,
+          desired_end_date: newEnd || null,
+          created_by: user?.id,
+        })
+        .select("id")
+        .single();
+      if (caseError || !caseRow) throw caseError ?? new Error("Erreur lors de la création du dossier.");
+
+      const { data: templateItems } = await supabase
+        .from("commercial_checklist_template_items")
+        .select("category_code, position, label")
+        .eq("client_id", selectedClientId)
+        .order("position");
+
+      if (templateItems && templateItems.length > 0) {
+        const { error: itemsError } = await supabase.from("commercial_case_items").insert(
+          templateItems.map((t) => ({
+            case_id: caseRow.id,
+            category_code: t.category_code,
+            position: t.position,
+            label: t.label,
+            origin: "template",
+            status: "active",
+          }))
+        );
+        if (itemsError) throw itemsError;
+      }
+
+      toast.success("Dossier créé.");
+      setNewCaseOpen(false);
+      setNewTitle("");
+      setNewStart("");
+      setNewEnd("");
+      await reloadCases(selectedClientId);
+      setSelectedCaseId(caseRow.id);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la création du dossier.");
+    } finally {
+      setCreatingCase(false);
+    }
+  }
+
+  async function cycleStatus(item: CommercialItemRow) {
+    const nextStatus = COMMERCIAL_STATUS_CYCLE[item.status];
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: nextStatus } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ status: nextStatus }).eq("id", item.id);
+    if (error) {
+      toast.error("Erreur lors de la mise à jour.");
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status: item.status } : i)));
+      return;
+    }
+    if (nextStatus === "pending") {
+      setNoteEditingId(item.id);
+      setNoteDraft(item.note ?? "");
+    }
+  }
+
+  async function markCategoryActive(categoryCode: string) {
+    const ids = items.filter((i) => i.category_code === categoryCode).map((i) => i.id);
+    if (ids.length === 0) return;
+    setItems((prev) => prev.map((i) => (i.category_code === categoryCode ? { ...i, status: "active" } : i)));
+    await supabase.from("commercial_case_items").update({ status: "active" }).in("id", ids);
+  }
+
+  async function saveNote(itemId: string) {
+    const note = noteDraft.trim() || null;
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, note } : i)));
+    await supabase.from("commercial_case_items").update({ note }).eq("id", itemId);
+    setNoteEditingId(null);
+  }
+
+  async function downloadDoc(kind: "client" | "team") {
+    if (!selectedCaseId) return;
+    setGenerating(kind);
+    try {
+      const res = await fetch("/api/commercial/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: selectedCaseId, kind }),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.error ?? `Erreur ${res.status}`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] ?? "document.pdf";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(`Document généré : ${filename}`);
+      if (selectedClientId) await reloadCases(selectedClientId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la génération.");
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function pushToSinao() {
+    if (!selectedCaseId) return;
+    setPushingSinao(true);
+    try {
+      const res = await fetch("/api/commercial/sinao-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ caseId: selectedCaseId }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `Erreur ${res.status}`);
+      toast.success("Devis brouillon créé dans Sinao.");
+      if (selectedClientId) await reloadCases(selectedClientId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de l'envoi vers Sinao.");
+    } finally {
+      setPushingSinao(false);
+    }
+  }
+
+  const pendingCount = items.filter((i) => i.status === "pending").length;
+  const hasActiveItems = items.some((i) => i.status === "active");
+
+  const groupedItems = useMemo(() => {
+    const byCode = new Map(categories.map((c) => [c.code, c]));
+    const groups = new Map<string, CommercialItemRow[]>();
+    for (const item of items) {
+      const list = groups.get(item.category_code) ?? [];
+      list.push(item);
+      groups.set(item.category_code, list);
+    }
+    return [...groups.entries()]
+      .map(([code, list]) => ({ category: byCode.get(code) ?? null, items: list.sort((a, b) => a.position - b.position) }))
+      .filter((g): g is { category: CommercialCategoryRow; items: CommercialItemRow[] } => g.category !== null)
+      .sort((a, b) => a.category.sort_order - b.category.sort_order);
+  }, [items, categories]);
+
+  return (
+    <div className="flex gap-4 items-start">
+      <div className="card w-64 shrink-0">
+        <p className="font-bold mb-3">
+          <Bi fr="Clients" ru="Клиенты" />
+        </p>
+        <input
+          className="input mb-3"
+          placeholder="Rechercher…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        {loadingClients ? (
+          <SkeletonRows rows={4} cols={1} />
+        ) : (
+          <div className="max-h-[32rem] overflow-y-auto -mx-1">
+            {filteredClients.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  setSelectedClientId(c.id);
+                  setSelectedCaseId(null);
+                }}
+                className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
+                  selectedClientId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="card w-72 shrink-0">
+        {!selectedClientId ? (
+          <p className="text-stone-400 text-sm">
+            Sélectionnez un client. <span className="opacity-70">/ Выберите клиента.</span>
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-bold truncate">{selectedClient?.name}</p>
+              <button className="btn btn-secondary text-xs px-2 py-1 shrink-0" onClick={() => setNewCaseOpen(true)}>
+                <Plus size={14} />
+                Nouveau
+              </button>
+            </div>
+            {loadingCases ? (
+              <SkeletonRows rows={3} cols={1} />
+            ) : cases.length === 0 ? (
+              <p className="text-sm text-stone-400">
+                Aucun dossier. <span className="opacity-70">/ Нет дел.</span>
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {cases.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedCaseId(c.id)}
+                    className={`w-full text-left rounded-xl px-3 py-2 text-sm ${
+                      selectedCaseId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
+                    }`}
+                  >
+                    <span className="block truncate">{c.title}</span>
+                    <span className={`badge mt-1 ${c.sinao_quote_id ? "badge-success" : "badge-neutral"}`}>
+                      {c.sinao_quote_id ? "Sinao ✓" : c.status}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 card">
+        {!selectedCaseId ? (
+          <p className="text-stone-400">
+            Sélectionnez ou créez un dossier. <span className="opacity-70">/ Выберите или создайте дело.</span>
+          </p>
+        ) : loadingItems ? (
+          <SkeletonRows rows={5} cols={1} />
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <p className="font-bold text-lg">{selectedCase?.title}</p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  className="btn btn-secondary text-sm"
+                  onClick={() => downloadDoc("client")}
+                  disabled={generating !== null}
+                >
+                  <Download size={15} />
+                  {generating === "client" ? "…" : "Document client"}
+                </button>
+                <button
+                  className="btn btn-secondary text-sm"
+                  onClick={() => downloadDoc("team")}
+                  disabled={generating !== null || !hasActiveItems}
+                >
+                  <Download size={15} />
+                  {generating === "team" ? "…" : "Document équipe"}
+                </button>
+                {selectedCase?.sinao_quote_id ? (
+                  <span className="btn btn-secondary text-sm opacity-70 cursor-default">
+                    <ExternalLink size={15} />
+                    Déjà envoyé à Sinao
+                  </span>
+                ) : (
+                  <button
+                    className="btn btn-dark text-sm"
+                    onClick={pushToSinao}
+                    disabled={pushingSinao || pendingCount > 0 || !hasActiveItems}
+                    title={pendingCount > 0 ? "Clarifiez d'abord les lignes en question" : undefined}
+                  >
+                    <Send size={15} />
+                    {pushingSinao ? "…" : "Pousser vers Sinao"}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {pendingCount > 0 && (
+              <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
+                ⚠ {pendingCount} ligne(s) en question — à clarifier avant l&apos;envoi vers Sinao.
+                <span className="block opacity-70">
+                  ⚠ {pendingCount} строк(и) под вопросом — уточните перед отправкой в Sinao.
+                </span>
+              </div>
+            )}
+
+            {groupedItems.map((group) => (
+              <div key={group.category.code} className="mb-5">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+                    <Bi fr={group.category.label} ru={group.category.label_ru} />
+                  </p>
+                  <button
+                    className="text-xs text-primary-600 font-semibold hover:underline"
+                    onClick={() => markCategoryActive(group.category.code)}
+                  >
+                    Tout marquer actif
+                  </button>
+                </div>
+                <div className="rounded-xl border border-stone-100 divide-y divide-stone-100">
+                  {group.items.map((item) => (
+                    <div key={item.id} className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => cycleStatus(item)}
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold whitespace-nowrap ${COMMERCIAL_STATUS_TONE[item.status]}`}
+                        >
+                          {COMMERCIAL_STATUS_LABEL[item.status]}
+                        </button>
+                        <span className="flex-1 text-sm text-stone-700">{item.label}</span>
+                        <button
+                          onClick={() => {
+                            setNoteEditingId(noteEditingId === item.id ? null : item.id);
+                            setNoteDraft(item.note ?? "");
+                          }}
+                          className={`shrink-0 rounded-lg p-1.5 ${item.note ? "text-warning-600" : "text-stone-300 hover:text-stone-500"}`}
+                          title="Note"
+                        >
+                          <MessageSquare size={15} />
+                        </button>
+                      </div>
+                      {noteEditingId === item.id && (
+                        <div className="mt-2 flex gap-2">
+                          <input
+                            className="input flex-1 text-sm"
+                            placeholder="Note / précision…"
+                            value={noteDraft}
+                            onChange={(e) => setNoteDraft(e.target.value)}
+                            autoFocus
+                          />
+                          <button className="btn btn-dark text-xs px-3" onClick={() => saveNote(item.id)}>
+                            OK
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      <Modal open={newCaseOpen} onClose={() => setNewCaseOpen(false)} title="Nouveau dossier">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+              <Bi fr="Titre du dossier" ru="Название дела" />
+            </label>
+            <input
+              className="input"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="Ex. Chantier Lyon 8e"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+                <Bi fr="Début souhaité" ru="Желаемое начало" />
+              </label>
+              <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+                <Bi fr="Fin souhaitée" ru="Желаемое окончание" />
+              </label>
+              <input type="date" className="input" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} />
+            </div>
+          </div>
+          <button className="btn btn-dark w-full" onClick={createCase} disabled={creatingCase || !newTitle.trim()}>
+            {creatingCase ? "…" : "Créer"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
