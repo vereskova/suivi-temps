@@ -4711,6 +4711,13 @@ const COMMERCIAL_STATUS_LABEL: Record<CommercialItemStatus, string> = {
 const COMMERCIAL_CASE_SELECT =
   "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at";
 
+/** Stub quote ids (no Sinao API key configured yet) are prefixed so the UI
+ *  can tell a simulated push apart from a real one — a stub still allows
+ *  re-pushing for real later instead of looking "already sent". */
+function isSinaoStub(quoteId: string | null): boolean {
+  return Boolean(quoteId?.startsWith("STUB-"));
+}
+
 function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [clients, setClients] = useState<CommercialClientRow[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
@@ -4935,7 +4942,13 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? `Erreur ${res.status}`);
-      toast.success("Devis brouillon créé dans Sinao.");
+      if (body.stub) {
+        toast.warning(
+          "Sinao pas encore branché (pas de clé API) — devis simulé pour tester le circuit. À renvoyer pour de vrai une fois la clé fournie."
+        );
+      } else {
+        toast.success("Devis brouillon créé dans Sinao.");
+      }
       if (selectedClientId) await reloadCases(selectedClientId);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur lors de l'envoi vers Sinao.");
@@ -5026,8 +5039,16 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                     }`}
                   >
                     <span className="block truncate">{c.title}</span>
-                    <span className={`badge mt-1 ${c.sinao_quote_id ? "badge-success" : "badge-neutral"}`}>
-                      {c.sinao_quote_id ? "Sinao ✓" : c.status}
+                    <span
+                      className={`badge mt-1 ${
+                        c.sinao_quote_id && !isSinaoStub(c.sinao_quote_id)
+                          ? "badge-success"
+                          : c.sinao_quote_id
+                            ? "badge-warning"
+                            : "badge-neutral"
+                      }`}
+                    >
+                      {c.sinao_quote_id ? (isSinaoStub(c.sinao_quote_id) ? "Sinao (test)" : "Sinao ✓") : c.status}
                     </span>
                   </button>
                 ))}
@@ -5065,7 +5086,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                   <Download size={15} />
                   {generating === "team" ? "…" : "Document équipe"}
                 </button>
-                {selectedCase?.sinao_quote_id ? (
+                {selectedCase?.sinao_quote_id && !isSinaoStub(selectedCase.sinao_quote_id) ? (
                   <span className="btn btn-secondary text-sm opacity-70 cursor-default">
                     <ExternalLink size={15} />
                     Déjà envoyé à Sinao
@@ -5078,7 +5099,11 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                     title={pendingCount > 0 ? "Clarifiez d'abord les lignes en question" : undefined}
                   >
                     <Send size={15} />
-                    {pushingSinao ? "…" : "Pousser vers Sinao"}
+                    {pushingSinao
+                      ? "…"
+                      : selectedCase?.sinao_quote_id
+                        ? "Repousser vers Sinao (simulé)"
+                        : "Pousser vers Sinao"}
                   </button>
                 )}
               </div>

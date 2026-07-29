@@ -24,6 +24,11 @@ export class SinaoError extends Error {
   }
 }
 
+/** True once VLADIS has actually created a Sinao API key — until then, createDraftQuote() stubs instead of calling out. */
+export function isSinaoConfigured(): boolean {
+  return Boolean(process.env.SINAO_API_KEY && process.env.SINAO_APP_ID);
+}
+
 function getCredentials() {
   const apiKey = process.env.SINAO_API_KEY;
   const appId = process.env.SINAO_APP_ID;
@@ -31,6 +36,15 @@ function getCredentials() {
     throw new Error("Missing SINAO_API_KEY or SINAO_APP_ID environment variables.");
   }
   return { apiKey, appId };
+}
+
+/** Quote ids from the stub path are prefixed so callers can tell a simulated
+ *  push apart from a real Sinao quote (e.g. to allow re-pushing for real
+ *  once credentials are configured, instead of treating it as already sent). */
+export const SINAO_STUB_PREFIX = "STUB-";
+
+export function isStubQuoteId(quoteId: string | null | undefined): boolean {
+  return Boolean(quoteId?.startsWith(SINAO_STUB_PREFIX));
 }
 
 async function sinaoFetch(path: string, init: RequestInit = {}) {
@@ -129,6 +143,7 @@ export type CreateDraftQuoteResult = {
   quoteId: string;
   organizationId: number;
   nested: boolean;
+  stub: boolean;
 };
 
 /**
@@ -137,6 +152,13 @@ export type CreateDraftQuoteResult = {
  * in a second call once real line ids are known; falls back to a flat
  * (still perfectly usable, just visually ungrouped) quote if that
  * assumption about Sinao's response shape doesn't hold.
+ *
+ * Stub mode: VLADIS hasn't created a Sinao API key yet, so until
+ * SINAO_API_KEY/SINAO_APP_ID are set, this skips the network call entirely
+ * and returns a fake quote id instead of failing — lets the rest of the
+ * commercial workflow (checklist, both PDFs, the "already pushed" state) be
+ * used and demoed today. Swap to the real thing automatically the moment
+ * the env vars are configured, no code change needed.
  */
 export async function createDraftQuote(params: {
   clientName: string;
@@ -145,6 +167,15 @@ export async function createDraftQuote(params: {
   categories: SinaoQuoteCategory[];
 }): Promise<CreateDraftQuoteResult> {
   const { clientName, knownOrganizationId, title, categories } = params;
+
+  if (!isSinaoConfigured()) {
+    return {
+      quoteId: `${SINAO_STUB_PREFIX}${Date.now().toString(36).toUpperCase()}`,
+      organizationId: 0,
+      nested: false,
+      stub: true,
+    };
+  }
 
   let organizationId: number;
   if (knownOrganizationId) {
@@ -181,11 +212,11 @@ export async function createDraftQuote(params: {
         method: "POST",
         body: JSON.stringify({ content: nestedContent }),
       });
-      return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: true };
+      return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: true, stub: false };
     } catch {
       // Nesting attempt failed — the flat quote created above still stands and is usable.
     }
   }
 
-  return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: false };
+  return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: false, stub: false };
 }
