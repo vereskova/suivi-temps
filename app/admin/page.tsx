@@ -4094,7 +4094,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
               open={typeMenuOpen}
               onClose={() => setTypeMenuOpen(false)}
               title="Type de document"
-              maxWidth="max-w-md"
+              maxWidth="max-w-xl"
             >
               <div className="-my-1 space-y-0.5">
                 {DOCUMENT_TYPES.map((d) => (
@@ -4111,7 +4111,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                         : "hover:bg-stone-50 text-stone-700"
                     }`}
                   >
-                    <Bi fr={d.label} ru={d.labelRu} />
+                    <Bi fr={d.label} ru={d.labelRu} className="block w-full" />
                   </button>
                 ))}
               </div>
