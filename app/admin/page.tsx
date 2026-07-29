@@ -4281,6 +4281,43 @@ const RUPTURE_TYPE_OPTIONS: { value: RuptureType; label: string; labelRu: string
   { value: "RC", label: "Rupture conventionnelle (RC)", labelRu: "По соглашению сторон (RC)" },
 ];
 
+/** Label/value pairs read top-to-bottom as a plain table — labels can run
+ *  long (RC procedure steps), which the compact 4-col DetailSection grid
+ *  isn't built for. */
+function RuptureResultSection({
+  title,
+  titleRu,
+  rows,
+}: {
+  title: string;
+  titleRu: string;
+  rows: { label: string; labelRu: string; value: React.ReactNode }[];
+}) {
+  return (
+    <div className="mb-5">
+      <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+        <Bi fr={title} ru={titleRu} />
+      </p>
+      <div className="rounded-xl border border-stone-100 px-4">
+        <table className="w-full text-sm">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} className="border-t border-stone-100 first:border-t-0">
+                <td className="py-2.5 pr-4 align-top text-stone-500">
+                  <Bi fr={r.label} ru={r.labelRu} />
+                </td>
+                <td className="py-2.5 whitespace-nowrap text-right align-top font-semibold text-stone-800">
+                  {r.value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [employees, setEmployees] = useState<DocEmployeeListRow[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
@@ -4479,30 +4516,31 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
             ) : (
               result && (
                 <>
-                  <DetailSection title="Ancienneté & préavis" titleRu="Стаж и срок предупреждения">
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-stone-400">
-                        <Bi fr="Ancienneté à la rupture" ru="Стаж на дату увольнения" />
-                      </label>
-                      <p className="mt-2 font-semibold text-stone-800">
-                        {result.ancienneteYears} an(s) {result.ancienneteMonths} mois
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-stone-400">
-                        <Bi fr="Durée du préavis" ru="Срок предупреждения" />
-                      </label>
-                      <p className="mt-2 font-semibold text-stone-800">
-                        {result.preavisDays === null ? "—" : `${result.preavisDays} jours calendaires`}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold uppercase text-stone-400">
-                        <Bi fr="Date de notification / début préavis" ru="Дата уведомления" />
-                      </label>
-                      <p className="mt-2 font-semibold text-stone-800">{result.notificationDate ?? "—"}</p>
-                    </div>
-                  </DetailSection>
+                  <RuptureResultSection
+                    title="Ancienneté & préavis"
+                    titleRu="Стаж и срок предупреждения"
+                    rows={[
+                      {
+                        label: "Ancienneté à la rupture",
+                        labelRu: "Стаж на дату увольнения",
+                        value: `${result.ancienneteYears} an(s) ${result.ancienneteMonths} mois`,
+                      },
+                      ...(ruptureType === "RC"
+                        ? []
+                        : [
+                            {
+                              label: "Durée du préavis",
+                              labelRu: "Срок предупреждения",
+                              value: result.preavisDays === null ? "—" : `${result.preavisDays} jours calendaires`,
+                            },
+                            {
+                              label: "Date de notification / début préavis",
+                              labelRu: "Дата уведомления",
+                              value: result.notificationDate ?? "—",
+                            },
+                          ]),
+                    ]}
+                  />
 
                   {needsAgeForBracket && (
                     <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
@@ -4516,50 +4554,47 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   )}
 
                   {result.rc && (
-                    <DetailSection title="Procédure — Rupture conventionnelle" titleRu="Процедура RC">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Convocation — au plus tard" ru="Приглашение на встречу — не позднее" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.convocationDeadline}</p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Entretien + signature — au plus tard" ru="Собеседование + подпись — не позднее" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.entretienSignatureDeadline}</p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Fin du délai de rétractation" ru="Конец срока отзыва" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.finRetractation}</p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Dépôt auprès de la DREETS" ru="Подача в DREETS" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.depotDreets}</p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Début du délai d'instruction DREETS" ru="Начало срока рассмотрения" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.debutInstruction}</p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Validation tacite DREETS" ru="Молчаливое одобрение DREETS" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.validationTacite}</p>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase text-stone-400">
-                          <Bi fr="Rupture effective du contrat" ru="Фактическая дата расторжения" />
-                        </label>
-                        <p className="mt-2 font-semibold text-stone-800">{result.rc.ruptureEffective}</p>
-                      </div>
-                    </DetailSection>
+                    <RuptureResultSection
+                      title="Procédure — Rupture conventionnelle"
+                      titleRu="Процедура RC"
+                      rows={[
+                        {
+                          label: "Convocation — au plus tard",
+                          labelRu: "Приглашение на встречу — не позднее",
+                          value: result.rc.convocationDeadline,
+                        },
+                        {
+                          label: "Entretien + signature — au plus tard",
+                          labelRu: "Собеседование + подпись — не позднее",
+                          value: result.rc.entretienSignatureDeadline,
+                        },
+                        {
+                          label: "Fin du délai de rétractation",
+                          labelRu: "Конец срока отзыва",
+                          value: result.rc.finRetractation,
+                        },
+                        {
+                          label: "Dépôt auprès de la DREETS",
+                          labelRu: "Подача в DREETS",
+                          value: result.rc.depotDreets,
+                        },
+                        {
+                          label: "Début du délai d'instruction DREETS",
+                          labelRu: "Начало срока рассмотрения",
+                          value: result.rc.debutInstruction,
+                        },
+                        {
+                          label: "Validation tacite DREETS",
+                          labelRu: "Молчаливое одобрение DREETS",
+                          value: result.rc.validationTacite,
+                        },
+                        {
+                          label: "Rupture effective du contrat",
+                          labelRu: "Фактическая дата расторжения",
+                          value: result.rc.ruptureEffective,
+                        },
+                      ]}
+                    />
                   )}
 
                   <p className="text-xs text-stone-400 mt-2">
