@@ -12,6 +12,7 @@ import {
   Bell,
   BookText,
   CalendarDays,
+  ChevronDown,
   ClipboardCheck,
   CreditCard,
   Crown,
@@ -3882,6 +3883,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   const [typeCode, setTypeCode] = useState<string>(DOCUMENT_TYPES[0].code);
+  const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [formValues, setFormValues] = useState<Record<string, FormValue>>({});
   const [generating, setGenerating] = useState<"pdf" | "docx" | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -4078,19 +4080,42 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
               <p className="font-bold text-lg">
                 {employeeDoc ? employeeDoc.fullNameUpper : "…"}
               </p>
-              <select
-                className="input w-auto"
-                value={typeCode}
-                onChange={(e) => setTypeCode(e.target.value)}
+              <button
+                type="button"
+                className="input flex w-72 shrink-0 items-center justify-between gap-2 text-left"
+                onClick={() => setTypeMenuOpen(true)}
               >
-                {DOCUMENT_TYPES.map((d) => (
-                  <option key={d.code} value={d.code}>
-                    {d.label}
-                    {d.labelRu ? ` — ${d.labelRu}` : ""}
-                  </option>
-                ))}
-              </select>
+                <Bi fr={definition?.label ?? ""} ru={definition?.labelRu} className="min-w-0" />
+                <ChevronDown size={16} className="shrink-0 text-stone-400" />
+              </button>
             </div>
+
+            <Modal
+              open={typeMenuOpen}
+              onClose={() => setTypeMenuOpen(false)}
+              title="Type de document"
+              maxWidth="max-w-md"
+            >
+              <div className="-my-1 space-y-0.5">
+                {DOCUMENT_TYPES.map((d) => (
+                  <button
+                    key={d.code}
+                    type="button"
+                    onClick={() => {
+                      setTypeCode(d.code);
+                      setTypeMenuOpen(false);
+                    }}
+                    className={`block w-full rounded-lg px-3 py-2 text-left ${
+                      d.code === typeCode
+                        ? "bg-primary-50 text-primary-700"
+                        : "hover:bg-stone-50 text-stone-700"
+                    }`}
+                  >
+                    <Bi fr={d.label} ru={d.labelRu} />
+                  </button>
+                ))}
+              </div>
+            </Modal>
 
             {definition?.descriptionRu && (
               <p className="text-xs text-stone-400 mb-4 -mt-2">{definition.descriptionRu}</p>
