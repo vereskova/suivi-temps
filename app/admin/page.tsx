@@ -4693,7 +4693,21 @@ type CommercialItemRow = {
   status: CommercialItemStatus;
   note: string | null;
   position: number;
+  planned_start_date: string | null;
+  planned_end_date: string | null;
+  price_ht: number | null;
+  vat_rate: number;
 };
+
+const COMMERCIAL_ITEM_SELECT =
+  "id, category_code, label, status, note, position, planned_start_date, planned_end_date, price_ht, vat_rate";
+
+function commercialItemTtc(item: CommercialItemRow): number | null {
+  return item.price_ht == null ? null : item.price_ht * (1 + item.vat_rate / 100);
+}
+function commercialHtFromTtc(ttc: number, vatRate: number): number {
+  return ttc / (1 + vatRate / 100);
+}
 
 const COMMERCIAL_STATUS_CYCLE: Record<CommercialItemStatus, CommercialItemStatus> = {
   active: "inactive",
@@ -4743,7 +4757,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newStart, setNewStart] = useState("");
-  const [newEnd, setNewEnd] = useState("");
   const [creatingCase, setCreatingCase] = useState(false);
 
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null);
@@ -4806,7 +4819,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       setLoadingItems(true);
       const { data } = await supabase
         .from("commercial_case_items")
-        .select("id, category_code, label, status, note, position")
+        .select(COMMERCIAL_ITEM_SELECT)
         .eq("case_id", selectedCaseId)
         .order("position");
       setItems((data as CommercialItemRow[]) ?? []);
@@ -4837,7 +4850,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
           client_id: selectedClientId,
           title: newTitle.trim(),
           desired_start_date: newStart || null,
-          desired_end_date: newEnd || null,
           created_by: user?.id,
         })
         .select("id")
@@ -4868,7 +4880,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       setNewCaseOpen(false);
       setNewTitle("");
       setNewStart("");
-      setNewEnd("");
       await reloadCases(selectedClientId);
       setSelectedCaseId(caseRow.id);
     } catch (err) {
@@ -4926,6 +4937,39 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, note } : i)));
     await supabase.from("commercial_case_items").update({ note }).eq("id", itemId);
     setNoteEditingId(null);
+  }
+
+  async function updateCaseStartDate(caseId: string, value: string) {
+    const desired_start_date = value || null;
+    setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, desired_start_date } : c)));
+    const { error } = await supabase.from("commercial_cases").update({ desired_start_date }).eq("id", caseId);
+    if (error) toast.error("Erreur lors de la mise à jour de la date.");
+  }
+
+  async function updateItemDates(itemId: string, planned_start_date: string | null, planned_end_date: string | null) {
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, planned_start_date, planned_end_date } : i)));
+    const { error } = await supabase
+      .from("commercial_case_items")
+      .update({ planned_start_date, planned_end_date })
+      .eq("id", itemId);
+    if (error) toast.error("Erreur lors de la mise à jour des dates.");
+  }
+
+  async function updateItemPriceHt(item: CommercialItemRow, htInput: string) {
+    const price_ht = htInput.trim() === "" ? null : Number(htInput.replace(",", "."));
+    if (price_ht !== null && !Number.isFinite(price_ht)) return;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, price_ht } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ price_ht }).eq("id", item.id);
+    if (error) toast.error("Erreur lors de la mise à jour du prix.");
+  }
+
+  async function updateItemPriceTtc(item: CommercialItemRow, ttcInput: string) {
+    const ttc = ttcInput.trim() === "" ? null : Number(ttcInput.replace(",", "."));
+    if (ttc !== null && !Number.isFinite(ttc)) return;
+    const price_ht = ttc === null ? null : commercialHtFromTtc(ttc, item.vat_rate);
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, price_ht } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ price_ht }).eq("id", item.id);
+    if (error) toast.error("Erreur lors de la mise à jour du prix.");
   }
 
   async function downloadDoc(kind: "client" | "team") {
@@ -4988,6 +5032,21 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const hasActiveItems = items.some((i) => i.status === "active");
+
+  const activeTotals = useMemo(() => {
+    return items
+      .filter((i) => i.status === "active")
+      .reduce(
+        (acc, i) => {
+          if (i.price_ht != null) {
+            acc.ht += i.price_ht;
+            acc.ttc += commercialItemTtc(i) ?? 0;
+          }
+          return acc;
+        },
+        { ht: 0, ttc: 0 }
+      );
+  }, [items]);
 
   const groupedItems = useMemo(() => {
     const byCode = new Map(categories.map((c) => [c.code, c]));
@@ -5107,7 +5166,20 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         ) : (
           <>
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <p className="font-bold text-lg">{selectedCase?.title}</p>
+              <div>
+                <p className="font-bold text-lg">{selectedCase?.title}</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <label className="text-[10px] font-bold uppercase text-stone-400">
+                    <Bi fr="Début souhaité" ru="Желаемое начало" />
+                  </label>
+                  <input
+                    type="date"
+                    className="input text-xs py-0.5 px-1.5 w-auto"
+                    value={selectedCase?.desired_start_date ?? ""}
+                    onChange={(e) => selectedCase && updateCaseStartDate(selectedCase.id, e.target.value)}
+                  />
+                </div>
+              </div>
               <div className="flex gap-2 flex-wrap">
                 <button
                   className="btn btn-secondary text-sm"
@@ -5157,86 +5229,174 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               </div>
             )}
 
-            {groupedItems.map((group) => {
-              const allActive = group.items.every((i) => i.status === "active");
-              return (
-                <div key={group.category.code} className="mb-6">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
-                      <Bi fr={group.category.label} ru={group.category.label_ru} />
-                    </p>
-                    <button
-                      className={`text-xs font-semibold ${
-                        allActive ? "text-stone-300 cursor-default" : "text-primary-600 hover:underline"
-                      }`}
-                      onClick={() => markCategoryActive(group.category.code)}
-                    >
-                      Tout marquer actif
-                    </button>
-                  </div>
-                  <div>
-                    {group.items.map((item) => {
-                      const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
-                      return (
-                        <div key={item.id} className="py-1">
-                          <div className="flex items-center gap-2.5">
-                            <button
-                              onClick={() => cycleStatus(item)}
-                              className={`shrink-0 ${COMMERCIAL_STATUS_ICON_CLASS[item.status]}`}
-                              title={
-                                item.status === "active"
-                                  ? "Actif — cliquer pour marquer non applicable"
-                                  : item.status === "inactive"
-                                    ? "Non applicable — cliquer pour marquer en question"
-                                    : "En question — cliquer pour marquer actif"
-                              }
-                            >
-                              <StatusIcon size={18} />
-                            </button>
-                            <span className={`flex-1 text-sm ${COMMERCIAL_STATUS_LABEL_CLASS[item.status]}`}>
-                              {item.label}
-                              {item.status === "pending" && " ⚠"}
-                            </span>
-                            {item.note && noteEditingId !== item.id && (
-                              <span
-                                className="shrink-0 max-w-[40%] truncate text-right text-xs italic text-warning-700"
-                                title={item.note}
+            <div className="overflow-x-auto -mx-1">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-stone-400 whitespace-nowrap text-xs">
+                    <th className="py-2 pl-1 pr-2 w-8"></th>
+                    <th className="py-2 pr-3">
+                      <Bi fr="Tâche" ru="Задача" />
+                    </th>
+                    <th className="py-2 pr-3">
+                      <Bi fr="Délai prévu" ru="Плановые сроки" />
+                    </th>
+                    <th className="py-2 pr-3 text-right">
+                      <Bi fr="Prix HT €" ru="Цена без НДС €" />
+                    </th>
+                    <th className="py-2 pr-3 text-right">
+                      <Bi fr="Prix TTC €" ru="Цена с НДС €" />
+                    </th>
+                    <th className="py-2 pr-1 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedItems.map((group) => {
+                    const allActive = group.items.every((i) => i.status === "active");
+                    return (
+                      <Fragment key={group.category.code}>
+                        <tr>
+                          <td colSpan={6} className="pt-4 pb-1">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+                                <Bi fr={group.category.label} ru={group.category.label_ru} />
+                              </p>
+                              <button
+                                className={`text-xs font-semibold ${
+                                  allActive ? "text-stone-300 cursor-default" : "text-primary-600 hover:underline"
+                                }`}
+                                onClick={() => markCategoryActive(group.category.code)}
                               >
-                                {item.note}
-                              </span>
-                            )}
-                            <button
-                              onClick={() => {
-                                setNoteEditingId(noteEditingId === item.id ? null : item.id);
-                                setNoteDraft(item.note ?? "");
-                              }}
-                              className={`shrink-0 rounded-lg p-1 ${item.note ? "text-warning-600" : "text-stone-300 hover:text-stone-500"}`}
-                              title="Note"
-                            >
-                              <MessageSquare size={14} />
-                            </button>
-                          </div>
-                          {noteEditingId === item.id && (
-                            <div className="mt-1.5 ml-7 flex gap-2">
-                              <input
-                                className="input flex-1 text-sm"
-                                placeholder="Note / précision…"
-                                value={noteDraft}
-                                onChange={(e) => setNoteDraft(e.target.value)}
-                                autoFocus
-                              />
-                              <button className="btn btn-dark text-xs px-3" onClick={() => saveNote(item.id)}>
-                                OK
+                                Tout marquer actif
                               </button>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+                          </td>
+                        </tr>
+                        {group.items.map((item) => {
+                          const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
+                          const ttc = commercialItemTtc(item);
+                          const flagMissing = item.status === "active";
+                          const missingStart = flagMissing && !item.planned_start_date;
+                          const missingPrice = flagMissing && item.price_ht == null;
+                          return (
+                            <Fragment key={item.id}>
+                              <tr className="border-t border-stone-100">
+                                <td className="py-1.5 pl-1 pr-2">
+                                  <button
+                                    onClick={() => cycleStatus(item)}
+                                    className={COMMERCIAL_STATUS_ICON_CLASS[item.status]}
+                                    title={
+                                      item.status === "active"
+                                        ? "Actif — cliquer pour marquer non applicable"
+                                        : item.status === "inactive"
+                                          ? "Non applicable — cliquer pour marquer en question"
+                                          : "En question — cliquer pour marquer actif"
+                                    }
+                                  >
+                                    <StatusIcon size={18} />
+                                  </button>
+                                </td>
+                                <td className="py-1.5 pr-3">
+                                  <span className={COMMERCIAL_STATUS_LABEL_CLASS[item.status]}>
+                                    {item.label}
+                                    {item.status === "pending" && " ⚠"}
+                                  </span>
+                                  {item.note && noteEditingId !== item.id && (
+                                    <span className="block text-xs italic text-warning-700 truncate max-w-xs" title={item.note}>
+                                      {item.note}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className={`py-1.5 pr-3 rounded-lg ${missingStart ? "bg-warning-50" : ""}`}>
+                                  <div className="flex items-center gap-1 whitespace-nowrap">
+                                    <input
+                                      type="date"
+                                      className="input text-xs py-0.5 px-1 w-[6.4rem]"
+                                      value={item.planned_start_date ?? ""}
+                                      onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
+                                    />
+                                    <span className="text-stone-300">–</span>
+                                    <input
+                                      type="date"
+                                      className="input text-xs py-0.5 px-1 w-[6.4rem]"
+                                      value={item.planned_end_date ?? ""}
+                                      onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
+                                    />
+                                  </div>
+                                </td>
+                                <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    className="input text-xs py-0.5 px-1.5 w-20 text-right"
+                                    placeholder="—"
+                                    defaultValue={item.price_ht ?? ""}
+                                    key={`ht-${item.id}-${item.price_ht ?? ""}`}
+                                    onBlur={(e) => updateItemPriceHt(item, e.target.value)}
+                                  />
+                                </td>
+                                <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    className="input text-xs py-0.5 px-1.5 w-20 text-right"
+                                    placeholder="—"
+                                    defaultValue={ttc != null ? ttc.toFixed(2) : ""}
+                                    key={`ttc-${item.id}-${ttc ?? ""}`}
+                                    onBlur={(e) => updateItemPriceTtc(item, e.target.value)}
+                                  />
+                                </td>
+                                <td className="py-1.5 pl-1 pr-1">
+                                  <button
+                                    onClick={() => {
+                                      setNoteEditingId(noteEditingId === item.id ? null : item.id);
+                                      setNoteDraft(item.note ?? "");
+                                    }}
+                                    className={`rounded-lg p-1 ${item.note ? "text-warning-600" : "text-stone-300 hover:text-stone-500"}`}
+                                    title="Note"
+                                  >
+                                    <MessageSquare size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                              {noteEditingId === item.id && (
+                                <tr>
+                                  <td colSpan={6} className="pb-1.5 pl-9 pr-1">
+                                    <div className="flex gap-2">
+                                      <input
+                                        className="input flex-1 text-sm"
+                                        placeholder="Note / précision…"
+                                        value={noteDraft}
+                                        onChange={(e) => setNoteDraft(e.target.value)}
+                                        autoFocus
+                                      />
+                                      <button className="btn btn-dark text-xs px-3" onClick={() => saveNote(item.id)}>
+                                        OK
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </Fragment>
+                          );
+                        })}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+                {items.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-stone-200 font-bold">
+                      <td colSpan={3} className="py-2 pr-3">
+                        TOTAL <span className="font-normal opacity-60">(actifs) / ИТОГО (активные)</span>
+                      </td>
+                      <td className="py-2 pr-3 text-right">{activeTotals.ht.toFixed(2)} €</td>
+                      <td className="py-2 pr-3 text-right">{activeTotals.ttc.toFixed(2)} €</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </>
         )}
       </div>
@@ -5254,19 +5414,11 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               placeholder="Ex. Chantier Lyon 8e"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-                <Bi fr="Début souhaité" ru="Желаемое начало" />
-              </label>
-              <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-                <Bi fr="Fin souhaitée" ru="Желаемое окончание" />
-              </label>
-              <input type="date" className="input" value={newEnd} onChange={(e) => setNewEnd(e.target.value)} />
-            </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+              <Bi fr="Début souhaité" ru="Желаемое начало" />
+            </label>
+            <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
           </div>
           <button className="btn btn-dark w-full" onClick={createCase} disabled={creatingCase || !newTitle.trim()}>
             {creatingCase ? "…" : "Créer"}

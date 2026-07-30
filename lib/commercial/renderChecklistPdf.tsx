@@ -70,7 +70,20 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: 10.5, flex: 1 },
   rowLabelInactive: { color: COLORS.stoneFaint, textDecoration: "line-through" },
   rowLabelPending: { color: COLORS.warning700 },
-  noteText: { fontSize: 9, color: COLORS.warning700, maxWidth: 200, textAlign: "right" },
+  rowDates: { fontSize: 8, color: COLORS.stoneFaint, width: 66, textAlign: "right", marginTop: 2.5 },
+  rowPrice: { fontSize: 9.5, color: COLORS.stone, width: 44, textAlign: "right" },
+  noteText: { fontSize: 9, color: COLORS.warning700, maxWidth: 150, textAlign: "right" },
+  totalsBox: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 20,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.stoneLine,
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  totalsLabel: { fontSize: 9, color: COLORS.stoneMuted },
+  totalsValue: { fontSize: 11, color: COLORS.stone },
   footer: {
     position: "absolute",
     bottom: 22,
@@ -93,6 +106,10 @@ export type CommercialCaseItemDoc = {
   status: CommercialItemStatus;
   note: string | null;
   position: number;
+  plannedStartDate: string | null;
+  plannedEndDate: string | null;
+  priceHt: number | null;
+  vatRate: number;
 };
 
 export type CommercialCategoryDoc = {
@@ -126,6 +143,20 @@ function groupByCategory<T extends { categoryCode: string; position: number }>(
       items: list.sort((a, b) => a.position - b.position),
     }))
     .sort((a, b) => a.category.sortOrder - b.category.sortOrder);
+}
+
+function formatShortDate(d: string | null): string {
+  if (!d) return "";
+  const [, m, day] = d.split("-");
+  return `${day}/${m}`;
+}
+function formatDateRange(start: string | null, end: string | null): string {
+  if (!start && !end) return "";
+  if (start && end) return `${formatShortDate(start)}–${formatShortDate(end)}`;
+  return formatShortDate(start ?? end);
+}
+function itemTtc(item: { priceHt: number | null; vatRate: number }): number | null {
+  return item.priceHt == null ? null : item.priceHt * (1 + item.vatRate / 100);
 }
 
 /** Drawn as vector shapes (not Unicode glyphs — a symbol font isn't guaranteed
@@ -169,6 +200,10 @@ function ClientChecklistDocument({
   const inactiveCount = items.filter((i) => i.status === "inactive").length;
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const groups = groupByCategory(items, categories);
+  const totalHt = items.filter((i) => i.status === "active").reduce((sum, i) => sum + (i.priceHt ?? 0), 0);
+  const totalTtc = items
+    .filter((i) => i.status === "active")
+    .reduce((sum, i) => sum + (itemTtc(i) ?? 0), 0);
 
   return (
     <Document title={`Check-list — ${caseInfo.clientName} — ${caseInfo.title}`}>
@@ -202,6 +237,16 @@ function ClientChecklistDocument({
             </View>
           )}
 
+          {activeCount > 0 && (
+            <View style={[styles.row, { paddingTop: 0 }]}>
+              <View style={{ width: 21 }} />
+              <Text style={[styles.rowLabel, { fontSize: 8, color: COLORS.stoneFaint }]}></Text>
+              <Text style={styles.rowDates}>Délai prévu</Text>
+              <Text style={styles.rowPrice}>HT</Text>
+              <Text style={styles.rowPrice}>TTC</Text>
+            </View>
+          )}
+
           {groups.map((group) => (
             <View key={group.category.code} style={styles.categoryBlock} wrap={false}>
               <View style={styles.categoryHeader}>
@@ -219,11 +264,29 @@ function ClientChecklistDocument({
                   >
                     {item.label}
                   </Text>
+                  {item.status === "active" && (
+                    <>
+                      <Text style={styles.rowDates}>{formatDateRange(item.plannedStartDate, item.plannedEndDate)}</Text>
+                      <Text style={styles.rowPrice}>{item.priceHt != null ? item.priceHt.toFixed(2) : "—"}</Text>
+                      <Text style={styles.rowPrice}>{itemTtc(item) != null ? itemTtc(item)!.toFixed(2) : "—"}</Text>
+                    </>
+                  )}
                   {item.status === "pending" && <Text style={styles.noteText}>{item.note || "à confirmer"}</Text>}
                 </View>
               ))}
             </View>
           ))}
+
+          <View style={styles.totalsBox}>
+            <View>
+              <Text style={styles.totalsLabel}>Total HT</Text>
+              <Text style={styles.totalsValue}>{totalHt.toFixed(2)} €</Text>
+            </View>
+            <View>
+              <Text style={styles.totalsLabel}>Total TTC</Text>
+              <Text style={styles.totalsValue}>{totalTtc.toFixed(2)} €</Text>
+            </View>
+          </View>
         </View>
 
         <Text style={styles.footer} fixed>
@@ -285,6 +348,7 @@ function TeamWorkOrderDocument({
                 <View key={item.label + item.position} style={styles.row}>
                   <StatusIcon status="active" />
                   <Text style={styles.rowLabel}>{item.label}</Text>
+                  <Text style={styles.rowDates}>{formatDateRange(item.plannedStartDate, item.plannedEndDate)}</Text>
                 </View>
               ))}
             </View>

@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("commercial_case_items")
-    .select("category_code, label, status, note, position")
+    .select("category_code, label, status, note, position, planned_start_date, planned_end_date, price_ht, vat_rate")
     .eq("case_id", caseId);
 
   if (itemsError) {
@@ -88,6 +88,10 @@ export async function POST(request: NextRequest) {
     status: i.status as "active" | "inactive" | "pending",
     note: i.note,
     position: i.position,
+    plannedStartDate: i.planned_start_date,
+    plannedEndDate: i.planned_end_date,
+    priceHt: i.price_ht,
+    vatRate: i.vat_rate,
   }));
 
   const buffer =
