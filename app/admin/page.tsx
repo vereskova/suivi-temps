@@ -14,6 +14,8 @@ import {
   Briefcase,
   CalendarDays,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   ClipboardCheck,
   CreditCard,
@@ -35,6 +37,8 @@ import {
   LogOut,
   MessageSquare,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plane,
   Plus,
@@ -55,7 +59,12 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
-import { DOCUMENT_TYPES, getDocumentType } from "@/lib/documents/registry";
+import {
+  DOCUMENT_TYPES,
+  getDocumentType,
+  type DocumentTypeDefinition,
+  type FieldSchema,
+} from "@/lib/documents/registry";
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import {
   CompanyRow,
@@ -376,6 +385,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>("jour");
+  const [navCollapsed, setNavCollapsed] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -625,6 +635,14 @@ export default function AdminPage() {
       <div className="mx-auto max-w-[1400px]">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setNavCollapsed((v) => !v)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+              title={navCollapsed ? "Afficher le menu / Показать меню" : "Réduire le menu / Свернуть меню"}
+            >
+              {navCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
               <LogoMark size={44} />
             </div>
@@ -644,25 +662,27 @@ export default function AdminPage() {
         </div>
 
         <div className="flex gap-6 items-start">
-          <aside className="w-60 shrink-0">
-            <nav className="card p-3 space-y-4 sticky top-4">
-              {visibleNavGroups.map((group) => (
-                <SidebarSection key={group.title} title={group.title}>
-                  {group.items.map((item) => (
-                    <SidebarLink
-                      key={item.key}
-                      icon={item.icon}
-                      active={view === item.key}
-                      onClick={() => setView(item.key)}
-                      label={item.label}
-                      labelRu={item.labelRu}
-                      dot={item.key === "echeances" ? hasUnreadNotifications : false}
-                    />
-                  ))}
-                </SidebarSection>
-              ))}
-            </nav>
-          </aside>
+          {!navCollapsed && (
+            <aside className="w-60 shrink-0">
+              <nav className="card p-3 space-y-4 sticky top-4">
+                {visibleNavGroups.map((group) => (
+                  <SidebarSection key={group.title} title={group.title}>
+                    {group.items.map((item) => (
+                      <SidebarLink
+                        key={item.key}
+                        icon={item.icon}
+                        active={view === item.key}
+                        onClick={() => setView(item.key)}
+                        label={item.label}
+                        labelRu={item.labelRu}
+                        dot={item.key === "echeances" ? hasUnreadNotifications : false}
+                      />
+                    ))}
+                  </SidebarSection>
+                ))}
+              </nav>
+            </aside>
+          )}
 
           <div className="flex-1 min-w-0">
             {view === "jour" && (
@@ -3939,6 +3959,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [search, setSearch] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [listCollapsed, setListCollapsed] = useState(false);
 
   const [employeeDoc, setEmployeeDoc] = useState<EmployeeDoc | null>(null);
   const [companyDoc, setCompanyDoc] = useState<CompanyDoc | null>(null);
@@ -4020,6 +4041,11 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
     });
   }, [employees, statusFilter, search]);
 
+  const selectedEmployeeRow = useMemo(
+    () => employees.find((e) => e.id === selectedEmployeeId) ?? null,
+    [employees, selectedEmployeeId]
+  );
+
   const missingRequired = useMemo(() => {
     if (!definition) return [];
     return definition.fields.filter((f) => {
@@ -4066,10 +4092,49 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
     }
   }
 
+  if (listCollapsed) {
+    return (
+      <div className="flex gap-4 items-start">
+        <button
+          type="button"
+          onClick={() => setListCollapsed(false)}
+          title={
+            selectedEmployeeRow
+              ? `${employeeName(selectedEmployeeRow)} — afficher la liste / показать список`
+              : "Afficher la liste / Показать список"
+          }
+          className="card w-14 shrink-0 flex flex-col items-center gap-2 py-4 hover:bg-stone-50"
+        >
+          <Users size={18} className="text-stone-500" />
+          <ChevronRight size={16} className="text-stone-400" />
+        </button>
+        <div className="flex-1 min-w-0 card">
+          <DocumentsForm
+            selectedEmployeeId={selectedEmployeeId}
+            employeeDoc={employeeDoc}
+            companyDoc={companyDoc}
+            loadingDetail={loadingDetail}
+            definition={definition}
+            typeMenuOpen={typeMenuOpen}
+            setTypeMenuOpen={setTypeMenuOpen}
+            typeCode={typeCode}
+            setTypeCode={setTypeCode}
+            formValues={formValues}
+            setFormValues={setFormValues}
+            missingRequired={missingRequired}
+            errorMsg={errorMsg}
+            generating={generating}
+            download={download}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-4 items-start">
       <div className="card w-72 shrink-0">
-        <div className="font-bold mb-3">
+        <div className="font-bold mb-3 flex items-start justify-between gap-2">
           <Bi
             fr={`Employés (${filteredEmployees.length})`}
             ru="Сотрудники"
@@ -4083,6 +4148,16 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
               />
             }
           />
+          {selectedEmployeeId && (
+            <button
+              type="button"
+              onClick={() => setListCollapsed(true)}
+              className="text-stone-400 hover:text-stone-700 shrink-0"
+              title="Réduire la liste / Свернуть список"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          )}
         </div>
         <input
           className="input mb-2"
@@ -4131,193 +4206,247 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
       </div>
 
       <div className="flex-1 min-w-0 card">
-        {!selectedEmployeeId ? (
-          <p className="text-stone-400">
-            Sélectionnez un employé à gauche.{" "}
-            <span className="opacity-70">/ Выберите сотрудника слева.</span>
-          </p>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-4">
-              <p className="font-bold text-lg">
-                {employeeDoc ? employeeDoc.fullNameUpper : "…"}
-              </p>
-              <button
-                type="button"
-                className="input flex w-72 shrink-0 items-center justify-between gap-2 text-left"
-                onClick={() => setTypeMenuOpen(true)}
-              >
-                <Bi fr={definition?.label ?? ""} ru={definition?.labelRu} className="min-w-0" />
-                <ChevronDown size={16} className="shrink-0 text-stone-400" />
-              </button>
-            </div>
-
-            <Modal
-              open={typeMenuOpen}
-              onClose={() => setTypeMenuOpen(false)}
-              title="Type de document"
-              maxWidth="max-w-xl"
-            >
-              <div className="-my-1 space-y-0.5">
-                {DOCUMENT_TYPES.map((d) => (
-                  <button
-                    key={d.code}
-                    type="button"
-                    onClick={() => {
-                      setTypeCode(d.code);
-                      setTypeMenuOpen(false);
-                    }}
-                    className={`block w-full rounded-lg px-3 py-2 text-left ${
-                      d.code === typeCode
-                        ? "bg-primary-50 text-primary-700"
-                        : "hover:bg-stone-50 text-stone-700"
-                    }`}
-                  >
-                    <Bi fr={d.label} ru={d.labelRu} className="block w-full" />
-                  </button>
-                ))}
-              </div>
-            </Modal>
-
-            {definition?.descriptionRu && (
-              <p className="text-xs text-stone-400 mb-4 -mt-2">{definition.descriptionRu}</p>
-            )}
-
-            {definition?.legalRisk && (
-              <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
-                <p>
-                  Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ;
-                  relisez-le (et faites-le relire si besoin) avant signature ou envoi au
-                  salarié.
-                </p>
-                <p className="opacity-70 mt-1">
-                  Черновик — проверьте перед отправкой. Этот документ юридически обязывает
-                  компанию; перечитайте его (и дайте перечитать кому-то ещё при необходимости)
-                  перед подписанием или отправкой сотруднику.
-                </p>
-              </div>
-            )}
-
-            {loadingDetail || !employeeDoc || !companyDoc ? (
-              <p className="text-stone-400">
-                Chargement des données de l&apos;employé…{" "}
-                <span className="opacity-70">/ Загрузка данных сотрудника…</span>
-              </p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  {definition?.fields.map((f) => (
-                    <label
-                      key={f.key}
-                      className={`text-sm font-bold ${
-                        f.type === "textarea" ? "col-span-2" : ""
-                      }`}
-                    >
-                      <Bi fr={f.label} ru={f.labelRu} />
-                      {f.required && <span className="text-error-500"> *</span>}
-                      {f.type === "boolean" ? (
-                        <div className="mt-2">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(formValues[f.key])}
-                            onChange={(ev) =>
-                              setFormValues((prev) => ({
-                                ...prev,
-                                [f.key]: ev.target.checked,
-                              }))
-                            }
-                          />
-                        </div>
-                      ) : f.type === "textarea" ? (
-                        <textarea
-                          className="input mt-2 min-h-24"
-                          value={String(formValues[f.key] ?? "")}
-                          onChange={(ev) =>
-                            setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
-                          }
-                        />
-                      ) : f.type === "select" ? (
-                        <select
-                          className="input mt-2"
-                          value={String(formValues[f.key] ?? "")}
-                          onChange={(ev) =>
-                            setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
-                          }
-                        >
-                          <option value="">—</option>
-                          {f.options?.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                              {opt.labelRu ? ` / ${opt.labelRu}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          className="input mt-2"
-                          type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
-                          value={String(formValues[f.key] ?? "")}
-                          onChange={(ev) =>
-                            setFormValues((prev) => ({
-                              ...prev,
-                              [f.key]:
-                                f.type === "number"
-                                  ? ev.target.value === ""
-                                    ? ""
-                                    : Number(ev.target.value)
-                                  : ev.target.value,
-                            }))
-                          }
-                        />
-                      )}
-                      {f.help && (
-                        <span className="block text-xs font-normal text-stone-400 mt-1">
-                          {f.help}
-                          {f.helpRu && <span className="block opacity-70">{f.helpRu}</span>}
-                        </span>
-                      )}
-                    </label>
-                  ))}
-                </div>
-
-                {missingRequired.length > 0 && (
-                  <p className="text-sm text-error-500 mb-3">
-                    Champs obligatoires manquants <span className="opacity-70">/ Не заполнены обязательные поля</span> :{" "}
-                    {missingRequired.map((f) => (f.labelRu ? `${f.label} / ${f.labelRu}` : f.label)).join(", ")}
-                  </p>
-                )}
-                {errorMsg && <p className="text-sm text-error-500 mb-3">{errorMsg}</p>}
-
-                <div className="flex gap-3">
-                  <button
-                    className="btn btn-dark"
-                    disabled={missingRequired.length > 0 || generating !== null}
-                    onClick={() => download("docx")}
-                  >
-                    {generating === "docx" ? (
-                      <Bi fr="Génération…" ru="Создание…" />
-                    ) : (
-                      <Bi fr="Télécharger Word (.docx)" ru="Скачать Word (.docx)" />
-                    )}
-                  </button>
-                  <button
-                    className="btn btn-primary"
-                    disabled={missingRequired.length > 0 || generating !== null}
-                    onClick={() => download("pdf")}
-                  >
-                    {generating === "pdf" ? (
-                      <Bi fr="Génération…" ru="Создание…" />
-                    ) : (
-                      <Bi fr="Télécharger PDF" ru="Скачать PDF" />
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
-          </>
-        )}
+        <DocumentsForm
+          selectedEmployeeId={selectedEmployeeId}
+          employeeDoc={employeeDoc}
+          companyDoc={companyDoc}
+          loadingDetail={loadingDetail}
+          definition={definition}
+          typeMenuOpen={typeMenuOpen}
+          setTypeMenuOpen={setTypeMenuOpen}
+          typeCode={typeCode}
+          setTypeCode={setTypeCode}
+          formValues={formValues}
+          setFormValues={setFormValues}
+          missingRequired={missingRequired}
+          errorMsg={errorMsg}
+          generating={generating}
+          download={download}
+        />
       </div>
     </div>
+  );
+}
+
+function DocumentsForm({
+  selectedEmployeeId,
+  employeeDoc,
+  companyDoc,
+  loadingDetail,
+  definition,
+  typeMenuOpen,
+  setTypeMenuOpen,
+  typeCode,
+  setTypeCode,
+  formValues,
+  setFormValues,
+  missingRequired,
+  errorMsg,
+  generating,
+  download,
+}: {
+  selectedEmployeeId: string | null;
+  employeeDoc: EmployeeDoc | null;
+  companyDoc: CompanyDoc | null;
+  loadingDetail: boolean;
+  definition: DocumentTypeDefinition | undefined;
+  typeMenuOpen: boolean;
+  setTypeMenuOpen: (v: boolean) => void;
+  typeCode: string;
+  setTypeCode: (v: string) => void;
+  formValues: Record<string, FormValue>;
+  setFormValues: React.Dispatch<React.SetStateAction<Record<string, FormValue>>>;
+  missingRequired: FieldSchema[];
+  errorMsg: string | null;
+  generating: "pdf" | "docx" | null;
+  download: (format: "pdf" | "docx") => void;
+}) {
+  if (!selectedEmployeeId) {
+    return (
+      <p className="text-stone-400">
+        Sélectionnez un employé à gauche.{" "}
+        <span className="opacity-70">/ Выберите сотрудника слева.</span>
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <p className="font-bold text-lg">{employeeDoc ? employeeDoc.fullNameUpper : "…"}</p>
+        <button
+          type="button"
+          className="input flex w-full sm:w-72 shrink-0 items-center justify-between gap-2 text-left"
+          onClick={() => setTypeMenuOpen(true)}
+        >
+          <Bi fr={definition?.label ?? ""} ru={definition?.labelRu} className="min-w-0" />
+          <ChevronDown size={16} className="shrink-0 text-stone-400" />
+        </button>
+      </div>
+
+      <Modal
+        open={typeMenuOpen}
+        onClose={() => setTypeMenuOpen(false)}
+        title="Type de document"
+        maxWidth="max-w-xl"
+      >
+        <div className="-my-1 space-y-0.5">
+          {DOCUMENT_TYPES.map((d) => (
+            <button
+              key={d.code}
+              type="button"
+              onClick={() => {
+                setTypeCode(d.code);
+                setTypeMenuOpen(false);
+              }}
+              className={`block w-full rounded-lg px-3 py-2 text-left ${
+                d.code === typeCode
+                  ? "bg-primary-50 text-primary-700"
+                  : "hover:bg-stone-50 text-stone-700"
+              }`}
+            >
+              <Bi fr={d.label} ru={d.labelRu} className="block w-full" />
+            </button>
+          ))}
+        </div>
+      </Modal>
+
+      {definition?.descriptionRu && (
+        <p className="text-xs text-stone-400 mb-4 -mt-2">{definition.descriptionRu}</p>
+      )}
+
+      {definition?.legalRisk && (
+        <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
+          <p>
+            Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ; relisez-le
+            (et faites-le relire si besoin) avant signature ou envoi au salarié.
+          </p>
+          <p className="opacity-70 mt-1">
+            Черновик — проверьте перед отправкой. Этот документ юридически обязывает компанию;
+            перечитайте его (и дайте перечитать кому-то ещё при необходимости) перед подписанием
+            или отправкой сотруднику.
+          </p>
+        </div>
+      )}
+
+      {loadingDetail || !employeeDoc || !companyDoc ? (
+        <p className="text-stone-400">
+          Chargement des données de l&apos;employé…{" "}
+          <span className="opacity-70">/ Загрузка данных сотрудника…</span>
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            {definition?.fields.map((f) => (
+              <label
+                key={f.key}
+                className={`text-sm font-bold ${f.type === "textarea" ? "sm:col-span-2" : ""}`}
+              >
+                <Bi fr={f.label} ru={f.labelRu} />
+                {f.required && <span className="text-error-500"> *</span>}
+                {f.type === "boolean" ? (
+                  <div className="mt-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formValues[f.key])}
+                      onChange={(ev) =>
+                        setFormValues((prev) => ({
+                          ...prev,
+                          [f.key]: ev.target.checked,
+                        }))
+                      }
+                    />
+                  </div>
+                ) : f.type === "textarea" ? (
+                  <textarea
+                    className="input mt-2 min-h-24"
+                    value={String(formValues[f.key] ?? "")}
+                    onChange={(ev) =>
+                      setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
+                    }
+                  />
+                ) : f.type === "select" ? (
+                  <select
+                    className="input mt-2"
+                    value={String(formValues[f.key] ?? "")}
+                    onChange={(ev) =>
+                      setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
+                    }
+                  >
+                    <option value="">—</option>
+                    {f.options?.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                        {opt.labelRu ? ` / ${opt.labelRu}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input mt-2"
+                    type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+                    value={String(formValues[f.key] ?? "")}
+                    onChange={(ev) =>
+                      setFormValues((prev) => ({
+                        ...prev,
+                        [f.key]:
+                          f.type === "number"
+                            ? ev.target.value === ""
+                              ? ""
+                              : Number(ev.target.value)
+                            : ev.target.value,
+                      }))
+                    }
+                  />
+                )}
+                {f.help && (
+                  <span className="block text-xs font-normal text-stone-400 mt-1">
+                    {f.help}
+                    {f.helpRu && <span className="block opacity-70">{f.helpRu}</span>}
+                  </span>
+                )}
+              </label>
+            ))}
+          </div>
+
+          {missingRequired.length > 0 && (
+            <p className="text-sm text-error-500 mb-3">
+              Champs obligatoires manquants{" "}
+              <span className="opacity-70">/ Не заполнены обязательные поля</span> :{" "}
+              {missingRequired
+                .map((f) => (f.labelRu ? `${f.label} / ${f.labelRu}` : f.label))
+                .join(", ")}
+            </p>
+          )}
+          {errorMsg && <p className="text-sm text-error-500 mb-3">{errorMsg}</p>}
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="btn btn-dark"
+              disabled={missingRequired.length > 0 || generating !== null}
+              onClick={() => download("docx")}
+            >
+              {generating === "docx" ? (
+                <Bi fr="Génération…" ru="Создание…" />
+              ) : (
+                <Bi fr="Télécharger Word (.docx)" ru="Скачать Word (.docx)" />
+              )}
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={missingRequired.length > 0 || generating !== null}
+              onClick={() => download("pdf")}
+            >
+              {generating === "pdf" ? (
+                <Bi fr="Génération…" ru="Создание…" />
+              ) : (
+                <Bi fr="Télécharger PDF" ru="Скачать PDF" />
+              )}
+            </button>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
