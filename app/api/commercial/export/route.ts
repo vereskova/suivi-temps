@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { renderPdf } from "@/lib/documents/renderPdf";
-import { buildClientChecklistDoc, buildTeamWorkOrderDoc } from "@/lib/commercial/documents";
+import { renderClientChecklistPdf, renderTeamWorkOrderPdf } from "@/lib/commercial/renderChecklistPdf";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -91,13 +90,13 @@ export async function POST(request: NextRequest) {
     position: i.position,
   }));
 
-  const content =
+  const buffer =
     kind === "client"
-      ? buildClientChecklistDoc(caseInfo, categories, items)
-      : buildTeamWorkOrderDoc(caseInfo, categories, items);
+      ? await renderClientChecklistPdf(caseInfo, categories, items)
+      : await renderTeamWorkOrderPdf(caseInfo, categories, items);
 
-  const buffer = await renderPdf(content);
-  const filename = `${content.title
+  const docTitle = kind === "client" ? `Check-list — ${clientName} — ${caseRow.title}` : `Ordre de travail — ${clientName} — ${caseRow.title}`;
+  const filename = `${docTitle
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-zA-Z0-9\- ]/g, "")

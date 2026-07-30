@@ -5197,6 +5197,14 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                               {item.label}
                               {item.status === "pending" && " ⚠"}
                             </span>
+                            {item.note && noteEditingId !== item.id && (
+                              <span
+                                className="shrink-0 max-w-[40%] truncate text-right text-xs italic text-warning-700"
+                                title={item.note}
+                              >
+                                {item.note}
+                              </span>
+                            )}
                             <button
                               onClick={() => {
                                 setNoteEditingId(noteEditingId === item.id ? null : item.id);
