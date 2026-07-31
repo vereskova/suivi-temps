@@ -8332,39 +8332,47 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const payableRows = groupedRows.filter((row) => !isFopContractor(row.employee));
     const payableEmployees = employees.filter((e) => !isFopContractor(e));
 
-    // Detected independently of allSingleColumn/parseLine (which split on 2+
-    // consecutive spaces) — a name with an accidental double space, like
-    // "VORONINSKYI  YEVHENII", would otherwise be misread as its own
-    // "Nom [tab] Montant" pair and break detection for the whole paste.
-    const looksTwoBlock = (() => {
-      if (rawLines.length < 4 || rawLines.length % 2 !== 0) return false;
-      const half = rawLines.length / 2;
-      const firstNonBlank = rawLines.slice(0, half).filter((l) => l.trim());
-      const secondNonBlank = rawLines.slice(half).filter((l) => l.trim());
-      if (firstNonBlank.length === 0 || secondNonBlank.length === 0) return false;
-      const firstAllNonNumeric = firstNonBlank.every((l) => isNaN(parseImportAmount(l)));
-      const secondNumericRatio =
-        secondNonBlank.filter((l) => !isNaN(parseImportAmount(l))).length / secondNonBlank.length;
-      return firstAllNonNumeric && secondNumericRatio >= 0.5;
-    })();
+    // Two-block paste: every name first, then every amount. Split by CONTENT
+    // (where non-blank lines stop being names and start being amounts) rather
+    // than by position — team groups are often separated by blank lines in
+    // the source spreadsheet, and those separators don't necessarily line up
+    // 1-for-1 between the name column and the amount column, which used to
+    // make a plain half-and-half split (and its even-total-lines requirement)
+    // silently misalign or reject the whole paste.
+    let splitAt = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      if (!isNaN(parseImportAmount(lines[i]))) {
+        splitAt = i;
+        break;
+      }
+    }
+    const namesBlock = lines.slice(0, splitAt);
+    const amountsBlock = lines.slice(splitAt);
+    const looksTwoBlock =
+      namesBlock.length > 0 &&
+      amountsBlock.length > 0 &&
+      amountsBlock.filter((l) => !isNaN(parseImportAmount(l))).length / amountsBlock.length >= 0.8;
 
     if (looksTwoBlock) {
-      const half = rawLines.length / 2;
-      const namesHalf = rawLines.slice(0, half);
-      const amountsHalf = rawLines.slice(half);
-      for (let i = 0; i < half; i++) {
-        const name = namesHalf[i].trim();
-        const amount = parseImportAmount(amountsHalf[i]);
-        if (!name || isNaN(amount)) continue;
-        const nameWords = normalizePaieNameWords(name);
-        const match = matchPayableEmployee(nameWords, payableEmployees);
-        if (!match) {
-          unmatchedLines.push(`${name} — ${amountsHalf[i].trim()}`);
-          continue;
+      if (namesBlock.length !== amountsBlock.length) {
+        unmatchedLines.push(
+          `⚠ ${namesBlock.length} nom(s) collé(s) mais ${amountsBlock.length} montant(s) — vérifiez la sélection copiée (rien n'a été appliqué).`
+        );
+      } else {
+        for (let i = 0; i < namesBlock.length; i++) {
+          const name = namesBlock[i];
+          const amount = parseImportAmount(amountsBlock[i]);
+          if (!name || isNaN(amount)) continue;
+          const nameWords = normalizePaieNameWords(name);
+          const match = matchPayableEmployee(nameWords, payableEmployees);
+          if (!match) {
+            unmatchedLines.push(`${name} — ${amountsBlock[i]}`);
+            continue;
+          }
+          updates[match.employee.id] = String(amount);
+          matchedNames.push(employeeName(match.employee));
+          if (match.fuzzy) fuzzyMatches.push({ pasted: name, employee: employeeName(match.employee) });
         }
-        updates[match.employee.id] = String(amount);
-        matchedNames.push(employeeName(match.employee));
-        if (match.fuzzy) fuzzyMatches.push({ pasted: name, employee: employeeName(match.employee) });
       }
     } else if (allSingleColumn) {
       lines.forEach((line, i) => {
