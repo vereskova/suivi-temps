@@ -8189,7 +8189,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, PaieLineInput>>({});
   const [showParams, setShowParams] = useState(false);
-  const [holidayCountSelection, setHolidayCountSelection] = useState("");
+  const [holidayCountSelection, setHolidayCountSelection] = useState("0");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -8203,7 +8203,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      setHolidayCountSelection("");
+      setHolidayCountSelection("0");
       const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
 
       const { start: monthStart, end: monthEnd } = monthRange(year, month);
@@ -8729,44 +8729,49 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         </div>
       </div>
 
-      <div className="card mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm">
-            <span className="font-bold">{workingDaysInMonth} jours ouvrés</span>
-            <span className="text-stone-400">
-              {" "}
-              ce mois-ci — « Jours repas » se base par défaut sur la période réellement présente
-              (embauche/départ en congé/sortie), 0 pour le bureau.
-            </span>
-          </p>
+      <div className="card mb-4 divide-y divide-stone-100">
+        <div className="pb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-stone-700">
+              <Bi fr="Jours repas" ru="Дни питания" />
+            </p>
+            <p className="text-sm text-stone-400 mt-0.5">
+              Par défaut : jours ouvrés réellement présents ce mois-ci (embauche → départ en
+              congé/sortie), 0 pour le bureau —{" "}
+              <span className="font-bold text-stone-600">{workingDaysInMonth} jours ouvrés</span> au
+              total ce mois-ci.
+            </p>
+          </div>
           <button
-            className="btn btn-secondary text-xs px-3 py-1.5"
+            className="btn btn-secondary text-xs px-3 py-1.5 shrink-0"
             onClick={applyWorkingDaysToAll}
             title="Recalculer « Jours repas » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни питания» по всем на основе дат приёма/отпуска/увольнения"
           >
-            <Bi fr="Recalculer pour tous" ru="Пересчитать для всех" />
+            <Bi fr="Recalculer « Jours repas »" ru="Пересчитать «Дни питания»" />
           </button>
         </div>
         {monthHolidays.length > 0 && (
-          <>
-            <div className="mt-2 flex flex-wrap gap-2">
+          <div className="pt-4">
+            <p className="text-sm font-bold text-stone-700 mb-1">
+              <Bi fr="Jours fériés travaillés" ru="Отработанные праздничные дни" />
+            </p>
+            <div className="flex flex-wrap gap-2 mb-3">
               {monthHolidays.map((h) => (
                 <span key={h.date} className="badge badge-primary">
                   {h.label} — {weekdayLabelFr(h.date)} {h.date.slice(8, 10)}
                 </span>
               ))}
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-stone-100 pt-3">
-              <p className="text-sm text-stone-500">
-                <Bi fr="Jours fériés travaillés ce mois-ci" ru="Отработано праздничных дней в этом месяце" />
-              </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-sm text-stone-400">
+                <Bi fr="Nombre pour tous" ru="Число для всех" />
+              </label>
               <select
                 className="input text-xs"
                 style={{ width: "auto" }}
                 value={holidayCountSelection}
                 onChange={(e) => setHolidayCountSelection(e.target.value)}
               >
-                <option value="">Choisir un nombre…</option>
                 {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
                   <option key={n} value={n}>
                     {n}
@@ -8775,13 +8780,13 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               </select>
               <button
                 className="btn btn-secondary text-xs px-3 py-1.5"
-                disabled={!holidayCountSelection}
                 onClick={applyHolidayCountToAll}
+                title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
               >
-                <Bi fr="Appliquer à tous" ru="Применить ко всем" />
+                <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
 
