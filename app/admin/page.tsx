@@ -153,6 +153,22 @@ const MONTHS_FR = [
   "décembre",
 ];
 
+/** Prepositional case ("в январе", "в феврале"…) for "Праздники в <месяце>". */
+const MONTHS_RU_PREPOSITIONAL = [
+  "январе",
+  "феврале",
+  "марте",
+  "апреле",
+  "мае",
+  "июне",
+  "июле",
+  "августе",
+  "сентябре",
+  "октябре",
+  "ноябре",
+  "декабре",
+];
+
 function today() {
   return new Date().toISOString().split("T")[0];
 }
@@ -8164,13 +8180,16 @@ const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", jo
  *  terminated partway through shouldn't default to a full month's repas.
  *  end_date is reused for "on_leave" too (départ en congé), not just
  *  "terminated" — both mean "stopped being present partway through". */
+// "Contrôle & Formation" staff are category "bureau" in the DB (that's how
+// groupPaieEmployees splits them from chantier teams) but they aren't
+// desk-only office workers, so the office-always-0 rule doesn't apply to
+// them — only to the bureau core (secrétariat, direction, etc.).
+function isOfficeCore(e: PaieEmployee): boolean {
+  return e.category === "bureau" && !PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "");
+}
+
 function defaultJoursRepasFor(e: PaieEmployee, monthStart: string, monthEnd: string): string {
-  // "Contrôle & Formation" staff are category "bureau" in the DB (that's how
-  // groupPaieEmployees splits them from chantier teams) but they aren't
-  // desk-only office workers, so the office-always-0 rule doesn't apply to
-  // them — only to the bureau core (secrétariat, direction, etc.).
-  const isOfficeOnly = e.category === "bureau" && !PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "");
-  if (isOfficeOnly) return "0";
+  if (isOfficeCore(e)) return "0";
   const rangeStart = e.hire_date && e.hire_date > monthStart ? e.hire_date : monthStart;
   const rangeEnd =
     (e.status === "terminated" || e.status === "on_leave") && e.end_date && e.end_date < monthEnd
@@ -8274,14 +8293,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             map[e.id] = { ...EMPTY_PAIE_LINE };
             return;
           }
+          const employee = e as unknown as PaieEmployee;
           map[e.id] = {
             netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
-            // No saved line yet for this employee this month — suggest a
-            // prorated day count instead of leaving it blank.
-            joursRepas: l
-              ? String(l.jours_repas ?? 0)
-              : defaultJoursRepasFor(e as unknown as PaieEmployee, monthStart, monthEnd),
+            // Office staff never get repas — enforced even over an old saved
+            // value, since it's a hard rule, not just a suggested default.
+            // Otherwise: no saved line yet this month → suggest a prorated
+            // day count instead of leaving it blank.
+            joursRepas: isOfficeCore(employee)
+              ? "0"
+              : l
+                ? String(l.jours_repas ?? 0)
+                : defaultJoursRepasFor(employee, monthStart, monthEnd),
           };
         });
         setInputs(map);
@@ -8551,21 +8575,17 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   }
 
   function exportExcel() {
-    const exportRows: Record<string, string | number>[] = groupedRows.map((row, i) => {
+    // FOP contractors (e.g. Kirichok Kateryna) aren't payroll lines at all —
+    // their pay is handled entirely outside this table, so they're left out
+    // of the export by default rather than shown as an empty placeholder row.
+    const payableRowsForExport = groupedRows.filter((row) => !isFopContractor(row.employee));
+    let totalAPayer = 0;
+    const exportRows: Record<string, string | number>[] = payableRowsForExport.map((row, i) => {
       const e = row.employee;
-      if (isFopContractor(e)) {
-        return {
-          "#": i + 1,
-          "Nom Prénom": employeeName(e),
-          "Jours fériés travaillés": "FOP — rémunération hors paie, calcul non applicable",
-          "Jours repas": "",
-          "HS+25% h": "",
-          "HS+50% h": "",
-          "Prime except. €": "",
-        };
-      }
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
       const c = computed[e.id];
+      const aPayer = Number(line.netSouhaite) || 0;
+      totalAPayer += aPayer;
       return {
         "#": i + 1,
         "Nom Prénom": employeeName(e),
@@ -8574,6 +8594,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         "HS+25% h": c?.hs25Heures ?? 0,
         "HS+50% h": c?.hs50Heures ?? 0,
         "Prime except. €": c?.primeExceptionnelle ?? 0,
+        "À payer €": Math.round(aPayer * 100) / 100,
       };
     });
     exportRows.push({
@@ -8584,8 +8605,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       "HS+25% h": totals.hs25Heures,
       "HS+50% h": totals.hs50Heures,
       "Prime except. €": Math.round(totals.primeExceptionnelle * 100) / 100,
+      "À payer €": Math.round(totalAPayer * 100) / 100,
     });
     const sheet = XLSX.utils.json_to_sheet(exportRows);
+    // Auto-fit column widths to their header/content, since XLSX's default
+    // width is narrower than most of this data and clips it in Excel.
+    const columnKeys = Object.keys(exportRows[0] ?? {});
+    sheet["!cols"] = columnKeys.map((key) => {
+      const longest = Math.max(
+        key.length,
+        ...exportRows.map((row) => String(row[key] ?? "").length)
+      );
+      return { wch: longest + 2 };
+    });
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, "Paie");
     const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
@@ -8791,7 +8823,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               </button>
             </div>
           </div>
-          <div className="flex flex-wrap gap-3 mt-3">
+          <p className="text-sm font-bold text-stone-500 mt-4 mb-2">
+            Праздники в {MONTHS_RU_PREPOSITIONAL[month - 1]}
+          </p>
+          <div className="flex flex-wrap gap-3">
             {monthHolidays.map((h) => {
               const img = FRENCH_HOLIDAY_IMAGE[h.label];
               return (
