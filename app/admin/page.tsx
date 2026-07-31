@@ -409,6 +409,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>("jour");
+  const [comptableView, setComptableView] = useState<"paie" | "employees">("paie");
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -519,6 +520,17 @@ export default function AdminPage() {
         setView("effectif");
       }
 
+      // Comptable also gets a read-only "Employés" tab alongside Paie — needs
+      // team names for the filter/labels, same as rh_admin/rh above.
+      if (roleRow?.role === "comptable") {
+        const { data: teamRows } = await supabase
+          .from("teams")
+          .select("id, name, chef_employee_id")
+          .eq("active", true)
+          .order("name");
+        setTeams(teamRows ?? []);
+      }
+
       setLoading(false);
     }
 
@@ -555,14 +567,47 @@ export default function AdminPage() {
     );
   }
 
-  // Comptable only ever needs Paie — same shell as the full admin view, just
-  // with a single-item sidebar instead of the full NAV_GROUPS.
+  // Comptable needs Paie plus a read-only view of the Employés roster —
+  // same shell as the full admin view, just with a two-item sidebar instead
+  // of the full NAV_GROUPS.
   if (role === "comptable") {
+    const comptableNavItems = (
+      <SidebarSection title="RH">
+        <SidebarLink
+          icon={Wallet}
+          active={comptableView === "paie"}
+          label="Paie"
+          labelRu="Зарплата"
+          onClick={() => {
+            setComptableView("paie");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Users}
+          active={comptableView === "employees"}
+          label="Employés"
+          labelRu="Сотрудники"
+          onClick={() => {
+            setComptableView("employees");
+            setMobileNavOpen(false);
+          }}
+        />
+      </SidebarSection>
+    );
     return (
       <main className="min-h-screen p-4 md:p-8">
         <div className="mx-auto max-w-[1400px]">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 lg:hidden"
+                title="Menu / Меню"
+              >
+                <Menu size={18} />
+              </button>
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
                 <LogoMark size={24} />
               </div>
@@ -583,16 +628,43 @@ export default function AdminPage() {
             </button>
           </div>
 
+          {mobileNavOpen && (
+            <div className="lg:hidden fixed inset-0 z-50 flex">
+              <div className="fixed inset-0 bg-black/40" onClick={() => setMobileNavOpen(false)} />
+              <nav className="card relative z-10 w-72 max-w-[85vw] h-full rounded-none p-4 space-y-4 overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-bold text-stone-900">
+                    <Bi fr="Menu" ru="Меню" />
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="p-1 text-stone-400 hover:text-stone-700"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                {comptableNavItems}
+              </nav>
+            </div>
+          )}
+
           <div className="flex gap-6 items-start">
             <aside className="hidden lg:block w-60 shrink-0">
-              <nav className="card p-3 space-y-4 sticky top-4">
-                <SidebarSection title="RH">
-                  <SidebarLink icon={Wallet} active label="Paie" labelRu="Зарплата" />
-                </SidebarSection>
-              </nav>
+              <nav className="card p-3 space-y-4 sticky top-4">{comptableNavItems}</nav>
             </aside>
             <div className="flex-1 min-w-0">
-              <PaieView supabase={supabase} />
+              {comptableView === "paie" ? (
+                <PaieView supabase={supabase} />
+              ) : (
+                <EmployeesView
+                  supabase={supabase}
+                  teams={teams}
+                  onChanged={() => {}}
+                  onToggleChef={() => {}}
+                  readOnly
+                />
+              )}
             </div>
           </div>
         </div>
@@ -2150,11 +2222,13 @@ function EmployeesView({
   teams,
   onChanged,
   onToggleChef,
+  readOnly = false,
 }: {
   supabase: ReturnType<typeof createClient>;
   teams: Team[];
   onChanged: () => void;
   onToggleChef: (teamId: string, employeeId: string) => void;
+  readOnly?: boolean;
 }) {
   const [employees, setEmployees] = useState<EmployeeFull[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2338,18 +2412,23 @@ function EmployeesView({
             <InfoNote
               title="Employés"
               text={
-                "Полный список сотрудников: бригада или должность в офисе, статус (активен / в отпуске / уволен), корона бригадира, личный значок.\n\n" +
-                "«Изменить» — быстрая правка прямо в строке (бригада, статус, даты). «Подробнее» — открывает полную карточку: паспортные данные, зарплата, RIB, вид на жительство и т.д.\n\n" +
-                "Корону бригадира можно поставить или снять здесь же, или в разделе «Organigramme» — это один и тот же параметр."
+                readOnly
+                  ? "Полный список сотрудников: бригада или должность в офисе, статус (активен / в отпуске / уволен), корона бригадира, личный значок.\n\n" +
+                    "Доступ в режиме просмотра: «Подробнее» открывает карточку сотрудника (без конфиденциальных данных: RIB, зарплата и т.д.), редактирование недоступно."
+                  : "Полный список сотрудников: бригада или должность в офисе, статус (активен / в отпуске / уволен), корона бригадира, личный значок.\n\n" +
+                    "«Изменить» — быстрая правка прямо в строке (бригада, статус, даты). «Подробнее» — открывает полную карточку: паспортные данные, зарплата, RIB, вид на жительство и т.д.\n\n" +
+                    "Корону бригадира можно поставить или снять здесь же, или в разделе «Organigramme» — это один и тот же параметр."
               }
             />
           </div>
-          <button
-            className="btn btn-primary text-sm px-3 py-2"
-            onClick={() => setShowAddForm((v) => !v)}
-          >
-            <Bi fr="+ Nouvel employé" ru="Новый сотрудник" />
-          </button>
+          {!readOnly && (
+            <button
+              className="btn btn-primary text-sm px-3 py-2"
+              onClick={() => setShowAddForm((v) => !v)}
+            >
+              <Bi fr="+ Nouvel employé" ru="Новый сотрудник" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -2528,7 +2607,7 @@ function EmployeesView({
                     </span>
                     {!isEditing && (
                       <div className="flex shrink-0">
-                        {e.team_id && (
+                        {!readOnly && e.team_id && (
                           <RowAction
                             icon={Crown}
                             title={isChef(e) ? "Retirer chef d'équipe" : "Désigner chef d'équipe"}
@@ -2537,7 +2616,9 @@ function EmployeesView({
                             onClick={() => onToggleChef(e.team_id!, e.id)}
                           />
                         )}
-                        <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e)} />
+                        {!readOnly && (
+                          <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e)} />
+                        )}
                         <RowAction
                           icon={expandedId === e.id ? X : Eye}
                           title={expandedId === e.id ? "Fermer" : "Détails"}
@@ -2755,7 +2836,7 @@ function EmployeesView({
                           {e.end_date ?? "—"}
                         </td>
                         <td className="py-2 whitespace-nowrap">
-                          {e.team_id && (
+                          {!readOnly && e.team_id && (
                             <RowAction
                               icon={Crown}
                               title={isChef(e) ? "Retirer chef d'équipe" : "Désigner chef d'équipe"}
@@ -2764,12 +2845,14 @@ function EmployeesView({
                               onClick={() => onToggleChef(e.team_id!, e.id)}
                             />
                           )}
-                          <RowAction
-                            icon={Pencil}
-                            title="Modifier"
-                            titleRu="Изменить"
-                            onClick={() => startEdit(e)}
-                          />
+                          {!readOnly && (
+                            <RowAction
+                              icon={Pencil}
+                              title="Modifier"
+                              titleRu="Изменить"
+                              onClick={() => startEdit(e)}
+                            />
+                          )}
                           <RowAction
                             icon={expandedId === e.id ? X : Eye}
                             title={expandedId === e.id ? "Fermer" : "Détails"}
@@ -2801,7 +2884,9 @@ function EmployeesView({
         {expandedId &&
           (() => {
             const found = filtered.find((e) => e.id === expandedId);
-            return found ? <EmployeeDetailPanel supabase={supabase} employee={found} /> : null;
+            return found ? (
+              <EmployeeDetailPanel supabase={supabase} employee={found} readOnly={readOnly} />
+            ) : null;
           })()}
       </Modal>
     </div>
@@ -2966,9 +3051,11 @@ function DetailSection({
 function EmployeeDetailPanel({
   supabase,
   employee,
+  readOnly = false,
 }: {
   supabase: ReturnType<typeof createClient>;
   employee: EmployeeFull;
+  readOnly?: boolean;
 }) {
   const employeeId = employee.id;
   const [loading, setLoading] = useState(true);
@@ -3059,6 +3146,7 @@ function EmployeeDetailPanel({
         </div>
       </div>
 
+      <fieldset disabled={readOnly} className="contents">
       <DetailSection title="Badge" titleRu="Значок">
         <DetailField
           label="Emoji / Icône"
@@ -3240,20 +3328,23 @@ function EmployeeDetailPanel({
         />
       </DetailSection>
 
-      <div className="pt-1 border-t border-stone-100 mt-1">
-        <button
-          className="btn btn-green text-sm px-4 py-2 mt-4"
-          disabled={saving}
-          onClick={save}
-        >
-          {saving ? "…" : <Bi fr="Enregistrer" ru="Сохранить" />}
-        </button>
-        {savedAt && (
-          <span className="ml-3 text-xs font-semibold text-success-600">
-            Enregistré à {savedAt}
-          </span>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="pt-1 border-t border-stone-100 mt-1">
+          <button
+            className="btn btn-green text-sm px-4 py-2 mt-4"
+            disabled={saving}
+            onClick={save}
+          >
+            {saving ? "…" : <Bi fr="Enregistrer" ru="Сохранить" />}
+          </button>
+          {savedAt && (
+            <span className="ml-3 text-xs font-semibold text-success-600">
+              Enregistré à {savedAt}
+            </span>
+          )}
+        </div>
+      )}
+      </fieldset>
     </div>
   );
 }
@@ -5550,6 +5641,9 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
 
+  const [editingCaseTitle, setEditingCaseTitle] = useState(false);
+  const [editingCaseDate, setEditingCaseDate] = useState(false);
+
   const [generating, setGenerating] = useState<"client" | "team" | null>(null);
   const [pushingSinao, setPushingSinao] = useState(false);
 
@@ -5597,6 +5691,13 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, selectedClientId]);
+
+  const [prevSelectedCaseId, setPrevSelectedCaseId] = useState(selectedCaseId);
+  if (selectedCaseId !== prevSelectedCaseId) {
+    setPrevSelectedCaseId(selectedCaseId);
+    setEditingCaseTitle(false);
+    setEditingCaseDate(false);
+  }
 
   useEffect(() => {
     async function load() {
@@ -5732,6 +5833,18 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, desired_start_date } : c)));
     const { error } = await supabase.from("commercial_cases").update({ desired_start_date }).eq("id", caseId);
     if (error) toast.error("Erreur lors de la mise à jour de la date.");
+  }
+
+  async function updateCaseTitle(caseId: string, value: string) {
+    const title = value.trim();
+    if (!title) {
+      setEditingCaseTitle(false);
+      return;
+    }
+    setCases((prev) => prev.map((c) => (c.id === caseId ? { ...c, title } : c)));
+    const { error } = await supabase.from("commercial_cases").update({ title }).eq("id", caseId);
+    if (error) toast.error("Erreur lors de la mise à jour du titre.");
+    setEditingCaseTitle(false);
   }
 
   async function updateItemDates(itemId: string, planned_start_date: string | null, planned_end_date: string | null) {
@@ -5993,17 +6106,63 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
           <>
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div>
-                <p className="font-bold text-lg">{selectedCase?.title}</p>
+                {editingCaseTitle ? (
+                  <input
+                    className="input font-bold text-lg py-1 px-2 w-auto"
+                    autoFocus
+                    defaultValue={selectedCase?.title ?? ""}
+                    onFocus={(e) => e.target.select()}
+                    onBlur={(e) => selectedCase && updateCaseTitle(selectedCase.id, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setEditingCaseTitle(false);
+                    }}
+                  />
+                ) : (
+                  <div className="flex items-center gap-1.5 group">
+                    <p className="font-bold text-lg">{selectedCase?.title}</p>
+                    <button
+                      className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
+                      title="Modifier le titre / Изменить название"
+                      onClick={() => setEditingCaseTitle(true)}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <label className="text-[10px] font-bold uppercase text-stone-400">
                     <Bi fr="Début souhaité" ru="Желаемое начало" />
                   </label>
-                  <input
-                    type="date"
-                    className="input text-xs py-0.5 px-1.5 w-auto"
-                    value={selectedCase?.desired_start_date ?? ""}
-                    onChange={(e) => selectedCase && updateCaseStartDate(selectedCase.id, e.target.value)}
-                  />
+                  {editingCaseDate ? (
+                    <input
+                      type="date"
+                      autoFocus
+                      className="input text-xs py-0.5 px-1.5 w-auto"
+                      defaultValue={selectedCase?.desired_start_date ?? ""}
+                      onBlur={(e) => {
+                        if (selectedCase) updateCaseStartDate(selectedCase.id, e.target.value);
+                        setEditingCaseDate(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setEditingCaseDate(false);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">
+                        {selectedCase?.desired_start_date ? formatDateShortDMY(selectedCase.desired_start_date) : "—"}
+                      </span>
+                      <button
+                        className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
+                        title="Modifier la date / Изменить дату"
+                        onClick={() => setEditingCaseDate(true)}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
@@ -6163,7 +6322,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                               <input
                                 type="number"
                                 step="0.01"
-                                className="input text-xs py-1 px-1.5 w-full text-right"
+                                className="input text-sm font-semibold py-1.5 px-2 w-full text-right"
                                 placeholder="—"
                                 defaultValue={item.price_ht ?? ""}
                                 key={`m-ht-${item.id}-${item.price_ht ?? ""}`}
@@ -6173,7 +6332,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                               <input
                                 type="number"
                                 step="0.01"
-                                className="input text-xs py-1 px-1.5 w-full text-right"
+                                className="input text-sm font-semibold py-1.5 px-2 w-full text-right"
                                 placeholder="—"
                                 defaultValue={ttc != null ? ttc.toFixed(2) : ""}
                                 key={`m-ttc-${item.id}-${ttc ?? ""}`}
@@ -6329,7 +6488,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     <input
                                       type="number"
                                       step="0.01"
-                                      className="input text-xs py-0.5 px-1.5 w-20 text-right"
+                                      className="input text-sm font-semibold py-1.5 px-2 w-28 text-right"
                                       placeholder="—"
                                       defaultValue={item.price_ht ?? ""}
                                       key={`ht-${item.id}-${item.price_ht ?? ""}`}
@@ -6341,7 +6500,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                   <input
                                     type="number"
                                     step="0.01"
-                                    className="input text-xs py-0.5 px-1.5 w-20 text-right"
+                                    className="input text-sm font-semibold py-1.5 px-2 w-28 text-right"
                                     placeholder="—"
                                     defaultValue={ttc != null ? ttc.toFixed(2) : ""}
                                     key={`ttc-${item.id}-${ttc ?? ""}`}
