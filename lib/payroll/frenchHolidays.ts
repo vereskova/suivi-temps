@@ -42,6 +42,64 @@ export function weekdayLabelFr(isoDate: string): string {
   return WEEKDAY_LABELS_FR[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 }
 
+/** A representative photo for each holiday in the Paie UI, served straight
+ *  from Wikimedia Commons via Special:FilePath (a stable redirect to the
+ *  current file, no need to know its internal upload path). Every file below
+ *  was checked on Commons and carries a free license (CC-BY or public
+ *  domain) — see each File: page for the photographer/attribution. */
+function commonsFilePath(filename: string, width = 400): string {
+  return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
+}
+
+export const FRENCH_HOLIDAY_IMAGE: Record<string, { url: string; credit: string }> = {
+  "Jour de l'An": {
+    url: commonsFilePath("Anjuna Beach, Goa, India, New Year's Eve, Fireworks in the sky, Night party.jpg"),
+    credit: "Photo: Wikimedia Commons",
+  },
+  "Lundi de Pâques": {
+    url: commonsFilePath("Decorated Easter eggs in basket, March 2008.jpg"),
+    credit: "Photo: Wikimedia Commons",
+  },
+  "Fête du Travail": {
+    url: commonsFilePath("Convallaria majalis-Muguet-Lily of the valley.jpg"),
+    credit: "Photo: Wikimedia Commons",
+  },
+  "Victoire 1945": {
+    url: commonsFilePath("Crowds of French patriots line the Champs Elysees-edit2.jpg"),
+    credit: "Photo: US Army Signal Corps, via Wikimedia Commons (public domain)",
+  },
+  Ascension: {
+    url: commonsFilePath(
+      "Colorful clouds and blue sky with water reflection of an island hosting trees at sunrise in Si Phan Don, Laos.jpg"
+    ),
+    credit: "Photo: Wikimedia Commons",
+  },
+  "Lundi de Pentecôte": {
+    url: commonsFilePath("Fire Radiance (Explored) - Flickr - Carol (vanhookc).jpg"),
+    credit: "Photo: Carol (vanhookc), via Wikimedia Commons (CC-BY 2.0)",
+  },
+  "Fête nationale": {
+    url: commonsFilePath("Eiffel Tower fireworks on Bastille Day 2017 (36303814541).jpg"),
+    credit: "Photo: Kenneth Lu, via Wikimedia Commons (CC-BY 2.0)",
+  },
+  Assomption: {
+    url: commonsFilePath("Notre Dame Paris front facade lower.jpg"),
+    credit: "Photo: Wikimedia Commons",
+  },
+  Toussaint: {
+    url: commonsFilePath("Yellow Chrysanthemum In Autumn - Flickr - aleksei86photo.jpg"),
+    credit: "Photo: aleksei86photo, via Wikimedia Commons (CC-BY 2.0)",
+  },
+  Armistice: {
+    url: commonsFilePath("Red Poppy Field.jpg"),
+    credit: "Photo: Wikimedia Commons",
+  },
+  Noël: {
+    url: commonsFilePath("Tree decorated with Christmas lights in Peddler's Village, Lahaska, Pennsylvania (2251714238).jpg"),
+    credit: "Photo: Wikimedia Commons",
+  },
+};
+
 export function frenchHolidaysForYear(year: number): Holiday[] {
   const easter = easterMonthDay(year);
   const easterMonday = addDays(year, easter.month, easter.day, 1);

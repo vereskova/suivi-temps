@@ -80,6 +80,7 @@ import { computePayrollLine, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib
 import {
   countWeekdaysBetween,
   countWorkingDaysInMonth,
+  FRENCH_HOLIDAY_IMAGE,
   frenchHolidaysInMonth,
   weekdayLabelFr,
 } from "@/lib/payroll/frenchHolidays";
@@ -8729,15 +8730,17 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         </div>
       </div>
 
-      <div className="card mb-4 divide-y divide-stone-100">
-        <div className="pb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="card mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-bold text-stone-700">
-              <Bi fr="Jours repas" ru="Дни питания" />
+            <p className="text-xl font-extrabold text-stone-800">Дни питания</p>
+            <p className="text-sm text-stone-400">Jours repas</p>
+            <p className="text-sm text-stone-600 mt-2 max-w-2xl">
+              Считается только для тех, кто работает на объектах (стройка) — для офиса всегда 0.
+              По умолчанию берётся количество дней, когда сотрудник реально числился работающим в
+              этом месяце (с учётом даты приёма на работу, ухода в отпуск или увольнения).
             </p>
-            <p className="text-sm text-stone-400 mt-0.5">
-              Par défaut : jours ouvrés réellement présents ce mois-ci (embauche → départ en
-              congé/sortie), 0 pour le bureau —{" "}
+            <p className="text-xs text-stone-400 mt-1">
               <span className="font-bold text-stone-600">{workingDaysInMonth} jours ouvrés</span> au
               total ce mois-ci.
             </p>
@@ -8750,45 +8753,68 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             <Bi fr="Recalculer « Jours repas »" ru="Пересчитать «Дни питания»" />
           </button>
         </div>
-        {monthHolidays.length > 0 && (
-          <div className="pt-4">
-            <p className="text-sm font-bold text-stone-700 mb-1">
-              <Bi fr="Jours fériés travaillés" ru="Отработанные праздничные дни" />
-            </p>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {monthHolidays.map((h) => (
-                <span key={h.date} className="badge badge-primary">
-                  {h.label} — {weekdayLabelFr(h.date)} {h.date.slice(8, 10)}
-                </span>
-              ))}
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-sm text-stone-400">
-                <Bi fr="Nombre pour tous" ru="Число для всех" />
-              </label>
-              <select
-                className="input text-xs"
-                style={{ width: "auto" }}
-                value={holidayCountSelection}
-                onChange={(e) => setHolidayCountSelection(e.target.value)}
-              >
-                {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="btn btn-secondary text-xs px-3 py-1.5"
-                onClick={applyHolidayCountToAll}
-                title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
-              >
-                <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
-              </button>
+      </div>
+
+      {monthHolidays.length > 0 && (
+        <div className="card mb-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xl font-extrabold text-stone-800">Отработанные праздничные дни</p>
+              <p className="text-sm text-stone-400">Jours fériés travaillés</p>
+              <p className="text-sm text-stone-600 mt-2 max-w-2xl">
+                Сколько праздничных дней в этом месяце сотрудник реально отработал (например, вышел
+                на объект 14 июля). По умолчанию 0 — проставьте вручную тем, кто действительно
+                работал в эти дни.
+              </p>
             </div>
           </div>
-        )}
-      </div>
+          <div className="flex flex-wrap gap-3 mt-3">
+            {monthHolidays.map((h) => {
+              const img = FRENCH_HOLIDAY_IMAGE[h.label];
+              return (
+                <div
+                  key={h.date}
+                  className="relative w-40 h-24 rounded-xl overflow-hidden shrink-0 bg-stone-200 bg-cover bg-center"
+                  style={img ? { backgroundImage: `url(${img.url})` } : undefined}
+                  title={img?.credit}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-2">
+                    <p className="text-white text-xs font-bold leading-tight drop-shadow">{h.label}</p>
+                    <p className="text-white/85 text-[10px] drop-shadow">
+                      {weekdayLabelFr(h.date)} {h.date.slice(8, 10)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <label className="text-sm text-stone-400">
+              <Bi fr="Nombre pour tous" ru="Число для всех" />
+            </label>
+            <select
+              className="input text-xs"
+              style={{ width: "auto" }}
+              value={holidayCountSelection}
+              onChange={(e) => setHolidayCountSelection(e.target.value)}
+            >
+              {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-secondary text-xs px-3 py-1.5"
+              onClick={applyHolidayCountToAll}
+              title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
+            >
+              <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {showParams && (
         <div className="card mb-4">
