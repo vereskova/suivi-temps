@@ -8746,10 +8746,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             </p>
           </div>
           <button
-            className="btn btn-secondary text-xs px-3 py-1.5 shrink-0"
+            className="btn btn-dark text-sm px-4 py-2 shrink-0 gap-2"
             onClick={applyWorkingDaysToAll}
             title="Recalculer « Jours repas » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни питания» по всем на основе дат приёма/отпуска/увольнения"
           >
+            <RefreshCw size={15} />
             <Bi fr="Recalculer « Jours repas »" ru="Пересчитать «Дни питания»" />
           </button>
         </div>
@@ -8767,6 +8768,28 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 работал в эти дни.
               </p>
             </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <select
+                className="input text-xs"
+                style={{ width: "auto" }}
+                value={holidayCountSelection}
+                onChange={(e) => setHolidayCountSelection(e.target.value)}
+              >
+                {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="btn btn-dark text-sm px-4 py-2 gap-2"
+                onClick={applyHolidayCountToAll}
+                title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
+              >
+                <RefreshCw size={15} />
+                <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap gap-3 mt-3">
             {monthHolidays.map((h) => {
@@ -8775,7 +8798,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 <div
                   key={h.date}
                   className="relative w-40 h-24 rounded-xl overflow-hidden shrink-0 bg-stone-200 bg-cover bg-center"
-                  style={img ? { backgroundImage: `url(${img.url})` } : undefined}
+                  style={img ? { backgroundImage: `url("${img.url}")` } : undefined}
                   title={img?.credit}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
@@ -8788,30 +8811,6 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 </div>
               );
             })}
-          </div>
-          <div className="flex flex-wrap items-center gap-3 mt-3">
-            <label className="text-sm text-stone-400">
-              <Bi fr="Nombre pour tous" ru="Число для всех" />
-            </label>
-            <select
-              className="input text-xs"
-              style={{ width: "auto" }}
-              value={holidayCountSelection}
-              onChange={(e) => setHolidayCountSelection(e.target.value)}
-            >
-              {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <button
-              className="btn btn-secondary text-xs px-3 py-1.5"
-              onClick={applyHolidayCountToAll}
-              title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
-            >
-              <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
-            </button>
           </div>
         </div>
       )}
