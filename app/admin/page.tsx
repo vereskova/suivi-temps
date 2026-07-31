@@ -5512,6 +5512,11 @@ const COMMERCIAL_STATUS_LABEL_CLASS: Record<CommercialItemStatus, string> = {
   pending: "text-warning-800 font-semibold",
 };
 
+/** Above this, flag the price as worth double-checking rather than block it
+ *  outright — a big devis line legitimately can cost this much, but it's
+ *  also the size a missing decimal point (1202,20 → 120220) produces. */
+const COMMERCIAL_PRICE_WARN_THRESHOLD = 100000;
+
 const COMMERCIAL_CASE_SELECT =
   "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at";
 
@@ -5730,6 +5735,12 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   }
 
   async function updateItemDates(itemId: string, planned_start_date: string | null, planned_end_date: string | null) {
+    if (planned_start_date && planned_end_date && planned_end_date < planned_start_date) {
+      toast.error(
+        "La date de fin ne peut pas être avant la date de début. / Дата окончания не может быть раньше даты начала."
+      );
+      return;
+    }
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, planned_start_date, planned_end_date } : i)));
     const { error } = await supabase
       .from("commercial_case_items")
@@ -6072,11 +6083,20 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                         const flagMissing = item.status === "active";
                         const missingStart = flagMissing && !item.planned_start_date;
                         const missingPrice = flagMissing && item.price_ht == null;
+                        const invalidRange =
+                          !!item.planned_start_date &&
+                          !!item.planned_end_date &&
+                          item.planned_end_date < item.planned_start_date;
+                        const priceTooHigh = item.price_ht != null && item.price_ht > COMMERCIAL_PRICE_WARN_THRESHOLD;
                         return (
                           <div
                             key={item.id}
-                            className={`rounded-xl border border-stone-100 p-3 ${
-                              missingStart || missingPrice ? "bg-warning-50" : ""
+                            className={`rounded-xl border p-3 ${
+                              invalidRange
+                                ? "border-error-300 bg-error-50"
+                                : missingStart || missingPrice
+                                  ? "border-stone-100 bg-warning-50"
+                                  : "border-stone-100"
                             }`}
                           >
                             <div className="flex items-start gap-2">
@@ -6116,20 +6136,30 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                             <div className="flex items-center gap-1.5 mt-2 ml-7">
                               <input
                                 type="date"
-                                className="input text-xs py-1 px-1.5 flex-1 min-w-0"
+                                className={`input text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
                                 value={item.planned_start_date ?? ""}
                                 onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
                               />
                               <span className="text-stone-300">–</span>
                               <input
                                 type="date"
-                                className="input text-xs py-1 px-1.5 flex-1 min-w-0"
+                                className={`input text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
                                 value={item.planned_end_date ?? ""}
                                 onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
                               />
                             </div>
+                            {invalidRange && (
+                              <p className="text-xs text-error-600 mt-1 ml-7">
+                                ⚠ Дата окончания раньше даты начала
+                              </p>
+                            )}
                             <div className="flex items-center gap-2 mt-2 ml-7">
                               <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">HT</label>
+                              {priceTooHigh && (
+                                <span title="Проверьте: сумма больше 100 000 € — не опечатка?">
+                                  <AlertTriangle size={13} className="text-warning-600 shrink-0" />
+                                </span>
+                              )}
                               <input
                                 type="number"
                                 step="0.01"
@@ -6232,6 +6262,11 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                           const flagMissing = item.status === "active";
                           const missingStart = flagMissing && !item.planned_start_date;
                           const missingPrice = flagMissing && item.price_ht == null;
+                          const invalidRange =
+                            !!item.planned_start_date &&
+                            !!item.planned_end_date &&
+                            item.planned_end_date < item.planned_start_date;
+                          const priceTooHigh = item.price_ht != null && item.price_ht > COMMERCIAL_PRICE_WARN_THRESHOLD;
                           return (
                             <Fragment key={item.id}>
                               <tr className="border-t border-stone-100">
@@ -6261,33 +6296,46 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     </span>
                                   )}
                                 </td>
-                                <td className={`py-1.5 pr-3 rounded-lg ${missingStart ? "bg-warning-50" : ""}`}>
+                                <td
+                                  className={`py-1.5 pr-3 rounded-lg ${
+                                    invalidRange ? "bg-error-50" : missingStart ? "bg-warning-50" : ""
+                                  }`}
+                                >
                                   <div className="flex items-center gap-1 whitespace-nowrap">
                                     <input
                                       type="date"
-                                      className="input text-xs py-0.5 px-1 w-[6.4rem]"
+                                      className={`input text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
                                       value={item.planned_start_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
+                                      title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
                                     />
                                     <span className="text-stone-300">–</span>
                                     <input
                                       type="date"
-                                      className="input text-xs py-0.5 px-1 w-[6.4rem]"
+                                      className={`input text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
                                       value={item.planned_end_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
+                                      title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
                                     />
                                   </div>
                                 </td>
                                 <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
-                                  <input
-                                    type="number"
-                                    step="0.01"
-                                    className="input text-xs py-0.5 px-1.5 w-20 text-right"
-                                    placeholder="—"
-                                    defaultValue={item.price_ht ?? ""}
-                                    key={`ht-${item.id}-${item.price_ht ?? ""}`}
-                                    onBlur={(e) => updateItemPriceHt(item, e.target.value)}
-                                  />
+                                  <div className="flex items-center gap-1 justify-end">
+                                    {priceTooHigh && (
+                                      <span title="Проверьте: сумма больше 100 000 € — не опечатка?">
+                                        <AlertTriangle size={13} className="text-warning-600 shrink-0" />
+                                      </span>
+                                    )}
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      className="input text-xs py-0.5 px-1.5 w-20 text-right"
+                                      placeholder="—"
+                                      defaultValue={item.price_ht ?? ""}
+                                      key={`ht-${item.id}-${item.price_ht ?? ""}`}
+                                      onBlur={(e) => updateItemPriceHt(item, e.target.value)}
+                                    />
+                                  </div>
                                 </td>
                                 <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
                                   <input
