@@ -397,8 +397,11 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
       { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
-      { key: "commercial", label: "Commercial", labelRu: "Коммерция", icon: Briefcase },
     ],
+  },
+  {
+    title: "Commercial",
+    items: [{ key: "commercial", label: "Commercial", labelRu: "Коммерция", icon: Briefcase }],
   },
 ];
 
@@ -721,10 +724,12 @@ export default function AdminPage() {
   // Calculateur de rupture, or Commercial (admin-only for now).
   const visibleNavGroups =
     role === "rh"
-      ? NAV_GROUPS.filter((g) => g.title !== "Pointage").map((g) => ({
-          ...g,
-          items: g.items.filter((item) => item.key !== "paie" && item.key !== "rupture" && item.key !== "commercial"),
-        }))
+      ? NAV_GROUPS.filter((g) => g.title !== "Pointage")
+          .map((g) => ({
+            ...g,
+            items: g.items.filter((item) => item.key !== "paie" && item.key !== "rupture" && item.key !== "commercial"),
+          }))
+          .filter((g) => g.items.length > 0)
       : NAV_GROUPS;
 
   return (
