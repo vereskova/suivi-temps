@@ -82,3 +82,20 @@ export function countWorkingDaysInMonth(year: number, month: number): number {
   }
   return count;
 }
+
+/** Weekdays (Mon–Fri) between two ISO dates, inclusive on both ends. Used to
+ *  prorate "jours repas" for someone who only worked part of the month (hired
+ *  mid-month, went on leave, or was terminated) instead of assuming a full
+ *  month. Returns 0 if the range is empty or inverted. */
+export function countWeekdaysBetween(startIso: string, endIso: string): number {
+  if (startIso > endIso) return 0;
+  const start = new Date(startIso + "T00:00:00Z");
+  const end = new Date(endIso + "T00:00:00Z");
+  let count = 0;
+  for (let d = start; d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    count++;
+  }
+  return count;
+}

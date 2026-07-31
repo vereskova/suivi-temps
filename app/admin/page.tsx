@@ -77,7 +77,12 @@ import {
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
 import { computePayrollLine, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
-import { countWorkingDaysInMonth, frenchHolidaysInMonth, weekdayLabelFr } from "@/lib/payroll/frenchHolidays";
+import {
+  countWeekdaysBetween,
+  countWorkingDaysInMonth,
+  frenchHolidaysInMonth,
+  weekdayLabelFr,
+} from "@/lib/payroll/frenchHolidays";
 import { isForeignNationality } from "@/lib/nationality";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
@@ -2263,7 +2268,10 @@ function EmployeesView({
       .update({
         team_id: editForm.teamId || null,
         status: editForm.status,
-        end_date: editForm.status === "terminated" ? editForm.endDate || null : null,
+        end_date:
+          editForm.status === "terminated" || editForm.status === "on_leave"
+            ? editForm.endDate || null
+            : null,
       })
       .eq("id", e.id);
     setSaving(false);
@@ -2555,9 +2563,13 @@ function EmployeesView({
                           ))}
                         </select>
                       </label>
-                      {editForm.status === "terminated" && (
+                      {(editForm.status === "terminated" || editForm.status === "on_leave") && (
                         <label className="block text-xs font-bold text-stone-400">
-                          <Bi fr="Date de fin" ru="Дата увольнения" />
+                          {editForm.status === "terminated" ? (
+                            <Bi fr="Date de fin" ru="Дата увольнения" />
+                          ) : (
+                            <Bi fr="Date de départ en congé" ru="Дата начала отпуска" />
+                          )}
                           <input
                             type="date"
                             className="input text-sm mt-1"
@@ -2614,7 +2626,7 @@ function EmployeesView({
                   )}
                 </th>
                 <th className="pb-2 pr-4"><Bi fr="Statut" ru="Статус" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Date de fin" ru="Дата увольнения" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Date de fin / congé" ru="Дата увольн./отпуска" /></th>
                 <th className="pb-2" />
               </tr>
             </thead>
@@ -2679,7 +2691,7 @@ function EmployeesView({
                           </select>
                         </td>
                         <td className="py-2 pr-4">
-                          {editForm.status === "terminated" && (
+                          {(editForm.status === "terminated" || editForm.status === "on_leave") && (
                             <input
                               type="date"
                               className="input text-sm px-2 py-1"
@@ -7932,6 +7944,9 @@ type PaieEmployee = {
   team_id: string | null;
   teams: { name: string; chef_employee_id: string | null } | null;
   contract_type: string | null;
+  status: "active" | "on_leave" | "terminated";
+  hire_date: string | null;
+  end_date: string | null;
 };
 
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
@@ -8142,6 +8157,22 @@ type PaieLineInput = {
 
 const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursRepas: "" };
 
+/** Bureau staff never get meal-day reimbursement — always 0. For chantier
+ *  employees, default to the weekdays they were actually present this month,
+ *  prorated from hire_date/end_date — hired mid-month, on leave, or
+ *  terminated partway through shouldn't default to a full month's repas.
+ *  end_date is reused for "on_leave" too (départ en congé), not just
+ *  "terminated" — both mean "stopped being present partway through". */
+function defaultJoursRepasFor(e: PaieEmployee, monthStart: string, monthEnd: string): string {
+  if (e.category === "bureau") return "0";
+  const rangeStart = e.hire_date && e.hire_date > monthStart ? e.hire_date : monthStart;
+  const rangeEnd =
+    (e.status === "terminated" || e.status === "on_leave") && e.end_date && e.end_date < monthEnd
+      ? e.end_date
+      : monthEnd;
+  return String(countWeekdaysBetween(rangeStart, rangeEnd));
+}
+
 function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -8170,21 +8201,30 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       setHolidayCountSelection("");
       const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
 
+      const { start: monthStart, end: monthEnd } = monthRange(year, month);
       const [{ data: emp }, { data: paramRow }] = await Promise.all([
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date"
           )
-          // A employee terminated mid-month (end_date within this month or
-          // later) still worked part of it and needs a partial-month line —
-          // excluding them outright as soon as status flips to "terminated"
-          // would drop their last paycheck entirely.
-          .or(`status.eq.active,and(status.eq.terminated,end_date.gte.${monthIso})`)
+          // Someone terminated mid-month, or on leave since mid-month, still
+          // worked part of it and needs a partial-month line — excluding them
+          // outright as soon as status flips would drop their last paycheck
+          // entirely. end_date doubles as "départ en congé" for on_leave
+          // (RH sets it same as for terminated) — a null end_date on_leave
+          // just means it hasn't been entered yet, so still include them.
+          .or(
+            `status.eq.active,` +
+              `and(status.eq.on_leave,end_date.gte.${monthIso}),` +
+              `and(status.eq.on_leave,end_date.is.null),` +
+              `and(status.eq.terminated,end_date.gte.${monthIso})`
+          )
           .order("last_name"),
         supabase.from("payroll_parameters").select("*").limit(1).maybeSingle(),
       ]);
       setEmployees((emp as unknown as PaieEmployee[]) ?? []);
+
       if (paramRow) {
         setParams({
           tauxHoraireBase: Number(paramRow.taux_horaire_base),
@@ -8215,12 +8255,6 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       }
       setRunId(run?.id ?? null);
 
-      // "Max jours repas" is the usual reimbursement reference (22, per the
-      // source spreadsheet), not a hard ceiling — some months genuinely have
-      // more working days than that, so the default shouldn't clip below the
-      // real calendar count.
-      const defaultJoursRepas = String(countWorkingDaysInMonth(year, month));
-
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
@@ -8237,18 +8271,23 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           map[e.id] = {
             netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
-            // No saved line yet for this employee this month — suggest the
-            // computed working-day count instead of leaving it blank.
-            joursRepas: l ? String(l.jours_repas ?? 0) : defaultJoursRepas,
+            // No saved line yet for this employee this month — suggest a
+            // prorated day count instead of leaving it blank.
+            joursRepas: l
+              ? String(l.jours_repas ?? 0)
+              : defaultJoursRepasFor(e as unknown as PaieEmployee, monthStart, monthEnd),
           };
         });
         setInputs(map);
       } else {
         const map: Record<string, PaieLineInput> = {};
         (emp ?? []).forEach((e) => {
+          const employee = e as unknown as PaieEmployee;
           map[e.id] = {
             ...EMPTY_PAIE_LINE,
-            joursRepas: isFopContractor(e as unknown as PaieEmployee) ? "" : defaultJoursRepas,
+            joursRepas: isFopContractor(employee)
+              ? ""
+              : defaultJoursRepasFor(employee, monthStart, monthEnd),
           };
         });
         setInputs(map);
@@ -8261,15 +8300,21 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
   const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
+  const { start: currentMonthStart, end: currentMonthEnd } = useMemo(
+    () => monthRange(year, month),
+    [year, month]
+  );
   const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
 
   function applyWorkingDaysToAll() {
-    const defaultJoursRepas = String(workingDaysInMonth);
     setInputs((prev) => {
       const next = { ...prev };
       employees.forEach((e) => {
         if (isFopContractor(e)) return;
-        next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), joursRepas: defaultJoursRepas };
+        next[e.id] = {
+          ...(next[e.id] ?? EMPTY_PAIE_LINE),
+          joursRepas: defaultJoursRepasFor(e, currentMonthStart, currentMonthEnd),
+        };
       });
       return next;
     });
@@ -8683,10 +8728,18 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm">
             <span className="font-bold">{workingDaysInMonth} jours ouvrés</span>
-            <span className="text-stone-400"> ce mois-ci — utilisé comme valeur par défaut pour « Jours repas ».</span>
+            <span className="text-stone-400">
+              {" "}
+              ce mois-ci — « Jours repas » se base par défaut sur la période réellement présente
+              (embauche/départ en congé/sortie), 0 pour le bureau.
+            </span>
           </p>
-          <button className="btn btn-secondary text-xs px-3 py-1.5" onClick={applyWorkingDaysToAll}>
-            <Bi fr="Appliquer à tous" ru="Применить ко всем" />
+          <button
+            className="btn btn-secondary text-xs px-3 py-1.5"
+            onClick={applyWorkingDaysToAll}
+            title="Recalculer « Jours repas » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни питания» по всем на основе дат приёма/отпуска/увольнения"
+          >
+            <Bi fr="Recalculer pour tous" ru="Пересчитать для всех" />
           </button>
         </div>
         {monthHolidays.length > 0 && (
