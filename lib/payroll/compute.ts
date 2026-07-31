@@ -2,8 +2,11 @@
  * Ports the net→brut reverse payroll calculation from VLADIS_с_итогом.xlsx
  * ("Расчёт ЗП" sheet). Given a desired net-in-hand amount, it works out how
  * many overtime hours (at +25% then +50%) and how much exceptional bonus are
- * needed to reach it — in that order — after accounting for jours fériés
- * majoration and meal vouchers (repas), which are netted out first.
+ * needed to reach it — in that order — after accounting for meal vouchers
+ * (repas), which are netted out first.
+ *
+ * Jours fériés worked are tracked in the Paie view (count only) but don't
+ * feed this calculation — the accountant handles their pay separately.
  *
  * This produces the INPUT table handed to the accountant; it does not
  * generate an actual bulletin de paie.
@@ -20,14 +23,10 @@ export type PayrollParams = {
   maxJoursRepas: number;
   maxHs25Heures: number;
   maxHs50Heures: number;
-  /** % of one day's base pay suggested as a bonus for working a public holiday
-   *  (RH enters the final amount by hand — this only drives the suggestion). */
-  majorationJourFerie: number;
 };
 
 export type PayrollInput = {
   netSouhaite: number;
-  majJoursFeries: number;
   joursRepas: number;
 };
 
@@ -39,7 +38,6 @@ export type PayrollResult = {
 
 export function computePayrollLine(input: PayrollInput, params: PayrollParams): PayrollResult {
   const netSouhaite = input.netSouhaite || 0;
-  const majJoursFeries = input.majJoursFeries || 0;
   const joursRepas = input.joursRepas || 0;
 
   const {
@@ -55,12 +53,11 @@ export function computePayrollLine(input: PayrollInput, params: PayrollParams): 
   } = params;
 
   const netUnit = 1 - retenues;
-  const netAvantMajorations = netSouhaite - majJoursFeries * netUnit;
   const normalBrut = normalHours * rate;
   const normalNet = normalBrut * netUnit;
   const repasNet = joursRepas * tarifRepas;
 
-  const remainderAfterRepas = netAvantMajorations - normalNet - repasNet - exoneration;
+  const remainderAfterRepas = netSouhaite - normalNet - repasNet - exoneration;
   const hs25Heures = Math.min(
     maxHs25,
     Math.max(0, Math.ceil(Math.max(0, remainderAfterRepas) / netUnit / (rate * (1 + maj25))))
@@ -74,7 +71,7 @@ export function computePayrollLine(input: PayrollInput, params: PayrollParams): 
   );
 
   const hs50Brut = hs50Heures * rate * (1 + maj50);
-  const brutTotalNeeded = (netAvantMajorations - exoneration - repasNet) / netUnit;
+  const brutTotalNeeded = (netSouhaite - exoneration - repasNet) / netUnit;
   const primeExceptionnelle = Math.max(
     0,
     Math.round((brutTotalNeeded - normalBrut - hs25Brut - hs50Brut) * 100) / 100
@@ -94,5 +91,4 @@ export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
   maxJoursRepas: 22,
   maxHs25Heures: 32,
   maxHs50Heures: 8,
-  majorationJourFerie: 1.0,
 };

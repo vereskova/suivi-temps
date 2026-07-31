@@ -5835,13 +5835,13 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
           <ChevronRight size={16} className="shrink-0 text-stone-400" />
         </button>
       ) : (
-        <>
-          <div className="card w-full lg:w-64 shrink-0">
-            <p className="font-bold mb-3">
+        <div className="card w-full lg:w-64 shrink-0 flex flex-col gap-4">
+          <div>
+            <p className="font-bold mb-2">
               <Bi fr="Clients" ru="Клиенты" />
             </p>
             <input
-              className="input mb-3"
+              className="input mb-2"
               placeholder="Rechercher…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -5849,7 +5849,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             {loadingClients ? (
               <SkeletonRows rows={4} cols={1} />
             ) : (
-              <div className="max-h-[32rem] overflow-y-auto -mx-1">
+              <div className="max-h-40 overflow-y-auto -mx-1">
                 {filteredClients.map((c) => (
                   <button
                     key={c.id}
@@ -5857,7 +5857,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                       setSelectedClientId(c.id);
                       setSelectedCaseId(null);
                     }}
-                    className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
+                    className={`w-full text-left rounded-lg px-2.5 py-1.5 text-sm mb-1 ${
                       selectedClientId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
                     }`}
                   >
@@ -5868,15 +5868,15 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             )}
           </div>
 
-          <div className="card w-full lg:w-72 shrink-0">
+          <div className="border-t border-stone-100 pt-3">
             {!selectedClientId ? (
               <p className="text-stone-400 text-sm">
                 Sélectionnez un client. <span className="opacity-70">/ Выберите клиента.</span>
               </p>
             ) : (
               <>
-                <div className="flex items-center justify-between gap-2 mb-3">
-                  <p className="font-bold truncate">{selectedClient?.name}</p>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="font-bold truncate text-sm">{selectedClient?.name}</p>
                   <div className="flex items-center gap-1 shrink-0">
                     <button className="btn btn-secondary text-xs px-2 py-1 shrink-0" onClick={() => setNewCaseOpen(true)}>
                       <Plus size={14} />
@@ -5886,7 +5886,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                       <button
                         type="button"
                         onClick={() => setPickerCollapsed(true)}
-                        className="text-stone-400 hover:text-stone-700 p-1"
+                        className="hidden lg:block text-stone-400 hover:text-stone-700 p-1"
                         title="Réduire / Свернуть"
                       >
                         <ChevronLeft size={16} />
@@ -5901,11 +5901,11 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                     Aucun dossier. <span className="opacity-70">/ Нет дел.</span>
                   </p>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="max-h-52 overflow-y-auto -mx-1 space-y-1">
                     {cases.map((c) => (
                       <div
                         key={c.id}
-                        className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm ${
+                        className={`group flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm ${
                           selectedCaseId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
                         }`}
                       >
@@ -5939,7 +5939,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               </>
             )}
           </div>
-        </>
+        </div>
       )}
 
       <div className="flex-1 min-w-0 card">
@@ -8153,7 +8153,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, PaieLineInput>>({});
   const [showParams, setShowParams] = useState(false);
-  const [holidayBonusSelection, setHolidayBonusSelection] = useState("");
+  const [holidayCountSelection, setHolidayCountSelection] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -8167,7 +8167,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   useEffect(() => {
     async function load() {
       setLoading(true);
-      setHolidayBonusSelection("");
+      setHolidayCountSelection("");
       const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
 
       const [{ data: emp }, { data: paramRow }] = await Promise.all([
@@ -8197,10 +8197,6 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           maxJoursRepas: Number(paramRow.max_jours_repas),
           maxHs25Heures: Number(paramRow.max_hs25_heures),
           maxHs50Heures: Number(paramRow.max_hs50_heures),
-          majorationJourFerie:
-            paramRow.majoration_jour_ferie != null
-              ? Number(paramRow.majoration_jour_ferie)
-              : DEFAULT_PAYROLL_PARAMS.majorationJourFerie,
         });
       }
 
@@ -8266,19 +8262,6 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
   const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
-  // Suggested bonus for working a public holiday: majorationJourFerie% of one
-  // standard day's base pay (35h/5j week, per the reference workbook's params;
-  // its own column note read "jours fériés réellement travaillés × taux ×
-  // 100%"). Not a verified formula — the source spreadsheet always had this as
-  // a blank, hand-typed field — just a starting point RH can override per
-  // employee.
-  const holidayDailyBaseRate = useMemo(() => {
-    const weeklyHours = (params.heuresNormalesMois * 12) / 52;
-    const dailyHours = weeklyHours / 5;
-    return dailyHours * params.tauxHoraireBase;
-  }, [params]);
-  const holidayMajorationPercent = params.majorationJourFerie * 100;
-  const holidayDailyBonus = Math.round(holidayDailyBaseRate * params.majorationJourFerie * 100) / 100;
 
   function applyWorkingDaysToAll() {
     const defaultJoursRepas = String(workingDaysInMonth);
@@ -8292,13 +8275,13 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     });
   }
 
-  function applyHolidayBonusToAll() {
-    if (!holidayBonusSelection) return;
+  function applyHolidayCountToAll() {
+    if (!holidayCountSelection) return;
     setInputs((prev) => {
       const next = { ...prev };
       employees.forEach((e) => {
         if (isFopContractor(e)) return;
-        next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), majJoursFeries: holidayBonusSelection };
+        next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), majJoursFeries: holidayCountSelection };
       });
       return next;
     });
@@ -8453,7 +8436,6 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       map[e.id] = computePayrollLine(
         {
           netSouhaite: Number(line.netSouhaite) || 0,
-          majJoursFeries: Number(line.majJoursFeries) || 0,
           joursRepas: Number(line.joursRepas) || 0,
         },
         params
@@ -8515,10 +8497,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       if (isFopContractor(e)) {
         return {
           "#": i + 1,
-          Groupe: row.groupLabel,
           "Nom Prénom": employeeName(e),
-          "Net souhaité €": "FOP — rémunération hors paie, calcul non applicable",
-          "Maj. jours fériés €": "",
+          "Jours fériés travaillés": "FOP — rémunération hors paie, calcul non applicable",
           "Jours repas": "",
           "HS+25% h": "",
           "HS+50% h": "",
@@ -8529,10 +8509,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       const c = computed[e.id];
       return {
         "#": i + 1,
-        Groupe: row.groupLabel,
         "Nom Prénom": employeeName(e),
-        "Net souhaité €": Number(line.netSouhaite) || 0,
-        "Maj. jours fériés €": Number(line.majJoursFeries) || 0,
+        "Jours fériés travaillés": Number(line.majJoursFeries) || 0,
         "Jours repas": Number(line.joursRepas) || 0,
         "HS+25% h": c?.hs25Heures ?? 0,
         "HS+50% h": c?.hs50Heures ?? 0,
@@ -8541,10 +8519,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     });
     exportRows.push({
       "#": 0,
-      Groupe: "",
       "Nom Prénom": "TOTAL",
-      "Net souhaité €": Math.round(totals.netSouhaite * 100) / 100,
-      "Maj. jours fériés €": Math.round(totals.majJoursFeries * 100) / 100,
+      "Jours fériés travaillés": totals.majJoursFeries,
       "Jours repas": totals.joursRepas,
       "HS+25% h": totals.hs25Heures,
       "HS+50% h": totals.hs50Heures,
@@ -8716,29 +8692,25 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-stone-100 pt-3">
               <p className="text-sm text-stone-500">
-                Majoration jour férié suggérée :{" "}
-                <span className="font-bold text-stone-700">
-                  {holidayMajorationPercent}% d&apos;une journée de base ({holidayDailyBonus.toFixed(2)} €)
-                </span>{" "}
-                / jour travaillé
+                <Bi fr="Jours fériés travaillés ce mois-ci" ru="Отработано праздничных дней в этом месяце" />
               </p>
               <select
                 className="input text-xs"
                 style={{ width: "auto" }}
-                value={holidayBonusSelection}
-                onChange={(e) => setHolidayBonusSelection(e.target.value)}
+                value={holidayCountSelection}
+                onChange={(e) => setHolidayCountSelection(e.target.value)}
               >
-                <option value="">Choisir un jour férié…</option>
-                {monthHolidays.map((h) => (
-                  <option key={h.date} value={holidayDailyBonus}>
-                    {h.label} — {holidayMajorationPercent}% ({holidayDailyBonus.toFixed(2)} €)
+                <option value="">Choisir un nombre…</option>
+                {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
+                  <option key={n} value={n}>
+                    {n}
                   </option>
                 ))}
               </select>
               <button
                 className="btn btn-secondary text-xs px-3 py-1.5"
-                disabled={!holidayBonusSelection}
-                onClick={applyHolidayBonusToAll}
+                disabled={!holidayCountSelection}
+                onClick={applyHolidayCountToAll}
               >
                 <Bi fr="Appliquer à tous" ru="Применить ко всем" />
               </button>
@@ -8773,10 +8745,6 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             <p>
               <Bi fr="Majoration HS+50%" ru="Надбавка СЧ+50%" />{" "}
               <span className="block font-bold">{params.majorationHs50 * 100}%</span>
-            </p>
-            <p>
-              <Bi fr="Majoration jour férié" ru="Надбавка за праздник" />{" "}
-              <span className="block font-bold">{params.majorationJourFerie * 100}%</span>
             </p>
             <p>
               <Bi fr="Tarif repas/jour" ru="Тариф питания/день" />{" "}
@@ -8842,24 +8810,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                       </label>
                       <label className="block">
                         <span className="text-xs font-bold text-warning-700">
-                          <Bi fr="Maj. jours fériés €" ru="Надбавка праздники €" />
+                          <Bi fr="Jours fériés travaillés" ru="Отработано праздничных дней" />
                         </span>
                         <select
                           className="input bg-warning-50/60 mt-1"
                           value={line.majJoursFeries}
                           onChange={(ev) => updateInput(e.id, "majJoursFeries", ev.target.value)}
                         >
-                          <option value="">0 (aucun)</option>
-                          {monthHolidays.map((h) => (
-                            <option key={h.date} value={holidayDailyBonus}>
-                              {h.label} — {holidayMajorationPercent}% ({holidayDailyBonus.toFixed(2)} €)
+                          <option value="">0</option>
+                          {Array.from({ length: monthHolidays.length }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
                             </option>
                           ))}
-                          {monthHolidays.length >= 2 && (
-                            <option value={holidayDailyBonus * 2}>
-                              2 jours fériés — {holidayMajorationPercent * 2}% ({(holidayDailyBonus * 2).toFixed(2)} €)
-                            </option>
-                          )}
                         </select>
                       </label>
                       <label className="block">
@@ -8907,7 +8870,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               </p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-normal">
                 <span>Net souhaité: {totals.netSouhaite.toFixed(2)} €</span>
-                <span>Maj. fériés: {totals.majJoursFeries.toFixed(2)} €</span>
+                <span>Jours fériés: {totals.majJoursFeries}</span>
                 <span>Jours repas: {totals.joursRepas}</span>
                 <span>HS+25%: {totals.hs25Heures} h</span>
                 <span>HS+50%: {totals.hs50Heures} h</span>
@@ -8923,7 +8886,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               <tr className="text-left text-stone-400 whitespace-nowrap">
                 <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Net souhaité €" ru="Желаемый нетто €" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Maj. jours fériés €" ru="Надбавка праздники €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours fériés travaillés" ru="Отработано праздничных дней" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours repas" ru="Дней питания" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+25% h" ru="СЧ+25% ч" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+50% h" ru="СЧ+50% ч" /></th>
@@ -8974,21 +8937,16 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     <td className="py-2 pr-4">
                       <select
                         className="input bg-warning-50/60"
-                        style={{ width: "11rem" }}
+                        style={{ width: "8rem" }}
                         value={line.majJoursFeries}
                         onChange={(ev) => updateInput(e.id, "majJoursFeries", ev.target.value)}
                       >
-                        <option value="">0 (aucun)</option>
-                        {monthHolidays.map((h) => (
-                          <option key={h.date} value={holidayDailyBonus}>
-                            {h.label} — {holidayMajorationPercent}% ({holidayDailyBonus.toFixed(2)} €)
+                        <option value="">0</option>
+                        {Array.from({ length: monthHolidays.length }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
                           </option>
                         ))}
-                        {monthHolidays.length >= 2 && (
-                          <option value={holidayDailyBonus * 2}>
-                            2 jours fériés — {holidayMajorationPercent * 2}% ({(holidayDailyBonus * 2).toFixed(2)} €)
-                          </option>
-                        )}
                       </select>
                     </td>
                     <td className="py-2 pr-4">
@@ -9034,7 +8992,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     TOTAL <span className="font-normal opacity-60">/ ИТОГО</span>
                   </td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
-                  <td className="py-2 pr-4">{totals.majJoursFeries.toFixed(2)} €</td>
+                  <td className="py-2 pr-4">{totals.majJoursFeries}</td>
                   <td className="py-2 pr-4">{totals.joursRepas}</td>
                   <td className="py-2 pr-4">{totals.hs25Heures} h</td>
                   <td className="py-2 pr-4">{totals.hs50Heures} h</td>
