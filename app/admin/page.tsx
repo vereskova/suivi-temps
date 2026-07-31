@@ -1491,7 +1491,57 @@ function EmployeView({
           <SkeletonRows rows={5} cols={4} />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per day instead of a 7-column table. */}
+        <div className="md:hidden space-y-1.5">
+          {days.map((d) => {
+            const iso = d.toISOString().split("T")[0];
+            const r = byDate.get(iso);
+            const weekday = WEEKDAYS_FR[d.getUTCDay()];
+            const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+            return (
+              <div
+                key={iso}
+                className={`rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2 ${
+                  isWeekend ? "bg-stone-50" : ""
+                }`}
+              >
+                <p className="text-sm">
+                  <span className="font-semibold">{d.getUTCDate()}</span>{" "}
+                  <span className="capitalize text-stone-500">{weekday}</span>
+                </p>
+                {!r ? (
+                  <p className="text-stone-300 italic text-sm">—</p>
+                ) : r.is_absent ? (
+                  <p className="text-error-600 font-semibold text-sm text-right">
+                    Absent <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
+                    {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                  </p>
+                ) : (
+                  <p className="text-sm text-right">
+                    {(r.start_time ?? "—").slice(0, 5)}–{(r.end_time ?? "—").slice(0, 5)}
+                    {r.pause_minutes ? (
+                      <span className="text-stone-400"> · pause {fmtMinutes(r.pause_minutes)}</span>
+                    ) : null}
+                    {r.overtime_minutes ? (
+                      <span className="text-stone-400"> · HS {fmtMinutes(r.overtime_minutes)}</span>
+                    ) : null}
+                    {" "}
+                    <span className="font-bold">{fmtMinutes(r.total_minutes)}</span>
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between px-3 pt-2 font-bold text-sm">
+            <p>
+              Total du mois <span className="text-xs font-medium opacity-60">/ Итого за месяц</span>
+            </p>
+            <p className="font-black">{fmtMinutes(totalMinutes)}</p>
+          </div>
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -1561,6 +1611,7 @@ function EmployeView({
             </tfoot>
           </table>
         </div>
+        </>
       )}
     </div>
   );
@@ -1665,7 +1716,29 @@ function MoisView({
           <SkeletonRows rows={5} cols={5} />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per employee instead of a 4-column table. */}
+        <div className="md:hidden space-y-1.5">
+          {sorted.map((e) => {
+            const total = totalsByEmployee.get(e.id);
+            return (
+              <div key={e.id} className="rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{employeeName(e)}</p>
+                  <p className="text-xs text-stone-400 truncate">{e.teams?.name ?? "—"}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="font-bold">{total ? fmtMinutes(total) : "—"}</p>
+                  <p className={`text-xs font-semibold ${total ? "text-success-600" : "text-stone-300"}`}>
+                    {total ? "OK" : "Aucune donnée / Нет данных"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -1709,6 +1782,7 @@ function MoisView({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );
@@ -2410,10 +2484,124 @@ function EmployeesView({
         </div>
       ) : (
         groupedFiltered.map(([sectionLabel, members]) => (
-        <div key={sectionLabel} className="card mb-4 overflow-x-auto">
+        <div key={sectionLabel} className="card mb-4">
           <p className="font-bold mb-3">
             <Bi fr={sectionLabel} ru={sectionLabel === "Bureau" ? "Офис" : "Стройка"} />
           </p>
+
+          {/* Mobile: one card per employee instead of a 5-column table. */}
+          <div className="md:hidden space-y-2">
+            {members.map((e) => {
+              const isEditing = editingId === e.id;
+              return (
+                <div key={e.id} className={`rounded-xl border border-stone-100 p-3 ${chantierRowColor(e)}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 font-semibold">
+                      {isChef(e) && <Crown size={13} className="shrink-0 fill-current text-success-600" />}
+                      {employeeName(e)}
+                      {e.badge_emoji && <span title={e.badge_label ?? undefined}>{e.badge_emoji}</span>}
+                    </span>
+                    {!isEditing && (
+                      <div className="flex shrink-0">
+                        {e.team_id && (
+                          <RowAction
+                            icon={Crown}
+                            title={isChef(e) ? "Retirer chef d'équipe" : "Désigner chef d'équipe"}
+                            titleRu={isChef(e) ? "Снять бригадира" : "Назначить бригадиром"}
+                            active={isChef(e)}
+                            onClick={() => onToggleChef(e.team_id!, e.id)}
+                          />
+                        )}
+                        <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e)} />
+                        <RowAction
+                          icon={expandedId === e.id ? X : Eye}
+                          title={expandedId === e.id ? "Fermer" : "Détails"}
+                          titleRu={expandedId === e.id ? "Закрыть" : "Подробнее"}
+                          onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {isEditing && editForm ? (
+                    <div className="space-y-2 mt-2">
+                      <label className="block text-xs font-bold text-stone-400">
+                        {sectionLabel === "Bureau" ? <Bi fr="Poste" ru="Должность" /> : <Bi fr="Équipe" ru="Бригада" />}
+                        <select
+                          className="input text-sm mt-1"
+                          value={editForm.teamId}
+                          onChange={(ev) => setEditForm({ ...editForm, teamId: ev.target.value })}
+                        >
+                          <option value="">—</option>
+                          {teams.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block text-xs font-bold text-stone-400">
+                        <Bi fr="Statut" ru="Статус" />
+                        <select
+                          className="input text-sm mt-1"
+                          value={editForm.status}
+                          onChange={(ev) =>
+                            setEditForm({ ...editForm, status: ev.target.value as EmployeeStatus })
+                          }
+                        >
+                          {(["active", "on_leave", "terminated"] as EmployeeStatus[]).map((s) => (
+                            <option key={s} value={s}>
+                              {STATUS_LABELS[s]} / {STATUS_LABELS_RU[s]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {editForm.status === "terminated" && (
+                        <label className="block text-xs font-bold text-stone-400">
+                          <Bi fr="Date de fin" ru="Дата увольнения" />
+                          <input
+                            type="date"
+                            className="input text-sm mt-1"
+                            value={editForm.endDate}
+                            onChange={(ev) => setEditForm({ ...editForm, endDate: ev.target.value })}
+                          />
+                        </label>
+                      )}
+                      <div className="flex gap-3 pt-1">
+                        <button
+                          className="btn btn-green text-xs px-3 py-1"
+                          disabled={saving}
+                          onClick={() => saveEdit(e)}
+                        >
+                          <Bi fr="Enregistrer" ru="Сохранить" />
+                        </button>
+                        <button className="text-xs text-stone-400 underline" onClick={() => setEditingId(null)}>
+                          <Bi fr="Annuler" ru="Отмена" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm mt-1.5 space-y-0.5">
+                      <p className="text-stone-500">{equipeOrPoste(e)}</p>
+                      <p
+                        className={`font-semibold ${
+                          e.status === "terminated"
+                            ? "text-error-600"
+                            : e.status === "on_leave"
+                            ? "text-warning-600"
+                            : "text-success-600"
+                        }`}
+                      >
+                        {STATUS_LABELS[e.status]}
+                        {e.end_date && <span className="ml-1 font-normal text-stone-400">— {e.end_date}</span>}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -2570,6 +2758,7 @@ function EmployeesView({
               })}
             </tbody>
           </table>
+          </div>
         </div>
         ))
       )}
@@ -3419,7 +3608,131 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <EmptyState titleRu="Нет результатов" description="Aucune visite ne correspond à ces filtres." />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per visit instead of a 5-column table. */}
+        <div className="md:hidden space-y-2">
+          {filteredVisits.map((v, idx) => {
+            const isEditing = editingId === v.id;
+            const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
+            const groupKey = visitGroupKey(v);
+            const showGroupHeader = idx === 0 || visitGroupKey(filteredVisits[idx - 1]) !== groupKey;
+            return (
+              <Fragment key={v.id}>
+                {showGroupHeader && (
+                  <p
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${
+                      groupKey === "urgent" ? "bg-warning-500 text-white" : "bg-stone-100 text-stone-500"
+                    } ${idx === 0 ? "" : "mt-4"}`}
+                  >
+                    {groupKey === "urgent" ? (
+                      <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
+                    ) : (
+                      <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
+                    )}
+                  </p>
+                )}
+                <div className={`card ${groupKey === "urgent" ? "bg-warning-100" : ""}`}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="font-semibold">{v.employees ? employeeName(v.employees) : "—"}</p>
+                    {!isEditing && (
+                      <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(v)} />
+                    )}
+                  </div>
+                  {isEditing && editForm ? (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold text-stone-400">
+                        <Bi fr="Dernière visite" ru="Последний визит" />
+                        <input
+                          type="date"
+                          className="input text-sm mt-1"
+                          value={editForm.last}
+                          onChange={(e) => setEditForm({ ...editForm, last: e.target.value })}
+                        />
+                      </label>
+                      <label className="block text-xs font-bold text-stone-400">
+                        <Bi fr="Prochaine visite" ru="Следующий визит" />
+                        <div className="flex gap-1 mt-1">
+                          <input
+                            type="date"
+                            className="input text-sm"
+                            value={editForm.next}
+                            onChange={(e) => setEditForm({ ...editForm, next: e.target.value })}
+                          />
+                          <input
+                            type="time"
+                            title="Heure du rendez-vous / Время встречи"
+                            className="input text-sm w-24"
+                            value={editForm.nextTime}
+                            onChange={(e) => setEditForm({ ...editForm, nextTime: e.target.value })}
+                          />
+                        </div>
+                      </label>
+                      <label className="block text-xs font-bold text-stone-400">
+                        <Bi fr="Sous-type" ru="Подтип" />
+                        <select
+                          className="input text-sm mt-1"
+                          value={editForm.subtype}
+                          onChange={(e) => setEditForm({ ...editForm, subtype: e.target.value })}
+                        >
+                          <option value="">—</option>
+                          {editForm.subtype &&
+                            !VISIT_SUBTYPE_OPTIONS.some((o) => o.value === editForm.subtype) && (
+                              <option value={editForm.subtype}>{editForm.subtype}</option>
+                            )}
+                          {VISIT_SUBTYPE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex gap-3 pt-1">
+                        <button
+                          className="btn btn-green text-xs px-3 py-1"
+                          disabled={saving}
+                          onClick={() => saveEdit(v)}
+                        >
+                          <Bi fr="Enregistrer" ru="Сохранить" />
+                        </button>
+                        <button className="text-xs text-stone-400 underline" onClick={() => setEditingId(null)}>
+                          <Bi fr="Annuler" ru="Отмена" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm space-y-0.5">
+                      <p>
+                        <span className="text-stone-400">Dernière: </span>
+                        {v.last_visit_date ?? "—"}
+                        {needsNewAppointment(v) && (
+                          <span
+                            className="ml-1 inline-block align-text-bottom text-error-600"
+                            title="Plus de 3 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 3 лет с последнего визита — нужно записаться"
+                          >
+                            <AlertTriangle size={14} className="inline shrink-0" />
+                          </span>
+                        )}
+                      </p>
+                      <p className={isOverdue ? "text-error-600 font-semibold" : ""}>
+                        <span className={isOverdue ? "" : "text-stone-400"}>Prochaine: </span>
+                        {v.next_visit_date ?? "—"}
+                        {v.next_visit_date && v.next_visit_time && (
+                          <span className="ml-1 font-normal text-stone-400">{v.next_visit_time.slice(0, 5)}</span>
+                        )}
+                      </p>
+                      <p className="text-stone-500">
+                        <span className="text-stone-400">Sous-type: </span>
+                        {v.visit_subtype ?? "—"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </Fragment>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -3576,6 +3889,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <Modal
@@ -3782,7 +4096,42 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
           <EmptyState titleRu="Нет результатов" description="Aucun employé ne correspond à ces filtres." />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per employee with wrapping status chips, instead
+            of a table with one column per training type. */}
+        <div className="md:hidden space-y-2">
+          {filteredEmployees.map((e) => (
+            <div key={e.id} className="card">
+              <p className="font-semibold">{employeeName(e)}</p>
+              <p className="text-xs text-stone-400 mb-2">{e.teams?.name ?? "—"}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {types.map((t) => {
+                  const key = `${e.id}|${t.id}`;
+                  const status = statusMap.get(key);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => toggle(e.id, t.id, status)}
+                      disabled={saving === key}
+                      title={t.label}
+                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        status === "ok"
+                          ? "bg-success-100 text-success-700"
+                          : status === "ko"
+                          ? "bg-error-100 text-error-700"
+                          : "bg-stone-100 text-stone-400"
+                      }`}
+                    >
+                      {t.code}: {status ? status.toUpperCase() : "—"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -3828,6 +4177,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );
@@ -3990,7 +4340,94 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <EmptyState titleRu="Нет результатов" description="Aucun employé ne correspond à ces filtres." />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per employee instead of a 6-column table. */}
+        <div className="md:hidden space-y-2">
+          {filteredEmployees.map((e) => {
+            const s = sizeByEmployee.get(e.id);
+            const isEditing = editingId === e.id;
+            return (
+              <div key={e.id} className="card">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <p className="font-semibold">{employeeName(e)}</p>
+                  {!isEditing && (
+                    <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e.id)} />
+                  )}
+                </div>
+                {isEditing && editForm ? (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="Chaussures" ru="Обувь" />
+                      <input
+                        className="input text-sm mt-1"
+                        value={editForm.chaussures}
+                        list="dl-chaussures"
+                        onChange={(ev) => setEditForm({ ...editForm, chaussures: ev.target.value })}
+                      />
+                    </label>
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="Pantalon" ru="Брюки" />
+                      <input
+                        className="input text-sm mt-1"
+                        value={editForm.pantalon}
+                        list="dl-pantalon"
+                        onChange={(ev) => setEditForm({ ...editForm, pantalon: ev.target.value })}
+                      />
+                    </label>
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="T-shirt" ru="Футболка" />
+                      <select
+                        className="input text-sm mt-1"
+                        value={editForm.tshirt}
+                        onChange={(ev) => setEditForm({ ...editForm, tshirt: ev.target.value })}
+                      >
+                        <option value="">—</option>
+                        {editForm.tshirt &&
+                          !TSHIRT_SIZE_OPTIONS.some((o) => o.value === editForm.tshirt) && (
+                            <option value={editForm.tshirt}>{editForm.tshirt}</option>
+                          )}
+                        {TSHIRT_SIZE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="Notes" ru="Заметки" />
+                      <input
+                        className="input text-sm mt-1"
+                        value={editForm.notes}
+                        onChange={(ev) => setEditForm({ ...editForm, notes: ev.target.value })}
+                      />
+                    </label>
+                    <div className="flex gap-3 pt-1">
+                      <button
+                        className="btn btn-green text-xs px-3 py-1"
+                        disabled={saving}
+                        onClick={() => saveEdit(e.id)}
+                      >
+                        <Bi fr="Enregistrer" ru="Сохранить" />
+                      </button>
+                      <button className="text-xs text-stone-400 underline" onClick={() => setEditingId(null)}>
+                        <Bi fr="Annuler" ru="Отмена" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-stone-500">
+                    <p><span className="text-stone-400">Chaussures: </span>{s?.chaussures ?? "—"}</p>
+                    <p><span className="text-stone-400">Pantalon: </span>{s?.pantalon ?? "—"}</p>
+                    <p><span className="text-stone-400">T-shirt: </span>{s?.tshirt ?? "—"}</p>
+                    <p className="col-span-2"><span className="text-stone-400">Notes: </span>{s?.notes ?? "—"}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -4117,6 +4554,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
             ))}
           </datalist>
         </div>
+        </>
       )}
     </div>
   );
@@ -4274,7 +4712,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
 
   if (listCollapsed) {
     return (
-      <div className="flex gap-4 items-start">
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
         <button
           type="button"
           onClick={() => setListCollapsed(false)}
@@ -4283,10 +4721,16 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
               ? `${employeeName(selectedEmployeeRow)} — afficher la liste / показать список`
               : "Afficher la liste / Показать список"
           }
-          className="card w-14 shrink-0 flex flex-col items-center gap-2 py-4 hover:bg-stone-50"
+          className="card w-full lg:w-14 shrink-0 flex flex-row lg:flex-col items-center justify-between lg:justify-center gap-2 px-4 lg:px-0 py-3 lg:py-4 hover:bg-stone-50"
         >
-          <Users size={18} className="text-stone-500" />
-          <ChevronRight size={16} className="text-stone-400" />
+          <span className="flex items-center gap-2 text-sm font-semibold text-stone-700 min-w-0 lg:hidden">
+            <Users size={16} className="shrink-0" />
+            <span className="truncate">
+              {selectedEmployeeRow ? employeeName(selectedEmployeeRow) : ""}
+            </span>
+          </span>
+          <Users size={18} className="hidden lg:block text-stone-500" />
+          <ChevronRight size={16} className="shrink-0 text-stone-400" />
         </button>
         <div className="flex-1 min-w-0 card">
           <DocumentsForm
@@ -4312,8 +4756,8 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
   }
 
   return (
-    <div className="flex gap-4 items-start">
-      <div className="card w-72 shrink-0">
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+      <div className="card w-full lg:w-72 shrink-0">
         <div className="font-bold mb-3 flex items-start justify-between gap-2">
           <Bi
             fr={`Employés (${filteredEmployees.length})`}
@@ -4767,8 +5211,8 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
   }, [employees, statusFilter, search]);
 
   return (
-    <div className="flex gap-4 items-start">
-      <div className="card w-72 shrink-0">
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+      <div className="card w-full lg:w-72 shrink-0">
         <p className="font-bold mb-3 flex items-center">
           <Bi fr="Employés" ru="Сотрудники" />
           <InfoNote
@@ -6327,7 +6771,43 @@ function NotificationsView({
           />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per notification instead of a 4-column table. */}
+        <div className="md:hidden space-y-2">
+          {filtered.map((r, i) => {
+            const urgency = dateUrgency(r.date);
+            const showTierHeader = i === 0 || filtered[i - 1].tier !== r.tier;
+            const tierInfo = NOTIFICATION_TIER_LABELS[r.tier];
+            return (
+              <Fragment key={`${r.employeeId}-${r.type}-${r.date}-${i}`}>
+                {showTierHeader && (
+                  <p
+                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${tierInfo.barClass} ${
+                      i === 0 ? "" : "mt-4"
+                    }`}
+                  >
+                    <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
+                  </p>
+                )}
+                <div className="rounded-xl border border-stone-100 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold">{r.employeeName}</p>
+                    {urgency ? (
+                      <span className={`badge badge-${urgency.tone} shrink-0`}>{urgency.label}</span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-stone-500 mt-0.5">{r.type}</p>
+                  <p className="text-sm text-stone-500">
+                    {formatDateShortDMY(r.date)}
+                    {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
+                  </p>
+                </div>
+              </Fragment>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
@@ -6374,6 +6854,7 @@ function NotificationsView({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );
@@ -7351,7 +7832,45 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
         )}
       </div>
 
-      <div className="card overflow-x-auto">
+      {/* Mobile: one card per student instead of a 4-column table. */}
+      <div className="md:hidden space-y-2">
+        {students.map((s) => {
+          const a = attendanceByEmployee.get(s.employee_id);
+          return (
+            <div key={s.employee_id} className="card">
+              <p className="font-bold mb-2">{employeeName(s.employees)}</p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={a?.absent ?? false}
+                    onChange={(ev) => toggle(s.employee_id, "absent", ev.target.checked)}
+                  />
+                  Absent (Н)
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={a?.homework_done ?? false}
+                    onChange={(ev) => toggle(s.employee_id, "homework_done", ev.target.checked)}
+                  />
+                  Devoir fait (ДЗ)
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={a?.control_done ?? false}
+                    onChange={(ev) => toggle(s.employee_id, "control_done", ev.target.checked)}
+                  />
+                  Contrôle (К)
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden md:block card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-stone-400">
@@ -9059,8 +9578,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   }
 
   return (
-    <div className="flex gap-4 items-start">
-      <div className="card w-72 shrink-0">
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+      <div className="card w-full lg:w-72 shrink-0">
         <div className="font-bold mb-3">
           <Bi
             fr="Employés"
