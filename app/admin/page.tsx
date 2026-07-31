@@ -4878,6 +4878,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [cases, setCases] = useState<CommercialCaseRow[]>([]);
   const [loadingCases, setLoadingCases] = useState(false);
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [pickerCollapsed, setPickerCollapsed] = useState(false);
 
   const [categories, setCategories] = useState<CommercialCategoryRow[]>([]);
   const [items, setItems] = useState<CommercialItemRow[]>([]);
@@ -5193,97 +5194,123 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
   return (
     <div className="flex gap-4 items-start">
-      <div className="card w-64 shrink-0">
-        <p className="font-bold mb-3">
-          <Bi fr="Clients" ru="Клиенты" />
-        </p>
-        <input
-          className="input mb-3"
-          placeholder="Rechercher…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {loadingClients ? (
-          <SkeletonRows rows={4} cols={1} />
-        ) : (
-          <div className="max-h-[32rem] overflow-y-auto -mx-1">
-            {filteredClients.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => {
-                  setSelectedClientId(c.id);
-                  setSelectedCaseId(null);
-                }}
-                className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
-                  selectedClientId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
-                }`}
-              >
-                {c.name}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card w-72 shrink-0">
-        {!selectedClientId ? (
-          <p className="text-stone-400 text-sm">
-            Sélectionnez un client. <span className="opacity-70">/ Выберите клиента.</span>
-          </p>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <p className="font-bold truncate">{selectedClient?.name}</p>
-              <button className="btn btn-secondary text-xs px-2 py-1 shrink-0" onClick={() => setNewCaseOpen(true)}>
-                <Plus size={14} />
-                Nouveau
-              </button>
-            </div>
-            {loadingCases ? (
-              <SkeletonRows rows={3} cols={1} />
-            ) : cases.length === 0 ? (
-              <p className="text-sm text-stone-400">
-                Aucun dossier. <span className="opacity-70">/ Нет дел.</span>
-              </p>
+      {pickerCollapsed ? (
+        <button
+          type="button"
+          onClick={() => setPickerCollapsed(false)}
+          title={`${selectedClient?.name ?? ""} — ${selectedCase?.title ?? ""} — afficher / показать список`}
+          className="card w-14 shrink-0 flex flex-col items-center gap-2 py-4 hover:bg-stone-50"
+        >
+          <Briefcase size={18} className="text-stone-500" />
+          <ChevronRight size={16} className="text-stone-400" />
+        </button>
+      ) : (
+        <>
+          <div className="card w-64 shrink-0">
+            <p className="font-bold mb-3">
+              <Bi fr="Clients" ru="Клиенты" />
+            </p>
+            <input
+              className="input mb-3"
+              placeholder="Rechercher…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {loadingClients ? (
+              <SkeletonRows rows={4} cols={1} />
             ) : (
-              <div className="space-y-1">
-                {cases.map((c) => (
-                  <div
+              <div className="max-h-[32rem] overflow-y-auto -mx-1">
+                {filteredClients.map((c) => (
+                  <button
                     key={c.id}
-                    className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm ${
-                      selectedCaseId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
+                    onClick={() => {
+                      setSelectedClientId(c.id);
+                      setSelectedCaseId(null);
+                    }}
+                    className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
+                      selectedClientId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
                     }`}
                   >
-                    <button onClick={() => setSelectedCaseId(c.id)} className="flex-1 min-w-0 text-left">
-                      <span className="block truncate">{c.title}</span>
-                      <span
-                        className={`badge mt-1 ${
-                          c.sinao_quote_id && !isSinaoStub(c.sinao_quote_id)
-                            ? "badge-success"
-                            : c.sinao_quote_id
-                              ? "badge-warning"
-                              : "badge-neutral"
-                        }`}
-                      >
-                        {c.sinao_quote_id ? (isSinaoStub(c.sinao_quote_id) ? "Sinao (test)" : "Sinao ✓") : c.status}
-                      </span>
-                    </button>
-                    <button
-                      onClick={() => deleteCase(c)}
-                      className={`shrink-0 rounded-lg p-1.5 opacity-0 group-hover:opacity-100 ${
-                        selectedCaseId === c.id ? "text-white/60 hover:text-white" : "text-stone-300 hover:text-error-600"
-                      }`}
-                      title="Supprimer"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                    {c.name}
+                  </button>
                 ))}
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+
+          <div className="card w-72 shrink-0">
+            {!selectedClientId ? (
+              <p className="text-stone-400 text-sm">
+                Sélectionnez un client. <span className="opacity-70">/ Выберите клиента.</span>
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="font-bold truncate">{selectedClient?.name}</p>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button className="btn btn-secondary text-xs px-2 py-1 shrink-0" onClick={() => setNewCaseOpen(true)}>
+                      <Plus size={14} />
+                      Nouveau
+                    </button>
+                    {selectedCaseId && (
+                      <button
+                        type="button"
+                        onClick={() => setPickerCollapsed(true)}
+                        className="text-stone-400 hover:text-stone-700 p-1"
+                        title="Réduire / Свернуть"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {loadingCases ? (
+                  <SkeletonRows rows={3} cols={1} />
+                ) : cases.length === 0 ? (
+                  <p className="text-sm text-stone-400">
+                    Aucun dossier. <span className="opacity-70">/ Нет дел.</span>
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {cases.map((c) => (
+                      <div
+                        key={c.id}
+                        className={`group flex items-center gap-1 rounded-xl px-3 py-2 text-sm ${
+                          selectedCaseId === c.id ? "bg-stone-900 text-white font-bold" : "hover:bg-stone-50 text-stone-600"
+                        }`}
+                      >
+                        <button onClick={() => setSelectedCaseId(c.id)} className="flex-1 min-w-0 text-left">
+                          <span className="block truncate">{c.title}</span>
+                          <span
+                            className={`badge mt-1 ${
+                              c.sinao_quote_id && !isSinaoStub(c.sinao_quote_id)
+                                ? "badge-success"
+                                : c.sinao_quote_id
+                                  ? "badge-warning"
+                                  : "badge-neutral"
+                            }`}
+                          >
+                            {c.sinao_quote_id ? (isSinaoStub(c.sinao_quote_id) ? "Sinao (test)" : "Sinao ✓") : c.status}
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => deleteCase(c)}
+                          className={`shrink-0 rounded-lg p-1.5 opacity-0 group-hover:opacity-100 ${
+                            selectedCaseId === c.id ? "text-white/60 hover:text-white" : "text-stone-300 hover:text-error-600"
+                          }`}
+                          title="Supprimer"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="flex-1 min-w-0 card">
         {!selectedCaseId ? (
@@ -5390,7 +5417,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                 <Bi fr={group.category.label} ru={group.category.label_ru} />
                               </p>
                               <button
-                                className={`text-xs font-semibold ${
+                                className={`text-xs font-semibold shrink-0 whitespace-nowrap ${
                                   allActive ? "text-stone-300 cursor-default" : "text-primary-600 hover:underline"
                                 }`}
                                 onClick={() => markCategoryActive(group.category.code)}
