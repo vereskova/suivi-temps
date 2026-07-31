@@ -8164,7 +8164,12 @@ const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", jo
  *  end_date is reused for "on_leave" too (départ en congé), not just
  *  "terminated" — both mean "stopped being present partway through". */
 function defaultJoursRepasFor(e: PaieEmployee, monthStart: string, monthEnd: string): string {
-  if (e.category === "bureau") return "0";
+  // "Contrôle & Formation" staff are category "bureau" in the DB (that's how
+  // groupPaieEmployees splits them from chantier teams) but they aren't
+  // desk-only office workers, so the office-always-0 rule doesn't apply to
+  // them — only to the bureau core (secrétariat, direction, etc.).
+  const isOfficeOnly = e.category === "bureau" && !PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "");
+  if (isOfficeOnly) return "0";
   const rangeStart = e.hire_date && e.hire_date > monthStart ? e.hire_date : monthStart;
   const rangeEnd =
     (e.status === "terminated" || e.status === "on_leave") && e.end_date && e.end_date < monthEnd
