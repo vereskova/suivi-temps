@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleAlert,
   ClipboardCheck,
   CreditCard,
@@ -35,6 +36,7 @@ import {
   Image as ImageIcon,
   Languages,
   LogOut,
+  Menu,
   MessageSquare,
   Network,
   PanelLeftClose,
@@ -386,6 +388,7 @@ export default function AdminPage() {
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = useState<ViewKey>("jour");
   const [navCollapsed, setNavCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<AbsenceType[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -537,29 +540,29 @@ export default function AdminPage() {
       <main className="min-h-screen p-4 md:p-8">
         <div className="mx-auto max-w-[1400px]">
           <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
                 <LogoMark size={24} />
               </div>
-              <div>
-                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">VLADIS</p>
-                <p className="text-xs font-semibold text-stone-400 leading-tight">Comptabilité</p>
+              <div className="min-w-0">
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">Comptabilité</p>
               </div>
             </div>
             <button
-              className="btn btn-secondary text-sm"
+              className="btn btn-secondary text-sm shrink-0"
               onClick={async () => {
                 await supabase.auth.signOut();
                 router.replace("/login");
               }}
             >
               <LogOut size={15} />
-              Déconnexion
+              <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
 
           <div className="flex gap-6 items-start">
-            <aside className="w-60 shrink-0">
+            <aside className="hidden lg:block w-60 shrink-0">
               <nav className="card p-3 space-y-4 sticky top-4">
                 <SidebarSection title="RH">
                   <SidebarLink icon={Wallet} active label="Paie" labelRu="Зарплата" />
@@ -582,29 +585,29 @@ export default function AdminPage() {
       <main className="min-h-screen p-4 md:p-8">
         <div className="mx-auto max-w-[1400px]">
           <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
                 <LogoMark size={24} />
               </div>
-              <div>
-                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">VLADIS</p>
-                <p className="text-xs font-semibold text-stone-400 leading-tight">Commercial</p>
+              <div className="min-w-0">
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">Commercial</p>
               </div>
             </div>
             <button
-              className="btn btn-secondary text-sm"
+              className="btn btn-secondary text-sm shrink-0"
               onClick={async () => {
                 await supabase.auth.signOut();
                 router.replace("/login");
               }}
             >
               <LogOut size={15} />
-              Déconnexion
+              <span className="hidden sm:inline">Déconnexion</span>
             </button>
           </div>
 
           <div className="flex gap-6 items-start">
-            <aside className="w-60 shrink-0">
+            <aside className="hidden lg:block w-60 shrink-0">
               <nav className="card p-3 space-y-4 sticky top-4">
                 <SidebarSection title="">
                   <SidebarLink icon={Briefcase} active label="Commercial" labelRu="Коммерция" />
@@ -633,37 +636,86 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen p-4 md:p-8">
       <div className="mx-auto max-w-[1400px]">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-6 md:mb-8">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(true)}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 lg:hidden"
+              title="Menu / Меню"
+            >
+              <Menu size={18} />
+            </button>
             <button
               type="button"
               onClick={() => setNavCollapsed((v) => !v)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+              className="hidden lg:flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
               title={navCollapsed ? "Afficher le menu / Показать меню" : "Réduire le menu / Свернуть меню"}
             >
               {navCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
             </button>
-            <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
               <LogoMark size={44} />
             </div>
-            <div>
-              <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight">
+            <div className="min-w-0">
+              <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">
                 VLADIS
               </p>
-              <p className="text-xs font-semibold text-stone-400 leading-tight">
+              <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">
                 Tableau de bord RH
               </p>
             </div>
           </div>
-          <Link href="/" className="btn btn-secondary text-sm">
+          <Link href="/" className="btn btn-secondary text-sm shrink-0">
             <ArrowLeft size={15} />
-            Retour au pointage
+            <span className="hidden sm:inline">Retour au pointage</span>
           </Link>
         </div>
 
+        {mobileNavOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 flex">
+            <div
+              className="fixed inset-0 bg-black/40"
+              onClick={() => setMobileNavOpen(false)}
+            />
+            <nav className="card relative z-10 w-72 max-w-[85vw] h-full rounded-none p-4 space-y-4 overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-bold text-stone-900">
+                  <Bi fr="Menu" ru="Меню" />
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setMobileNavOpen(false)}
+                  className="p-1 text-stone-400 hover:text-stone-700"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+              {visibleNavGroups.map((group) => (
+                <SidebarSection key={group.title} title={group.title}>
+                  {group.items.map((item) => (
+                    <SidebarLink
+                      key={item.key}
+                      icon={item.icon}
+                      active={view === item.key}
+                      onClick={() => {
+                        setView(item.key);
+                        setMobileNavOpen(false);
+                      }}
+                      label={item.label}
+                      labelRu={item.labelRu}
+                      dot={item.key === "echeances" ? hasUnreadNotifications : false}
+                    />
+                  ))}
+                </SidebarSection>
+              ))}
+            </nav>
+          </div>
+        )}
+
         <div className="flex gap-6 items-start">
           {!navCollapsed && (
-            <aside className="w-60 shrink-0">
+            <aside className="hidden lg:block w-60 shrink-0">
               <nav className="card p-3 space-y-4 sticky top-4">
                 {visibleNavGroups.map((group) => (
                   <SidebarSection key={group.title} title={group.title}>
@@ -990,8 +1042,135 @@ function JourView({
         </div>
       ) : (
         filteredGrouped.map(([teamName, members]) => (
-          <div key={teamName} className="card mb-4 overflow-x-auto">
+          <div key={teamName} className="card mb-4">
             <p className="font-bold mb-3">{teamName}</p>
+
+            {/* Mobile: stacked per-employee cards instead of an 8-column table. */}
+            <div className="md:hidden space-y-2">
+              {members.map((e) => {
+                const r = byEmployee.get(e.id);
+                const isEditing = editingId === e.id;
+
+                if (isEditing && editForm) {
+                  return (
+                    <div key={e.id} className="rounded-xl bg-stone-50 p-3">
+                      <p className="font-semibold text-sm mb-2">{employeeName(e)}</p>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <button
+                          onClick={() => setEditForm({ ...editForm, absent: !editForm.absent })}
+                          className={`rounded-full px-3 py-1 text-xs font-bold ${
+                            editForm.absent ? "bg-error-600 text-white" : "bg-stone-200"
+                          }`}
+                        >
+                          <Bi fr="Absent" ru="Отсутствует" />
+                        </button>
+
+                        {editForm.absent ? (
+                          <select
+                            className="input text-sm px-2 py-1"
+                            style={{ width: "auto" }}
+                            value={editForm.absenceTypeId}
+                            onChange={(ev) => setEditForm({ ...editForm, absenceTypeId: ev.target.value })}
+                          >
+                            <option value="">Type d&apos;absence</option>
+                            {absenceTypes.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <>
+                            <EditTime
+                              label="Début"
+                              labelRu="Начало"
+                              value={editForm.start}
+                              onChange={(v) => setEditForm({ ...editForm, start: v })}
+                            />
+                            <EditTime
+                              label="Fin"
+                              labelRu="Конец"
+                              value={editForm.end}
+                              onChange={(v) => setEditForm({ ...editForm, end: v })}
+                            />
+                            <EditTime
+                              label="Pause"
+                              labelRu="Перерыв"
+                              value={editForm.pause}
+                              onChange={(v) => setEditForm({ ...editForm, pause: v })}
+                            />
+                            <EditTime
+                              label="H. Supp"
+                              labelRu="Сверхур."
+                              value={editForm.extra}
+                              onChange={(v) => setEditForm({ ...editForm, extra: v })}
+                            />
+                          </>
+                        )}
+
+                        <button
+                          onClick={() => saveEdit(e)}
+                          disabled={saving}
+                          className="btn btn-green text-xs px-3 py-2"
+                        >
+                          <Bi fr="Enregistrer" ru="Сохранить" />
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="text-xs text-stone-400 underline"
+                        >
+                          <Bi fr="Annuler" ru="Отмена" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={e.id} className="rounded-xl border border-stone-100 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-sm">{employeeName(e)}</p>
+                      <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e)} />
+                    </div>
+                    {!r ? (
+                      <p className="text-stone-300 italic text-sm mt-1">
+                        — non saisi <span className="not-italic text-[0.85em] opacity-70">/ не указано</span> —
+                      </p>
+                    ) : r.is_absent ? (
+                      <p className="text-error-600 font-semibold text-sm mt-1">
+                        Absent <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
+                        {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-sm mt-1.5">
+                        <p>
+                          <span className="text-stone-400">Début / Начало: </span>
+                          {(r.start_time ?? "—").slice(0, 5)}
+                        </p>
+                        <p>
+                          <span className="text-stone-400">Fin / Конец: </span>
+                          {(r.end_time ?? "—").slice(0, 5)}
+                        </p>
+                        <p>
+                          <span className="text-stone-400">Pause / Перерыв: </span>
+                          {fmtMinutes(r.pause_minutes)}
+                        </p>
+                        <p>
+                          <span className="text-stone-400">H. Supp / Сверхур.: </span>
+                          {fmtMinutes(r.overtime_minutes)}
+                        </p>
+                        <p className="font-bold col-span-2">
+                          <span className="text-stone-400 font-normal">Total / Итого: </span>
+                          {fmtMinutes(r.total_minutes)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-stone-400">
@@ -1152,6 +1331,7 @@ function JourView({
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         ))
       )}
@@ -5193,20 +5373,26 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   }, [items, categories]);
 
   return (
-    <div className="flex gap-4 items-start">
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
       {pickerCollapsed ? (
         <button
           type="button"
           onClick={() => setPickerCollapsed(false)}
           title={`${selectedClient?.name ?? ""} — ${selectedCase?.title ?? ""} — afficher / показать список`}
-          className="card w-14 shrink-0 flex flex-col items-center gap-2 py-4 hover:bg-stone-50"
+          className="card w-full lg:w-14 shrink-0 flex flex-row lg:flex-col items-center justify-between lg:justify-center gap-2 px-4 lg:px-0 py-3 lg:py-4 hover:bg-stone-50"
         >
-          <Briefcase size={18} className="text-stone-500" />
-          <ChevronRight size={16} className="text-stone-400" />
+          <span className="flex items-center gap-2 text-sm font-semibold text-stone-700 min-w-0 lg:hidden">
+            <Briefcase size={16} className="shrink-0" />
+            <span className="truncate">
+              {selectedClient?.name} — {selectedCase?.title}
+            </span>
+          </span>
+          <Briefcase size={18} className="hidden lg:block text-stone-500" />
+          <ChevronRight size={16} className="shrink-0 text-stone-400" />
         </button>
       ) : (
         <>
-          <div className="card w-64 shrink-0">
+          <div className="card w-full lg:w-64 shrink-0">
             <p className="font-bold mb-3">
               <Bi fr="Clients" ru="Клиенты" />
             </p>
@@ -5238,7 +5424,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             )}
           </div>
 
-          <div className="card w-72 shrink-0">
+          <div className="card w-full lg:w-72 shrink-0">
             {!selectedClientId ? (
               <p className="text-stone-400 text-sm">
                 Sélectionnez un client. <span className="opacity-70">/ Выберите клиента.</span>
@@ -5385,7 +5571,147 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               </div>
             )}
 
-            <div className="overflow-x-auto -mx-1">
+            {/* Mobile: stacked cards instead of a wide table — the date-range +
+                HT/TTC columns don't fit a phone width even after collapsing
+                the client/dossier pickers. */}
+            <div className="md:hidden space-y-4">
+              {groupedItems.map((group) => {
+                const allActive = group.items.every((i) => i.status === "active");
+                return (
+                  <div key={group.category.code}>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
+                        <Bi fr={group.category.label} ru={group.category.label_ru} />
+                      </p>
+                      <button
+                        className={`text-xs font-semibold shrink-0 whitespace-nowrap ${
+                          allActive ? "text-stone-300 cursor-default" : "text-primary-600 hover:underline"
+                        }`}
+                        onClick={() => markCategoryActive(group.category.code)}
+                      >
+                        Tout marquer actif
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {group.items.map((item) => {
+                        const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
+                        const ttc = commercialItemTtc(item);
+                        const flagMissing = item.status === "active";
+                        const missingStart = flagMissing && !item.planned_start_date;
+                        const missingPrice = flagMissing && item.price_ht == null;
+                        return (
+                          <div
+                            key={item.id}
+                            className={`rounded-xl border border-stone-100 p-3 ${
+                              missingStart || missingPrice ? "bg-warning-50" : ""
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              <button
+                                onClick={() => cycleStatus(item)}
+                                className={`${COMMERCIAL_STATUS_ICON_CLASS[item.status]} shrink-0`}
+                                title={
+                                  item.status === "active"
+                                    ? "Actif — cliquer pour marquer non applicable"
+                                    : item.status === "inactive"
+                                      ? "Non applicable — cliquer pour marquer en question"
+                                      : "En question — cliquer pour marquer actif"
+                                }
+                              >
+                                <StatusIcon size={18} />
+                              </button>
+                              <span className={`flex-1 ${COMMERCIAL_STATUS_LABEL_CLASS[item.status]}`}>
+                                {item.label}
+                                {item.status === "pending" && " ⚠"}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setNoteEditingId(noteEditingId === item.id ? null : item.id);
+                                  setNoteDraft(item.note ?? "");
+                                }}
+                                className={`shrink-0 rounded-lg p-1 ${
+                                  item.note ? "text-warning-600" : "text-stone-300 hover:text-stone-500"
+                                }`}
+                                title="Note"
+                              >
+                                <MessageSquare size={14} />
+                              </button>
+                            </div>
+                            {item.note && noteEditingId !== item.id && (
+                              <p className="text-xs italic text-warning-700 mt-1 ml-7">{item.note}</p>
+                            )}
+                            <div className="flex items-center gap-1.5 mt-2 ml-7">
+                              <input
+                                type="date"
+                                className="input text-xs py-1 px-1.5 flex-1 min-w-0"
+                                value={item.planned_start_date ?? ""}
+                                onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
+                              />
+                              <span className="text-stone-300">–</span>
+                              <input
+                                type="date"
+                                className="input text-xs py-1 px-1.5 flex-1 min-w-0"
+                                value={item.planned_end_date ?? ""}
+                                onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
+                              />
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 ml-7">
+                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">HT</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="input text-xs py-1 px-1.5 w-full text-right"
+                                placeholder="—"
+                                defaultValue={item.price_ht ?? ""}
+                                key={`m-ht-${item.id}-${item.price_ht ?? ""}`}
+                                onBlur={(e) => updateItemPriceHt(item, e.target.value)}
+                              />
+                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">TTC</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="input text-xs py-1 px-1.5 w-full text-right"
+                                placeholder="—"
+                                defaultValue={ttc != null ? ttc.toFixed(2) : ""}
+                                key={`m-ttc-${item.id}-${ttc ?? ""}`}
+                                onBlur={(e) => updateItemPriceTtc(item, e.target.value)}
+                              />
+                            </div>
+                            {noteEditingId === item.id && (
+                              <div className="flex gap-2 mt-2 ml-7">
+                                <input
+                                  className="input flex-1 text-sm"
+                                  placeholder="Note / précision…"
+                                  value={noteDraft}
+                                  onChange={(e) => setNoteDraft(e.target.value)}
+                                  autoFocus
+                                />
+                                <button className="btn btn-dark text-xs px-3" onClick={() => saveNote(item.id)}>
+                                  OK
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {items.length > 0 && (
+                <div className="flex items-center justify-between border-t-2 border-stone-200 pt-3 font-bold text-sm">
+                  <p>
+                    TOTAL <span className="font-normal opacity-60">(actifs) / ИТОГО (активные)</span>
+                  </p>
+                  <p className="text-right">
+                    {activeTotals.ht.toFixed(2)} € HT
+                    <span className="block font-normal opacity-60">{activeTotals.ttc.toFixed(2)} € TTC</span>
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto -mx-1">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-stone-400 whitespace-nowrap text-xs">
@@ -6373,60 +6699,96 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           <SkeletonRows rows={6} cols={6} />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-stone-400 whitespace-nowrap">
-                {REGISTRE_FIELD_LABELS.map((f) => (
-                  <th key={f.key} className="py-2 pr-4">
-                    <Bi fr={f.label} ru={f.labelRu} />
-                  </th>
-                ))}
-                <th className="py-2 pr-4"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => {
-                const foreign = isForeignNationality(r.nationalite);
-                return (
-                  <tr
-                    key={r.id}
-                    className={`border-t border-stone-100 ${foreign ? "bg-warning-50" : ""}`}
-                  >
-                    <td className="py-2 pr-4 text-stone-400 whitespace-nowrap">{r.numero ?? "—"}</td>
-                    <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.date_entree ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.date_naissance ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "—"}</td>
-                    <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.qualification ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.type_titre ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.numero_titre ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.type_contrat ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
-                    <td className="py-2 pr-2 whitespace-nowrap">
-                      <RowAction
-                        icon={Pencil}
-                        title="Modifier"
-                        titleRu="Изменить"
-                        onClick={() => startEdit(r)}
-                      />
+        <>
+          {/* Mobile: one card per record instead of a 14-column table. */}
+          <div className="md:hidden space-y-2">
+            {filtered.map((r) => {
+              const foreign = isForeignNationality(r.nationalite);
+              return (
+                <div key={r.id} className={`card ${foreign ? "bg-warning-50" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold truncate">{r.nom_prenom}</p>
+                      <p className="text-xs text-stone-400">N° {r.numero ?? "—"}</p>
+                    </div>
+                    <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(r)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm mt-2">
+                    <p><span className="text-stone-400">Entrée: </span>{r.date_entree ?? "—"}</p>
+                    <p><span className="text-stone-400">Sortie: </span>{r.date_sortie ?? "—"}</p>
+                    <p><span className="text-stone-400">Nationalité: </span>{r.nationalite ?? "—"}</p>
+                    <p><span className="text-stone-400">Naissance: </span>{r.date_naissance ?? "—"}</p>
+                    <p><span className="text-stone-400">Sexe: </span>{r.sexe ?? "—"}</p>
+                    <p><span className="text-stone-400">Contrat: </span>{r.type_contrat ?? "—"}</p>
+                    <p className="col-span-2"><span className="text-stone-400">Emploi: </span>{r.emploi ?? "—"}</p>
+                    <p><span className="text-stone-400">Qualification: </span>{r.qualification ?? "—"}</p>
+                    <p><span className="text-stone-400">Temps partiel: </span>{r.temps_partiel ?? "—"}</p>
+                    <p><span className="text-stone-400">Type titre: </span>{r.type_titre ?? "—"}</p>
+                    <p><span className="text-stone-400">N° titre: </span>{r.numero_titre ?? "—"}</p>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <p className="card text-center text-stone-400">Aucun résultat.</p>
+            )}
+          </div>
+
+          <div className="hidden md:block card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-stone-400 whitespace-nowrap">
+                  {REGISTRE_FIELD_LABELS.map((f) => (
+                    <th key={f.key} className="py-2 pr-4">
+                      <Bi fr={f.label} ru={f.labelRu} />
+                    </th>
+                  ))}
+                  <th className="py-2 pr-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => {
+                  const foreign = isForeignNationality(r.nationalite);
+                  return (
+                    <tr
+                      key={r.id}
+                      className={`border-t border-stone-100 ${foreign ? "bg-warning-50" : ""}`}
+                    >
+                      <td className="py-2 pr-4 text-stone-400 whitespace-nowrap">{r.numero ?? "—"}</td>
+                      <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.date_entree ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.date_naissance ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "—"}</td>
+                      <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.qualification ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.type_titre ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.numero_titre ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.type_contrat ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
+                      <td className="py-2 pr-2 whitespace-nowrap">
+                        <RowAction
+                          icon={Pencil}
+                          title="Modifier"
+                          titleRu="Изменить"
+                          onClick={() => startEdit(r)}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={14} className="py-6 text-center text-stone-400">
+                      Aucun résultat.
                     </td>
                   </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={14} className="py-6 text-center text-stone-400">
-                    Aucun résultat.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -6689,7 +7051,15 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
  *  which column it's in: boss (brand blue) > bureau staff (amber) > team lead
  *  (green) > regular team member (plain), matching how the org chart is read
  *  at a glance. */
-function OrgTile({ label, tone }: { label: string; tone: "boss" | "bureau" | "lead" | "member" }) {
+function OrgTile({
+  label,
+  tone,
+  className = "",
+}: {
+  label: string;
+  tone: "boss" | "bureau" | "lead" | "member";
+  className?: string;
+}) {
   const toneClasses: Record<typeof tone, string> = {
     boss: "bg-primary-600 border-primary-600 text-white",
     bureau: "bg-warning-50 border-warning-200 text-warning-800",
@@ -6698,7 +7068,7 @@ function OrgTile({ label, tone }: { label: string; tone: "boss" | "bureau" | "le
   };
   return (
     <div
-      className={`flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold leading-tight ${toneClasses[tone]}`}
+      className={`flex items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold leading-tight min-w-0 ${toneClasses[tone]} ${className}`}
     >
       {tone === "lead" && <Crown size={11} className="shrink-0 fill-current" />}
       <span className="truncate">{label}</span>
@@ -6740,6 +7110,15 @@ function OrgColumn({
     setOverIndex(null);
   }
 
+  function moveItem(index: number, direction: -1 | 1) {
+    if (!onReorder) return;
+    const target = index + direction;
+    if (target < 0 || target >= employees.length) return;
+    const next = [...employees];
+    [next[index], next[target]] = [next[target], next[index]];
+    onReorder(next);
+  }
+
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="truncate rounded-lg bg-stone-800 px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white">
@@ -6768,7 +7147,7 @@ function OrgColumn({
             onDrop={() => handleDrop(i)}
             onClick={() => onToggleChef?.(e.id)}
             title={onToggleChef ? "Cliquer pour désigner/retirer comme chef d'équipe / Нажмите, чтобы назначить/снять бригадира" : undefined}
-            className={`${onReorder ? "cursor-grab active:cursor-grabbing" : ""} ${
+            className={`flex items-center gap-1 ${onReorder ? "cursor-grab active:cursor-grabbing" : ""} ${
               overIndex === i && dragIndex !== i ? "opacity-60" : ""
             } ${onToggleChef ? "cursor-pointer" : ""}`}
           >
@@ -6783,7 +7162,36 @@ function OrgColumn({
                   ? "bureau"
                   : "member"
               }
+              className="flex-1"
             />
+            {onReorder && (
+              <div className="md:hidden flex flex-col shrink-0">
+                <button
+                  type="button"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    moveItem(i, -1);
+                  }}
+                  disabled={i === 0}
+                  className="text-stone-400 disabled:opacity-20 hover:text-stone-700"
+                  title="Monter / Вверх"
+                >
+                  <ChevronUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    moveItem(i, 1);
+                  }}
+                  disabled={i === employees.length - 1}
+                  className="text-stone-400 disabled:opacity-20 hover:text-stone-700"
+                  title="Descendre / Вниз"
+                >
+                  <ChevronDown size={14} />
+                </button>
+              </div>
+            )}
           </div>
         ))
       )}
@@ -7876,7 +8284,121 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           <SkeletonRows rows={6} cols={7} />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <>
+        {/* Mobile: one card per employee instead of a 7-column table — the
+            two selects (holiday bonus, repas days) don't fit a phone width. */}
+        <div className="md:hidden space-y-3">
+          {groupedRows.map((row, idx) => {
+            const e = row.employee;
+            const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+            const c = computed[e.id];
+            const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
+            return (
+              <Fragment key={e.id}>
+                {showGroupHeader && (
+                  <p className="pt-2 text-xs font-bold uppercase tracking-wide text-stone-400">
+                    {row.groupLabel}
+                  </p>
+                )}
+                <div className={`card ${row.colorClass}`}>
+                  <p className="font-semibold mb-2">
+                    <PaieEmployeeName employee={e} />
+                  </p>
+                  {isFopContractor(e) ? (
+                    <p className="italic text-stone-500 text-sm">
+                      FOP — rémunération hors paie, calcul non applicable
+                    </p>
+                  ) : (
+                    <div className="space-y-2 text-sm">
+                      <label className="block">
+                        <span className="text-xs font-bold text-warning-700">
+                          <Bi fr="Net souhaité €" ru="Желаемый нетто €" />
+                        </span>
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60 mt-1"
+                          value={line.netSouhaite}
+                          onChange={(ev) => updateInput(e.id, "netSouhaite", ev.target.value)}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-warning-700">
+                          <Bi fr="Maj. jours fériés €" ru="Надбавка праздники €" />
+                        </span>
+                        <select
+                          className="input bg-warning-50/60 mt-1"
+                          value={line.majJoursFeries}
+                          onChange={(ev) => updateInput(e.id, "majJoursFeries", ev.target.value)}
+                        >
+                          <option value="">0 (aucun)</option>
+                          {monthHolidays.map((h) => (
+                            <option key={h.date} value={holidayDailyBonus}>
+                              {h.label} — {holidayMajorationPercent}% ({holidayDailyBonus.toFixed(2)} €)
+                            </option>
+                          ))}
+                          {monthHolidays.length >= 2 && (
+                            <option value={holidayDailyBonus * 2}>
+                              2 jours fériés — {holidayMajorationPercent * 2}% ({(holidayDailyBonus * 2).toFixed(2)} €)
+                            </option>
+                          )}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-warning-700">
+                          <Bi fr="Jours repas" ru="Дней питания" />
+                        </span>
+                        <select
+                          className="input bg-warning-50/60 mt-1"
+                          value={line.joursRepas}
+                          onChange={(ev) => updateInput(e.id, "joursRepas", ev.target.value)}
+                        >
+                          <option value="">0</option>
+                          {Array.from(
+                            { length: Math.max(params.maxJoursRepas, workingDaysInMonth) },
+                            (_, i) => i + 1
+                          ).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="flex justify-between pt-1 text-primary-700 font-semibold">
+                        <span>HS+25%: {c?.hs25Heures ?? 0} h</span>
+                        <span>HS+50%: {c?.hs50Heures ?? 0} h</span>
+                      </div>
+                      <p className="text-primary-700 font-semibold">
+                        <Bi fr="Prime except." ru="Премия" />: {(c?.primeExceptionnelle ?? 0).toFixed(2)} €
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </Fragment>
+            );
+          })}
+          {employees.length === 0 && (
+            <p className="card text-center text-stone-400">
+              Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
+            </p>
+          )}
+          {employees.length > 0 && (
+            <div className="card border-t-2 border-stone-200 font-bold text-sm">
+              <p className="mb-1">
+                TOTAL <span className="font-normal opacity-60">/ ИТОГО</span>
+              </p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-normal">
+                <span>Net souhaité: {totals.netSouhaite.toFixed(2)} €</span>
+                <span>Maj. fériés: {totals.majJoursFeries.toFixed(2)} €</span>
+                <span>Jours repas: {totals.joursRepas}</span>
+                <span>HS+25%: {totals.hs25Heures} h</span>
+                <span>HS+50%: {totals.hs50Heures} h</span>
+                <span>Prime: {totals.primeExceptionnelle.toFixed(2)} €</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="hidden md:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400 whitespace-nowrap">
@@ -8003,6 +8525,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             )}
           </table>
         </div>
+        </>
       )}
 
       <Modal
