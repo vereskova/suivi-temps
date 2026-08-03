@@ -10087,6 +10087,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
   const [issueDate, setIssueDate] = useState("");
+  const [noIssueDate, setNoIssueDate] = useState(false);
+  const [noExpiryDate, setNoExpiryDate] = useState(false);
   const [contractModal, setContractModal] = useState<{
     file: File;
     registreEntryId: string;
@@ -10524,6 +10526,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                                 setExpiryModal({ categoryCode: cat.code, file });
                                 setExpiryDate("");
                                 setIssueDate("");
+                                setNoIssueDate(false);
+                                setNoExpiryDate(false);
                               } else {
                                 const documentDateIso =
                                   cat.code === "medical_prevaly" ? mostRecentMedicalVisitDate(medicalVisits) : undefined;
@@ -10668,7 +10672,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
             const cat = categories.find((c) => c.code === expiryModal.categoryCode);
             const needsIssueDate = cat?.requires_issue_date ?? false;
             const needsExpiry = cat?.requires_expiry ?? false;
-            const canSubmit = (!needsIssueDate || !!issueDate) && (!needsExpiry || !!expiryDate);
+            const canSubmit =
+              (!needsIssueDate || noIssueDate || !!issueDate) && (!needsExpiry || noExpiryDate || !!expiryDate);
             return (
               <>
                 <p className="text-sm text-stone-500 mb-3">
@@ -10676,26 +10681,54 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   <span className="font-semibold">{expiryModal.file.name}</span>
                 </p>
                 {needsIssueDate && (
-                  <label className="text-xs font-bold text-stone-500 block mb-3">
-                    <Bi fr="Date de délivrance / création" ru="Дата выдачи / создания" />
-                    <input
-                      type="date"
-                      className="input mt-1"
-                      value={issueDate}
-                      onChange={(e) => setIssueDate(e.target.value)}
-                    />
-                  </label>
+                  <div className="mb-3">
+                    <label className="text-xs font-bold text-stone-500 block">
+                      <Bi fr="Date de délivrance / création" ru="Дата выдачи / создания" />
+                      <input
+                        type="date"
+                        className="input mt-1"
+                        value={issueDate}
+                        disabled={noIssueDate}
+                        onChange={(e) => setIssueDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="mt-1.5 flex items-center gap-1.5 text-xs text-stone-500">
+                      <input
+                        type="checkbox"
+                        checked={noIssueDate}
+                        onChange={(e) => {
+                          setNoIssueDate(e.target.checked);
+                          if (e.target.checked) setIssueDate("");
+                        }}
+                      />
+                      <Bi fr="Pas de date connue" ru="Дата неизвестна / отсутствует" />
+                    </label>
+                  </div>
                 )}
                 {needsExpiry && (
-                  <label className="text-xs font-bold text-stone-500 block">
-                    <Bi fr="Date d'expiration" ru="Дата истечения" />
-                    <input
-                      type="date"
-                      className="input mt-1"
-                      value={expiryDate}
-                      onChange={(e) => setExpiryDate(e.target.value)}
-                    />
-                  </label>
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 block">
+                      <Bi fr="Date d'expiration" ru="Дата истечения" />
+                      <input
+                        type="date"
+                        className="input mt-1"
+                        value={expiryDate}
+                        disabled={noExpiryDate}
+                        onChange={(e) => setExpiryDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="mt-1.5 flex items-center gap-1.5 text-xs text-stone-500">
+                      <input
+                        type="checkbox"
+                        checked={noExpiryDate}
+                        onChange={(e) => {
+                          setNoExpiryDate(e.target.checked);
+                          if (e.target.checked) setExpiryDate("");
+                        }}
+                      />
+                      <Bi fr="Pas de date d'expiration" ru="Нет даты истечения" />
+                    </label>
+                  </div>
                 )}
                 <div className="flex gap-3 mt-4">
                   <button
@@ -10703,8 +10736,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     disabled={!canSubmit}
                     onClick={async () => {
                       await uploadFile(expiryModal.categoryCode, expiryModal.file, {
-                        validUntil: needsExpiry ? expiryDate : undefined,
-                        documentDateIso: needsIssueDate ? issueDate : undefined,
+                        validUntil: needsExpiry && !noExpiryDate ? expiryDate : undefined,
+                        documentDateIso: needsIssueDate && !noIssueDate ? issueDate : undefined,
                       });
                       setExpiryModal(null);
                     }}
