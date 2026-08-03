@@ -193,6 +193,24 @@ body {
     box-shadow: 0 0 0 3px var(--color-primary-100);
   }
 
+  /* Reads as plain text until clicked — for dense tables (e.g. price cells)
+     where a bordered input on every row/cell is too visually heavy. */
+  .input-ghost {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .input-ghost:hover {
+    border-color: transparent;
+    background: #fafaf9;
+  }
+
+  .input-ghost:focus {
+    border-color: var(--color-primary-500);
+    background: white;
+    box-shadow: 0 0 0 3px var(--color-primary-100);
+  }
+
   /* ── Badges ────────────────────────────────────────────────────────── */
 
   .badge {

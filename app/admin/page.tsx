@@ -10,6 +10,7 @@ import {
   BarChart3,
   Banknote,
   Bell,
+  BellOff,
   BookText,
   Briefcase,
   CalendarDays,
@@ -421,6 +422,7 @@ export default function AdminPage() {
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [seenNotificationKeys, setSeenNotificationKeys] = useState<Set<string>>(new Set());
+  const [manualUnreadKeys, setManualUnreadKeys] = useState<Set<string>>(new Set());
 
   async function loadNotifications() {
     setNotificationsLoading(true);
@@ -430,8 +432,55 @@ export default function AdminPage() {
   }
 
   const hasUnreadNotifications = notifications.some(
-    (r) => !seenNotificationKeys.has(notificationKey(r))
+    (r) => !seenNotificationKeys.has(notificationKey(r)) || manualUnreadKeys.has(notificationKey(r))
   );
+
+  function toggleNotificationUnread(r: NotificationRow) {
+    const key = notificationKey(r);
+    if (manualUnreadKeys.has(key)) {
+      setManualUnreadKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        try {
+          localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore malformed/unavailable localStorage
+        }
+        return next;
+      });
+      setSeenNotificationKeys((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        try {
+          localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore malformed/unavailable localStorage
+        }
+        return next;
+      });
+    } else {
+      setManualUnreadKeys((prev) => {
+        const next = new Set(prev);
+        next.add(key);
+        try {
+          localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore malformed/unavailable localStorage
+        }
+        return next;
+      });
+      setSeenNotificationKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        try {
+          localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore malformed/unavailable localStorage
+        }
+        return next;
+      });
+    }
+  }
 
   useEffect(() => {
     async function load() {
@@ -439,6 +488,8 @@ export default function AdminPage() {
       try {
         const raw = localStorage.getItem(NOTIFICATIONS_SEEN_STORAGE_KEY);
         if (raw) setSeenNotificationKeys(new Set(JSON.parse(raw)));
+        const rawUnread = localStorage.getItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY);
+        if (rawUnread) setManualUnreadKeys(new Set(JSON.parse(rawUnread)));
       } catch {
         // ignore malformed/unavailable localStorage
       }
@@ -452,7 +503,10 @@ export default function AdminPage() {
       await Promise.resolve();
       setSeenNotificationKeys((prev) => {
         const next = new Set(prev);
-        notifications.forEach((r) => next.add(notificationKey(r)));
+        notifications.forEach((r) => {
+          const key = notificationKey(r);
+          if (!manualUnreadKeys.has(key)) next.add(key);
+        });
         try {
           localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
         } catch {
@@ -462,7 +516,7 @@ export default function AdminPage() {
       });
     }
     markSeen();
-  }, [view, notifications]);
+  }, [view, notifications, manualUnreadKeys]);
 
   async function loadActiveEmployees() {
     const { data } = await supabase
@@ -870,7 +924,12 @@ export default function AdminPage() {
             {view === "documents" && <DocumentsView supabase={supabase} />}
             {view === "rupture" && <RuptureView supabase={supabase} />}
             {view === "echeances" && (
-              <NotificationsView notifications={notifications} loading={notificationsLoading} />
+              <NotificationsView
+                notifications={notifications}
+                loading={notificationsLoading}
+                manualUnreadKeys={manualUnreadKeys}
+                onToggleUnread={toggleNotificationUnread}
+              />
             )}
             {view === "registre" && <RegistreView supabase={supabase} />}
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
@@ -6327,7 +6386,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                               <input
                                 type="number"
                                 step="0.01"
-                                className="input text-sm font-semibold py-1.5 px-2 w-full text-right"
+                                className="input input-ghost text-sm font-semibold py-1.5 px-2 w-full text-right"
                                 placeholder="—"
                                 defaultValue={item.price_ht ?? ""}
                                 key={`m-ht-${item.id}-${item.price_ht ?? ""}`}
@@ -6337,7 +6396,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                               <input
                                 type="number"
                                 step="0.01"
-                                className="input text-sm font-semibold py-1.5 px-2 w-full text-right"
+                                className="input input-ghost text-sm font-semibold py-1.5 px-2 w-full text-right"
                                 placeholder="—"
                                 defaultValue={ttc != null ? ttc.toFixed(2) : ""}
                                 key={`m-ttc-${item.id}-${ttc ?? ""}`}
@@ -6493,7 +6552,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     <input
                                       type="number"
                                       step="0.01"
-                                      className="input text-sm font-semibold py-1.5 px-2 w-28 text-right"
+                                      className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
                                       placeholder="—"
                                       defaultValue={item.price_ht ?? ""}
                                       key={`ht-${item.id}-${item.price_ht ?? ""}`}
@@ -6505,7 +6564,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                   <input
                                     type="number"
                                     step="0.01"
-                                    className="input text-sm font-semibold py-1.5 px-2 w-28 text-right"
+                                    className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
                                     placeholder="—"
                                     defaultValue={ttc != null ? ttc.toFixed(2) : ""}
                                     key={`ttc-${item.id}-${ttc ?? ""}`}
@@ -6802,6 +6861,7 @@ function ruYears(n: number): string {
 }
 
 const NOTIFICATIONS_SEEN_STORAGE_KEY = "vladis_notifications_seen";
+const NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY = "vladis_notifications_manual_unread";
 
 function notificationKey(r: NotificationRow): string {
   return `${r.employeeId}|${r.type}|${r.date}`;
@@ -6927,9 +6987,13 @@ const NOTIFICATION_TIER_LABELS: Record<NotificationTier, { fr: string; ru: strin
 function NotificationsView({
   notifications,
   loading,
+  manualUnreadKeys,
+  onToggleUnread,
 }: {
   notifications: NotificationRow[];
   loading: boolean;
+  manualUnreadKeys: Set<string>;
+  onToggleUnread: (r: NotificationRow) => void;
 }) {
   const [search, setSearch] = useState("");
 
@@ -7019,6 +7083,7 @@ function NotificationsView({
             const urgency = dateUrgency(r.date);
             const showTierHeader = i === 0 || filtered[i - 1].tier !== r.tier;
             const tierInfo = NOTIFICATION_TIER_LABELS[r.tier];
+            const unread = manualUnreadKeys.has(notificationKey(r));
             return (
               <Fragment key={`${r.employeeId}-${r.type}-${r.date}-${i}`}>
                 {showTierHeader && (
@@ -7030,12 +7095,24 @@ function NotificationsView({
                     <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
                   </p>
                 )}
-                <div className="rounded-xl border border-stone-100 p-3">
+                <div className={`rounded-xl border p-3 ${unread ? "border-primary-200 bg-primary-50/40" : "border-stone-100"}`}>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold">{r.employeeName}</p>
-                    {urgency ? (
-                      <span className={`badge badge-${urgency.tone} shrink-0`}>{urgency.label}</span>
-                    ) : null}
+                    <span className="inline-flex items-center gap-1.5">
+                      {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
+                      <p className="font-semibold">{r.employeeName}</p>
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {urgency ? (
+                        <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
+                      ) : null}
+                      <RowAction
+                        icon={unread ? Bell : BellOff}
+                        title={unread ? "Marquer comme lu" : "Marquer comme non lu"}
+                        titleRu={unread ? "Отметить как прочитанное" : "Отметить как непрочитанное"}
+                        active={unread}
+                        onClick={() => onToggleUnread(r)}
+                      />
+                    </div>
                   </div>
                   <p className="text-sm text-stone-500 mt-0.5">{r.type}</p>
                   <p className="text-sm text-stone-500">
@@ -7055,7 +7132,8 @@ function NotificationsView({
                 <th className="pb-2 pr-4"><Bi fr="Employé" ru="Сотрудник" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Type" ru="Тип" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Échéance" ru="Срок" /></th>
-                <th className="pb-2">Statut</th>
+                <th className="pb-2 pr-4">Statut</th>
+                <th className="pb-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -7063,30 +7141,45 @@ function NotificationsView({
                 const urgency = dateUrgency(r.date);
                 const showTierHeader = i === 0 || filtered[i - 1].tier !== r.tier;
                 const tierInfo = NOTIFICATION_TIER_LABELS[r.tier];
+                const unread = manualUnreadKeys.has(notificationKey(r));
                 return (
                   <Fragment key={`${r.employeeId}-${r.type}-${r.date}-${i}`}>
                     {showTierHeader && (
                       <tr>
-                        <td colSpan={4} className={i === 0 ? "p-0" : "pt-4 p-0"}>
+                        <td colSpan={5} className={i === 0 ? "p-0" : "pt-4 p-0"}>
                           <p className={`px-4 py-2 text-xs font-bold uppercase tracking-wide ${tierInfo.barClass}`}>
                             <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
                           </p>
                         </td>
                       </tr>
                     )}
-                    <tr className="border-t border-stone-100">
-                      <td className="py-2 pr-4 font-semibold">{r.employeeName}</td>
+                    <tr className={`border-t border-stone-100 ${unread ? "bg-primary-50/40" : ""}`}>
+                      <td className="py-2 pr-4 font-semibold">
+                        <span className="inline-flex items-center gap-1.5">
+                          {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
+                          {r.employeeName}
+                        </span>
+                      </td>
                       <td className="py-2 pr-4 text-stone-500">{r.type}</td>
                       <td className="py-2 pr-4">
                         {formatDateShortDMY(r.date)}
                         {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
                       </td>
-                      <td className="py-2">
+                      <td className="py-2 pr-4">
                         {urgency ? (
                           <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
                         ) : (
                           "—"
                         )}
+                      </td>
+                      <td className="py-2">
+                        <RowAction
+                          icon={unread ? Bell : BellOff}
+                          title={unread ? "Marquer comme lu" : "Marquer comme non lu"}
+                          titleRu={unread ? "Отметить как прочитанное" : "Отметить как непрочитанное"}
+                          active={unread}
+                          onClick={() => onToggleUnread(r)}
+                        />
                       </td>
                     </tr>
                   </Fragment>
