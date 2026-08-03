@@ -9884,11 +9884,27 @@ const DOSSIER_CATEGORY_ICONS: Record<string, LucideIcon> = {
 
 /** Short, consistent display name for an uploaded document — "Catégorie - DD-MM-YYYY.ext" —
  *  instead of whatever the source file happened to be called (IMG_2026.pdf, scan1.pdf...). */
-function standardFileName(categoryLabel: string, originalName: string): string {
+/** dateIso, when known (visit date, expiry, hire/exit date…), is always
+ *  preferred over today's date — the day someone happens to upload a
+ *  document is rarely the date that actually matters for it later. */
+function standardFileName(categoryLabel: string, originalName: string, dateIso?: string | null): string {
   const dot = originalName.lastIndexOf(".");
   const ext = dot > 0 ? originalName.slice(dot) : "";
-  const dateStr = today().split("-").reverse().join("-");
+  const dateStr = (dateIso ?? today()).split("-").reverse().join("-");
   return `${categoryLabel} - ${dateStr}${ext}`;
+}
+
+/** Prevaly documents are generated for a specific visite médicale that's
+ *  already tracked in medical_visits (entered via the Médical view) — use
+ *  that visit's actual date for the filename instead of the upload date. */
+function mostRecentMedicalVisitDate(visits: DossierMedicalVisit[]): string | null {
+  const t = today();
+  return (
+    visits
+      .map((v) => v.last_visit_date)
+      .filter((d): d is string => !!d && d <= t)
+      .sort((a, b) => b.localeCompare(a))[0] ?? null
+  );
 }
 
 /** Contracts carry more useful info than an upload date — whether it's signed,
@@ -10194,7 +10210,14 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   async function uploadFile(
     categoryCode: string,
     file: File,
-    opts?: { validUntil?: string; registreEntryId?: string; fileNameOverride?: string }
+    opts?: {
+      validUntil?: string;
+      registreEntryId?: string;
+      fileNameOverride?: string;
+      /** Real-world date the file is about (visit date, hire/exit date…) —
+       *  falls back to validUntil, then to today's date if neither is known. */
+      documentDateIso?: string | null;
+    }
   ) {
     if (!selectedEmployeeId) return;
     const key = `${categoryCode}:${opts?.registreEntryId ?? ""}`;
@@ -10210,7 +10233,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     const { error: insertError } = await supabase.from("employee_documents").insert({
       employee_id: selectedEmployeeId,
       category_code: categoryCode,
-      file_name: opts?.fileNameOverride ?? standardFileName(categoryLabel, file.name),
+      file_name:
+        opts?.fileNameOverride ??
+        standardFileName(categoryLabel, file.name, opts?.documentDateIso ?? opts?.validUntil ?? null),
       storage_path: path,
       file_size: file.size,
       mime_type: file.type || null,
@@ -10438,7 +10463,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             setContractModal({ file, registreEntryId, hireDate: entry?.date_entree ?? null });
                             setContractSigned(true);
                           } else {
-                            uploadFile(code, file, { registreEntryId });
+                            const entry = entries.find((en) => en.id === registreEntryId);
+                            const documentDateIso = code === "dpae" ? entry?.date_entree : entry?.date_sortie;
+                            uploadFile(code, file, { registreEntryId, documentDateIso });
                           }
                         }}
                         onPreview={previewFile}
@@ -10483,7 +10510,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                                 setExpiryModal({ categoryCode: cat.code, file });
                                 setExpiryDate("");
                               } else {
-                                uploadFile(cat.code, file);
+                                const documentDateIso =
+                                  cat.code === "medical_prevaly" ? mostRecentMedicalVisitDate(medicalVisits) : undefined;
+                                uploadFile(cat.code, file, documentDateIso ? { documentDateIso } : undefined);
                               }
                             }}
                           />
