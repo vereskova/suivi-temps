@@ -7,12 +7,15 @@ import * as XLSX from "xlsx";
 import {
   AlertTriangle,
   ArrowLeft,
+  Baby,
+  BadgeCheck,
   BarChart3,
   Banknote,
   Bell,
   BookText,
   Briefcase,
   CalendarDays,
+  Car,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -9881,6 +9884,10 @@ const DOSSIER_CATEGORY_ICONS: Record<string, LucideIcon> = {
   carte_vitale: CreditCard,
   dpae: ClipboardCheck,
   photo: ImageIcon,
+  acte_naissance: Baby,
+  permis_conduire: Car,
+  autorisation_travail: Briefcase,
+  validation_vls_ts: BadgeCheck,
 };
 
 /** Short, consistent display name for an uploaded document — "Catégorie - DD-MM-YYYY.ext" —
@@ -9980,7 +9987,7 @@ function DossierPeriodCategory({
             );
             const key = `${category.code}:${entry.id}`;
             return (
-              <div key={entry.id} className="rounded-lg bg-stone-50 p-2.5">
+              <div key={entry.id} className={`rounded-lg p-2.5 ${docs.length === 0 ? "bg-error-50" : "bg-stone-50"}`}>
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-xs font-semibold text-stone-500">
                     {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
@@ -10007,7 +10014,7 @@ function DossierPeriodCategory({
                   </label>
                 </div>
                 {docs.length === 0 ? (
-                  <p className="text-xs text-stone-400">
+                  <p className="text-xs font-semibold text-error-600">
                     Aucun document. <span className="opacity-70">/ Нет документов.</span>
                   </p>
                 ) : (
@@ -10481,7 +10488,12 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   const key = `${cat.code}:`;
 
                   return (
-                    <div key={cat.code} className="rounded-xl border border-stone-100 p-3">
+                    <div
+                      key={cat.code}
+                      className={`rounded-xl border p-3 ${
+                        docs.length === 0 ? "border-error-200 bg-error-50/40" : "border-stone-100"
+                      }`}
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-bold flex items-center gap-2">
                           <Icon size={15} className="text-stone-400" />
@@ -10588,7 +10600,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         ))}
 
                       {docs.length === 0 ? (
-                        <p className="text-xs text-stone-400">
+                        <p className="text-xs font-semibold text-error-600">
                           Aucun document. <span className="opacity-70">/ Нет документов.</span>
                         </p>
                       ) : (
