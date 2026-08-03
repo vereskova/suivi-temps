@@ -102,7 +102,7 @@ type Employee = {
   teams: { name: string } | null;
 };
 
-type EmployeeStatus = "active" | "on_leave" | "terminated";
+type EmployeeStatus = "active" | "on_leave" | "terminated" | "unclear";
 
 type EmployeeFull = Employee & {
   status: EmployeeStatus;
@@ -2289,11 +2289,13 @@ const STATUS_LABELS: Record<EmployeeStatus, string> = {
   active: "Actif",
   on_leave: "En congé",
   terminated: "Sorti",
+  unclear: "Statut incertain",
 };
 const STATUS_LABELS_RU: Record<EmployeeStatus, string> = {
   active: "Активен",
   on_leave: "В отпуске",
   terminated: "Уволен",
+  unclear: "Статус неизвестен",
 };
 
 type EmployeeEditForm = {
@@ -2356,7 +2358,7 @@ function EmployeesView({
   }, [refreshKey]);
 
   const counts = useMemo(() => {
-    const c = { active: 0, on_leave: 0, terminated: 0 };
+    const c = { active: 0, on_leave: 0, terminated: 0, unclear: 0 };
     employees.forEach((e) => {
       c[e.status]++;
     });
@@ -2445,7 +2447,7 @@ function EmployeesView({
         team_id: editForm.teamId || null,
         status: editForm.status,
         end_date:
-          editForm.status === "terminated" || editForm.status === "on_leave"
+          editForm.status === "terminated" || editForm.status === "on_leave" || editForm.status === "unclear"
             ? editForm.endDate || null
             : null,
       })
@@ -2546,6 +2548,16 @@ function EmployeesView({
             }`}
           >
             {counts.terminated} sortis <span className="opacity-70">/ уволены</span>
+          </button>
+          <button
+            onClick={() => setStatusFilter("unclear")}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "unclear"
+                ? "bg-error-800 text-white"
+                : "bg-error-100 text-error-800"
+            }`}
+          >
+            {counts.unclear} statut incertain <span className="opacity-70">/ статус неизвестен</span>
           </button>
           <button
             onClick={() => setStatusFilter("all")}
@@ -2739,19 +2751,23 @@ function EmployeesView({
                             setEditForm({ ...editForm, status: ev.target.value as EmployeeStatus })
                           }
                         >
-                          {(["active", "on_leave", "terminated"] as EmployeeStatus[]).map((s) => (
+                          {(["active", "on_leave", "terminated", "unclear"] as EmployeeStatus[]).map((s) => (
                             <option key={s} value={s}>
                               {STATUS_LABELS[s]} / {STATUS_LABELS_RU[s]}
                             </option>
                           ))}
                         </select>
                       </label>
-                      {(editForm.status === "terminated" || editForm.status === "on_leave") && (
+                      {(editForm.status === "terminated" ||
+                        editForm.status === "on_leave" ||
+                        editForm.status === "unclear") && (
                         <label className="block text-xs font-bold text-stone-400">
                           {editForm.status === "terminated" ? (
                             <Bi fr="Date de fin" ru="Дата увольнения" />
-                          ) : (
+                          ) : editForm.status === "on_leave" ? (
                             <Bi fr="Date de départ en congé" ru="Дата начала отпуска" />
+                          ) : (
+                            <Bi fr="Dernier contact connu" ru="Последний известный контакт" />
                           )}
                           <input
                             type="date"
@@ -2781,6 +2797,8 @@ function EmployeesView({
                         className={`font-semibold ${
                           e.status === "terminated"
                             ? "text-error-600"
+                            : e.status === "unclear"
+                            ? "text-error-800"
                             : e.status === "on_leave"
                             ? "text-warning-600"
                             : "text-success-600"
@@ -2865,7 +2883,7 @@ function EmployeesView({
                             }
                           >
                             {(
-                              ["active", "on_leave", "terminated"] as EmployeeStatus[]
+                              ["active", "on_leave", "terminated", "unclear"] as EmployeeStatus[]
                             ).map((s) => (
                               <option key={s} value={s}>
                                 {STATUS_LABELS[s]} / {STATUS_LABELS_RU[s]}
@@ -2874,7 +2892,9 @@ function EmployeesView({
                           </select>
                         </td>
                         <td className="py-2 pr-4">
-                          {(editForm.status === "terminated" || editForm.status === "on_leave") && (
+                          {(editForm.status === "terminated" ||
+                            editForm.status === "on_leave" ||
+                            editForm.status === "unclear") && (
                             <input
                               type="date"
                               className="input text-sm px-2 py-1"
@@ -2910,6 +2930,8 @@ function EmployeesView({
                           className={`py-2 pr-4 font-semibold ${
                             e.status === "terminated"
                               ? "text-error-600"
+                              : e.status === "unclear"
+                              ? "text-error-800"
                               : e.status === "on_leave"
                               ? "text-warning-600"
                               : "text-success-600"
@@ -3106,6 +3128,7 @@ const STATUS_TONE: Record<EmployeeStatus, string> = {
   active: "bg-success-50 text-success-700",
   on_leave: "bg-warning-50 text-warning-700",
   terminated: "bg-error-50 text-error-700",
+  unclear: "bg-error-100 text-error-800",
 };
 
 function DetailSection({
@@ -5002,6 +5025,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
           <option value="active">Actifs / Активны</option>
           <option value="on_leave">En congé / В отпуске</option>
           <option value="terminated">Sortis / Уволены</option>
+          <option value="unclear">Statut incertain / Статус неизвестен</option>
           <option value="all">Tous / Все</option>
         </select>
 
@@ -5443,6 +5467,7 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <option value="active">Actifs / Активны</option>
           <option value="on_leave">En congé / В отпуске</option>
           <option value="terminated">Sortis / Уволены</option>
+          <option value="unclear">Statut incertain / Статус неизвестен</option>
           <option value="all">Tous / Все</option>
         </select>
         {loadingEmployees ? (
@@ -8562,7 +8587,7 @@ type PaieEmployee = {
   team_id: string | null;
   teams: { name: string; chef_employee_id: string | null } | null;
   contract_type: string | null;
-  status: "active" | "on_leave" | "terminated";
+  status: EmployeeStatus;
   hire_date: string | null;
   end_date: string | null;
 };
@@ -8793,7 +8818,9 @@ function defaultJoursRepasFor(e: PaieEmployee, monthStart: string, monthEnd: str
   if (isOfficeCore(e)) return "0";
   const rangeStart = e.hire_date && e.hire_date > monthStart ? e.hire_date : monthStart;
   const rangeEnd =
-    (e.status === "terminated" || e.status === "on_leave") && e.end_date && e.end_date < monthEnd
+    (e.status === "terminated" || e.status === "on_leave" || e.status === "unclear") &&
+    e.end_date &&
+    e.end_date < monthEnd
       ? e.end_date
       : monthEnd;
   return String(countWeekdaysBetween(rangeStart, rangeEnd));
@@ -10362,6 +10389,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <option value="active">Actifs / Активны</option>
           <option value="on_leave">En congé / В отпуске</option>
           <option value="terminated">Sortis / Уволены</option>
+          <option value="unclear">Statut incertain / Статус неизвестен</option>
           <option value="all">Tous / Все</option>
         </select>
         {loadingEmployees ? (
