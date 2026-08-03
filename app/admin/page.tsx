@@ -9825,6 +9825,7 @@ type DocumentCategory = {
   sort_order: number;
   sensitive: boolean;
   requires_expiry: boolean;
+  requires_issue_date: boolean;
   foreigners_only: boolean;
   per_period: boolean;
 };
@@ -10078,6 +10079,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
+  const [issueDate, setIssueDate] = useState("");
   const [contractModal, setContractModal] = useState<{
     file: File;
     registreEntryId: string;
@@ -10331,7 +10333,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 text={
                   "Личное дело сотрудника — все загруженные документы по категориям (контракт, RIB, медицина, вид на жительство и т.д.).\n\n" +
                   "Кнопка с глазом — посмотреть файл, не скачивая его. Кнопка «Historique» у карточки сотрудника показывает, кто и когда загрузил или удалил документ.\n\n" +
-                  "Для некоторых категорий (например «Habilitation», «Titre de séjour») система попросит указать дату истечения — эти документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор — дата приёма подставляется автоматически из Registre du personnel."
+                  "Для некоторых категорий («Habilitation», «Titre de séjour», «Passeport») система попросит указать дату выдачи и дату истечения — такие документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Carte BTP» спрашивается только дата создания карточки — у неё нет срока действия. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор — дата приёма подставляется автоматически из Registre du personnel."
                 }
               />
             }
@@ -10506,9 +10508,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                               const file = ev.target.files?.[0];
                               ev.target.value = "";
                               if (!file) return;
-                              if (cat.requires_expiry) {
+                              if (cat.requires_expiry || cat.requires_issue_date) {
                                 setExpiryModal({ categoryCode: cat.code, file });
                                 setExpiryDate("");
+                                setIssueDate("");
                               } else {
                                 const documentDateIso =
                                   cat.code === "medical_prevaly" ? mostRecentMedicalVisitDate(medicalVisits) : undefined;
@@ -10647,44 +10650,62 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
         )}
       </div>
 
-      <Modal
-        open={!!expiryModal}
-        onClose={() => setExpiryModal(null)}
-        title="Date d'expiration"
-        maxWidth="max-w-sm"
-      >
-        {expiryModal && (
-          <>
-            <p className="text-sm text-stone-500 mb-3">
-              Fichier <span className="opacity-70">/ Файл</span> :{" "}
-              <span className="font-semibold">{expiryModal.file.name}</span>
-            </p>
-            <label className="text-xs font-bold text-stone-500">
-              <Bi fr="Date d'expiration" ru="Дата истечения" />
-              <input
-                type="date"
-                className="input mt-1"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-              />
-            </label>
-            <div className="flex gap-3 mt-4">
-              <button
-                className="btn btn-primary text-sm px-3 py-2"
-                disabled={!expiryDate}
-                onClick={async () => {
-                  await uploadFile(expiryModal.categoryCode, expiryModal.file, { validUntil: expiryDate });
-                  setExpiryModal(null);
-                }}
-              >
-                <Bi fr="Ajouter" ru="Добавить" />
-              </button>
-              <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setExpiryModal(null)}>
-                <Bi fr="Annuler" ru="Отмена" />
-              </button>
-            </div>
-          </>
-        )}
+      <Modal open={!!expiryModal} onClose={() => setExpiryModal(null)} title="Dates du document" maxWidth="max-w-sm">
+        {expiryModal &&
+          (() => {
+            const cat = categories.find((c) => c.code === expiryModal.categoryCode);
+            const needsIssueDate = cat?.requires_issue_date ?? false;
+            const needsExpiry = cat?.requires_expiry ?? false;
+            const canSubmit = (!needsIssueDate || !!issueDate) && (!needsExpiry || !!expiryDate);
+            return (
+              <>
+                <p className="text-sm text-stone-500 mb-3">
+                  Fichier <span className="opacity-70">/ Файл</span> :{" "}
+                  <span className="font-semibold">{expiryModal.file.name}</span>
+                </p>
+                {needsIssueDate && (
+                  <label className="text-xs font-bold text-stone-500 block mb-3">
+                    <Bi fr="Date de délivrance / création" ru="Дата выдачи / создания" />
+                    <input
+                      type="date"
+                      className="input mt-1"
+                      value={issueDate}
+                      onChange={(e) => setIssueDate(e.target.value)}
+                    />
+                  </label>
+                )}
+                {needsExpiry && (
+                  <label className="text-xs font-bold text-stone-500 block">
+                    <Bi fr="Date d'expiration" ru="Дата истечения" />
+                    <input
+                      type="date"
+                      className="input mt-1"
+                      value={expiryDate}
+                      onChange={(e) => setExpiryDate(e.target.value)}
+                    />
+                  </label>
+                )}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    className="btn btn-primary text-sm px-3 py-2"
+                    disabled={!canSubmit}
+                    onClick={async () => {
+                      await uploadFile(expiryModal.categoryCode, expiryModal.file, {
+                        validUntil: needsExpiry ? expiryDate : undefined,
+                        documentDateIso: needsIssueDate ? issueDate : undefined,
+                      });
+                      setExpiryModal(null);
+                    }}
+                  >
+                    <Bi fr="Ajouter" ru="Добавить" />
+                  </button>
+                  <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setExpiryModal(null)}>
+                    <Bi fr="Annuler" ru="Отмена" />
+                  </button>
+                </div>
+              </>
+            );
+          })()}
       </Modal>
 
       <Modal
