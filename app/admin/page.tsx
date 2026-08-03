@@ -10,7 +10,6 @@ import {
   BarChart3,
   Banknote,
   Bell,
-  BellOff,
   BookText,
   Briefcase,
   CalendarDays,
@@ -435,51 +434,31 @@ export default function AdminPage() {
     (r) => !seenNotificationKeys.has(notificationKey(r)) || manualUnreadKeys.has(notificationKey(r))
   );
 
-  function toggleNotificationUnread(r: NotificationRow) {
-    const key = notificationKey(r);
-    if (manualUnreadKeys.has(key)) {
-      setManualUnreadKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        try {
-          localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
-        } catch {
-          // ignore malformed/unavailable localStorage
-        }
-        return next;
-      });
-      setSeenNotificationKeys((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        try {
-          localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
-        } catch {
-          // ignore malformed/unavailable localStorage
-        }
-        return next;
-      });
-    } else {
-      setManualUnreadKeys((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        try {
-          localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
-        } catch {
-          // ignore malformed/unavailable localStorage
-        }
-        return next;
-      });
-      setSeenNotificationKeys((prev) => {
-        const next = new Set(prev);
-        next.delete(key);
-        try {
-          localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
-        } catch {
-          // ignore malformed/unavailable localStorage
-        }
-        return next;
-      });
-    }
+  // Clicking the "Notifications" nav link itself re-flags every currently
+  // listed notification as unread — a manual "remind me again" reset,
+  // distinct from the automatic mark-as-seen-on-visit below.
+  function markAllNotificationsUnread() {
+    const keys = notifications.map(notificationKey);
+    setManualUnreadKeys((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => next.add(k));
+      try {
+        localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {
+        // ignore malformed/unavailable localStorage
+      }
+      return next;
+    });
+    setSeenNotificationKeys((prev) => {
+      const next = new Set(prev);
+      keys.forEach((k) => next.delete(k));
+      try {
+        localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {
+        // ignore malformed/unavailable localStorage
+      }
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -852,6 +831,7 @@ export default function AdminPage() {
                       icon={item.icon}
                       active={view === item.key}
                       onClick={() => {
+                        if (item.key === "echeances") markAllNotificationsUnread();
                         setView(item.key);
                         setMobileNavOpen(false);
                       }}
@@ -877,7 +857,10 @@ export default function AdminPage() {
                         key={item.key}
                         icon={item.icon}
                         active={view === item.key}
-                        onClick={() => setView(item.key)}
+                        onClick={() => {
+                          if (item.key === "echeances") markAllNotificationsUnread();
+                          setView(item.key);
+                        }}
                         label={item.label}
                         labelRu={item.labelRu}
                         dot={item.key === "echeances" ? hasUnreadNotifications : false}
@@ -928,7 +911,6 @@ export default function AdminPage() {
                 notifications={notifications}
                 loading={notificationsLoading}
                 manualUnreadKeys={manualUnreadKeys}
-                onToggleUnread={toggleNotificationUnread}
               />
             )}
             {view === "registre" && <RegistreView supabase={supabase} />}
@@ -6359,14 +6341,14 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                             <div className="flex items-center gap-1.5 mt-2 ml-7">
                               <input
                                 type="date"
-                                className={`input text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
+                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
                                 value={item.planned_start_date ?? ""}
                                 onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
                               />
                               <span className="text-stone-300">–</span>
                               <input
                                 type="date"
-                                className={`input text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
+                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
                                 value={item.planned_end_date ?? ""}
                                 onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
                               />
@@ -6387,7 +6369,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                 type="number"
                                 step="0.01"
                                 className="input input-ghost text-sm font-semibold py-1.5 px-2 w-full text-right"
-                                placeholder="—"
+                                placeholder="0.00"
                                 defaultValue={item.price_ht ?? ""}
                                 key={`m-ht-${item.id}-${item.price_ht ?? ""}`}
                                 onBlur={(e) => updateItemPriceHt(item, e.target.value)}
@@ -6397,7 +6379,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                 type="number"
                                 step="0.01"
                                 className="input input-ghost text-sm font-semibold py-1.5 px-2 w-full text-right"
-                                placeholder="—"
+                                placeholder="0.00"
                                 defaultValue={ttc != null ? ttc.toFixed(2) : ""}
                                 key={`m-ttc-${item.id}-${ttc ?? ""}`}
                                 onBlur={(e) => updateItemPriceTtc(item, e.target.value)}
@@ -6527,7 +6509,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                   <div className="flex items-center gap-1 whitespace-nowrap">
                                     <input
                                       type="date"
-                                      className={`input text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
+                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
                                       value={item.planned_start_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
                                       title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
@@ -6535,7 +6517,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     <span className="text-stone-300">–</span>
                                     <input
                                       type="date"
-                                      className={`input text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
+                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
                                       value={item.planned_end_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
                                       title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
@@ -6553,7 +6535,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                       type="number"
                                       step="0.01"
                                       className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
-                                      placeholder="—"
+                                      placeholder="0.00"
                                       defaultValue={item.price_ht ?? ""}
                                       key={`ht-${item.id}-${item.price_ht ?? ""}`}
                                       onBlur={(e) => updateItemPriceHt(item, e.target.value)}
@@ -6565,7 +6547,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     type="number"
                                     step="0.01"
                                     className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
-                                    placeholder="—"
+                                    placeholder="0.00"
                                     defaultValue={ttc != null ? ttc.toFixed(2) : ""}
                                     key={`ttc-${item.id}-${ttc ?? ""}`}
                                     onBlur={(e) => updateItemPriceTtc(item, e.target.value)}
@@ -6988,12 +6970,10 @@ function NotificationsView({
   notifications,
   loading,
   manualUnreadKeys,
-  onToggleUnread,
 }: {
   notifications: NotificationRow[];
   loading: boolean;
   manualUnreadKeys: Set<string>;
-  onToggleUnread: (r: NotificationRow) => void;
 }) {
   const [search, setSearch] = useState("");
 
@@ -7024,7 +7004,8 @@ function NotificationsView({
                 text={
                   "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 3 года (по закону) — и дни рождения сотрудников.\n\n" +
                   "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
-                  "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу."
+                  "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу.\n\n" +
+                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке)."
                 }
               />
             }
@@ -7101,18 +7082,9 @@ function NotificationsView({
                       {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
                       <p className="font-semibold">{r.employeeName}</p>
                     </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {urgency ? (
-                        <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
-                      ) : null}
-                      <RowAction
-                        icon={unread ? Bell : BellOff}
-                        title={unread ? "Marquer comme lu" : "Marquer comme non lu"}
-                        titleRu={unread ? "Отметить как прочитанное" : "Отметить как непрочитанное"}
-                        active={unread}
-                        onClick={() => onToggleUnread(r)}
-                      />
-                    </div>
+                    {urgency ? (
+                      <span className={`badge badge-${urgency.tone} shrink-0`}>{urgency.label}</span>
+                    ) : null}
                   </div>
                   <p className="text-sm text-stone-500 mt-0.5">{r.type}</p>
                   <p className="text-sm text-stone-500">
@@ -7146,7 +7118,7 @@ function NotificationsView({
                   <Fragment key={`${r.employeeId}-${r.type}-${r.date}-${i}`}>
                     {showTierHeader && (
                       <tr>
-                        <td colSpan={5} className={i === 0 ? "p-0" : "pt-4 p-0"}>
+                        <td colSpan={4} className={i === 0 ? "p-0" : "pt-4 p-0"}>
                           <p className={`px-4 py-2 text-xs font-bold uppercase tracking-wide ${tierInfo.barClass}`}>
                             <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
                           </p>
@@ -7165,21 +7137,12 @@ function NotificationsView({
                         {formatDateShortDMY(r.date)}
                         {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2">
                         {urgency ? (
                           <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
                         ) : (
                           "—"
                         )}
-                      </td>
-                      <td className="py-2">
-                        <RowAction
-                          icon={unread ? Bell : BellOff}
-                          title={unread ? "Marquer comme lu" : "Marquer comme non lu"}
-                          titleRu={unread ? "Отметить как прочитанное" : "Отметить как непрочитанное"}
-                          active={unread}
-                          onClick={() => onToggleUnread(r)}
-                        />
                       </td>
                     </tr>
                   </Fragment>
