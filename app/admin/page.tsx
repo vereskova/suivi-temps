@@ -461,6 +461,35 @@ export default function AdminPage() {
     });
   }
 
+  // Right-clicking a single notification row toggles just that one — a more
+  // deliberate gesture than a plain click, so it doesn't fire by accident.
+  function toggleNotificationUnread(r: NotificationRow) {
+    const key = notificationKey(r);
+    const nowUnread = !manualUnreadKeys.has(key);
+    setManualUnreadKeys((prev) => {
+      const next = new Set(prev);
+      if (nowUnread) next.add(key);
+      else next.delete(key);
+      try {
+        localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {
+        // ignore malformed/unavailable localStorage
+      }
+      return next;
+    });
+    setSeenNotificationKeys((prev) => {
+      const next = new Set(prev);
+      if (nowUnread) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
+      } catch {
+        // ignore malformed/unavailable localStorage
+      }
+      return next;
+    });
+  }
+
   useEffect(() => {
     async function load() {
       await Promise.resolve();
@@ -911,6 +940,7 @@ export default function AdminPage() {
                 notifications={notifications}
                 loading={notificationsLoading}
                 manualUnreadKeys={manualUnreadKeys}
+                onToggleUnread={toggleNotificationUnread}
               />
             )}
             {view === "registre" && <RegistreView supabase={supabase} />}
@@ -6341,14 +6371,18 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                             <div className="flex items-center gap-1.5 mt-2 ml-7">
                               <input
                                 type="date"
-                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
+                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${
+                                  invalidRange ? "border-error-400" : ""
+                                } ${item.planned_start_date ? "" : "text-stone-400"}`}
                                 value={item.planned_start_date ?? ""}
                                 onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
                               />
                               <span className="text-stone-300">–</span>
                               <input
                                 type="date"
-                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${invalidRange ? "border-error-400" : ""}`}
+                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${
+                                  invalidRange ? "border-error-400" : ""
+                                } ${item.planned_end_date ? "" : "text-stone-400"}`}
                                 value={item.planned_end_date ?? ""}
                                 onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
                               />
@@ -6509,7 +6543,9 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                   <div className="flex items-center gap-1 whitespace-nowrap">
                                     <input
                                       type="date"
-                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
+                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${
+                                        invalidRange ? "border-error-400" : ""
+                                      } ${item.planned_start_date ? "" : "text-stone-400"}`}
                                       value={item.planned_start_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
                                       title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
@@ -6517,7 +6553,9 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     <span className="text-stone-300">–</span>
                                     <input
                                       type="date"
-                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${invalidRange ? "border-error-400" : ""}`}
+                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${
+                                        invalidRange ? "border-error-400" : ""
+                                      } ${item.planned_end_date ? "" : "text-stone-400"}`}
                                       value={item.planned_end_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
                                       title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
@@ -6970,10 +7008,12 @@ function NotificationsView({
   notifications,
   loading,
   manualUnreadKeys,
+  onToggleUnread,
 }: {
   notifications: NotificationRow[];
   loading: boolean;
   manualUnreadKeys: Set<string>;
+  onToggleUnread: (r: NotificationRow) => void;
 }) {
   const [search, setSearch] = useState("");
 
@@ -7005,7 +7045,8 @@ function NotificationsView({
                   "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 3 года (по закону) — и дни рождения сотрудников.\n\n" +
                   "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
                   "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу.\n\n" +
-                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке)."
+                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке).\n\n" +
+                  "Чтобы отметить прочитанным/непрочитанным только одно конкретное уведомление — кликните по нему правой кнопкой мыши."
                 }
               />
             }
@@ -7076,7 +7117,14 @@ function NotificationsView({
                     <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
                   </p>
                 )}
-                <div className={`rounded-xl border p-3 ${unread ? "border-primary-200 bg-primary-50/40" : "border-stone-100"}`}>
+                <div
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    onToggleUnread(r);
+                  }}
+                  title="Клик правой кнопкой — отметить прочитанным/непрочитанным"
+                  className={`rounded-xl border p-3 ${unread ? "border-primary-200 bg-primary-50/40" : "border-stone-100"}`}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5">
                       {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
@@ -7125,7 +7173,14 @@ function NotificationsView({
                         </td>
                       </tr>
                     )}
-                    <tr className={`border-t border-stone-100 ${unread ? "bg-primary-50/40" : ""}`}>
+                    <tr
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onToggleUnread(r);
+                      }}
+                      title="Клик правой кнопкой — отметить прочитанным/непрочитанным"
+                      className={`border-t border-stone-100 ${unread ? "bg-primary-50/40" : ""}`}
+                    >
                       <td className="py-2 pr-4 font-semibold">
                         <span className="inline-flex items-center gap-1.5">
                           {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
