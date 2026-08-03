@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/requireRole";
 import { getDocumentType, splitParams } from "@/lib/documents/registry";
 import { renderDocx } from "@/lib/documents/renderDocx";
 import { renderPdf } from "@/lib/documents/renderPdf";
@@ -33,23 +33,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unknown document type" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const { data: roleRow } = await supabase
-    .from("user_roles")
-    .select("role, employee_id")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (roleRow?.role !== "rh_admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  // "rh" already has full RLS read/write on employees, company_settings and
+  // generated_documents (migration 0017) — the Documents view was visible to
+  // rh but generation was still rh_admin-only, a leftover from before the
+  // "rh" role existed. Matches the same parity given to rupture access.
+  const check = await requireRole(["rh_admin", "rh"]);
+  if (!check.ok) return check.response;
+  const { supabase, employeeId: generatedByEmployeeId } = check.ctx;
 
   const { data: employeeRow, error: employeeError } = await supabase
     .from("employees")
@@ -99,7 +89,7 @@ export async function POST(request: NextRequest) {
     document_type: documentType,
     format,
     params: params ?? {},
-    generated_by: roleRow.employee_id ?? null,
+    generated_by: generatedByEmployeeId,
   });
 
   return new NextResponse(new Uint8Array(buffer), {

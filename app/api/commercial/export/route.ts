@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireRole } from "@/lib/auth/requireRole";
 import { renderClientChecklistPdf, renderTeamWorkOrderPdf } from "@/lib/commercial/renderChecklistPdf";
 
 export async function POST(request: NextRequest) {
@@ -13,23 +13,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing or invalid parameters" }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-
-  const { data: roleRow } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
-
-  if (roleRow?.role !== "commercial" && roleRow?.role !== "rh_admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const check = await requireRole(["commercial", "rh_admin"]);
+  if (!check.ok) return check.response;
+  const { supabase } = check.ctx;
 
   const { data: caseRow, error: caseError } = await supabase
     .from("commercial_cases")

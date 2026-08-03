@@ -360,7 +360,8 @@ type ViewKey =
   | "francais"
   | "dossier"
   | "paie"
-  | "commercial";
+  | "commercial"
+  | "audit";
 
 type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon };
 
@@ -397,6 +398,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
       { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
+      { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", icon: History },
     ],
   },
   {
@@ -422,6 +424,7 @@ export default function AdminPage() {
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [seenNotificationKeys, setSeenNotificationKeys] = useState<Set<string>>(new Set());
   const [manualUnreadKeys, setManualUnreadKeys] = useState<Set<string>>(new Set());
+  const [notificationFlagsLoaded, setNotificationFlagsLoaded] = useState(false);
 
   async function loadNotifications() {
     setNotificationsLoading(true);
@@ -436,95 +439,89 @@ export default function AdminPage() {
 
   // Clicking the "Notifications" nav link itself re-flags every currently
   // listed notification as unread — a manual "remind me again" reset,
-  // distinct from the automatic mark-as-seen-on-visit below.
-  function markAllNotificationsUnread() {
+  // distinct from the automatic mark-as-seen-on-visit below. Shared across
+  // everyone with rh_admin/rh access (backed by notification_flags in
+  // Supabase, not per-browser localStorage) — like a team inbox.
+  async function markAllNotificationsUnread() {
     const keys = notifications.map(notificationKey);
+    if (keys.length === 0) return;
     setManualUnreadKeys((prev) => {
       const next = new Set(prev);
       keys.forEach((k) => next.add(k));
-      try {
-        localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        // ignore malformed/unavailable localStorage
-      }
       return next;
     });
     setSeenNotificationKeys((prev) => {
       const next = new Set(prev);
       keys.forEach((k) => next.delete(k));
-      try {
-        localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        // ignore malformed/unavailable localStorage
-      }
       return next;
     });
+    const { error } = await supabase
+      .from("notification_flags")
+      .upsert(
+        keys.map((k) => ({ notification_key: k, manual_unread: true, seen: false, updated_at: new Date().toISOString() })),
+        { onConflict: "notification_key" }
+      );
+    if (error) toast.error("Erreur lors de la mise à jour des notifications.");
   }
 
   // Right-clicking a single notification row toggles just that one — a more
   // deliberate gesture than a plain click, so it doesn't fire by accident.
-  function toggleNotificationUnread(r: NotificationRow) {
+  async function toggleNotificationUnread(r: NotificationRow) {
     const key = notificationKey(r);
     const nowUnread = !manualUnreadKeys.has(key);
     setManualUnreadKeys((prev) => {
       const next = new Set(prev);
       if (nowUnread) next.add(key);
       else next.delete(key);
-      try {
-        localStorage.setItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        // ignore malformed/unavailable localStorage
-      }
       return next;
     });
     setSeenNotificationKeys((prev) => {
       const next = new Set(prev);
       if (nowUnread) next.delete(key);
       else next.add(key);
-      try {
-        localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {
-        // ignore malformed/unavailable localStorage
-      }
       return next;
     });
+    const { error } = await supabase
+      .from("notification_flags")
+      .upsert(
+        { notification_key: key, manual_unread: nowUnread, seen: !nowUnread, updated_at: new Date().toISOString() },
+        { onConflict: "notification_key" }
+      );
+    if (error) toast.error("Erreur lors de la mise à jour de la notification.");
   }
 
   useEffect(() => {
     async function load() {
-      await Promise.resolve();
-      try {
-        const raw = localStorage.getItem(NOTIFICATIONS_SEEN_STORAGE_KEY);
-        if (raw) setSeenNotificationKeys(new Set(JSON.parse(raw)));
-        const rawUnread = localStorage.getItem(NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY);
-        if (rawUnread) setManualUnreadKeys(new Set(JSON.parse(rawUnread)));
-      } catch {
-        // ignore malformed/unavailable localStorage
+      const { data, error } = await supabase.from("notification_flags").select("notification_key, seen, manual_unread");
+      if (!error && data) {
+        setSeenNotificationKeys(new Set(data.filter((r) => r.seen).map((r) => r.notification_key)));
+        setManualUnreadKeys(new Set(data.filter((r) => r.manual_unread).map((r) => r.notification_key)));
       }
+      setNotificationFlagsLoaded(true);
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (view !== "echeances" || notifications.length === 0) return;
+    if (!notificationFlagsLoaded || view !== "echeances" || notifications.length === 0) return;
     async function markSeen() {
-      await Promise.resolve();
+      const keysToMark = notifications.map(notificationKey).filter((k) => !manualUnreadKeys.has(k));
+      if (keysToMark.length === 0) return;
       setSeenNotificationKeys((prev) => {
         const next = new Set(prev);
-        notifications.forEach((r) => {
-          const key = notificationKey(r);
-          if (!manualUnreadKeys.has(key)) next.add(key);
-        });
-        try {
-          localStorage.setItem(NOTIFICATIONS_SEEN_STORAGE_KEY, JSON.stringify(Array.from(next)));
-        } catch {
-          // ignore malformed/unavailable localStorage
-        }
+        keysToMark.forEach((k) => next.add(k));
         return next;
       });
+      await supabase
+        .from("notification_flags")
+        .upsert(
+          keysToMark.map((k) => ({ notification_key: k, seen: true, updated_at: new Date().toISOString() })),
+          { onConflict: "notification_key" }
+        );
     }
     markSeen();
-  }, [view, notifications, manualUnreadKeys]);
+  }, [view, notifications, manualUnreadKeys, notificationFlagsLoaded, supabase]);
 
   async function loadActiveEmployees() {
     const { data } = await supabase
@@ -615,6 +612,9 @@ export default function AdminPage() {
     );
   }
 
+  // "chef" and "boss" are legacy app_role values with no code path of their
+  // own since migration 0022 made the daily pointage form public — anyone
+  // still carrying one of those roles falls through to the gate below.
   if (role !== "rh_admin" && role !== "comptable" && role !== "rh" && role !== "commercial") {
     return (
       <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
@@ -783,13 +783,18 @@ export default function AdminPage() {
   }
 
   // rh: Effectif + RH sections only — no Pointage group, no Paie,
-  // Calculateur de rupture, or Commercial (admin-only for now).
+  // Calculateur de rupture uses only the employees table, which 'rh' already
+  // has full read/write on (see migration 0017) — no reason to keep it
+  // admin-only. Paie, Commercial, and the audit log stay rh_admin-only (the
+  // audit log's whole point is oversight of what rh/comptable/etc. changed).
   const visibleNavGroups =
     role === "rh"
       ? NAV_GROUPS.filter((g) => g.title !== "Pointage")
           .map((g) => ({
             ...g,
-            items: g.items.filter((item) => item.key !== "paie" && item.key !== "rupture" && item.key !== "commercial"),
+            items: g.items.filter(
+              (item) => item.key !== "paie" && item.key !== "commercial" && item.key !== "audit"
+            ),
           }))
           .filter((g) => g.items.length > 0)
       : NAV_GROUPS;
@@ -949,6 +954,7 @@ export default function AdminPage() {
             {view === "dossier" && <DossierView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
             {view === "commercial" && <CommercialView supabase={supabase} />}
+            {view === "audit" && <AuditLogView supabase={supabase} />}
           </div>
         </div>
       </div>
@@ -6880,9 +6886,6 @@ function ruYears(n: number): string {
   return "лет";
 }
 
-const NOTIFICATIONS_SEEN_STORAGE_KEY = "vladis_notifications_seen";
-const NOTIFICATIONS_MANUAL_UNREAD_STORAGE_KEY = "vladis_notifications_manual_unread";
-
 function notificationKey(r: NotificationRow): string {
   return `${r.employeeId}|${r.type}|${r.date}`;
 }
@@ -7208,6 +7211,278 @@ function NotificationsView({
         </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── Vue "Journal d'audit" — qui a changé quoi, sur Employés/Registre/Paie ──
+type AuditLogRow = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  action: "insert" | "update" | "delete";
+  actor_email: string | null;
+  actor_role: string | null;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  created_at: string;
+};
+
+const AUDIT_ENTITY_LABELS: Record<string, { fr: string; ru: string }> = {
+  employees: { fr: "Employé", ru: "Сотрудник" },
+  registre_unique_personnel: { fr: "Registre du personnel", ru: "Реестр персонала" },
+  payroll_line_items: { fr: "Ligne de paie", ru: "Строка зарплаты" },
+};
+
+const AUDIT_ACTION_LABELS: Record<AuditLogRow["action"], { fr: string; ru: string; badge: string }> = {
+  insert: { fr: "Création", ru: "Создание", badge: "badge-success" },
+  update: { fr: "Modification", ru: "Изменение", badge: "badge-warning" },
+  delete: { fr: "Suppression", ru: "Удаление", badge: "badge-error" },
+};
+
+function auditEntityLabel(type: string): { fr: string; ru: string } {
+  return AUDIT_ENTITY_LABELS[type] ?? { fr: type, ru: type };
+}
+
+function auditChangedFields(row: AuditLogRow): { field: string; before: unknown; after: unknown }[] {
+  if (row.action !== "update" || !row.old_data || !row.new_data) return [];
+  const keys = new Set([...Object.keys(row.old_data), ...Object.keys(row.new_data)]);
+  const out: { field: string; before: unknown; after: unknown }[] = [];
+  keys.forEach((k) => {
+    const before = row.old_data![k];
+    const after = row.new_data![k];
+    if (JSON.stringify(before) !== JSON.stringify(after)) out.push({ field: k, before, after });
+  });
+  return out.sort((a, b) => a.field.localeCompare(b.field));
+}
+
+function auditValueText(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [rows, setRows] = useState<AuditLogRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [entityFilter, setEntityFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [detailRow, setDetailRow] = useState<AuditLogRow | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("audit_log")
+        .select("id, entity_type, entity_id, action, actor_email, actor_role, old_data, new_data, created_at")
+        .order("created_at", { ascending: false })
+        .limit(300);
+      setRows((data as AuditLogRow[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => {
+      if (entityFilter !== "all" && r.entity_type !== entityFilter) return false;
+      if (q && !(r.actor_email ?? "").toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [rows, entityFilter, search]);
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <div className="font-bold mb-1 flex items-center">
+          <Bi
+            fr="Journal d'audit"
+            ru="Журнал аудита"
+            after={
+              <InfoNote
+                title="Journal d'audit"
+                text={
+                  "Кто и когда изменил данные в трёх самых чувствительных разделах: Employés, Registre du personnel, Paie.\n\n" +
+                  "Записи создаются автоматически на уровне базы данных при каждом изменении — их невозможно случайно " +
+                  "забыть добавить в новом коде. Видно только rh_admin.\n\n" +
+                  "«Подробнее» показывает изменённые поля (было → стало) для правок, или полный снимок записи для " +
+                  "создания/удаления."
+                }
+              />
+            }
+          />
+        </div>
+        <p className="text-xs text-stone-400 mb-3">
+          Qui a modifié quoi, et quand — limité aux 300 dernières actions.{" "}
+          <span className="opacity-70">/ Кто и что изменил — последние 300 записей.</span>
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Recherche" ru="Поиск" />
+            </label>
+            <input
+              className="input"
+              placeholder="Email de l'auteur…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Module" ru="Раздел" />
+            </label>
+            <select className="input" value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}>
+              <option value="all">Tous / Все</option>
+              {Object.entries(AUDIT_ENTITY_LABELS).map(([code, label]) => (
+                <option key={code} value={code}>
+                  {label.fr}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={5} />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="card">
+          <EmptyState titleRu="Нет записей" description="Aucune action enregistrée pour ces filtres." />
+        </div>
+      ) : (
+        <>
+          {/* Mobile: one card per entry instead of a 5-column table. */}
+          <div className="md:hidden space-y-2">
+            {filtered.map((r) => {
+              const actionInfo = AUDIT_ACTION_LABELS[r.action];
+              const entityInfo = auditEntityLabel(r.entity_type);
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => setDetailRow(r)}
+                  className="w-full rounded-xl border border-stone-100 p-3 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`badge ${actionInfo.badge}`}>{actionInfo.fr}</span>
+                    <span className="text-xs text-stone-400">{formatDateShortDMY(r.created_at.slice(0, 10))}</span>
+                  </div>
+                  <p className="text-sm font-semibold mt-1.5">{entityInfo.fr}</p>
+                  <p className="text-xs text-stone-500">{r.actor_email ?? "—"}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-stone-400">
+                  <th className="pb-2 pr-4"><Bi fr="Date" ru="Дата" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Auteur" ru="Автор" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Module" ru="Раздел" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Action" ru="Действие" /></th>
+                  <th className="pb-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => {
+                  const actionInfo = AUDIT_ACTION_LABELS[r.action];
+                  const entityInfo = auditEntityLabel(r.entity_type);
+                  const d = new Date(r.created_at);
+                  return (
+                    <tr key={r.id} className="border-t border-stone-100">
+                      <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">
+                        {formatDateShortDMY(r.created_at.slice(0, 10))}{" "}
+                        <span className="text-stone-400">
+                          {d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4">{r.actor_email ?? "—"}</td>
+                      <td className="py-2 pr-4">{entityInfo.fr}</td>
+                      <td className="py-2 pr-4">
+                        <span className={`badge ${actionInfo.badge}`}>{actionInfo.fr}</span>
+                      </td>
+                      <td className="py-2">
+                        <button
+                          type="button"
+                          onClick={() => setDetailRow(r)}
+                          className="text-xs font-bold text-primary-600 hover:underline"
+                        >
+                          <Bi fr="Détails" ru="Подробнее" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <Modal open={!!detailRow} onClose={() => setDetailRow(null)} title="Détail de l'action">
+        {detailRow && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className={`badge ${AUDIT_ACTION_LABELS[detailRow.action].badge}`}>
+                {AUDIT_ACTION_LABELS[detailRow.action].fr}
+              </span>
+              <span className="text-stone-500">{auditEntityLabel(detailRow.entity_type).fr}</span>
+              <span className="text-stone-400">·</span>
+              <span className="text-stone-500">{detailRow.actor_email ?? "—"}</span>
+              <span className="text-stone-400">·</span>
+              <span className="text-stone-500">{new Date(detailRow.created_at).toLocaleString("fr-FR")}</span>
+            </div>
+
+            {detailRow.action === "update" ? (
+              auditChangedFields(detailRow).length === 0 ? (
+                <p className="text-sm text-stone-400">Aucun champ visible n&apos;a changé.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-stone-400">
+                        <th className="pb-1.5 pr-3">Champ</th>
+                        <th className="pb-1.5 pr-3">Avant</th>
+                        <th className="pb-1.5">Après</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditChangedFields(detailRow).map((f) => (
+                        <tr key={f.field} className="border-t border-stone-100">
+                          <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{f.field}</td>
+                          <td className="py-1.5 pr-3 text-error-600">{auditValueText(f.before)}</td>
+                          <td className="py-1.5 text-success-700">{auditValueText(f.after)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <tbody>
+                    {Object.entries((detailRow.action === "delete" ? detailRow.old_data : detailRow.new_data) ?? {}).map(
+                      ([k, v]) => (
+                        <tr key={k} className="border-t border-stone-100">
+                          <td className="py-1.5 pr-3 font-semibold whitespace-nowrap">{k}</td>
+                          <td className="py-1.5">{auditValueText(v)}</td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -9576,6 +9851,7 @@ type DocumentActionLogRow = {
 type DossierConfidential = {
   nationality: string | null;
   rib: string | null;
+  securite_sociale: string | null;
   status_ameli: string | null;
   carte_vitale: string | null;
   residence_permit_type: string | null;
@@ -9867,7 +10143,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           .order("created_at", { ascending: false }),
         supabase
           .from("employee_confidential")
-          .select("nationality, rib, status_ameli, carte_vitale, residence_permit_type, residence_permit_number")
+          .select(
+            "nationality, rib, securite_sociale, status_ameli, carte_vitale, residence_permit_type, residence_permit_number"
+          )
           .eq("employee_id", selectedEmployeeId)
           .maybeSingle(),
         supabase
@@ -9946,6 +10224,32 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     }
     await Promise.all([reloadDocuments(), reloadOverdueCounts(), reloadActionLog()]);
     toast.success("Document ajouté");
+  }
+
+  // For employees whose attestation de droits (Sécu/Ameli) never arrived —
+  // lets RH record the NIR/NIA number by hand instead of blocking on the
+  // missing document. Upserts because employee_confidential may not have a
+  // row yet for this employee.
+  async function updateSecuriteSociale(value: string) {
+    if (!selectedEmployeeId) return;
+    const securite_sociale = value.trim() || null;
+    setConfidential((prev) =>
+      prev
+        ? { ...prev, securite_sociale }
+        : {
+            nationality: null,
+            rib: null,
+            securite_sociale,
+            status_ameli: null,
+            carte_vitale: null,
+            residence_permit_type: null,
+            residence_permit_number: null,
+          }
+    );
+    const { error } = await supabase
+      .from("employee_confidential")
+      .upsert({ employee_id: selectedEmployeeId, securite_sociale }, { onConflict: "employee_id" });
+    if (error) toast.error("Erreur lors de la mise à jour du numéro de sécurité sociale.");
   }
 
   async function downloadFile(doc: EmployeeDocumentRow) {
@@ -10191,6 +10495,22 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           IBAN enregistré <span className="opacity-70">/ Зарегистрированный IBAN</span> :{" "}
                           <span className="font-semibold">{confidential.rib}</span>
                         </p>
+                      )}
+                      {cat.code === "assurance_maladie" && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <label className="text-xs text-stone-500 shrink-0">
+                            N° sécurité sociale (NIR/NIA){" "}
+                            <span className="opacity-70">/ № соц. страхования (NIR/NIA)</span> :
+                          </label>
+                          <input
+                            className="input text-xs py-1 px-1.5 w-44"
+                            placeholder="1 90 01 75 123 456"
+                            defaultValue={confidential?.securite_sociale ?? ""}
+                            key={`nir-${selectedEmployeeId}-${confidential?.securite_sociale ?? ""}`}
+                            onBlur={(e) => updateSecuriteSociale(e.target.value)}
+                            title="À défaut de l'attestation de droits, on peut saisir directement le numéro / Если нет attestation de droits, номер можно ввести напрямую"
+                          />
+                        </div>
                       )}
                       {cat.code === "assurance_maladie" && confidential?.status_ameli && (
                         <p className="text-xs text-stone-500 mb-2">
