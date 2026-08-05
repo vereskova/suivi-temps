@@ -6438,6 +6438,8 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         toast.warning(
           "Sinao pas encore branché (pas de clé API) — devis simulé pour tester le circuit. À renvoyer pour de vrai une fois la clé fournie."
         );
+      } else if (body.updated) {
+        toast.success("Devis mis à jour dans Sinao.");
       } else {
         toast.success("Devis brouillon créé dans Sinao.");
       }
@@ -6698,29 +6700,30 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                   <Download size={15} />
                   {generating === "team" ? "…" : "Document équipe"}
                 </button>
-                {selectedCase?.sinao_quote_id && !isSinaoStub(selectedCase.sinao_quote_id) ? (
+                {selectedCase?.sinao_quote_id && !isSinaoStub(selectedCase.sinao_quote_id) && (
                   <span
-                    className="btn btn-secondary text-sm opacity-70 cursor-default"
+                    className="text-xs text-stone-500 flex items-center gap-1"
                     title={`ID du devis Sinao : ${selectedCase.sinao_quote_id}`}
                   >
-                    <ExternalLink size={15} />
-                    Déjà envoyé à Sinao (#{selectedCase.sinao_quote_id})
+                    <ExternalLink size={13} />
+                    Sinao #{selectedCase.sinao_quote_id}
                   </span>
-                ) : (
-                  <button
-                    className="btn btn-dark text-sm"
-                    onClick={pushToSinao}
-                    disabled={pushingSinao || pendingCount > 0 || !hasActiveItems}
-                    title={pendingCount > 0 ? "Clarifiez d'abord les lignes en question" : undefined}
-                  >
-                    <Send size={15} />
-                    {pushingSinao
-                      ? "…"
-                      : selectedCase?.sinao_quote_id
-                        ? "Repousser vers Sinao (simulé)"
-                        : "Pousser vers Sinao"}
-                  </button>
                 )}
+                <button
+                  className="btn btn-dark text-sm"
+                  onClick={pushToSinao}
+                  disabled={pushingSinao || pendingCount > 0 || !hasActiveItems}
+                  title={pendingCount > 0 ? "Clarifiez d'abord les lignes en question" : undefined}
+                >
+                  <Send size={15} />
+                  {pushingSinao
+                    ? "…"
+                    : selectedCase?.sinao_quote_id
+                      ? isSinaoStub(selectedCase.sinao_quote_id)
+                        ? "Repousser vers Sinao (simulé)"
+                        : "Mettre à jour dans Sinao"
+                      : "Pousser vers Sinao"}
+                </button>
               </div>
             </div>
 

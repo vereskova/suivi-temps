@@ -220,3 +220,46 @@ export async function createDraftQuote(params: {
 
   return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: false, stub: false };
 }
+
+export type UpdateDraftQuoteResult = {
+  quoteId: string;
+  nested: boolean;
+};
+
+/**
+ * Replaces the line items of an already-created Sinao quote — used when a
+ * commercial case is re-pushed after its checklist changed (e.g. prices
+ * added after the very first push). Sinao's update endpoint takes the same
+ * shape as create; the previous content is fully replaced, not merged.
+ */
+export async function updateDraftQuote(params: {
+  quoteId: string;
+  categories: SinaoQuoteCategory[];
+}): Promise<UpdateDraftQuoteResult> {
+  const { quoteId, categories } = params;
+
+  const updated = await sinaoFetch(`/quotes/${quoteId}`, {
+    method: "POST",
+    body: JSON.stringify({ content: buildFlatContent(categories) }),
+  });
+
+  const createdLines: { id: number; detail: string }[] = (updated?.content ?? []).map((l: { id: number; detail: string }) => ({
+    id: l.id,
+    detail: l.detail,
+  }));
+
+  const nestedContent = buildNestedContent(categories, createdLines);
+  if (nestedContent) {
+    try {
+      await sinaoFetch(`/quotes/${quoteId}`, {
+        method: "POST",
+        body: JSON.stringify({ content: nestedContent }),
+      });
+      return { quoteId, nested: true };
+    } catch {
+      // Nesting attempt failed — the flat content already replaced above still stands.
+    }
+  }
+
+  return { quoteId, nested: false };
+}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
-import { createDraftQuote, isStubQuoteId, SinaoError } from "@/lib/sinao/client";
+import { createDraftQuote, isStubQuoteId, SinaoError, updateDraftQuote } from "@/lib/sinao/client";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -31,12 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Dossier not found" }, { status: 404 });
   }
 
-  if (caseRow.sinao_quote_id && !isStubQuoteId(caseRow.sinao_quote_id)) {
-    return NextResponse.json(
-      { error: "Ce dossier a déjà été poussé vers Sinao.", sinaoQuoteId: caseRow.sinao_quote_id },
-      { status: 409 }
-    );
-  }
+  const isUpdate = Boolean(caseRow.sinao_quote_id && !isStubQuoteId(caseRow.sinao_quote_id));
 
   const client = Array.isArray(caseRow.commercial_clients) ? caseRow.commercial_clients[0] : caseRow.commercial_clients;
   if (!client) {
@@ -86,30 +81,44 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await createDraftQuote({
-      clientName: client.name,
-      knownOrganizationId: client.sinao_organization_id,
-      title: caseRow.title,
-      categories,
-    });
+    let quoteId: string;
+    let nested: boolean;
+    let stub: boolean;
 
-    if (!result.stub && !client.sinao_organization_id) {
-      await supabase
-        .from("commercial_clients")
-        .update({ sinao_organization_id: String(result.organizationId) })
-        .eq("id", client.id);
+    if (isUpdate) {
+      const result = await updateDraftQuote({ quoteId: caseRow.sinao_quote_id!, categories });
+      quoteId = result.quoteId;
+      nested = result.nested;
+      stub = false;
+    } else {
+      const result = await createDraftQuote({
+        clientName: client.name,
+        knownOrganizationId: client.sinao_organization_id,
+        title: caseRow.title,
+        categories,
+      });
+      quoteId = result.quoteId;
+      nested = result.nested;
+      stub = result.stub;
+
+      if (!stub && !client.sinao_organization_id) {
+        await supabase
+          .from("commercial_clients")
+          .update({ sinao_organization_id: String(result.organizationId) })
+          .eq("id", client.id);
+      }
     }
 
     await supabase
       .from("commercial_cases")
       .update({
-        sinao_quote_id: result.quoteId,
+        sinao_quote_id: quoteId,
         sinao_pushed_at: new Date().toISOString(),
-        status: result.stub ? "ready" : "quoted",
+        status: stub ? "ready" : "quoted",
       })
       .eq("id", caseId);
 
-    return NextResponse.json({ quoteId: result.quoteId, nested: result.nested, stub: result.stub });
+    return NextResponse.json({ quoteId, nested, stub, updated: isUpdate });
   } catch (err) {
     if (err instanceof SinaoError) {
       return NextResponse.json({ error: err.message, sinaoBody: err.body }, { status: err.status >= 400 && err.status < 600 ? err.status : 502 });
