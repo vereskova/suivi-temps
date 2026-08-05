@@ -76,6 +76,7 @@ export async function findOrganizationByName(name: string): Promise<SinaoOrganiz
 
 export type SinaoQuoteCategory = {
   label: string;
+  /** amount is cents (Sinao's own unit — "Price without taxes in cents"), vatPercent is basis points (20% = 2000). */
   items: { label: string; amount: number; vatPercent: number }[];
 };
 
@@ -139,6 +140,45 @@ function buildNestedContent(categories: SinaoQuoteCategory[], createdLines: { id
   return lines;
 }
 
+/**
+ * Sets a quote's line items via its update endpoint, then tries to
+ * re-nest the product lines under their category headers (section_id) in a
+ * second call once real line ids are known. Falls back to the flat (still
+ * perfectly usable, just visually ungrouped) content if that assumption
+ * about Sinao's response shape doesn't hold.
+ *
+ * Content is always pushed this way, never as part of the initial create
+ * call: Sinao's create endpoint accepts a `content` parameter but silently
+ * drops it — confirmed by every quote created through this integration
+ * coming back empty until content was set via a follow-up call like this one.
+ */
+async function pushContent(quoteId: string, categories: SinaoQuoteCategory[]): Promise<{ nested: boolean }> {
+  const updated = await sinaoFetch(`/quotes/${quoteId}`, {
+    method: "POST",
+    body: JSON.stringify({ content: buildFlatContent(categories) }),
+  });
+
+  const createdLines: { id: number; detail: string }[] = (updated?.content ?? []).map((l: { id: number; detail: string }) => ({
+    id: l.id,
+    detail: l.detail,
+  }));
+
+  const nestedContent = buildNestedContent(categories, createdLines);
+  if (nestedContent) {
+    try {
+      await sinaoFetch(`/quotes/${quoteId}`, {
+        method: "POST",
+        body: JSON.stringify({ content: nestedContent }),
+      });
+      return { nested: true };
+    } catch {
+      // Nesting attempt failed — the flat content pushed above still stands.
+    }
+  }
+
+  return { nested: false };
+}
+
 export type CreateDraftQuoteResult = {
   quoteId: string;
   organizationId: number;
@@ -147,11 +187,9 @@ export type CreateDraftQuoteResult = {
 };
 
 /**
- * Creates a draft quote for `clientName` with the given categorized line
- * items. Tries to nest product lines under category headers (section_id)
- * in a second call once real line ids are known; falls back to a flat
- * (still perfectly usable, just visually ungrouped) quote if that
- * assumption about Sinao's response shape doesn't hold.
+ * Creates a draft quote for `clientName`, then pushes the given categorized
+ * line items onto it via a follow-up call (see pushContent — Sinao's create
+ * endpoint doesn't apply `content` itself).
  *
  * Stub mode: VLADIS hasn't created a Sinao API key yet, so until
  * SINAO_API_KEY/SINAO_APP_ID are set, this skips the network call entirely
@@ -192,33 +230,13 @@ export async function createDraftQuote(params: {
 
   const created = await sinaoFetch("/quotes", {
     method: "POST",
-    body: JSON.stringify({
-      contact_infos,
-      title,
-      content: buildFlatContent(categories),
-    }),
+    body: JSON.stringify({ contact_infos, title }),
   });
 
   const resolvedOrganizationId: number = created?.contact_infos?.id ?? organizationId;
-  const createdLines: { id: number; detail: string }[] = (created?.content ?? []).map((l: { id: number; detail: string }) => ({
-    id: l.id,
-    detail: l.detail,
-  }));
+  const { nested } = await pushContent(String(created.id), categories);
 
-  const nestedContent = buildNestedContent(categories, createdLines);
-  if (nestedContent) {
-    try {
-      await sinaoFetch(`/quotes/${created.id}`, {
-        method: "POST",
-        body: JSON.stringify({ content: nestedContent }),
-      });
-      return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: true, stub: false };
-    } catch {
-      // Nesting attempt failed — the flat quote created above still stands and is usable.
-    }
-  }
-
-  return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested: false, stub: false };
+  return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested, stub: false };
 }
 
 export type UpdateDraftQuoteResult = {
@@ -229,37 +247,14 @@ export type UpdateDraftQuoteResult = {
 /**
  * Replaces the line items of an already-created Sinao quote — used when a
  * commercial case is re-pushed after its checklist changed (e.g. prices
- * added after the very first push). Sinao's update endpoint takes the same
- * shape as create; the previous content is fully replaced, not merged.
+ * added after the very first push). The previous content is fully
+ * replaced, not merged.
  */
 export async function updateDraftQuote(params: {
   quoteId: string;
   categories: SinaoQuoteCategory[];
 }): Promise<UpdateDraftQuoteResult> {
   const { quoteId, categories } = params;
-
-  const updated = await sinaoFetch(`/quotes/${quoteId}`, {
-    method: "POST",
-    body: JSON.stringify({ content: buildFlatContent(categories) }),
-  });
-
-  const createdLines: { id: number; detail: string }[] = (updated?.content ?? []).map((l: { id: number; detail: string }) => ({
-    id: l.id,
-    detail: l.detail,
-  }));
-
-  const nestedContent = buildNestedContent(categories, createdLines);
-  if (nestedContent) {
-    try {
-      await sinaoFetch(`/quotes/${quoteId}`, {
-        method: "POST",
-        body: JSON.stringify({ content: nestedContent }),
-      });
-      return { quoteId, nested: true };
-    } catch {
-      // Nesting attempt failed — the flat content already replaced above still stands.
-    }
-  }
-
-  return { quoteId, nested: false };
+  const { nested } = await pushContent(quoteId, categories);
+  return { quoteId, nested };
 }

@@ -69,8 +69,11 @@ export async function POST(request: NextRequest) {
         .map((i) => ({
           label: i.label,
           // Full transfer of the checklist's own pricing — Sinao computes the
-          // line's TTC itself from amount + vat_percent (basis points, so 20% = 2000).
-          amount: i.price_ht ?? 0,
+          // line's TTC itself from amount + vat_percent. Sinao's "amount" is
+          // an integer number of cents (its own SalesLine schema: "Price
+          // without taxes in cents"), while price_ht here is euros as a
+          // decimal — hence the ×100. vat_percent is basis points (20% = 2000).
+          amount: Math.round((i.price_ht ?? 0) * 100),
           vatPercent: Math.round((i.vat_rate ?? 20) * 100),
         })),
     }))
