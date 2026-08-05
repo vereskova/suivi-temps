@@ -80,109 +80,77 @@ export type SinaoQuoteCategory = {
   items: { label: string; amount: number; vatPercent: number }[];
 };
 
-type SalesLine = {
+/**
+ * Sinao's real content shape does NOT match its own published OpenAPI spec
+ * (the spec's flat `SalesLine[]` with a `style: {type, position, section_id}`
+ * wrapper is simply ignored — confirmed by direct testing: quotes created
+ * or updated with that shape always come back with zero lines). The shape
+ * actually persisted, read back from a real quote created by hand in
+ * Sinao's own UI, is an array of sections, each holding its own `lines`:
+ * `[{ detail?, lines: [{ detail, type, account_id, amount_accurately, ... }] }]`
+ * — `type`/`account_id` sit directly on the line (no `style` nesting), and
+ * the price field that actually takes effect is `amount_accurately`
+ * (cents × 1000 — `amount` alone is accepted but silently ignored).
+ */
+type SinaoContentLine = {
   detail: string;
   action?: "sell";
   quantity?: number;
-  amount?: number;
+  amount_accurately?: number;
   vat_percent?: number;
   unity?: string;
-  style: { type: "section" | "description" | "product"; position: number; section_id?: number };
+  type: "product";
+  account_id: number;
 };
 
-function buildFlatContent(categories: SinaoQuoteCategory[]): SalesLine[] {
-  const lines: SalesLine[] = [];
-  let position = 0;
-  for (const category of categories) {
-    position += 1;
-    lines.push({ detail: category.label, style: { type: "description", position } });
-    for (const item of category.items) {
-      position += 1;
-      lines.push({
-        detail: item.label,
-        action: "sell",
-        quantity: 1,
-        amount: item.amount,
-        vat_percent: item.vatPercent,
-        unity: "forfait",
-        style: { type: "product", position },
-      });
-    }
-  }
-  return lines;
-}
+type SinaoContentSection = {
+  detail?: string;
+  lines: SinaoContentLine[];
+};
 
-/** Re-nests product lines under their category's description line, using the ids Sinao assigned on creation. */
-function buildNestedContent(categories: SinaoQuoteCategory[], createdLines: { id: number; detail: string }[]): SalesLine[] | null {
-  if (createdLines.length === 0) return null;
-  let cursor = 0;
-  const lines: SalesLine[] = [];
-  for (const category of categories) {
-    const sectionLine = createdLines[cursor];
-    if (!sectionLine || sectionLine.detail !== category.label) return null; // order assumption didn't hold — bail to flat fallback
-    cursor += 1;
-    lines.push({ detail: category.label, style: { type: "description", position: lines.length + 1 } });
-    for (const item of category.items) {
-      const itemLine = createdLines[cursor];
-      if (!itemLine || itemLine.detail !== item.label) return null;
-      cursor += 1;
-      lines.push({
+/**
+ * "Prestations de services" (PCG 706) — the sales account VLADIS's real
+ * quotes book against (confirmed by reading one back). A line with no
+ * account_id never gets aggregated into the quote's totals, so every line
+ * needs one; VLADIS has no other services revenue account to pick between.
+ */
+const SINAO_SALES_ACCOUNT_ID = 55;
+
+function buildContent(categories: SinaoQuoteCategory[]): SinaoContentSection[] {
+  return categories
+    .filter((category) => category.items.length > 0)
+    .map((category) => ({
+      detail: category.label,
+      lines: category.items.map((item) => ({
         detail: item.label,
-        action: "sell",
+        action: "sell" as const,
         quantity: 1,
-        amount: item.amount,
+        amount_accurately: item.amount * 1000,
         vat_percent: item.vatPercent,
         unity: "forfait",
-        style: { type: "product", position: lines.length + 1, section_id: sectionLine.id },
-      });
-    }
-  }
-  return lines;
+        type: "product" as const,
+        account_id: SINAO_SALES_ACCOUNT_ID,
+      })),
+    }));
 }
 
 /**
- * Sets a quote's line items via its update endpoint, then tries to
- * re-nest the product lines under their category headers (section_id) in a
- * second call once real line ids are known. Falls back to the flat (still
- * perfectly usable, just visually ungrouped) content if that assumption
- * about Sinao's response shape doesn't hold.
- *
- * Content is always pushed this way, never as part of the initial create
- * call: Sinao's create endpoint accepts a `content` parameter but silently
- * drops it — confirmed by every quote created through this integration
- * coming back empty until content was set via a follow-up call like this one.
+ * Sets a quote's line items via its update endpoint. Content is always
+ * pushed this way, never as part of the initial create call: Sinao's
+ * create endpoint accepts a `content` parameter but silently drops it —
+ * confirmed by every quote created through this integration coming back
+ * empty until content was set via a follow-up call like this one.
  */
-async function pushContent(quoteId: string, categories: SinaoQuoteCategory[]): Promise<{ nested: boolean }> {
-  const updated = await sinaoFetch(`/quotes/${quoteId}`, {
+async function pushContent(quoteId: string, categories: SinaoQuoteCategory[]): Promise<void> {
+  await sinaoFetch(`/quotes/${quoteId}`, {
     method: "POST",
-    body: JSON.stringify({ content: buildFlatContent(categories) }),
+    body: JSON.stringify({ content: buildContent(categories) }),
   });
-
-  const createdLines: { id: number; detail: string }[] = (updated?.content ?? []).map((l: { id: number; detail: string }) => ({
-    id: l.id,
-    detail: l.detail,
-  }));
-
-  const nestedContent = buildNestedContent(categories, createdLines);
-  if (nestedContent) {
-    try {
-      await sinaoFetch(`/quotes/${quoteId}`, {
-        method: "POST",
-        body: JSON.stringify({ content: nestedContent }),
-      });
-      return { nested: true };
-    } catch {
-      // Nesting attempt failed — the flat content pushed above still stands.
-    }
-  }
-
-  return { nested: false };
 }
 
 export type CreateDraftQuoteResult = {
   quoteId: string;
   organizationId: number;
-  nested: boolean;
   stub: boolean;
 };
 
@@ -210,7 +178,6 @@ export async function createDraftQuote(params: {
     return {
       quoteId: `${SINAO_STUB_PREFIX}${Date.now().toString(36).toUpperCase()}`,
       organizationId: 0,
-      nested: false,
       stub: true,
     };
   }
@@ -234,14 +201,13 @@ export async function createDraftQuote(params: {
   });
 
   const resolvedOrganizationId: number = created?.contact_infos?.id ?? organizationId;
-  const { nested } = await pushContent(String(created.id), categories);
+  await pushContent(String(created.id), categories);
 
-  return { quoteId: String(created.id), organizationId: resolvedOrganizationId, nested, stub: false };
+  return { quoteId: String(created.id), organizationId: resolvedOrganizationId, stub: false };
 }
 
 export type UpdateDraftQuoteResult = {
   quoteId: string;
-  nested: boolean;
 };
 
 /**
@@ -255,6 +221,6 @@ export async function updateDraftQuote(params: {
   categories: SinaoQuoteCategory[];
 }): Promise<UpdateDraftQuoteResult> {
   const { quoteId, categories } = params;
-  const { nested } = await pushContent(quoteId, categories);
-  return { quoteId, nested };
+  await pushContent(quoteId, categories);
+  return { quoteId };
 }

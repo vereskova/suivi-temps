@@ -85,13 +85,11 @@ export async function POST(request: NextRequest) {
 
   try {
     let quoteId: string;
-    let nested: boolean;
     let stub: boolean;
 
     if (isUpdate) {
       const result = await updateDraftQuote({ quoteId: caseRow.sinao_quote_id!, categories });
       quoteId = result.quoteId;
-      nested = result.nested;
       stub = false;
     } else {
       const result = await createDraftQuote({
@@ -101,7 +99,6 @@ export async function POST(request: NextRequest) {
         categories,
       });
       quoteId = result.quoteId;
-      nested = result.nested;
       stub = result.stub;
 
       if (!stub && !client.sinao_organization_id) {
@@ -121,7 +118,7 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", caseId);
 
-    return NextResponse.json({ quoteId, nested, stub, updated: isUpdate });
+    return NextResponse.json({ quoteId, stub, updated: isUpdate });
   } catch (err) {
     if (err instanceof SinaoError) {
       return NextResponse.json({ error: err.message, sinaoBody: err.body }, { status: err.status >= 400 && err.status < 600 ? err.status : 502 });
