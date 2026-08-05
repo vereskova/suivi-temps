@@ -6893,13 +6893,13 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 );
               })}
               {items.length > 0 && (
-                <div className="flex items-center justify-between border-t-2 border-stone-200 pt-3 font-bold text-sm">
-                  <p>
+                <div className="flex items-center justify-between border-t-2 border-stone-200 mt-4 pt-5 font-bold">
+                  <p className="text-base">
                     TOTAL <span className="font-normal opacity-60">(actifs) / ИТОГО (активные)</span>
                   </p>
-                  <p className="text-right">
+                  <p className="text-right text-2xl">
                     {activeTotals.ht.toFixed(2)} € HT
-                    <span className="block font-normal opacity-60">{activeTotals.ttc.toFixed(2)} € TTC</span>
+                    <span className="block text-sm font-normal opacity-60">{activeTotals.ttc.toFixed(2)} € TTC</span>
                   </p>
                 </div>
               )}
@@ -7084,11 +7084,11 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 {items.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-stone-200 font-bold">
-                      <td colSpan={3} className="py-2 pr-3">
+                      <td colSpan={3} className="pt-6 pb-3 pr-3 text-base">
                         TOTAL <span className="font-normal opacity-60">(actifs) / ИТОГО (активные)</span>
                       </td>
-                      <td className="py-2 pr-3 text-right">{activeTotals.ht.toFixed(2)} €</td>
-                      <td className="py-2 pr-3 text-right">{activeTotals.ttc.toFixed(2)} €</td>
+                      <td className="pt-6 pb-3 pr-3 text-right text-2xl">{activeTotals.ht.toFixed(2)} €</td>
+                      <td className="pt-6 pb-3 pr-3 text-right text-2xl">{activeTotals.ttc.toFixed(2)} €</td>
                       <td></td>
                     </tr>
                   </tfoot>
