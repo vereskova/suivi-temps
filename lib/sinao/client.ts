@@ -76,7 +76,7 @@ export async function findOrganizationByName(name: string): Promise<SinaoOrganiz
 
 export type SinaoQuoteCategory = {
   label: string;
-  items: { label: string }[];
+  items: { label: string; amount: number; vatPercent: number }[];
 };
 
 type SalesLine = {
@@ -101,8 +101,8 @@ function buildFlatContent(categories: SinaoQuoteCategory[]): SalesLine[] {
         detail: item.label,
         action: "sell",
         quantity: 1,
-        amount: 0,
-        vat_percent: 2000, // 20% — standard rate; adjust if VLADIS uses a different one.
+        amount: item.amount,
+        vat_percent: item.vatPercent,
         unity: "forfait",
         style: { type: "product", position },
       });
@@ -129,8 +129,8 @@ function buildNestedContent(categories: SinaoQuoteCategory[], createdLines: { id
         detail: item.label,
         action: "sell",
         quantity: 1,
-        amount: 0,
-        vat_percent: 2000,
+        amount: item.amount,
+        vat_percent: item.vatPercent,
         unity: "forfait",
         style: { type: "product", position: lines.length + 1, section_id: sectionLine.id },
       });

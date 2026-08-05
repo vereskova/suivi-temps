@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("commercial_case_items")
-    .select("category_code, label, status, position")
+    .select("category_code, label, status, position, price_ht, vat_rate")
     .eq("case_id", caseId);
 
   if (itemsError) {
@@ -69,7 +69,15 @@ export async function POST(request: NextRequest) {
   const categories = (categoryRows ?? [])
     .map((c) => ({
       label: c.label,
-      items: activeItems.filter((i) => i.category_code === c.code).map((i) => ({ label: i.label })),
+      items: activeItems
+        .filter((i) => i.category_code === c.code)
+        .map((i) => ({
+          label: i.label,
+          // Full transfer of the checklist's own pricing — Sinao computes the
+          // line's TTC itself from amount + vat_percent (basis points, so 20% = 2000).
+          amount: i.price_ht ?? 0,
+          vatPercent: Math.round((i.vat_rate ?? 20) * 100),
+        })),
     }))
     .filter((c) => c.items.length > 0);
 
