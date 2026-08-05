@@ -6363,9 +6363,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
   async function updateItemDates(itemId: string, planned_start_date: string | null, planned_end_date: string | null) {
     if (planned_start_date && planned_end_date && planned_end_date < planned_start_date) {
-      toast.error(
-        "La date de fin ne peut pas être avant la date de début. / Дата окончания не может быть раньше даты начала."
-      );
+      toast.error("La date de fin ne peut pas être avant la date de début.");
       return;
     }
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, planned_start_date, planned_end_date } : i)));
@@ -6503,7 +6501,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         <button
           type="button"
           onClick={() => setPickerCollapsed(false)}
-          title={`${selectedClient?.name ?? ""} — ${selectedCase?.title ?? ""} — afficher / показать список`}
+          title={`${selectedClient?.name ?? ""} — ${selectedCase?.title ?? ""} — afficher`}
           className="card w-full lg:w-14 shrink-0 flex flex-row lg:flex-col items-center justify-between lg:justify-center gap-2 px-4 lg:px-0 py-3 lg:py-4 hover:bg-stone-50"
         >
           <span className="flex items-center gap-2 text-sm font-semibold text-stone-700 min-w-0 lg:hidden">
@@ -6518,9 +6516,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       ) : (
         <div className="card w-full lg:w-64 shrink-0 flex flex-col gap-4">
           <div>
-            <p className="font-bold mb-2">
-              <Bi fr="Clients" ru="Клиенты" />
-            </p>
+            <p className="font-bold mb-2">Clients</p>
             <input
               className="input mb-2"
               placeholder="Rechercher…"
@@ -6551,9 +6547,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
           <div className="border-t border-stone-100 pt-3">
             {!selectedClientId ? (
-              <p className="text-stone-400 text-sm">
-                Sélectionnez un client. <span className="opacity-70">/ Выберите клиента.</span>
-              </p>
+              <p className="text-stone-400 text-sm">Sélectionnez un client.</p>
             ) : (
               <>
                 <div className="flex items-center justify-between gap-2 mb-2">
@@ -6568,7 +6562,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                         type="button"
                         onClick={() => setPickerCollapsed(true)}
                         className="hidden lg:block text-stone-400 hover:text-stone-700 p-1"
-                        title="Réduire / Свернуть"
+                        title="Réduire"
                       >
                         <ChevronLeft size={16} />
                       </button>
@@ -6578,9 +6572,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 {loadingCases ? (
                   <SkeletonRows rows={3} cols={1} />
                 ) : cases.length === 0 ? (
-                  <p className="text-sm text-stone-400">
-                    Aucun dossier. <span className="opacity-70">/ Нет дел.</span>
-                  </p>
+                  <p className="text-sm text-stone-400">Aucun dossier.</p>
                 ) : (
                   <div className="max-h-52 overflow-y-auto -mx-1 space-y-1">
                     {cases.map((c) => (
@@ -6625,9 +6617,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
       <div className="flex-1 min-w-0 card">
         {!selectedCaseId ? (
-          <p className="text-stone-400">
-            Sélectionnez ou créez un dossier. <span className="opacity-70">/ Выберите или создайте дело.</span>
-          </p>
+          <p className="text-stone-400">Sélectionnez ou créez un dossier.</p>
         ) : loadingItems ? (
           <SkeletonRows rows={5} cols={1} />
         ) : (
@@ -6651,7 +6641,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                     <p className="font-bold text-lg">{selectedCase?.title}</p>
                     <button
                       className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
-                      title="Modifier le titre / Изменить название"
+                      title="Modifier le titre"
                       onClick={() => setEditingCaseTitle(true)}
                     >
                       <Pencil size={13} />
@@ -6659,9 +6649,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                   </div>
                 )}
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <label className="text-[10px] font-bold uppercase text-stone-400">
-                    <Bi fr="Début souhaité" ru="Желаемое начало" />
-                  </label>
+                  <label className="text-[10px] font-bold uppercase text-stone-400">Début souhaité</label>
                   {editingCaseDate ? (
                     <input
                       type="date"
@@ -6684,7 +6672,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                       </span>
                       <button
                         className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
-                        title="Modifier la date / Изменить дату"
+                        title="Modifier la date"
                         onClick={() => setEditingCaseDate(true)}
                       >
                         <Pencil size={11} />
@@ -6736,9 +6724,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             {pendingCount > 0 && (
               <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
                 ⚠ {pendingCount} ligne(s) en question — à clarifier avant l&apos;envoi vers Sinao.
-                <span className="block opacity-70">
-                  ⚠ {pendingCount} строк(и) под вопросом — уточните перед отправкой в Sinao.
-                </span>
               </div>
             )}
 
@@ -6752,7 +6737,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                   <div key={group.category.code}>
                     <div className="flex items-center justify-between mb-2">
                       <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
-                        <Bi fr={group.category.label} ru={group.category.label_ru} />
+                        {group.category.label}
                       </p>
                       <button
                         className={`text-xs font-semibold shrink-0 whitespace-nowrap ${
@@ -6841,13 +6826,13 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                             </div>
                             {invalidRange && (
                               <p className="text-xs text-error-600 mt-1 ml-7">
-                                ⚠ Дата окончания раньше даты начала
+                                ⚠ La date de fin est avant la date de début
                               </p>
                             )}
                             <div className="flex items-center gap-2 mt-2 ml-7">
                               <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">HT</label>
                               {priceTooHigh && (
-                                <span title="Проверьте: сумма больше 100 000 € — не опечатка?">
+                                <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
                                   <AlertTriangle size={13} className="text-warning-600 shrink-0" />
                                 </span>
                               )}
@@ -6895,7 +6880,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               {items.length > 0 && (
                 <div className="flex items-center justify-between border-t-2 border-stone-200 mt-4 pt-5 font-bold">
                   <p className="text-base">
-                    TOTAL <span className="font-normal opacity-60">(actifs) / ИТОГО (активные)</span>
+                    TOTAL <span className="font-normal opacity-60">(actifs)</span>
                   </p>
                   <p className="text-right text-2xl">
                     {activeTotals.ht.toFixed(2)} € HT
@@ -6910,18 +6895,10 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 <thead>
                   <tr className="text-left text-stone-400 whitespace-nowrap text-xs">
                     <th className="py-2 pl-1 pr-2 w-8"></th>
-                    <th className="py-2 pr-3">
-                      <Bi fr="Tâche" ru="Задача" />
-                    </th>
-                    <th className="py-2 pr-3">
-                      <Bi fr="Délai prévu" ru="Плановые сроки" />
-                    </th>
-                    <th className="py-2 pr-3 text-right">
-                      <Bi fr="Prix HT €" ru="Цена без НДС €" />
-                    </th>
-                    <th className="py-2 pr-3 text-right">
-                      <Bi fr="Prix TTC €" ru="Цена с НДС €" />
-                    </th>
+                    <th className="py-2 pr-3">Tâche</th>
+                    <th className="py-2 pr-3">Délai prévu</th>
+                    <th className="py-2 pr-3 text-right">Prix HT €</th>
+                    <th className="py-2 pr-3 text-right">Prix TTC €</th>
                     <th className="py-2 pr-1 w-8"></th>
                   </tr>
                 </thead>
@@ -6934,7 +6911,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                           <td colSpan={6} className="pt-4 pb-1">
                             <div className="flex items-center justify-between">
                               <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
-                                <Bi fr={group.category.label} ru={group.category.label_ru} />
+                                {group.category.label}
                               </p>
                               <button
                                 className={`text-xs font-semibold shrink-0 whitespace-nowrap ${
@@ -7000,7 +6977,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                       } ${item.planned_start_date ? "" : "text-stone-400"}`}
                                       value={item.planned_start_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
-                                      title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
+                                      title={invalidRange ? "La date de fin est avant la date de début" : undefined}
                                     />
                                     <span className="text-stone-300">–</span>
                                     <input
@@ -7010,14 +6987,14 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                       } ${item.planned_end_date ? "" : "text-stone-400"}`}
                                       value={item.planned_end_date ?? ""}
                                       onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
-                                      title={invalidRange ? "Дата окончания раньше даты начала" : undefined}
+                                      title={invalidRange ? "La date de fin est avant la date de début" : undefined}
                                     />
                                   </div>
                                 </td>
                                 <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
                                   <div className="flex items-center gap-1 justify-end">
                                     {priceTooHigh && (
-                                      <span title="Проверьте: сумма больше 100 000 € — не опечатка?">
+                                      <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
                                         <AlertTriangle size={13} className="text-warning-600 shrink-0" />
                                       </span>
                                     )}
@@ -7085,7 +7062,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                   <tfoot>
                     <tr className="border-t-2 border-stone-200 font-bold">
                       <td colSpan={3} className="pt-6 pb-3 pr-3 text-base">
-                        TOTAL <span className="font-normal opacity-60">(actifs) / ИТОГО (активные)</span>
+                        TOTAL <span className="font-normal opacity-60">(actifs)</span>
                       </td>
                       <td className="pt-6 pb-3 pr-3 text-right text-2xl">{activeTotals.ht.toFixed(2)} €</td>
                       <td className="pt-6 pb-3 pr-3 text-right text-2xl">{activeTotals.ttc.toFixed(2)} €</td>
@@ -7102,7 +7079,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-stone-200 py-3 text-sm font-semibold text-stone-400 hover:border-primary-300 hover:bg-primary-50/40 hover:text-primary-600"
             >
               <Plus size={16} />
-              <Bi fr="Ajouter des lignes depuis Autres" ru="Добавить строки из «Прочее»" />
+              Ajouter des lignes depuis Autres
             </button>
           </>
         )}
@@ -7111,9 +7088,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       <Modal open={newCaseOpen} onClose={() => setNewCaseOpen(false)} title="Nouveau dossier">
         <div className="space-y-3">
           <div>
-            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-              <Bi fr="Titre du dossier" ru="Название дела" />
-            </label>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Titre du dossier</label>
             <input
               className="input"
               value={newTitle}
@@ -7122,16 +7097,12 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-              <Bi fr="Début souhaité" ru="Желаемое начало" />
-            </label>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Début souhaité</label>
             <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
           </div>
           {clientTemplates.length > 1 && (
             <div>
-              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-                <Bi fr="Type de chantier" ru="Тип объекта" />
-              </label>
+              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Type de chantier</label>
               <select
                 className="input"
                 value={newTemplateId ?? ""}
@@ -7162,15 +7133,12 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         title="Autres"
         maxWidth="max-w-lg"
       >
-        <p className="text-xs text-stone-500 mb-3">
-          Tâches rarement demandées, à ajouter au cas par cas.{" "}
-          <span className="opacity-70">/ Редко запрашиваемые пункты — добавляются по необходимости.</span>
-        </p>
+        <p className="text-xs text-stone-500 mb-3">Tâches rarement demandées, à ajouter au cas par cas.</p>
         <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
           {groupedAutreItems.map((group) => (
             <div key={group.category.code}>
               <p className="text-[10px] font-bold uppercase text-stone-400 mb-1.5">
-                <Bi fr={group.category.label} ru={group.category.label_ru} />
+                {group.category.label}
               </p>
               <div className="space-y-1">
                 {group.items.map((autreItem) => {
@@ -7198,9 +7166,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                       />
                       <span>{autreItem.label}</span>
                       {alreadyAdded && (
-                        <span className="text-xs text-stone-400 ml-auto shrink-0">
-                          <Bi fr="déjà ajouté" ru="уже добавлено" />
-                        </span>
+                        <span className="text-xs text-stone-400 ml-auto shrink-0">déjà ajouté</span>
                       )}
                     </label>
                   );
@@ -7218,7 +7184,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             {addingAutre ? "…" : `Ajouter (${selectedAutreIds.size})`}
           </button>
           <button className="btn btn-secondary" onClick={closeAutrePicker}>
-            <Bi fr="Annuler" ru="Отмена" />
+            Annuler
           </button>
         </div>
       </Modal>
