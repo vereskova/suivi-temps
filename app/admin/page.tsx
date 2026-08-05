@@ -6694,10 +6694,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <button className="btn btn-secondary text-sm" onClick={() => setAutrePickerOpen(true)}>
-                  <Plus size={15} />
-                  <Bi fr="Depuis Autres" ru="Из «Прочее»" />
-                </button>
                 <button
                   className="btn btn-secondary text-sm"
                   onClick={() => downloadDoc("client")}
@@ -7099,6 +7095,15 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 )}
               </table>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setAutrePickerOpen(true)}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-stone-200 py-3 text-sm font-semibold text-stone-400 hover:border-primary-300 hover:bg-primary-50/40 hover:text-primary-600"
+            >
+              <Plus size={16} />
+              <Bi fr="Ajouter des lignes depuis Autres" ru="Добавить строки из «Прочее»" />
+            </button>
           </>
         )}
       </div>
@@ -7154,7 +7159,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       <Modal
         open={autrePickerOpen}
         onClose={closeAutrePicker}
-        title="Ajouter depuis Autres"
+        title="Autres"
         maxWidth="max-w-lg"
       >
         <p className="text-xs text-stone-500 mb-3">

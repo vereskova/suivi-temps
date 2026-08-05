@@ -244,9 +244,15 @@ async function main() {
   const clientNames = Array.from(new Set(TEMPLATES.map((t) => t.client)));
 
   for (const clientName of clientNames) {
+    // Matched by name_normalized, not the exact name — the source
+    // spreadsheet has spelled at least one client name differently across
+    // revisions ("ADVANCED EnerGies" vs "ADVANCED EnerGIes"), and upserting
+    // by exact name silently created a duplicate client row instead of
+    // reusing the existing one (see migration 0039, which also merges any
+    // duplicate created by an earlier run of this script).
     const { data: client, error: clientError } = await supabase
       .from("commercial_clients")
-      .upsert({ name: clientName, name_normalized: normalize(clientName) }, { onConflict: "name" })
+      .upsert({ name: clientName, name_normalized: normalize(clientName) }, { onConflict: "name_normalized" })
       .select("id")
       .single();
     if (clientError) throw clientError;
