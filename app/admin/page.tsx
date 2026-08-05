@@ -6699,9 +6699,12 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                   {generating === "team" ? "…" : "Document équipe"}
                 </button>
                 {selectedCase?.sinao_quote_id && !isSinaoStub(selectedCase.sinao_quote_id) ? (
-                  <span className="btn btn-secondary text-sm opacity-70 cursor-default">
+                  <span
+                    className="btn btn-secondary text-sm opacity-70 cursor-default"
+                    title={`ID du devis Sinao : ${selectedCase.sinao_quote_id}`}
+                  >
                     <ExternalLink size={15} />
-                    Déjà envoyé à Sinao
+                    Déjà envoyé à Sinao (#{selectedCase.sinao_quote_id})
                   </span>
                 ) : (
                   <button
