@@ -938,7 +938,7 @@ export default function AdminPage() {
                 onToggleChef={handleToggleChef}
               />
             )}
-            {view === "medical" && <MedicalView supabase={supabase} />}
+            {view === "medical" && <MedicalSectionView supabase={supabase} />}
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
@@ -3556,6 +3556,37 @@ type MedicalVisit = {
   } | null;
 };
 
+// "Médical" now covers two unrelated things RH tracks by hand: medecine du
+// travail visits (MedicalView, unchanged below) and CPAM/Harmonie insurance
+// affiliation progress (InsuranceTrackingView, further down) — a thin tab
+// switcher on top rather than merging either view's internals together.
+function MedicalSectionView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [tab, setTab] = useState<"visites" | "assurances">("visites");
+  return (
+    <div>
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setTab("visites")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold ${
+            tab === "visites" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          <Bi fr="Visites médicales" ru="Медосмотры" />
+        </button>
+        <button
+          onClick={() => setTab("assurances")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold ${
+            tab === "assurances" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          <Bi fr="Suivi des assurances" ru="Учёт страховок" />
+        </button>
+      </div>
+      {tab === "visites" ? <MedicalView supabase={supabase} /> : <InsuranceTrackingView supabase={supabase} />}
+    </div>
+  );
+}
+
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [visits, setVisits] = useState<MedicalVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4175,6 +4206,298 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ── Vue "Suivi des assurances" — pipeline CPAM (NIA/NIR) + Harmonie ─────────
+type InsuranceEmployee = { id: string; first_name: string; last_name: string; status: EmployeeStatus };
+type InsuranceConfidential = {
+  employee_id: string;
+  assurance_maladie_statut: string | null;
+  harmonie_statut: string | null;
+  harmonie_sous_statut: string | null;
+};
+
+const AMO_STATUT_OPTIONS: { value: string; fr: string; ru: string }[] = [
+  { value: "brouillon", fr: "Brouillon", ru: "Черновик" },
+  { value: "en_cours_traitement", fr: "En cours de traitement", ru: "В обработке" },
+  { value: "en_attente_pieces", fr: "En attente de pièces jointes", ru: "Ожидание документов" },
+  { value: "en_attente_traduction", fr: "En attente de traduction", ru: "Ожидание перевода" },
+  { value: "nia_attribue", fr: "NIA attribué", ru: "NIA присвоен" },
+  { value: "nir_attribue", fr: "NIR attribué", ru: "NIR присвоен" },
+];
+const AMO_STATUT_TONE: Record<string, string> = {
+  brouillon: "bg-stone-100 text-stone-500",
+  en_cours_traitement: "bg-primary-50 text-primary-700",
+  en_attente_pieces: "bg-warning-50 text-warning-700",
+  en_attente_traduction: "bg-warning-50 text-warning-700",
+  nia_attribue: "bg-success-50 text-success-700",
+  nir_attribue: "bg-success-600 text-white",
+};
+
+const HARMONIE_STATUT_OPTIONS: { value: string; fr: string; ru: string }[] = [
+  { value: "en_cours", fr: "En cours", ru: "В процессе" },
+  { value: "en_attente", fr: "En attente", ru: "Ожидание" },
+  { value: "abandonnee", fr: "Abandonnée", ru: "Отменено" },
+  { value: "cloturee", fr: "Clôturée", ru: "Завершено" },
+];
+const HARMONIE_STATUT_TONE: Record<string, string> = {
+  en_cours: "bg-primary-50 text-primary-700",
+  en_attente: "bg-warning-50 text-warning-700",
+  abandonnee: "bg-error-50 text-error-700",
+  cloturee: "bg-success-50 text-success-700",
+};
+
+function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<InsuranceEmployee[]>([]);
+  const [confidentials, setConfidentials] = useState<Map<string, InsuranceConfidential>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [{ data: emps }, { data: confs }] = await Promise.all([
+        supabase.from("employees").select("id, first_name, last_name, status").order("last_name"),
+        supabase
+          .from("employee_confidential")
+          .select("employee_id, assurance_maladie_statut, harmonie_statut, harmonie_sous_statut"),
+      ]);
+      setEmployees((emps as InsuranceEmployee[]) ?? []);
+      const map = new Map<string, InsuranceConfidential>();
+      ((confs ?? []) as InsuranceConfidential[]).forEach((c) => map.set(c.employee_id, c));
+      setConfidentials(map);
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, search]);
+
+  async function updateField(employeeId: string, patch: Partial<InsuranceConfidential>) {
+    setConfidentials((prev) => {
+      const next = new Map(prev);
+      const current: InsuranceConfidential =
+        next.get(employeeId) ?? {
+          employee_id: employeeId,
+          assurance_maladie_statut: null,
+          harmonie_statut: null,
+          harmonie_sous_statut: null,
+        };
+      next.set(employeeId, { ...current, ...patch });
+      return next;
+    });
+    const { error } = await supabase
+      .from("employee_confidential")
+      .upsert({ employee_id: employeeId, ...patch }, { onConflict: "employee_id" });
+    if (error) toast.error("Erreur lors de la mise à jour.");
+  }
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <div className="font-bold mb-1 flex items-center">
+          <Bi
+            fr="Suivi des assurances"
+            ru="Учёт страховок"
+            after={
+              <InfoNote
+                title="Suivi des assurances"
+                text={
+                  "Отслеживание двух процессов, которые RH ведёт вручную на порталах CPAM и Harmonie Mutuelle.\n\n" +
+                  "«Assurance Maladie» — этапы получения номера соцстрахования: Brouillon → En cours de traitement → " +
+                  "En attente de pièces jointes → En attente de traduction → NIA attribué → NIR attribué (финальный этап).\n\n" +
+                  "«Harmonie» — статус оформления допстраховки (En cours / En attente / Abandonnée / Clôturée) и " +
+                  "свободное поле для под-статуса.\n\n" +
+                  "Изменения сохраняются сразу, без отдельной кнопки «Сохранить»."
+                }
+              />
+            }
+          />
+        </div>
+        <p className="text-xs text-stone-400 mb-3">
+          Sécurité sociale (CPAM) et complémentaire (Harmonie), par salarié.{" "}
+          <span className="opacity-70">/ Соцстрахование (CPAM) и допстраховка (Harmonie) по каждому сотруднику.</span>
+        </p>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Recherche" ru="Поиск" />
+            </label>
+            <input
+              className="input"
+              placeholder="Nom, prénom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Statut" ru="Статус" />
+            </label>
+            <select
+              className="input"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
+            >
+              <option value="active">Actifs / Активны</option>
+              <option value="on_leave">En congé / В отпуске</option>
+              <option value="unclear">Statut incertain / Статус неизвестен</option>
+              <option value="terminated">Sortis / Уволены</option>
+              <option value="all">Tous / Все</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={3} />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="card">
+          <EmptyState titleRu="Нет результатов" description="Aucun employé ne correspond à ces filtres." />
+        </div>
+      ) : (
+        <>
+          {/* Mobile: one card per employee instead of a 4-column table. */}
+          <div className="md:hidden space-y-2">
+            {filtered.map((e) => {
+              const conf = confidentials.get(e.id);
+              return (
+                <div key={e.id} className="card">
+                  <p className="font-semibold mb-2">{employeeName(e)}</p>
+                  <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+                    <Bi fr="Assurance Maladie" ru="Соцстрахование" />
+                  </label>
+                  <select
+                    className={`input text-sm mb-2 ${
+                      conf?.assurance_maladie_statut ? AMO_STATUT_TONE[conf.assurance_maladie_statut] : ""
+                    }`}
+                    value={conf?.assurance_maladie_statut ?? ""}
+                    onChange={(ev) => updateField(e.id, { assurance_maladie_statut: ev.target.value || null })}
+                  >
+                    <option value="">—</option>
+                    {AMO_STATUT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.fr} / {o.ru}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+                    <Bi fr="Harmonie — statut" ru="Harmonie — статус" />
+                  </label>
+                  <select
+                    className={`input text-sm mb-2 ${
+                      conf?.harmonie_statut ? HARMONIE_STATUT_TONE[conf.harmonie_statut] : ""
+                    }`}
+                    value={conf?.harmonie_statut ?? ""}
+                    onChange={(ev) => updateField(e.id, { harmonie_statut: ev.target.value || null })}
+                  >
+                    <option value="">—</option>
+                    {HARMONIE_STATUT_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.fr} / {o.ru}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+                    <Bi fr="Harmonie — sous-statut" ru="Harmonie — под-статус" />
+                  </label>
+                  <input
+                    className="input text-sm"
+                    placeholder="—"
+                    defaultValue={conf?.harmonie_sous_statut ?? ""}
+                    key={`hss-${e.id}-${conf?.harmonie_sous_statut ?? ""}`}
+                    onBlur={(ev) => updateField(e.id, { harmonie_sous_statut: ev.target.value.trim() || null })}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden md:block card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-stone-400">
+                  <th className="pb-2 pr-4">
+                    <Bi fr="Employé" ru="Сотрудник" />
+                  </th>
+                  <th className="pb-2 pr-4">
+                    <Bi fr="Assurance Maladie" ru="Соцстрахование" />
+                  </th>
+                  <th className="pb-2 pr-4">
+                    <Bi fr="Harmonie — statut" ru="Harmonie — статус" />
+                  </th>
+                  <th className="pb-2">
+                    <Bi fr="Harmonie — sous-statut" ru="Harmonie — под-статус" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((e) => {
+                  const conf = confidentials.get(e.id);
+                  return (
+                    <tr key={e.id} className="border-t border-stone-100">
+                      <td className="py-2 pr-4 font-semibold whitespace-nowrap">{employeeName(e)}</td>
+                      <td className="py-2 pr-4">
+                        <select
+                          className={`input text-xs py-1 px-1.5 w-full ${
+                            conf?.assurance_maladie_statut ? AMO_STATUT_TONE[conf.assurance_maladie_statut] : ""
+                          }`}
+                          value={conf?.assurance_maladie_statut ?? ""}
+                          onChange={(ev) => updateField(e.id, { assurance_maladie_statut: ev.target.value || null })}
+                        >
+                          <option value="">—</option>
+                          {AMO_STATUT_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.fr}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-4">
+                        <select
+                          className={`input text-xs py-1 px-1.5 w-full ${
+                            conf?.harmonie_statut ? HARMONIE_STATUT_TONE[conf.harmonie_statut] : ""
+                          }`}
+                          value={conf?.harmonie_statut ?? ""}
+                          onChange={(ev) => updateField(e.id, { harmonie_statut: ev.target.value || null })}
+                        >
+                          <option value="">—</option>
+                          {HARMONIE_STATUT_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.fr}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2">
+                        <input
+                          className="input text-xs py-1 px-1.5 w-full"
+                          placeholder="—"
+                          defaultValue={conf?.harmonie_sous_statut ?? ""}
+                          key={`hss-${e.id}-${conf?.harmonie_sous_statut ?? ""}`}
+                          onBlur={(ev) => updateField(e.id, { harmonie_sous_statut: ev.target.value.trim() || null })}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -5680,10 +6003,12 @@ type CommercialItemRow = {
   planned_end_date: string | null;
   price_ht: number | null;
   vat_rate: number;
+  autre_item_id: string | null;
 };
+type CommercialAutreItemRow = { id: string; category_code: string; position: number; label: string };
 
 const COMMERCIAL_ITEM_SELECT =
-  "id, category_code, label, status, note, position, planned_start_date, planned_end_date, price_ht, vat_rate";
+  "id, category_code, label, status, note, position, planned_start_date, planned_end_date, price_ht, vat_rate, autre_item_id";
 
 function commercialItemTtc(item: CommercialItemRow): number | null {
   return item.price_ht == null ? null : item.price_ht * (1 + item.vat_rate / 100);
@@ -5747,6 +6072,85 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newTitle, setNewTitle] = useState("");
   const [newStart, setNewStart] = useState("");
   const [creatingCase, setCreatingCase] = useState(false);
+  const [clientTemplates, setClientTemplates] = useState<{ id: string; variant_label: string }[]>([]);
+  const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
+
+  // A client with a single template ("Standard") skips the picker entirely;
+  // one with several (e.g. "Bâtiment"/"Ombrières") needs one chosen before
+  // "Créer" is enabled.
+  useEffect(() => {
+    async function load() {
+      if (!newCaseOpen || !selectedClientId) {
+        setClientTemplates([]);
+        setNewTemplateId(null);
+        return;
+      }
+      const { data } = await supabase
+        .from("commercial_checklist_templates")
+        .select("id, variant_label")
+        .eq("client_id", selectedClientId)
+        .order("variant_label");
+      const templates = data ?? [];
+      setClientTemplates(templates);
+      setNewTemplateId(templates.length === 1 ? templates[0].id : null);
+    }
+    load();
+  }, [supabase, newCaseOpen, selectedClientId]);
+
+  const [autrePickerOpen, setAutrePickerOpen] = useState(false);
+  const [autreItems, setAutreItems] = useState<CommercialAutreItemRow[]>([]);
+  const [selectedAutreIds, setSelectedAutreIds] = useState<Set<string>>(new Set());
+  const [addingAutre, setAddingAutre] = useState(false);
+
+  useEffect(() => {
+    if (!autrePickerOpen) return;
+    supabase
+      .from("commercial_autre_items")
+      .select("id, category_code, position, label")
+      .order("position")
+      .then(({ data }) => setAutreItems((data as CommercialAutreItemRow[]) ?? []));
+  }, [supabase, autrePickerOpen]);
+
+  function closeAutrePicker() {
+    setAutrePickerOpen(false);
+    setSelectedAutreIds(new Set());
+  }
+
+  const addedAutreItemIds = useMemo(
+    () => new Set(items.map((i) => i.autre_item_id).filter((id): id is string => !!id)),
+    [items]
+  );
+
+  async function addSelectedAutreItems() {
+    if (!selectedCaseId || selectedAutreIds.size === 0) return;
+    setAddingAutre(true);
+    const toAdd = autreItems.filter((a) => selectedAutreIds.has(a.id));
+    const startPosition = items.length > 0 ? Math.max(...items.map((i) => i.position)) + 1 : 1;
+    const { error } = await supabase.from("commercial_case_items").insert(
+      toAdd.map((a, i) => ({
+        case_id: selectedCaseId,
+        category_code: a.category_code,
+        position: startPosition + i,
+        label: a.label,
+        origin: "autre",
+        status: "active",
+        autre_item_id: a.id,
+      }))
+    );
+    setAddingAutre(false);
+    if (error) {
+      toast.error("Erreur lors de l'ajout : " + error.message);
+      return;
+    }
+    const { data } = await supabase
+      .from("commercial_case_items")
+      .select(COMMERCIAL_ITEM_SELECT)
+      .eq("case_id", selectedCaseId)
+      .order("position");
+    setItems((data as CommercialItemRow[]) ?? []);
+    toast.success(`${toAdd.length} ligne(s) ajoutée(s).`);
+    closeAutrePicker();
+  }
 
   const [noteEditingId, setNoteEditingId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -5836,7 +6240,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   }, [clients, search]);
 
   async function createCase() {
-    if (!selectedClientId || !newTitle.trim()) return;
+    if (!selectedClientId || !newTitle.trim() || !newTemplateId) return;
     setCreatingCase(true);
     try {
       const {
@@ -5858,7 +6262,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       const { data: templateItems } = await supabase
         .from("commercial_checklist_template_items")
         .select("category_code, position, label")
-        .eq("client_id", selectedClientId)
+        .eq("template_id", newTemplateId)
         .order("position");
 
       if (templateItems && templateItems.length > 0) {
@@ -6079,6 +6483,20 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       .sort((a, b) => a.category.sort_order - b.category.sort_order);
   }, [items, categories]);
 
+  const groupedAutreItems = useMemo(() => {
+    const byCode = new Map(categories.map((c) => [c.code, c]));
+    const groups = new Map<string, CommercialAutreItemRow[]>();
+    for (const item of autreItems) {
+      const list = groups.get(item.category_code) ?? [];
+      list.push(item);
+      groups.set(item.category_code, list);
+    }
+    return [...groups.entries()]
+      .map(([code, list]) => ({ category: byCode.get(code) ?? null, items: list.sort((a, b) => a.position - b.position) }))
+      .filter((g): g is { category: CommercialCategoryRow; items: CommercialAutreItemRow[] } => g.category !== null)
+      .sort((a, b) => a.category.sort_order - b.category.sort_order);
+  }, [autreItems, categories]);
+
   return (
     <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
       {pickerCollapsed ? (
@@ -6276,6 +6694,10 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                 </div>
               </div>
               <div className="flex gap-2 flex-wrap">
+                <button className="btn btn-secondary text-sm" onClick={() => setAutrePickerOpen(true)}>
+                  <Plus size={15} />
+                  <Bi fr="Depuis Autres" ru="Из «Прочее»" />
+                </button>
                 <button
                   className="btn btn-secondary text-sm"
                   onClick={() => downloadDoc("client")}
@@ -6700,8 +7122,98 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             </label>
             <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
           </div>
-          <button className="btn btn-dark w-full" onClick={createCase} disabled={creatingCase || !newTitle.trim()}>
+          {clientTemplates.length > 1 && (
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+                <Bi fr="Type de chantier" ru="Тип объекта" />
+              </label>
+              <select
+                className="input"
+                value={newTemplateId ?? ""}
+                onChange={(e) => setNewTemplateId(e.target.value || null)}
+              >
+                <option value="">—</option>
+                {clientTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.variant_label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <button
+            className="btn btn-dark w-full"
+            onClick={createCase}
+            disabled={creatingCase || !newTitle.trim() || !newTemplateId}
+          >
             {creatingCase ? "…" : "Créer"}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={autrePickerOpen}
+        onClose={closeAutrePicker}
+        title="Ajouter depuis Autres"
+        maxWidth="max-w-lg"
+      >
+        <p className="text-xs text-stone-500 mb-3">
+          Tâches rarement demandées, à ajouter au cas par cas.{" "}
+          <span className="opacity-70">/ Редко запрашиваемые пункты — добавляются по необходимости.</span>
+        </p>
+        <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
+          {groupedAutreItems.map((group) => (
+            <div key={group.category.code}>
+              <p className="text-[10px] font-bold uppercase text-stone-400 mb-1.5">
+                <Bi fr={group.category.label} ru={group.category.label_ru} />
+              </p>
+              <div className="space-y-1">
+                {group.items.map((autreItem) => {
+                  const alreadyAdded = addedAutreItemIds.has(autreItem.id);
+                  const checked = selectedAutreIds.has(autreItem.id);
+                  return (
+                    <label
+                      key={autreItem.id}
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
+                        alreadyAdded ? "opacity-50 cursor-not-allowed" : "hover:bg-stone-50 cursor-pointer"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked || alreadyAdded}
+                        disabled={alreadyAdded}
+                        onChange={(e) => {
+                          setSelectedAutreIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(autreItem.id);
+                            else next.delete(autreItem.id);
+                            return next;
+                          });
+                        }}
+                      />
+                      <span>{autreItem.label}</span>
+                      {alreadyAdded && (
+                        <span className="text-xs text-stone-400 ml-auto shrink-0">
+                          <Bi fr="déjà ajouté" ru="уже добавлено" />
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-3 mt-4">
+          <button
+            className="btn btn-dark"
+            onClick={addSelectedAutreItems}
+            disabled={addingAutre || selectedAutreIds.size === 0}
+          >
+            {addingAutre ? "…" : `Ajouter (${selectedAutreIds.size})`}
+          </button>
+          <button className="btn btn-secondary" onClick={closeAutrePicker}>
+            <Bi fr="Annuler" ru="Отмена" />
           </button>
         </div>
       </Modal>
