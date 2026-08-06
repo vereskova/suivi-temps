@@ -8542,7 +8542,7 @@ function DashboardsView({
             type="button"
             onClick={() => setPeriodMode("rolling12")}
             className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
-              periodMode === "rolling12" ? "bg-primary-600 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              periodMode === "rolling12" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
             }`}
           >
             12 мес.
@@ -8551,7 +8551,7 @@ function DashboardsView({
             type="button"
             onClick={() => setPeriodMode("all")}
             className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
-              periodMode === "all" ? "bg-primary-600 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              periodMode === "all" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
             }`}
           >
             Всё время
@@ -8559,51 +8559,64 @@ function DashboardsView({
         </div>
 
         <div className="border-t border-stone-100 pt-3 mb-4">
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-stone-500 shrink-0">Период вручную: С</span>
-            <select
-              className="input py-1.5"
-              value={customFromMonth}
-              onChange={(e) => setCustomFromMonth(Number(e.target.value))}
-            >
-              {DASH_MONTH_OPTIONS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.fr} / {m.ru}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input py-1.5 w-24"
-              value={customFromYear}
-              onChange={(e) => setCustomFromYear(Number(e.target.value))}
-            >
-              {manualYearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+          <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">Период вручную</p>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="text-stone-500 shrink-0">С</span>
+              <select
+                className="input py-1.5"
+                style={{ width: 190 }}
+                value={customFromMonth}
+                onChange={(e) => setCustomFromMonth(Number(e.target.value))}
+              >
+                {DASH_MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.fr} / {m.ru}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="input py-1.5"
+                style={{ width: 100 }}
+                value={customFromYear}
+                onChange={(e) => setCustomFromYear(Number(e.target.value))}
+              >
+                {manualYearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
             <span className="text-stone-400">—</span>
-            <span className="text-stone-500 shrink-0">по</span>
-            <select className="input py-1.5" value={customToMonth} onChange={(e) => setCustomToMonth(Number(e.target.value))}>
-              {DASH_MONTH_OPTIONS.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.fr} / {m.ru}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input py-1.5 w-24"
-              value={customToYear}
-              onChange={(e) => setCustomToYear(Number(e.target.value))}
-            >
-              {manualYearOptions.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={applyCustomRange} className="btn btn-primary text-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="text-stone-500 shrink-0">по</span>
+              <select
+                className="input py-1.5"
+                style={{ width: 190 }}
+                value={customToMonth}
+                onChange={(e) => setCustomToMonth(Number(e.target.value))}
+              >
+                {DASH_MONTH_OPTIONS.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.fr} / {m.ru}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="input py-1.5"
+                style={{ width: 100 }}
+                value={customToYear}
+                onChange={(e) => setCustomToYear(Number(e.target.value))}
+              >
+                {manualYearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button type="button" onClick={applyCustomRange} className="btn btn-primary text-sm shrink-0">
               Применить
             </button>
           </div>
