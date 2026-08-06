@@ -16,6 +16,7 @@ import {
   Briefcase,
   CalendarDays,
   Car,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -8136,33 +8137,72 @@ const DASH_MONTH_OPTIONS: { value: number; fr: string; ru: string }[] = [
 ];
 
 /**
- * Same visual language as the period chips (pill, flat fill) instead of the
- * boxed .input style. Uses its own chevron (appearance-none on the select)
- * rather than the browser's native one — that native arrow reserves a
- * different amount of space per browser/OS, which is exactly what made a
- * fixed pixel width clip the text in some environments but not others.
+ * Fully custom dropdown — not a native <select> — because the browser/OS
+ * draws its own open-list chrome (row height, the selected-item checkmark)
+ * and none of that is reachable from CSS. Same pill look as the period
+ * chips for the closed state; the open list is our own markup so every
+ * pixel, including the checkmark, is ours to size.
  */
-function DashPillSelect({
+function DashDropdown({
   value,
   onChange,
+  options,
   width,
-  children,
 }: {
   value: number;
   onChange: (value: number) => void;
+  options: { value: number; label: string }[];
   width: number;
-  children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const current = options.find((o) => o.value === value);
+
   return (
-    <div className="relative shrink-0" style={{ width }}>
-      <select
-        className="w-full appearance-none rounded-full bg-stone-100 border-none pl-3 pr-7 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+    <div ref={rootRef} className="relative shrink-0" style={{ width }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-1.5 rounded-full bg-stone-100 hover:bg-stone-200 px-3 py-1.5 text-sm font-semibold text-stone-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-200"
       >
-        {children}
-      </select>
-      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+        <span className="truncate">{current?.label}</span>
+        <ChevronDown size={14} className={`shrink-0 text-stone-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-64 w-full min-w-max overflow-y-auto rounded-xl border border-stone-100 bg-white py-1 shadow-lg">
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 whitespace-nowrap px-3 py-1.5 text-left text-sm font-semibold text-stone-700 hover:bg-stone-50"
+            >
+              <Check size={14} className={`shrink-0 ${o.value === value ? "text-primary-600" : "text-transparent"}`} />
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -8239,6 +8279,14 @@ function DashboardsView({
   const manualYearOptions = useMemo(
     () => Array.from({ length: 7 }, (_, i) => currentYear - 6 + i),
     [currentYear]
+  );
+  const manualYearDropdownOptions = useMemo(
+    () => manualYearOptions.map((y) => ({ value: y, label: String(y) })),
+    [manualYearOptions]
+  );
+  const dashMonthDropdownOptions = useMemo(
+    () => DASH_MONTH_OPTIONS.map((m) => ({ value: m.value, label: `${m.fr} / ${m.ru}` })),
+    []
   );
 
   const quarterOptions = useMemo(() => {
@@ -8598,38 +8646,14 @@ function DashboardsView({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">С</span>
-              <DashPillSelect value={customFromMonth} onChange={setCustomFromMonth} width={200}>
-                {DASH_MONTH_OPTIONS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.fr} / {m.ru}
-                  </option>
-                ))}
-              </DashPillSelect>
-              <DashPillSelect value={customFromYear} onChange={setCustomFromYear} width={110}>
-                {manualYearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </DashPillSelect>
+              <DashDropdown value={customFromMonth} onChange={setCustomFromMonth} width={200} options={dashMonthDropdownOptions} />
+              <DashDropdown value={customFromYear} onChange={setCustomFromYear} width={90} options={manualYearDropdownOptions} />
             </div>
             <span className="text-stone-400">—</span>
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">по</span>
-              <DashPillSelect value={customToMonth} onChange={setCustomToMonth} width={200}>
-                {DASH_MONTH_OPTIONS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.fr} / {m.ru}
-                  </option>
-                ))}
-              </DashPillSelect>
-              <DashPillSelect value={customToYear} onChange={setCustomToYear} width={110}>
-                {manualYearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </DashPillSelect>
+              <DashDropdown value={customToMonth} onChange={setCustomToMonth} width={200} options={dashMonthDropdownOptions} />
+              <DashDropdown value={customToYear} onChange={setCustomToYear} width={90} options={manualYearDropdownOptions} />
             </div>
             <button type="button" onClick={applyCustomRange} className="btn btn-primary text-sm shrink-0">
               Применить
