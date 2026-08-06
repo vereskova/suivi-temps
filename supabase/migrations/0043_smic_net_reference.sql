@@ -1,0 +1,13 @@
+-- The net SMIC is a government-set figure that changes periodically — no
+-- formula derives it correctly, and guessing it in code risks being wrong
+-- and staying wrong. Make it an explicit, editable reference value instead:
+-- whoever hears a new number (from the accountant, or a new arrêté) updates
+-- this one field, and every "base salary" suggestion in the Paie view picks
+-- it up from here.
+--
+-- Seeded at 1477.93 € — the official net SMIC for 35h/mois (base 151.67h),
+-- per the standard public calculation, in effect since 1 June 2026 under
+-- l'arrêté du 22 mai 2026 relatif au relèvement du SMIC (JO du 24 mai 2026):
+-- SMIC horaire brut 12,31 € → brut mensuel 1 867,02 € → net estimé 1 477,93 €.
+-- Matches what the accountant separately quoted (1 470–1 480 €).
+alter table payroll_parameters add column if not exists smic_net_mensuel numeric(9,2) not null default 1477.93;

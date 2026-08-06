@@ -10130,10 +10130,15 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [saving, setSaving] = useState(false);
   const [employees, setEmployees] = useState<PaieEmployee[]>([]);
   const [params, setParams] = useState<PayrollParams>(DEFAULT_PAYROLL_PARAMS);
+  const [paramsRowId, setParamsRowId] = useState<string | null>(null);
+  const [editingSmic, setEditingSmic] = useState(false);
+  const [smicInputValue, setSmicInputValue] = useState("");
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, PaieLineInput>>({});
   const [showParams, setShowParams] = useState(false);
   const [holidayCountSelection, setHolidayCountSelection] = useState("0");
+  const [joursTravaillesSelection, setJoursTravaillesSelection] = useState("0");
+  const [salaireBaseNetBulkValue, setSalaireBaseNetBulkValue] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -10175,10 +10180,12 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       setEmployees((emp as unknown as PaieEmployee[]) ?? []);
 
       if (paramRow) {
+        setParamsRowId(paramRow.id);
         setParams({
           tauxHoraireBase: Number(paramRow.taux_horaire_base),
           heuresNormalesMois: Number(paramRow.heures_normales_mois),
           joursOuvresMoisStandard: Number(paramRow.jours_ouvres_mois_standard),
+          smicNetMensuel: Number(paramRow.smic_net_mensuel),
           majorationHs25: Number(paramRow.majoration_hs25),
           majorationHs50: Number(paramRow.majoration_hs50),
           tauxRetenues: Number(paramRow.taux_retenues),
@@ -10276,6 +10283,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     });
   }
 
+  /** Flat override for everyone at once — the smart per-employee suggestion above (dates-based) isn't always what's wanted; sometimes it's just "everyone worked N days". */
+  function applyJoursTravaillesCountToAll() {
+    if (!joursTravaillesSelection) return;
+    setInputs((prev) => {
+      const next = { ...prev };
+      employees.forEach((e) => {
+        if (isFopContractor(e)) return;
+        next[e.id] = { ...(next[e.id] ?? EMPTY_PAIE_LINE), joursTravailles: joursTravaillesSelection };
+      });
+      return next;
+    });
+  }
+
   async function updateSalaireBaseNet(employeeId: string, value: string) {
     const salaireBaseNet = value === "" ? null : Number(value);
     setEmployees((prev) =>
@@ -10286,6 +10306,40 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       .update({ salaire_base_net: salaireBaseNet })
       .eq("id", employeeId);
     if (error) toast.error("Erreur : " + error.message);
+  }
+
+  /** Bulk-fills every non-FOP employee's base salary at once (e.g. everyone currently on SMIC) — defaults to params.smicNetMensuel, the explicit reference value kept up to date by whoever last heard the current SMIC from the accountant. */
+  async function applySalaireBaseNetToAll() {
+    const value = Number(salaireBaseNetBulkValue) || params.smicNetMensuel;
+    if (!value) return;
+    const targets = employees.filter((e) => !isFopContractor(e));
+    setEmployees((prev) => prev.map((e) => (isFopContractor(e) ? e : { ...e, salaire_base_net: value })));
+    const { error } = await supabase
+      .from("employees")
+      .update({ salaire_base_net: value })
+      .in("id", targets.map((e) => e.id));
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    toast.success(`Salaire de base appliqué à ${targets.length} salarié(s)`);
+  }
+
+  async function saveSmicNetMensuel() {
+    if (!paramsRowId) return;
+    const value = Number(smicInputValue);
+    if (!value || value <= 0) return;
+    const { error } = await supabase
+      .from("payroll_parameters")
+      .update({ smic_net_mensuel: value })
+      .eq("id", paramsRowId);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setParams((prev) => ({ ...prev, smicNetMensuel: value }));
+    setEditingSmic(false);
+    toast.success("SMIC de référence mis à jour");
   }
 
   function applyHolidayCountToAll() {
@@ -10732,14 +10786,112 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               total ce mois-ci.
             </p>
           </div>
-          <button
-            className="btn btn-dark text-sm px-4 py-2 shrink-0 gap-2"
-            onClick={applyWorkingDaysToAll}
-            title="Recalculer « Jours travaillés » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни отработано» по всем на основе дат приёма/отпуска/увольнения"
-          >
-            <RefreshCw size={15} />
-            <Bi fr="Recalculer « Jours travaillés »" ru="Пересчитать «Дни отработано»" />
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              className="btn btn-dark text-sm px-4 py-2 gap-2"
+              onClick={applyWorkingDaysToAll}
+              title="Recalculer « Jours travaillés » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни отработано» по всем на основе дат приёма/отпуска/увольнения"
+            >
+              <RefreshCw size={15} />
+              <Bi fr="Recalculer « Jours travaillés »" ru="Пересчитать «Дни отработано»" />
+            </button>
+            <select
+              className="input text-xs"
+              style={{ width: "auto" }}
+              value={joursTravaillesSelection}
+              onChange={(e) => setJoursTravaillesSelection(e.target.value)}
+            >
+              {Array.from({ length: daysInMonth + 1 }, (_, n) => n).map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-secondary text-sm px-4 py-2 gap-2"
+              onClick={applyJoursTravaillesCountToAll}
+              title="Appliquer ce même nombre de jours travaillés à tout le monde, sans distinction / Применить это число дней ко всем без исключения"
+            >
+              <Bi fr="Appliquer à tous" ru="Применить всем" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xl font-extrabold text-stone-800">База нетто</p>
+            <p className="text-sm text-stone-400">Salaire base net</p>
+            <p className="text-sm text-stone-600 mt-2 max-w-2xl">
+              Оклад сотрудника, от которого считается базовая часть зарплаты (см. «Дни отработано»).
+              Меняется редко — заполняется один раз, дальше просто хранится у сотрудника.
+            </p>
+            <div className="text-xs text-stone-400 mt-1 flex items-center gap-2">
+              {editingSmic ? (
+                <>
+                  <span>SMIC net actuel :</span>
+                  <input
+                    type="number"
+                    className="input text-xs"
+                    style={{ width: "6rem" }}
+                    value={smicInputValue}
+                    onChange={(ev) => setSmicInputValue(ev.target.value)}
+                    autoFocus
+                  />
+                  <button className="btn btn-primary text-xs px-2 py-1" onClick={saveSmicNetMensuel}>
+                    <Bi fr="Enregistrer" ru="Сохранить" />
+                  </button>
+                  <button
+                    className="btn btn-secondary text-xs px-2 py-1"
+                    onClick={() => setEditingSmic(false)}
+                  >
+                    <Bi fr="Annuler" ru="Отмена" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>
+                    SMIC net actuel : <span className="font-bold text-stone-600">{params.smicNetMensuel} €</span> —
+                    valeur de référence tenue à jour manuellement, jamais devinée automatiquement
+                    <span className="opacity-70">
+                      {" "}
+                      / Актуальный SMIC netto — эталонное значение, вручную обновляется, никогда не
+                      угадывается
+                    </span>
+                    .
+                  </span>
+                  <button
+                    className="underline underline-offset-2 hover:no-underline shrink-0"
+                    onClick={() => {
+                      setSmicInputValue(String(params.smicNetMensuel));
+                      setEditingSmic(true);
+                    }}
+                  >
+                    <Bi fr="Modifier" ru="Изменить" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <input
+              type="number"
+              className="input text-sm"
+              style={{ width: "8rem" }}
+              placeholder={String(params.smicNetMensuel)}
+              value={salaireBaseNetBulkValue}
+              onChange={(e) => setSalaireBaseNetBulkValue(e.target.value)}
+            />
+            <button
+              className="btn btn-dark text-sm px-4 py-2 gap-2"
+              onClick={applySalaireBaseNetToAll}
+              title="Appliquer cette base à tout le monde (sauf FOP) / Применить эту базу всем (кроме FOP)"
+            >
+              <RefreshCw size={15} />
+              <Bi fr="Appliquer à tous" ru="Применить всем" />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -25,6 +25,8 @@ export type PayrollParams = {
   tauxHoraireBase: number;
   heuresNormalesMois: number;
   joursOuvresMoisStandard: number;
+  /** Current net monthly SMIC, per the accountant — not derived from anything else, since no formula produces this correctly; update it directly whenever it changes. */
+  smicNetMensuel: number;
   majorationHs25: number;
   majorationHs50: number;
   tauxRetenues: number;
@@ -107,6 +109,7 @@ export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
   tauxHoraireBase: 12.31,
   heuresNormalesMois: 151.67,
   joursOuvresMoisStandard: 21.67,
+  smicNetMensuel: 1477.93,
   majorationHs25: 0.25,
   majorationHs50: 0.5,
   tauxRetenues: 0.2197,
