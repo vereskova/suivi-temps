@@ -6088,8 +6088,7 @@ type CommercialItemRow = {
   status: CommercialItemStatus;
   note: string | null;
   position: number;
-  planned_start_date: string | null;
-  planned_end_date: string | null;
+  delai_prevu: string | null;
   price_ht: number | null;
   vat_rate: number;
   autre_item_id: string | null;
@@ -6097,7 +6096,7 @@ type CommercialItemRow = {
 type CommercialAutreItemRow = { id: string; category_code: string; position: number; label: string };
 
 const COMMERCIAL_ITEM_SELECT =
-  "id, category_code, label, status, note, position, planned_start_date, planned_end_date, price_ht, vat_rate, autre_item_id";
+  "id, category_code, label, status, note, position, delai_prevu, price_ht, vat_rate, autre_item_id";
 
 function commercialItemTtc(item: CommercialItemRow): number | null {
   return item.price_ht == null ? null : item.price_ht * (1 + item.vat_rate / 100);
@@ -6450,17 +6449,14 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     setEditingCaseTitle(false);
   }
 
-  async function updateItemDates(itemId: string, planned_start_date: string | null, planned_end_date: string | null) {
-    if (planned_start_date && planned_end_date && planned_end_date < planned_start_date) {
-      toast.error("La date de fin ne peut pas être avant la date de début.");
-      return;
-    }
-    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, planned_start_date, planned_end_date } : i)));
+  async function updateItemDelai(itemId: string, delaiInput: string) {
+    const delai_prevu = delaiInput.trim() === "" ? null : delaiInput.trim();
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, delai_prevu } : i)));
     const { error } = await supabase
       .from("commercial_case_items")
-      .update({ planned_start_date, planned_end_date })
+      .update({ delai_prevu })
       .eq("id", itemId);
-    if (error) toast.error("Erreur lors de la mise à jour des dates.");
+    if (error) toast.error("Erreur lors de la mise à jour du délai.");
   }
 
   async function updateItemPriceHt(item: CommercialItemRow, htInput: string) {
@@ -6848,22 +6844,14 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                         const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
                         const ttc = commercialItemTtc(item);
                         const flagMissing = item.status === "active";
-                        const missingStart = flagMissing && !item.planned_start_date;
+                        const missingDelai = flagMissing && !item.delai_prevu;
                         const missingPrice = flagMissing && item.price_ht == null;
-                        const invalidRange =
-                          !!item.planned_start_date &&
-                          !!item.planned_end_date &&
-                          item.planned_end_date < item.planned_start_date;
                         const priceTooHigh = item.price_ht != null && item.price_ht > COMMERCIAL_PRICE_WARN_THRESHOLD;
                         return (
                           <div
                             key={item.id}
                             className={`rounded-xl border p-3 ${
-                              invalidRange
-                                ? "border-error-300 bg-error-50"
-                                : missingStart || missingPrice
-                                  ? "border-stone-100 bg-warning-50"
-                                  : "border-stone-100"
+                              missingDelai || missingPrice ? "border-stone-100 bg-warning-50" : "border-stone-100"
                             }`}
                           >
                             <div className="flex items-start gap-2">
@@ -6900,30 +6888,16 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                             {item.note && noteEditingId !== item.id && (
                               <p className="text-xs italic text-warning-700 mt-1 ml-7">{item.note}</p>
                             )}
-                            <div className="flex items-center gap-1.5 mt-2 ml-7">
+                            <div className="mt-2 ml-7">
                               <input
-                                type="date"
-                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${
-                                  invalidRange ? "border-error-400" : ""
-                                } ${item.planned_start_date ? "" : "text-stone-400"}`}
-                                value={item.planned_start_date ?? ""}
-                                onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
-                              />
-                              <span className="text-stone-300">–</span>
-                              <input
-                                type="date"
-                                className={`input input-ghost text-xs py-1 px-1.5 flex-1 min-w-0 ${
-                                  invalidRange ? "border-error-400" : ""
-                                } ${item.planned_end_date ? "" : "text-stone-400"}`}
-                                value={item.planned_end_date ?? ""}
-                                onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
+                                type="text"
+                                className="input input-ghost text-xs py-1 px-1.5 w-full"
+                                placeholder="ex. 3 j / 4 h"
+                                defaultValue={item.delai_prevu ?? ""}
+                                key={`delai-${item.id}-${item.delai_prevu ?? ""}`}
+                                onBlur={(e) => updateItemDelai(item.id, e.target.value)}
                               />
                             </div>
-                            {invalidRange && (
-                              <p className="text-xs text-error-600 mt-1 ml-7">
-                                ⚠ La date de fin est avant la date de début
-                              </p>
-                            )}
                             <div className="flex items-center gap-2 mt-2 ml-7">
                               <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">HT</label>
                               {priceTooHigh && (
@@ -7023,12 +6997,8 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                           const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
                           const ttc = commercialItemTtc(item);
                           const flagMissing = item.status === "active";
-                          const missingStart = flagMissing && !item.planned_start_date;
+                          const missingDelai = flagMissing && !item.delai_prevu;
                           const missingPrice = flagMissing && item.price_ht == null;
-                          const invalidRange =
-                            !!item.planned_start_date &&
-                            !!item.planned_end_date &&
-                            item.planned_end_date < item.planned_start_date;
                           const priceTooHigh = item.price_ht != null && item.price_ht > COMMERCIAL_PRICE_WARN_THRESHOLD;
                           return (
                             <Fragment key={item.id}>
@@ -7059,32 +7029,15 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                                     </span>
                                   )}
                                 </td>
-                                <td
-                                  className={`py-1.5 pr-3 rounded-lg ${
-                                    invalidRange ? "bg-error-50" : missingStart ? "bg-warning-50" : ""
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1 whitespace-nowrap">
-                                    <input
-                                      type="date"
-                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${
-                                        invalidRange ? "border-error-400" : ""
-                                      } ${item.planned_start_date ? "" : "text-stone-400"}`}
-                                      value={item.planned_start_date ?? ""}
-                                      onChange={(e) => updateItemDates(item.id, e.target.value || null, item.planned_end_date)}
-                                      title={invalidRange ? "La date de fin est avant la date de début" : undefined}
-                                    />
-                                    <span className="text-stone-300">–</span>
-                                    <input
-                                      type="date"
-                                      className={`input input-ghost text-xs py-0.5 px-1 w-[6.4rem] ${
-                                        invalidRange ? "border-error-400" : ""
-                                      } ${item.planned_end_date ? "" : "text-stone-400"}`}
-                                      value={item.planned_end_date ?? ""}
-                                      onChange={(e) => updateItemDates(item.id, item.planned_start_date, e.target.value || null)}
-                                      title={invalidRange ? "La date de fin est avant la date de début" : undefined}
-                                    />
-                                  </div>
+                                <td className={`py-1.5 pr-3 rounded-lg ${missingDelai ? "bg-warning-50" : ""}`}>
+                                  <input
+                                    type="text"
+                                    className="input input-ghost text-xs py-0.5 px-1 w-[9rem]"
+                                    placeholder="ex. 3 j / 4 h"
+                                    defaultValue={item.delai_prevu ?? ""}
+                                    key={`delai-${item.id}-${item.delai_prevu ?? ""}`}
+                                    onBlur={(e) => updateItemDelai(item.id, e.target.value)}
+                                  />
                                 </td>
                                 <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
                                   <div className="flex items-center gap-1 justify-end">

@@ -106,8 +106,7 @@ export type CommercialCaseItemDoc = {
   status: CommercialItemStatus;
   note: string | null;
   position: number;
-  plannedStartDate: string | null;
-  plannedEndDate: string | null;
+  delaiPrevu: string | null;
   priceHt: number | null;
   vatRate: number;
 };
@@ -145,16 +144,6 @@ function groupByCategory<T extends { categoryCode: string; position: number }>(
     .sort((a, b) => a.category.sortOrder - b.category.sortOrder);
 }
 
-function formatShortDate(d: string | null): string {
-  if (!d) return "";
-  const [, m, day] = d.split("-");
-  return `${day}/${m}`;
-}
-function formatDateRange(start: string | null, end: string | null): string {
-  if (!start && !end) return "";
-  if (start && end) return `${formatShortDate(start)}–${formatShortDate(end)}`;
-  return formatShortDate(start ?? end);
-}
 function itemTtc(item: { priceHt: number | null; vatRate: number }): number | null {
   return item.priceHt == null ? null : item.priceHt * (1 + item.vatRate / 100);
 }
@@ -266,7 +255,7 @@ function ClientChecklistDocument({
                   </Text>
                   {item.status === "active" && (
                     <>
-                      <Text style={styles.rowDates}>{formatDateRange(item.plannedStartDate, item.plannedEndDate)}</Text>
+                      <Text style={styles.rowDates}>{item.delaiPrevu ?? ""}</Text>
                       <Text style={styles.rowPrice}>{item.priceHt != null ? item.priceHt.toFixed(2) : "—"}</Text>
                       <Text style={styles.rowPrice}>{itemTtc(item) != null ? itemTtc(item)!.toFixed(2) : "—"}</Text>
                     </>
@@ -348,7 +337,7 @@ function TeamWorkOrderDocument({
                 <View key={item.label + item.position} style={styles.row}>
                   <StatusIcon status="active" />
                   <Text style={styles.rowLabel}>{item.label}</Text>
-                  <Text style={styles.rowDates}>{formatDateRange(item.plannedStartDate, item.plannedEndDate)}</Text>
+                  <Text style={styles.rowDates}>{item.delaiPrevu ?? ""}</Text>
                 </View>
               ))}
             </View>
