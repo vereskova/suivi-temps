@@ -45,6 +45,8 @@ export type PayrollInput = {
 };
 
 export type PayrollResult = {
+  /** The base pay portion actually used this run — day-based (joursTravailles × salaireBaseNet ÷ joursOuvresMoisStandard) once both inputs are filled, otherwise the old fixed full-month fallback. */
+  baseNet: number;
   joursRepas: number;
   hs25Heures: number;
   hs50Heures: number;
@@ -102,7 +104,7 @@ export function computePayrollLine(input: PayrollInput, params: PayrollParams): 
   const netUsedSoFar = baseNet + exoneration + repasNet + hs25Brut * netUnit + hs50Brut * netUnit;
   const primeExceptionnelle = Math.max(0, Math.round((netSouhaite - netUsedSoFar) * 100) / 100);
 
-  return { joursRepas, hs25Heures, hs50Heures, primeExceptionnelle };
+  return { baseNet, joursRepas, hs25Heures, hs50Heures, primeExceptionnelle };
 }
 
 export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {

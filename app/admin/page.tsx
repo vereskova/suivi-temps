@@ -10504,7 +10504,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const map: Record<string, ReturnType<typeof computePayrollLine>> = {};
     employees.forEach((e) => {
       if (isFopContractor(e)) {
-        map[e.id] = { joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 };
+        map[e.id] = { baseNet: 0, joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 };
         return;
       }
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
@@ -10530,6 +10530,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           acc.netSouhaite += Number(line.netSouhaite) || 0;
           acc.majJoursFeries += Number(line.majJoursFeries) || 0;
           acc.joursTravailles += Number(line.joursTravailles) || 0;
+          acc.baseNet += c?.baseNet ?? 0;
           acc.joursRepas += c?.joursRepas ?? 0;
           acc.hs25Heures += c?.hs25Heures ?? 0;
           acc.hs50Heures += c?.hs50Heures ?? 0;
@@ -10540,6 +10541,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           netSouhaite: 0,
           majJoursFeries: 0,
           joursTravailles: 0,
+          baseNet: 0,
           joursRepas: 0,
           hs25Heures: 0,
           hs50Heures: 0,
@@ -10594,6 +10596,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         "Nom Prénom": employeeName(e),
         "Salaire base net €": e.salaire_base_net ?? "",
         "Jours travaillés": Number(line.joursTravailles) || 0,
+        "Base net calculée €": Math.round((c?.baseNet ?? 0) * 100) / 100,
         "Jours fériés travaillés": Number(line.majJoursFeries) || 0,
         "Jours repas": c?.joursRepas ?? 0,
         "HS+25% h": c?.hs25Heures ?? 0,
@@ -10607,6 +10610,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       "Nom Prénom": "TOTAL",
       "Salaire base net €": "",
       "Jours travaillés": totals.joursTravailles,
+      "Base net calculée €": Math.round(totals.baseNet * 100) / 100,
       "Jours fériés travaillés": totals.majJoursFeries,
       "Jours repas": totals.joursRepas,
       "HS+25% h": totals.hs25Heures,
@@ -10770,165 +10774,159 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       </div>
 
       <div className="card mb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xl font-extrabold text-stone-800">Дни отработано</p>
-            <p className="text-sm text-stone-400">Jours travaillés</p>
-            <p className="text-sm text-stone-600 mt-2 max-w-2xl">
-              Определяет базовую часть зарплаты (дни × дневная ставка из «Базы netto») и максимум
-              дней питания. Считается только для тех, кто работает на объектах (стройка) — для
-              офиса всегда 0. По умолчанию — количество дней, когда сотрудник реально числился
-              работающим в этом месяце (с учётом даты приёма на работу, ухода в отпуск или
-              увольнения).
-            </p>
-            <p className="text-xs text-stone-400 mt-1">
-              <span className="font-bold text-stone-600">{workingDaysInMonth} jours ouvrés</span> au
-              total ce mois-ci.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              className="btn btn-dark text-sm px-4 py-2 gap-2"
-              onClick={applyWorkingDaysToAll}
-              title="Recalculer « Jours travaillés » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни отработано» по всем на основе дат приёма/отпуска/увольнения"
-            >
-              <RefreshCw size={15} />
-              <Bi fr="Recalculer « Jours travaillés »" ru="Пересчитать «Дни отработано»" />
-            </button>
+        <p className="text-xl font-extrabold text-stone-800">Дни отработано</p>
+        <p className="text-sm text-stone-400">Jours travaillés</p>
+        <p className="text-sm text-stone-600 mt-2 max-w-2xl">
+          Определяет базовую часть зарплаты (дни × дневная ставка из «Базы netto») и максимум дней
+          питания. Считается только для тех, кто работает на объектах (стройка) — для офиса всегда
+          0. По умолчанию — количество дней, когда сотрудник реально числился работающим в этом
+          месяце (с учётом даты приёма на работу, ухода в отпуск или увольнения).
+        </p>
+        <p className="text-xs text-stone-400 mt-1">
+          <span className="font-bold text-stone-600">{workingDaysInMonth} jours ouvrés</span> au
+          total ce mois-ci.
+        </p>
+        <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-100">
+          <button
+            className="btn btn-dark text-sm px-4 py-2 gap-2"
+            onClick={applyWorkingDaysToAll}
+            title="Recalculer « Jours travaillés » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни отработано» по всем на основе дат приёма/отпуска/увольнения"
+          >
+            <RefreshCw size={15} />
+            <Bi fr="Recalculer « Jours travaillés »" ru="Пересчитать «Дни отработано»" />
+          </button>
+          <span className="w-px h-6 bg-stone-200 shrink-0" />
+          <span className="text-xs text-stone-500 whitespace-nowrap">
+            <Bi fr="ou fixer pour tous :" ru="или задать всем:" />
+          </span>
+          <select
+            className="input text-xs"
+            style={{ width: "auto" }}
+            value={joursTravaillesSelection}
+            onChange={(e) => setJoursTravaillesSelection(e.target.value)}
+          >
+            {Array.from({ length: daysInMonth + 1 }, (_, n) => n).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn btn-secondary text-sm px-4 py-2 gap-2"
+            onClick={applyJoursTravaillesCountToAll}
+            title="Appliquer ce même nombre de jours travaillés à tout le monde, sans distinction / Применить это число дней ко всем без исключения"
+          >
+            <Bi fr="Appliquer à tous" ru="Применить всем" />
+          </button>
+        </div>
+      </div>
+
+      <div className="card mb-4">
+        <p className="text-xl font-extrabold text-stone-800">База нетто</p>
+        <p className="text-sm text-stone-400">Salaire base net</p>
+        <p className="text-sm text-stone-600 mt-2 max-w-2xl">
+          Оклад сотрудника, от которого считается базовая часть зарплаты (см. «Дни отработано»).
+          Меняется редко — заполняется один раз, дальше просто хранится у сотрудника.
+        </p>
+        <div className="text-xs text-stone-400 mt-1 flex items-center gap-2 flex-wrap">
+          {editingSmic ? (
+            <>
+              <span>SMIC net actuel :</span>
+              <input
+                type="number"
+                className="input text-xs"
+                style={{ width: "6rem" }}
+                value={smicInputValue}
+                onChange={(ev) => setSmicInputValue(ev.target.value)}
+                autoFocus
+              />
+              <button className="btn btn-primary text-xs px-2 py-1" onClick={saveSmicNetMensuel}>
+                <Bi fr="Enregistrer" ru="Сохранить" />
+              </button>
+              <button
+                className="btn btn-secondary text-xs px-2 py-1"
+                onClick={() => setEditingSmic(false)}
+              >
+                <Bi fr="Annuler" ru="Отмена" />
+              </button>
+            </>
+          ) : (
+            <>
+              <span>
+                SMIC net actuel : <span className="font-bold text-stone-600">{params.smicNetMensuel} €</span> —
+                valeur de référence tenue à jour manuellement, jamais devinée automatiquement
+                <span className="opacity-70">
+                  {" "}
+                  / Актуальный SMIC netto — эталонное значение, вручную обновляется, никогда не
+                  угадывается
+                </span>
+                .
+              </span>
+              <button
+                className="underline underline-offset-2 hover:no-underline shrink-0"
+                onClick={() => {
+                  setSmicInputValue(String(params.smicNetMensuel));
+                  setEditingSmic(true);
+                }}
+              >
+                <Bi fr="Modifier" ru="Изменить" />
+              </button>
+            </>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-100">
+          <span className="text-xs text-stone-500 whitespace-nowrap">
+            <Bi fr="Appliquer pour tous :" ru="Применить всем:" />
+          </span>
+          <input
+            type="number"
+            className="input text-sm"
+            style={{ width: "8rem" }}
+            placeholder={String(params.smicNetMensuel)}
+            value={salaireBaseNetBulkValue}
+            onChange={(e) => setSalaireBaseNetBulkValue(e.target.value)}
+          />
+          <button
+            className="btn btn-dark text-sm px-4 py-2 gap-2"
+            onClick={applySalaireBaseNetToAll}
+            title="Appliquer cette base à tout le monde (sauf FOP) / Применить эту базу всем (кроме FOP)"
+          >
+            <RefreshCw size={15} />
+            <Bi fr="Appliquer à tous" ru="Применить всем" />
+          </button>
+        </div>
+      </div>
+
+      {monthHolidays.length > 0 && (
+        <div className="card mb-4">
+          <p className="text-xl font-extrabold text-stone-800">Отработанные праздничные дни</p>
+          <p className="text-sm text-stone-400">Jours fériés travaillés</p>
+          <p className="text-sm text-stone-600 mt-2 max-w-2xl">
+            Сколько праздничных дней в этом месяце сотрудник реально отработал (например, вышел на
+            объект 14 июля). По умолчанию 0 — проставьте вручную тем, кто действительно работал в
+            эти дни.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-100">
             <select
               className="input text-xs"
               style={{ width: "auto" }}
-              value={joursTravaillesSelection}
-              onChange={(e) => setJoursTravaillesSelection(e.target.value)}
+              value={holidayCountSelection}
+              onChange={(e) => setHolidayCountSelection(e.target.value)}
             >
-              {Array.from({ length: daysInMonth + 1 }, (_, n) => n).map((n) => (
+              {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
               ))}
             </select>
             <button
-              className="btn btn-secondary text-sm px-4 py-2 gap-2"
-              onClick={applyJoursTravaillesCountToAll}
-              title="Appliquer ce même nombre de jours travaillés à tout le monde, sans distinction / Применить это число дней ко всем без исключения"
-            >
-              <Bi fr="Appliquer à tous" ru="Применить всем" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="card mb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xl font-extrabold text-stone-800">База нетто</p>
-            <p className="text-sm text-stone-400">Salaire base net</p>
-            <p className="text-sm text-stone-600 mt-2 max-w-2xl">
-              Оклад сотрудника, от которого считается базовая часть зарплаты (см. «Дни отработано»).
-              Меняется редко — заполняется один раз, дальше просто хранится у сотрудника.
-            </p>
-            <div className="text-xs text-stone-400 mt-1 flex items-center gap-2">
-              {editingSmic ? (
-                <>
-                  <span>SMIC net actuel :</span>
-                  <input
-                    type="number"
-                    className="input text-xs"
-                    style={{ width: "6rem" }}
-                    value={smicInputValue}
-                    onChange={(ev) => setSmicInputValue(ev.target.value)}
-                    autoFocus
-                  />
-                  <button className="btn btn-primary text-xs px-2 py-1" onClick={saveSmicNetMensuel}>
-                    <Bi fr="Enregistrer" ru="Сохранить" />
-                  </button>
-                  <button
-                    className="btn btn-secondary text-xs px-2 py-1"
-                    onClick={() => setEditingSmic(false)}
-                  >
-                    <Bi fr="Annuler" ru="Отмена" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span>
-                    SMIC net actuel : <span className="font-bold text-stone-600">{params.smicNetMensuel} €</span> —
-                    valeur de référence tenue à jour manuellement, jamais devinée automatiquement
-                    <span className="opacity-70">
-                      {" "}
-                      / Актуальный SMIC netto — эталонное значение, вручную обновляется, никогда не
-                      угадывается
-                    </span>
-                    .
-                  </span>
-                  <button
-                    className="underline underline-offset-2 hover:no-underline shrink-0"
-                    onClick={() => {
-                      setSmicInputValue(String(params.smicNetMensuel));
-                      setEditingSmic(true);
-                    }}
-                  >
-                    <Bi fr="Modifier" ru="Изменить" />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <input
-              type="number"
-              className="input text-sm"
-              style={{ width: "8rem" }}
-              placeholder={String(params.smicNetMensuel)}
-              value={salaireBaseNetBulkValue}
-              onChange={(e) => setSalaireBaseNetBulkValue(e.target.value)}
-            />
-            <button
               className="btn btn-dark text-sm px-4 py-2 gap-2"
-              onClick={applySalaireBaseNetToAll}
-              title="Appliquer cette base à tout le monde (sauf FOP) / Применить эту базу всем (кроме FOP)"
+              onClick={applyHolidayCountToAll}
+              title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
             >
               <RefreshCw size={15} />
-              <Bi fr="Appliquer à tous" ru="Применить всем" />
+              <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
             </button>
-          </div>
-        </div>
-      </div>
-
-      {monthHolidays.length > 0 && (
-        <div className="card mb-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xl font-extrabold text-stone-800">Отработанные праздничные дни</p>
-              <p className="text-sm text-stone-400">Jours fériés travaillés</p>
-              <p className="text-sm text-stone-600 mt-2 max-w-2xl">
-                Сколько праздничных дней в этом месяце сотрудник реально отработал (например, вышел
-                на объект 14 июля). По умолчанию 0 — проставьте вручную тем, кто действительно
-                работал в эти дни.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <select
-                className="input text-xs"
-                style={{ width: "auto" }}
-                value={holidayCountSelection}
-                onChange={(e) => setHolidayCountSelection(e.target.value)}
-              >
-                {Array.from({ length: monthHolidays.length + 1 }, (_, n) => n).map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="btn btn-dark text-sm px-4 py-2 gap-2"
-                onClick={applyHolidayCountToAll}
-                title="Appliquer ce nombre de « Jours fériés travaillés » à tout le monde / Применить это число «Отработанных праздничных дней» ко всем"
-              >
-                <RefreshCw size={15} />
-                <Bi fr="Appliquer « Jours fériés »" ru="Применить «Праздничные»" />
-              </button>
-            </div>
           </div>
           <p className="text-sm font-bold text-stone-500 mt-4 mb-2">
             Праздники в {MONTHS_RU_PREPOSITIONAL[month - 1]}
@@ -11010,7 +11008,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
       {loading ? (
         <div className="card">
-          <SkeletonRows rows={6} cols={9} />
+          <SkeletonRows rows={6} cols={10} />
         </div>
       ) : (
         <>
@@ -11068,6 +11066,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                           ))}
                         </select>
                       </label>
+                      <p className="text-stone-500 font-semibold">
+                        <Bi fr="Base net calculée" ru="База нетто (расч.)" />: {(c?.baseNet ?? 0).toFixed(2)} €
+                      </p>
                       <label className="block">
                         <span className="text-xs font-bold text-warning-700">
                           <Bi fr="Net souhaité €" ru="Желаемый нетто €" />
@@ -11124,6 +11125,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               </p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-normal">
                 <span>Jours travaillés: {totals.joursTravailles}</span>
+                <span>Base calculée: {totals.baseNet.toFixed(2)} €</span>
                 <span>Net souhaité: {totals.netSouhaite.toFixed(2)} €</span>
                 <span>Jours fériés: {totals.majJoursFeries}</span>
                 <span>Jours repas: {totals.joursRepas}</span>
@@ -11142,6 +11144,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pr-4 text-stone-500"><Bi fr="Salaire base net €" ru="База нетто €" /></th>
                 <th className="py-2 pr-4 text-stone-500"><Bi fr="Jours travaillés" ru="Дней отработано" /></th>
+                <th className="py-2 pr-4 text-stone-500"><Bi fr="Base net calculée €" ru="База нетто (расч.) €" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Net souhaité €" ru="Желаемый нетто €" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours fériés travaillés" ru="Отработано праздничных дней" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="Jours repas" ru="Дней питания" /></th>
@@ -11161,7 +11164,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     {showGroupHeader && (
                       <tr>
                         <td
-                          colSpan={9}
+                          colSpan={10}
                           className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400"
                         >
                           {row.groupLabel}
@@ -11173,7 +11176,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                         <td className="py-2 pr-4 font-semibold whitespace-nowrap">
                           <PaieEmployeeName employee={e} />
                         </td>
-                        <td colSpan={8} className="py-2 pr-4 italic text-stone-500">
+                        <td colSpan={9} className="py-2 pr-4 italic text-stone-500">
                           FOP — rémunération hors paie, calcul non applicable
                         </td>
                       </tr>
@@ -11206,6 +11209,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="py-2 pr-4 font-semibold text-stone-500">
+                      {(c?.baseNet ?? 0).toFixed(2)} €
                     </td>
                     <td className="py-2 pr-4">
                       <input
@@ -11244,7 +11250,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-6 text-center text-stone-400">
+                  <td colSpan={10} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
@@ -11258,6 +11264,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                   </td>
                   <td className="py-2 pr-4">—</td>
                   <td className="py-2 pr-4">{totals.joursTravailles}</td>
+                  <td className="py-2 pr-4">{totals.baseNet.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.majJoursFeries}</td>
                   <td className="py-2 pr-4">{totals.joursRepas}</td>
