@@ -396,7 +396,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Dashboards",
     items: [
-      { key: "dashboards", label: "Dashboards RH", labelRu: "HR-дашборды", icon: LayoutDashboard },
+      { key: "dashboards", label: "HR-дашборды", labelRu: "", icon: LayoutDashboard },
     ],
   },
   {
@@ -739,6 +739,7 @@ export default function AdminPage() {
                   onChanged={() => {}}
                   onToggleChef={() => {}}
                   readOnly
+                  confidentialMode="rib_only"
                 />
               )}
             </div>
@@ -2323,12 +2324,15 @@ function EmployeesView({
   onChanged,
   onToggleChef,
   readOnly = false,
+  confidentialMode = "full",
 }: {
   supabase: ReturnType<typeof createClient>;
   teams: Team[];
   onChanged: () => void;
   onToggleChef: (teamId: string, employeeId: string) => void;
   readOnly?: boolean;
+  /** "rib_only" hides employee_confidential entirely except the RIB, for comptable — see EmployeeDetailPanel. */
+  confidentialMode?: "full" | "rib_only";
 }) {
   const [employees, setEmployees] = useState<EmployeeFull[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3005,7 +3009,12 @@ function EmployeesView({
           (() => {
             const found = filtered.find((e) => e.id === expandedId);
             return found ? (
-              <EmployeeDetailPanel supabase={supabase} employee={found} readOnly={readOnly} />
+              <EmployeeDetailPanel
+                supabase={supabase}
+                employee={found}
+                readOnly={readOnly}
+                confidentialMode={confidentialMode}
+              />
             ) : null;
           })()}
       </Modal>
@@ -3173,10 +3182,13 @@ function EmployeeDetailPanel({
   supabase,
   employee,
   readOnly = false,
+  confidentialMode = "full",
 }: {
   supabase: ReturnType<typeof createClient>;
   employee: EmployeeFull;
   readOnly?: boolean;
+  /** "rib_only" fetches just the RIB via the get_employee_rib() RPC instead of the full employee_confidential row — for comptable, who shouldn't see nationalité/sécu sociale/salaire etc. */
+  confidentialMode?: "full" | "rib_only";
 }) {
   const employeeId = employee.id;
   const [loading, setLoading] = useState(true);
@@ -3189,26 +3201,37 @@ function EmployeeDetailPanel({
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const [{ data: emp }, { data: conf }] = await Promise.all([
-        supabase
-          .from("employees")
-          .select(
-            "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label"
-          )
-          .eq("id", employeeId)
-          .single(),
-        supabase
-          .from("employee_confidential")
-          .select("*")
-          .eq("employee_id", employeeId)
-          .maybeSingle(),
-      ]);
-      setProfile((emp as EmployeeProfileFields) ?? null);
-      setConfidential({ ...EMPTY_CONFIDENTIAL, ...(conf ?? {}) });
+      const empPromise = supabase
+        .from("employees")
+        .select(
+          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label"
+        )
+        .eq("id", employeeId)
+        .single();
+
+      if (confidentialMode === "rib_only") {
+        const [{ data: emp }, { data: rib }] = await Promise.all([
+          empPromise,
+          supabase.rpc("get_employee_rib", { p_employee_id: employeeId }),
+        ]);
+        setProfile((emp as EmployeeProfileFields) ?? null);
+        setConfidential({ ...EMPTY_CONFIDENTIAL, rib: (rib as string | null) ?? null });
+      } else {
+        const [{ data: emp }, { data: conf }] = await Promise.all([
+          empPromise,
+          supabase
+            .from("employee_confidential")
+            .select("*")
+            .eq("employee_id", employeeId)
+            .maybeSingle(),
+        ]);
+        setProfile((emp as EmployeeProfileFields) ?? null);
+        setConfidential({ ...EMPTY_CONFIDENTIAL, ...(conf ?? {}) });
+      }
       setLoading(false);
     }
     load();
-  }, [employeeId, supabase]);
+  }, [employeeId, supabase, confidentialMode]);
 
   async function save() {
     if (!profile) return;
@@ -3385,69 +3408,80 @@ function EmployeeDetailPanel({
         />
       </DetailSection>
 
-      <DetailSection title="Confidentiel — RH uniquement" titleRu="Конфиденциально — только для кадров" tone="warning">
-        <DetailField
-          label="RIB"
-          labelRu="Банковские реквизиты"
-          value={confidential.rib}
-          onChange={(v) => setConfidential({ ...confidential, rib: v })}
-        />
-        <DetailField
-          label="Sécurité sociale"
-          labelRu="Соц. страхование"
-          value={confidential.securite_sociale}
-          onChange={(v) =>
-            setConfidential({ ...confidential, securite_sociale: v })
-          }
-        />
-        <DetailField
-          label="Statut Ameli"
-          labelRu="Статус Ameli"
-          value={confidential.status_ameli}
-          onChange={(v) => setConfidential({ ...confidential, status_ameli: v })}
-        />
-        <DetailField
-          label="Carte Vitale"
-          labelRu="Карта Vitale"
-          value={confidential.carte_vitale}
-          onChange={(v) => setConfidential({ ...confidential, carte_vitale: v })}
-        />
-        <DetailField
-          label="Mutuelle"
-          labelRu="Страховка"
-          value={confidential.mutuelle}
-          onChange={(v) => setConfidential({ ...confidential, mutuelle: v })}
-        />
-        <DetailField
-          label="Type de titre de séjour"
-          labelRu="Тип вида на жительство"
-          value={confidential.residence_permit_type}
-          onChange={(v) =>
-            setConfidential({ ...confidential, residence_permit_type: v })
-          }
-          suggestions={RESIDENCE_PERMIT_TYPE_SUGGESTIONS}
-        />
-        <DetailField
-          label="N° du titre"
-          labelRu="Номер документа"
-          value={confidential.residence_permit_number}
-          onChange={(v) =>
-            setConfidential({ ...confidential, residence_permit_number: v })
-          }
-        />
-        <DetailField
-          label="Salaire mensuel brut (€)"
-          labelRu="Оклад брутто в месяц (€)"
-          type="number"
-          value={confidential.monthly_gross_salary?.toString() ?? null}
-          onChange={(v) =>
-            setConfidential({
-              ...confidential,
-              monthly_gross_salary: v === "" ? null : Number(v),
-            })
-          }
-        />
-      </DetailSection>
+      {confidentialMode === "rib_only" ? (
+        <DetailSection title="Confidentiel — RH uniquement" titleRu="Конфиденциально — только для кадров" tone="warning">
+          <DetailField
+            label="RIB"
+            labelRu="Банковские реквизиты"
+            value={confidential.rib}
+            onChange={(v) => setConfidential({ ...confidential, rib: v })}
+          />
+        </DetailSection>
+      ) : (
+        <DetailSection title="Confidentiel — RH uniquement" titleRu="Конфиденциально — только для кадров" tone="warning">
+          <DetailField
+            label="RIB"
+            labelRu="Банковские реквизиты"
+            value={confidential.rib}
+            onChange={(v) => setConfidential({ ...confidential, rib: v })}
+          />
+          <DetailField
+            label="Sécurité sociale"
+            labelRu="Соц. страхование"
+            value={confidential.securite_sociale}
+            onChange={(v) =>
+              setConfidential({ ...confidential, securite_sociale: v })
+            }
+          />
+          <DetailField
+            label="Statut Ameli"
+            labelRu="Статус Ameli"
+            value={confidential.status_ameli}
+            onChange={(v) => setConfidential({ ...confidential, status_ameli: v })}
+          />
+          <DetailField
+            label="Carte Vitale"
+            labelRu="Карта Vitale"
+            value={confidential.carte_vitale}
+            onChange={(v) => setConfidential({ ...confidential, carte_vitale: v })}
+          />
+          <DetailField
+            label="Mutuelle"
+            labelRu="Страховка"
+            value={confidential.mutuelle}
+            onChange={(v) => setConfidential({ ...confidential, mutuelle: v })}
+          />
+          <DetailField
+            label="Type de titre de séjour"
+            labelRu="Тип вида на жительство"
+            value={confidential.residence_permit_type}
+            onChange={(v) =>
+              setConfidential({ ...confidential, residence_permit_type: v })
+            }
+            suggestions={RESIDENCE_PERMIT_TYPE_SUGGESTIONS}
+          />
+          <DetailField
+            label="N° du titre"
+            labelRu="Номер документа"
+            value={confidential.residence_permit_number}
+            onChange={(v) =>
+              setConfidential({ ...confidential, residence_permit_number: v })
+            }
+          />
+          <DetailField
+            label="Salaire mensuel brut (€)"
+            labelRu="Оклад брутто в месяц (€)"
+            type="number"
+            value={confidential.monthly_gross_salary?.toString() ?? null}
+            onChange={(v) =>
+              setConfidential({
+                ...confidential,
+                monthly_gross_salary: v === "" ? null : Number(v),
+              })
+            }
+          />
+        </DetailSection>
+      )}
 
       {!readOnly && (
         <div className="pt-1 border-t border-stone-100 mt-1">
@@ -8128,13 +8162,9 @@ const DASH_TENURE_BUCKETS = [
   { label: "5 ans et +", labelRu: "5 лет и более", min: 60, max: Infinity },
 ];
 
-type DashSortKey = "tenure" | "age" | "name";
-
 function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [employees, setEmployees] = useState<DashEmployee[]>([]);
   const [loading, setLoading] = useState(true);
-  const [sortKey, setSortKey] = useState<DashSortKey>("tenure");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   useEffect(() => {
     async function load() {
@@ -8153,7 +8183,7 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
 
   const todayIso = today();
 
-  const { groups, distribution, trend, caveats, detailRows, maxTrend } = useMemo(() => {
+  const { groups, distribution, trend, caveats, maxTrend } = useMemo(() => {
     const nonFop = employees.filter((e) => !dashIsFop(e));
     const fop = employees.filter(dashIsFop);
     const chantier = nonFop.filter((e) => e.category === "chantier");
@@ -8196,41 +8226,8 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
       unclearCount: employees.filter((e) => e.status === "unclear").length,
     };
 
-    const detailRows = employees
-      .filter((e) => e.status !== "terminated")
-      .map((e) => {
-        const isFop = dashIsFop(e);
-        const isChef = !isFop && dashIsChef(e);
-        const groupLabel = isFop ? "FOP" : e.category === "bureau" ? "Bureau" : isChef ? "Chef" : "Monteur";
-        const team = dashTeamOf(e);
-        const tenureMonths = e.hire_date ? monthsBetweenIso(e.hire_date, todayIso) : null;
-        const ageMonths = e.date_of_birth ? monthsBetweenIso(e.date_of_birth, todayIso) : null;
-        return {
-          id: e.id,
-          name: `${e.first_name} ${e.last_name}`,
-          groupLabel,
-          teamName: team?.name ?? "—",
-          hireDate: e.hire_date,
-          tenureMonths,
-          ageMonths,
-          status: e.status,
-        };
-      });
-
-    return { groups, distribution, trend, caveats, detailRows, maxTrend };
+    return { groups, distribution, trend, caveats, maxTrend };
   }, [employees, todayIso]);
-
-  const sortedRows = useMemo(() => {
-    const rows = [...detailRows];
-    rows.sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "tenure") cmp = (a.tenureMonths ?? -1) - (b.tenureMonths ?? -1);
-      else if (sortKey === "age") cmp = (a.ageMonths ?? -1) - (b.ageMonths ?? -1);
-      else cmp = a.name.localeCompare(b.name);
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-    return rows;
-  }, [detailRows, sortKey, sortDir]);
 
   if (loading) {
     return <div className="card p-6 text-center text-stone-400">…</div>;
@@ -8242,9 +8239,7 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-bold">
-          <Bi fr="Dashboards RH" ru="HR-дашборды" />
-        </h1>
+        <h1 className="text-xl font-bold">HR-дашборды</h1>
         <p className="text-sm text-stone-500 mt-1">
           <Bi
             fr="Ancienneté, âge et turnover, calculés en direct à partir des dates d'embauche, de naissance et de fin de contrat."
@@ -8330,9 +8325,7 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="card p-4">
-          <h2 className="font-semibold mb-3">
-            <Bi fr="Répartition par ancienneté" ru="Распределение по стажу" />
-          </h2>
+          <h2 className="font-semibold mb-3">Распределение по стажу</h2>
           <div className="space-y-2">
             {distribution.map((b) => (
               <div key={b.label} className="flex items-center gap-2 text-sm">
@@ -8349,9 +8342,7 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
         </div>
 
         <div className="card p-4">
-          <h2 className="font-semibold mb-3">
-            <Bi fr="Recrutements / départs — 12 derniers mois" ru="Приём / уход — за 12 месяцев" />
-          </h2>
+          <h2 className="font-semibold mb-3">Приём / уход — за 12 месяцев</h2>
           <div className="flex items-end gap-1 h-28">
             {trend.map((m) => (
               <div
@@ -8376,86 +8367,6 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
             </span>
           </div>
         </div>
-      </div>
-
-      <div className="card overflow-x-auto">
-        <div className="flex items-center justify-between p-4 pb-0 flex-wrap gap-2">
-          <h2 className="font-semibold">
-            <Bi fr="Détail par salarié" ru="Детали по сотрудникам" />
-          </h2>
-          <div className="flex items-center gap-2 text-sm">
-            <Bi fr="Trier par" ru="Сортировать по" />
-            <select className="input" value={sortKey} onChange={(e) => setSortKey(e.target.value as DashSortKey)}>
-              <option value="tenure">Ancienneté / Стаж</option>
-              <option value="age">Âge / Возраст</option>
-              <option value="name">Nom / Имя</option>
-            </select>
-            <button
-              type="button"
-              className="btn btn-secondary text-sm px-2 py-1"
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              title={sortDir === "asc" ? "Croissant" : "Décroissant"}
-            >
-              {sortDir === "asc" ? "↑" : "↓"}
-            </button>
-          </div>
-        </div>
-        <table className="w-full text-sm mt-2">
-          <thead>
-            <tr className="text-left text-stone-400 whitespace-nowrap">
-              <th className="py-2 pr-4 pl-4">
-                <Bi fr="Nom" ru="Имя" />
-              </th>
-              <th className="py-2 pr-4">
-                <Bi fr="Groupe" ru="Группа" />
-              </th>
-              <th className="py-2 pr-4">
-                <Bi fr="Équipe" ru="Команда" />
-              </th>
-              <th className="py-2 pr-4">
-                <Bi fr="Embauché le" ru="Дата найма" />
-              </th>
-              <th className="py-2 pr-4">
-                <Bi fr="Ancienneté" ru="Стаж" />
-              </th>
-              <th className="py-2 pr-4">
-                <Bi fr="Âge" ru="Возраст" />
-              </th>
-              <th className="py-2 pr-4">
-                <Bi fr="Statut" ru="Статус" />
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.map((r) => (
-              <tr key={r.id} className="border-t border-stone-100">
-                <td className="py-2 pr-4 pl-4 font-semibold">{r.name}</td>
-                <td className="py-2 pr-4">
-                  <span
-                    className={`badge ${
-                      r.groupLabel === "Chef"
-                        ? "badge-primary"
-                        : r.groupLabel === "FOP"
-                          ? "badge-warning"
-                          : r.groupLabel === "Bureau"
-                            ? "badge-success"
-                            : "badge-neutral"
-                    }`}
-                  >
-                    {r.groupLabel}
-                  </span>
-                </td>
-                <td className="py-2 pr-4">{r.teamName}</td>
-                <td className="py-2 pr-4">{r.hireDate ?? "—"}</td>
-                <td className="py-2 pr-4">{formatYearsMonths(r.tenureMonths)}</td>
-                <td className="py-2 pr-4">{r.ageMonths !== null ? Math.floor(r.ageMonths / 12) : "—"}</td>
-                <td className="py-2 pr-4">
-                  <Bi fr={STATUS_LABELS[r.status]} ru={STATUS_LABELS_RU[r.status]} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
     </div>
   );
