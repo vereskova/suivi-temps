@@ -64,6 +64,18 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  HR_GROUPS,
+  computeGroupStats,
+  computeTenureDistribution,
+  computeHiresDeparturesTrend,
+  isInTrialPeriod,
+  formatYearsMonths,
+  monthsBetweenIso,
+  dashIsFop,
+  type DashEmployee,
+  type HrGroupKey,
+} from "@/lib/hr/dashboardMetrics";
 import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
 import {
   DOCUMENT_TYPES,
@@ -239,6 +251,20 @@ function dateUrgency(iso: string | null): { label: string; tone: "error" | "warn
   if (days < 0) return { label: "En retard", tone: "error" };
   if (days <= 30) return { label: `Dans ${days} j`, tone: "warning" };
   return null;
+}
+
+/** Small, muted "still on trial" indicator — shown wherever an employee's name appears. Deliberately not a loud warning: it's routine, not an alert. */
+function TrialBadge({ hireDate }: { hireDate: string | null }) {
+  const trial = isInTrialPeriod(hireDate, today());
+  if (!trial) return null;
+  return (
+    <span
+      className="badge badge-warning text-[0.65rem] px-1.5 py-0.5"
+      title={`Сотрудник находится на испытательном сроке. До: ${trial.endsAt}`}
+    >
+      Essai
+    </span>
+  );
 }
 
 function fmtMinutes(min: number | null | undefined) {
@@ -969,7 +995,7 @@ export default function AdminPage() {
             {view === "francais" && <FrancaisView supabase={supabase} />}
             {view === "dossier" && <DossierView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
-            {view === "dashboards" && <DashboardsView supabase={supabase} />}
+            {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
           </div>
@@ -2718,6 +2744,7 @@ function EmployeesView({
                       {isChef(e) && <Crown size={13} className="shrink-0 fill-current text-success-600" />}
                       {employeeName(e)}
                       {e.badge_emoji && <span title={e.badge_label ?? undefined}>{e.badge_emoji}</span>}
+                      <TrialBadge hireDate={e.hire_date} />
                     </span>
                     {!isEditing && (
                       <div className="flex shrink-0">
@@ -2866,6 +2893,7 @@ function EmployeesView({
                         {e.badge_emoji && (
                           <span title={e.badge_label ?? undefined}>{e.badge_emoji}</span>
                         )}
+                        <TrialBadge hireDate={e.hire_date} />
                       </span>
                     </td>
                     {isEditing && editForm ? (
@@ -3286,6 +3314,7 @@ function EmployeeDetailPanel({
             <span className="badge badge-neutral">{roleOrTeam}</span>
             <span className={`badge ${STATUS_TONE[employee.status]}`}>{STATUS_LABELS[employee.status]}</span>
             {profile.badge_label && <span className="badge badge-primary">{profile.badge_label}</span>}
+            <TrialBadge hireDate={employee.hire_date} />
           </div>
         </div>
       </div>
@@ -5165,6 +5194,7 @@ type DocEmployeeListRow = {
   last_name: string;
   status: EmployeeStatus;
   category: "chantier" | "bureau";
+  hire_date: string | null;
 };
 
 type FormValue = string | number | boolean;
@@ -5192,7 +5222,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
       setLoadingEmployees(true);
       const { data } = await supabase
         .from("employees")
-        .select("id, first_name, last_name, status, category")
+        .select("id, first_name, last_name, status, category, hire_date")
         .order("last_name");
       setEmployees((data as unknown as DocEmployeeListRow[]) ?? []);
       setLoadingEmployees(false);
@@ -5413,7 +5443,10 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                     : "hover:bg-stone-50 text-stone-600"
                 }`}
               >
-                {employeeName(e)}
+                <span className="inline-flex items-center gap-1.5">
+                  {employeeName(e)}
+                  <TrialBadge hireDate={e.hire_date} />
+                </span>
                 <span className="block text-xs opacity-60">
                   {e.category === "bureau" ? "Bureau" : "Chantier"}
                 </span>
@@ -8051,120 +8084,45 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
   );
 }
 
-type DashEmployee = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  category: "chantier" | "bureau";
-  contract_type: string | null;
-  status: EmployeeStatus;
-  hire_date: string | null;
-  end_date: string | null;
-  date_of_birth: string | null;
-  teams:
-    | { name: string; chef_employee_id: string | null }
-    | { name: string; chef_employee_id: string | null }[]
-    | null;
-};
+type DashDrillDown = { title: string; employees: DashEmployee[] };
 
-function dashTeamOf(e: DashEmployee) {
-  return Array.isArray(e.teams) ? e.teams[0] ?? null : e.teams;
+function DashEmployeeRow({ e, todayIso }: { e: DashEmployee; todayIso: string }) {
+  const tenureMonths = e.hire_date ? monthsBetweenIso(e.hire_date, todayIso) : null;
+  const ageMonths = e.date_of_birth ? monthsBetweenIso(e.date_of_birth, todayIso) : null;
+  return (
+    <tr className="border-t border-stone-100">
+      <td className="py-1.5 pr-4 pl-8">
+        <span className="inline-flex items-center gap-1.5">
+          {employeeName(e)}
+          <TrialBadge hireDate={e.hire_date} />
+        </span>
+      </td>
+      <td className="py-1.5 pr-4">{formatYearsMonths(tenureMonths)}</td>
+      <td className="py-1.5 pr-4">{ageMonths !== null ? Math.floor(ageMonths / 12) : "—"}</td>
+      <td className="py-1.5 pr-4">{e.hire_date ?? "—"}</td>
+      <td className="py-1.5 pr-4">
+        <Bi fr={STATUS_LABELS[e.status]} ru={STATUS_LABELS_RU[e.status]} />
+      </td>
+    </tr>
+  );
 }
 
-function dashIsChef(e: DashEmployee): boolean {
-  const team = dashTeamOf(e);
-  return Boolean(team && team.chef_employee_id === e.id);
-}
+/** The 4 quick filters asked for — a subset of HR_GROUPS, not a parallel list, so they can't drift apart. */
+const DASH_FILTER_KEYS: HrGroupKey[] = ["all", "chantier", "bureau", "chef"];
 
-function dashIsFop(e: DashEmployee): boolean {
-  return e.contract_type === "FOP";
-}
-
-/** Whole completed months between two ISO dates — the unit every duration on this dashboard is built from. */
-function monthsBetweenIso(startIso: string, endIso: string): number {
-  const start = new Date(startIso + "T00:00:00Z");
-  const end = new Date(endIso + "T00:00:00Z");
-  let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth());
-  if (end.getUTCDate() < start.getUTCDate()) months -= 1;
-  return Math.max(0, months);
-}
-
-function addMonthsIso(iso: string, delta: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCMonth(d.getUTCMonth() + delta);
-  return d.toISOString().split("T")[0];
-}
-
-function formatYearsMonths(totalMonths: number | null): string {
-  if (totalMonths === null) return "—";
-  const y = Math.floor(totalMonths / 12);
-  const m = Math.round(totalMonths % 12);
-  return `${y}a ${m}m`;
-}
-
-function dashAverage(values: number[]): number | null {
-  if (values.length === 0) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
-}
-
-/** Reconstructs headcount at any past date directly from hire_date/end_date — no snapshot table needed or available. */
-function dashHeadcountAt(emps: DashEmployee[], dateIso: string): number {
-  return emps.filter((e) => e.hire_date && e.hire_date <= dateIso && (!e.end_date || e.end_date > dateIso)).length;
-}
-
-type DashGroupStats = {
-  label: string;
-  labelRu: string;
-  count: number;
-  avgTenureMonths: number | null;
-  avgAgeMonths: number | null;
-  hires12mo: number;
-  departures12mo: number;
-  turnoverRate: number | null;
-};
-
-/**
- * `allInGroup` must include terminated employees too — headcount
- * reconstruction and turnover need the full history, only the
- * ancienneté/âge averages are restricted to people currently on the books.
- */
-function dashGroupStats(label: string, labelRu: string, allInGroup: DashEmployee[], todayIso: string): DashGroupStats {
-  const current = allInGroup.filter((e) => e.status !== "terminated");
-  const tenureMonths = current.filter((e) => e.hire_date).map((e) => monthsBetweenIso(e.hire_date!, todayIso));
-  const ageMonths = current.filter((e) => e.date_of_birth).map((e) => monthsBetweenIso(e.date_of_birth!, todayIso));
-
-  const yearAgoIso = addMonthsIso(todayIso, -12);
-  const headcountNow = dashHeadcountAt(allInGroup, todayIso);
-  const headcountYearAgo = dashHeadcountAt(allInGroup, yearAgoIso);
-  const avgHeadcount = (headcountNow + headcountYearAgo) / 2;
-  const departures12mo = allInGroup.filter(
-    (e) => e.status === "terminated" && e.end_date && e.end_date > yearAgoIso && e.end_date <= todayIso
-  ).length;
-  const hires12mo = allInGroup.filter((e) => e.hire_date && e.hire_date > yearAgoIso && e.hire_date <= todayIso).length;
-
-  return {
-    label,
-    labelRu,
-    count: current.length,
-    avgTenureMonths: dashAverage(tenureMonths),
-    avgAgeMonths: dashAverage(ageMonths),
-    hires12mo,
-    departures12mo,
-    turnoverRate: avgHeadcount > 0 ? (departures12mo / avgHeadcount) * 100 : null,
-  };
-}
-
-const DASH_TENURE_BUCKETS = [
-  { label: "< 6 mois", labelRu: "< 6 мес", min: 0, max: 6 },
-  { label: "6–12 mois", labelRu: "6–12 мес", min: 6, max: 12 },
-  { label: "1–2 ans", labelRu: "1–2 года", min: 12, max: 24 },
-  { label: "2–5 ans", labelRu: "2–5 лет", min: 24, max: 60 },
-  { label: "5 ans et +", labelRu: "5 лет и более", min: 60, max: Infinity },
-];
-
-function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+function DashboardsView({
+  supabase,
+  onNavigateToEmployees,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  onNavigateToEmployees?: () => void;
+}) {
   const [employees, setEmployees] = useState<DashEmployee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterKey, setFilterKey] = useState<HrGroupKey>("all");
+  const [expandedGroupKey, setExpandedGroupKey] = useState<HrGroupKey | null>(null);
+  const [trendMonths, setTrendMonths] = useState<12 | 24 | "all">(12);
+  const [drillDown, setDrillDown] = useState<DashDrillDown | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -8183,58 +8141,58 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
 
   const todayIso = today();
 
-  const { groups, distribution, trend, caveats, maxTrend } = useMemo(() => {
+  // Always the full breakdown, regardless of the filter chips below — narrowing a breakdown table by one of its own rows would be self-defeating.
+  const groupRows = useMemo(
+    () =>
+      HR_GROUPS.map((g) => {
+        const members = employees.filter(g.predicate);
+        return { def: g, members, stats: computeGroupStats(g, members, todayIso) };
+      }),
+    [employees, todayIso]
+  );
+
+  const filteredEmployees = useMemo(() => {
+    const group = HR_GROUPS.find((g) => g.key === filterKey);
+    return group ? employees.filter(group.predicate) : employees;
+  }, [employees, filterKey]);
+
+  const filteredStats = useMemo(() => {
+    const group = HR_GROUPS.find((g) => g.key === filterKey) ?? HR_GROUPS[0];
+    return computeGroupStats(group, filteredEmployees, todayIso);
+  }, [filteredEmployees, filterKey, todayIso]);
+
+  const distribution = useMemo(
+    () => computeTenureDistribution(filteredEmployees, todayIso),
+    [filteredEmployees, todayIso]
+  );
+  const distMax = Math.max(1, ...distribution.map((b) => b.count));
+
+  const effectiveTrendMonths = useMemo(() => {
+    if (trendMonths !== "all") return trendMonths;
+    const dates = filteredEmployees.flatMap((e) => [e.hire_date, e.end_date]).filter((d): d is string => Boolean(d));
+    if (dates.length === 0) return 12;
+    const earliest = dates.reduce((min, d) => (d < min ? d : min));
+    return Math.max(1, monthsBetweenIso(earliest, todayIso) + 1);
+  }, [filteredEmployees, todayIso, trendMonths]);
+
+  const trend = useMemo(
+    () => computeHiresDeparturesTrend(filteredEmployees, todayIso, effectiveTrendMonths),
+    [filteredEmployees, todayIso, effectiveTrendMonths]
+  );
+  const maxTrend = Math.max(1, ...trend.flatMap((m) => [m.hires.length, m.departures.length]));
+
+  const caveats = useMemo(() => {
     const nonFop = employees.filter((e) => !dashIsFop(e));
-    const fop = employees.filter(dashIsFop);
-    const chantier = nonFop.filter((e) => e.category === "chantier");
-    const chef = chantier.filter(dashIsChef);
-    const monteur = chantier.filter((e) => !dashIsChef(e));
-    const bureau = nonFop.filter((e) => e.category === "bureau");
-
-    const groups = [
-      dashGroupStats("Tous", "Все", nonFop, todayIso),
-      dashGroupStats("Chantier — total", "Стройка — всего", chantier, todayIso),
-      dashGroupStats("— Chefs d'équipe", "— Бригадиры", chef, todayIso),
-      dashGroupStats("— Monteurs", "— Монтажники", monteur, todayIso),
-      dashGroupStats("Bureau", "Офис", bureau, todayIso),
-      dashGroupStats("FOP (sous-traitants)", "FOP (подрядчики)", fop, todayIso),
-    ];
-
-    const currentNonFop = nonFop.filter((e) => e.status !== "terminated" && e.hire_date);
-    const distribution = DASH_TENURE_BUCKETS.map((b) => ({
-      ...b,
-      count: currentNonFop.filter((e) => {
-        const m = monthsBetweenIso(e.hire_date!, todayIso);
-        return m >= b.min && m < b.max;
-      }).length,
-    }));
-
-    const trend: { label: string; hires: number; departures: number }[] = [];
-    for (let i = 11; i >= 0; i--) {
-      const monthKey = addMonthsIso(todayIso, -i).slice(0, 7); // "YYYY-MM"
-      trend.push({
-        label: monthKey,
-        hires: nonFop.filter((e) => e.hire_date?.slice(0, 7) === monthKey).length,
-        departures: nonFop.filter((e) => e.status === "terminated" && e.end_date?.slice(0, 7) === monthKey).length,
-      });
-    }
-    const maxTrend = Math.max(1, ...trend.flatMap((m) => [m.hires, m.departures]));
-
-    const caveats = {
-      missingHireDate: nonFop.filter((e) => e.status !== "terminated" && !e.hire_date).length,
-      missingBirthDate: nonFop.filter((e) => e.status !== "terminated" && !e.date_of_birth).length,
-      unclearCount: employees.filter((e) => e.status === "unclear").length,
+    return {
+      missingHireDate: nonFop.filter((e) => e.status !== "terminated" && !e.hire_date),
+      missingBirthDate: nonFop.filter((e) => e.status !== "terminated" && !e.date_of_birth),
+      unclear: employees.filter((e) => e.status === "unclear"),
     };
-
-    return { groups, distribution, trend, caveats, maxTrend };
-  }, [employees, todayIso]);
+  }, [employees]);
 
   if (loading) {
     return <div className="card p-6 text-center text-stone-400">…</div>;
   }
-
-  const overall = groups[0];
-  const distMax = Math.max(1, ...distribution.map((b) => b.count));
 
   return (
     <div className="space-y-6">
@@ -8248,33 +8206,90 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
         </p>
       </div>
 
+      <div className="flex flex-wrap gap-1.5">
+        {DASH_FILTER_KEYS.map((key) => {
+          const group = HR_GROUPS.find((g) => g.key === key)!;
+          const active = filterKey === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilterKey(key)}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                active ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              }`}
+            >
+              <Bi fr={group.label} ru={group.labelRu} />
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <span className="badge badge-primary gap-2 px-3 py-1.5">
-          <span className="text-xl font-extrabold leading-none">{overall.count}</span>
-          <Bi fr="salariés actifs" ru="активных сотрудников" />
+          <span className="text-xl font-extrabold leading-none">{filteredStats.count}</span>
+          <Bi fr="salariés" ru="сотрудников" />
         </span>
         <span className="badge badge-neutral gap-2 px-3 py-1.5">
-          <span className="text-xl font-extrabold leading-none">{formatYearsMonths(overall.avgTenureMonths)}</span>
+          <span className="text-xl font-extrabold leading-none">{formatYearsMonths(filteredStats.avgTenureMonths)}</span>
           <Bi fr="ancienneté moyenne" ru="средний стаж" />
         </span>
         <span className="badge badge-neutral gap-2 px-3 py-1.5">
-          <span className="text-xl font-extrabold leading-none">{formatYearsMonths(overall.avgAgeMonths)}</span>
+          <span className="text-xl font-extrabold leading-none">{formatYearsMonths(filteredStats.avgAgeMonths)}</span>
           <Bi fr="âge moyen" ru="средний возраст" />
         </span>
-        <span className={`badge ${overall.turnoverRate !== null && overall.turnoverRate > 30 ? "badge-error" : "badge-warning"} gap-2 px-3 py-1.5`}>
+        <span
+          className={`badge ${
+            filteredStats.turnoverRate !== null && filteredStats.turnoverRate > 30 ? "badge-error" : "badge-warning"
+          } gap-2 px-3 py-1.5`}
+        >
           <span className="text-xl font-extrabold leading-none">
-            {overall.turnoverRate !== null ? `${overall.turnoverRate.toFixed(0)}%` : "—"}
+            {filteredStats.turnoverRate !== null ? `${filteredStats.turnoverRate.toFixed(0)}%` : "—"}
           </span>
           <Bi fr="turnover (12 mois)" ru="текучесть (12 мес)" />
         </span>
       </div>
 
-      {(caveats.missingHireDate > 0 || caveats.missingBirthDate > 0 || caveats.unclearCount > 0) && (
-        <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2">
-          ⚠{" "}
-          {caveats.missingHireDate > 0 && <>{caveats.missingHireDate} sans date d&apos;embauche · </>}
-          {caveats.missingBirthDate > 0 && <>{caveats.missingBirthDate} sans date de naissance · </>}
-          {caveats.unclearCount > 0 && <>{caveats.unclearCount} au statut incertain (exclus des départs)</>}
+      {(caveats.missingHireDate.length > 0 || caveats.missingBirthDate.length > 0 || caveats.unclear.length > 0) && (
+        <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 flex flex-wrap items-center gap-1">
+          <span>⚠</span>
+          {caveats.missingHireDate.length > 0 && (
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:no-underline"
+              onClick={() =>
+                setDrillDown({ title: "Sans date d'embauche / Без даты найма", employees: caveats.missingHireDate })
+              }
+            >
+              {caveats.missingHireDate.length} sans date d&apos;embauche
+            </button>
+          )}
+          {caveats.missingBirthDate.length > 0 && (
+            <>
+              <span>·</span>
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:no-underline"
+                onClick={() =>
+                  setDrillDown({ title: "Sans date de naissance / Без даты рождения", employees: caveats.missingBirthDate })
+                }
+              >
+                {caveats.missingBirthDate.length} sans date de naissance
+              </button>
+            </>
+          )}
+          {caveats.unclear.length > 0 && (
+            <>
+              <span>·</span>
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:no-underline"
+                onClick={() => setDrillDown({ title: "Statut incertain / Статус неизвестен", employees: caveats.unclear })}
+              >
+                {caveats.unclear.length} au statut incertain (exclus des départs)
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -8306,19 +8321,69 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
             </tr>
           </thead>
           <tbody>
-            {groups.map((g) => (
-              <tr key={g.label} className="border-t border-stone-100">
-                <td className="py-2 pr-4 pl-4 font-semibold">
-                  <Bi fr={g.label} ru={g.labelRu} />
-                </td>
-                <td className="py-2 pr-4">{g.count}</td>
-                <td className="py-2 pr-4">{formatYearsMonths(g.avgTenureMonths)}</td>
-                <td className="py-2 pr-4">{formatYearsMonths(g.avgAgeMonths)}</td>
-                <td className="py-2 pr-4">{g.hires12mo}</td>
-                <td className="py-2 pr-4">{g.departures12mo}</td>
-                <td className="py-2 pr-4">{g.turnoverRate !== null ? `${g.turnoverRate.toFixed(1)}%` : "—"}</td>
-              </tr>
-            ))}
+            {groupRows.map(({ def, members, stats }) => {
+              const expanded = expandedGroupKey === def.key;
+              return (
+                <Fragment key={def.key}>
+                  <tr
+                    className="border-t border-stone-100 cursor-pointer hover:bg-stone-50"
+                    onClick={() => setExpandedGroupKey(expanded ? null : def.key)}
+                  >
+                    <td className="py-2 pr-4 pl-4 font-semibold">
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChevronRight
+                          size={14}
+                          className={`shrink-0 text-stone-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+                        />
+                        <Bi fr={def.label} ru={def.labelRu} />
+                      </span>
+                    </td>
+                    <td className="py-2 pr-4">{stats.count}</td>
+                    <td className="py-2 pr-4">{formatYearsMonths(stats.avgTenureMonths)}</td>
+                    <td className="py-2 pr-4">{formatYearsMonths(stats.avgAgeMonths)}</td>
+                    <td className="py-2 pr-4">{stats.hires12mo}</td>
+                    <td className="py-2 pr-4">{stats.departures12mo}</td>
+                    <td className="py-2 pr-4">{stats.turnoverRate !== null ? `${stats.turnoverRate.toFixed(1)}%` : "—"}</td>
+                  </tr>
+                  {expanded && (
+                    <tr className="border-t border-stone-100 bg-stone-50/60">
+                      <td colSpan={7} className="p-0">
+                        {members.length === 0 ? (
+                          <p className="text-sm text-stone-400 px-4 py-3">Aucun salarié / Нет сотрудников</p>
+                        ) : (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-stone-400 whitespace-nowrap">
+                                <th className="py-1.5 pr-4 pl-8">
+                                  <Bi fr="Nom" ru="Имя" />
+                                </th>
+                                <th className="py-1.5 pr-4">
+                                  <Bi fr="Ancienneté" ru="Стаж" />
+                                </th>
+                                <th className="py-1.5 pr-4">
+                                  <Bi fr="Âge" ru="Возраст" />
+                                </th>
+                                <th className="py-1.5 pr-4">
+                                  <Bi fr="Embauché le" ru="Дата найма" />
+                                </th>
+                                <th className="py-1.5 pr-4">
+                                  <Bi fr="Statut" ru="Статус" />
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {members.map((e) => (
+                                <DashEmployeeRow key={e.id} e={e} todayIso={todayIso} />
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -8328,33 +8393,68 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
           <h2 className="font-semibold mb-3">Распределение по стажу</h2>
           <div className="space-y-2">
             {distribution.map((b) => (
-              <div key={b.label} className="flex items-center gap-2 text-sm">
-                <span className="w-24 shrink-0 text-stone-500">
+              <button
+                key={b.label}
+                type="button"
+                disabled={b.count === 0}
+                className="w-full flex items-center gap-2 text-sm group disabled:cursor-default"
+                onClick={() => setDrillDown({ title: `${b.label} / ${b.labelRu}`, employees: b.employees })}
+              >
+                <span className="w-24 shrink-0 text-stone-500 text-left">
                   <Bi fr={b.label} ru={b.labelRu} />
                 </span>
                 <div className="flex-1 h-4 bg-stone-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary-600 rounded-full" style={{ width: `${(b.count / distMax) * 100}%` }} />
+                  <div
+                    className="h-full bg-primary-600 rounded-full group-hover:bg-primary-700 transition-colors"
+                    style={{ width: `${(b.count / distMax) * 100}%` }}
+                  />
                 </div>
                 <span className="w-8 text-right font-semibold">{b.count}</span>
-              </div>
+              </button>
             ))}
           </div>
         </div>
 
         <div className="card p-4">
-          <h2 className="font-semibold mb-3">Приём / уход — за 12 месяцев</h2>
-          <div className="flex items-end gap-1 h-28">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <h2 className="font-semibold">Приём / уход</h2>
+            <div className="flex gap-1 text-xs">
+              {([12, 24, "all"] as const).map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setTrendMonths(opt)}
+                  className={`rounded-full px-2.5 py-1 font-semibold ${
+                    trendMonths === opt ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                  }`}
+                >
+                  {opt === "all" ? "Tout" : `${opt} mois`}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-end gap-1 h-28 overflow-x-auto">
             {trend.map((m) => (
-              <div
-                key={m.label}
-                className="flex-1 flex flex-col items-center gap-0.5"
-                title={`${m.label} : +${m.hires} / -${m.departures}`}
-              >
+              <div key={m.label} className="flex-1 min-w-[10px] flex flex-col items-center gap-0.5">
                 <div className="w-full flex items-end gap-0.5 h-24">
-                  <div className="flex-1 bg-success-600 rounded-t" style={{ height: `${(m.hires / maxTrend) * 100}%` }} />
-                  <div className="flex-1 bg-error-600 rounded-t" style={{ height: `${(m.departures / maxTrend) * 100}%` }} />
+                  <button
+                    type="button"
+                    disabled={m.hires.length === 0}
+                    className="flex-1 bg-success-600 rounded-t hover:bg-success-700 transition-colors disabled:opacity-30 disabled:cursor-default"
+                    style={{ height: `${(m.hires.length / maxTrend) * 100}%`, minHeight: m.hires.length > 0 ? 2 : 0 }}
+                    title={`${m.label} : +${m.hires.length}`}
+                    onClick={() => setDrillDown({ title: `Recrutements — ${m.label}`, employees: m.hires })}
+                  />
+                  <button
+                    type="button"
+                    disabled={m.departures.length === 0}
+                    className="flex-1 bg-error-600 rounded-t hover:bg-error-700 transition-colors disabled:opacity-30 disabled:cursor-default"
+                    style={{ height: `${(m.departures.length / maxTrend) * 100}%`, minHeight: m.departures.length > 0 ? 2 : 0 }}
+                    title={`${m.label} : -${m.departures.length}`}
+                    onClick={() => setDrillDown({ title: `Départs — ${m.label}`, employees: m.departures })}
+                  />
                 </div>
-                <span className="text-[0.6rem] text-stone-400">{m.label.slice(5)}</span>
+                <span className="text-[0.6rem] text-stone-400 whitespace-nowrap">{m.label.slice(5)}</span>
               </div>
             ))}
           </div>
@@ -8368,6 +8468,42 @@ function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient
           </div>
         </div>
       </div>
+
+      <Modal open={drillDown !== null} onClose={() => setDrillDown(null)} title={drillDown?.title ?? ""}>
+        {drillDown && (
+          <div>
+            <p className="text-sm text-stone-400 mb-3">
+              {drillDown.employees.length} salarié{drillDown.employees.length > 1 ? "s" : ""}
+            </p>
+            {drillDown.employees.length === 0 ? (
+              <p className="text-sm text-stone-400">Aucun salarié / Нет сотрудников</p>
+            ) : (
+              <div className="space-y-1">
+                {drillDown.employees.map((e) => (
+                  <div
+                    key={e.id}
+                    className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-stone-50"
+                  >
+                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
+                      {employeeName(e)}
+                      <TrialBadge hireDate={e.hire_date} />
+                    </span>
+                    {onNavigateToEmployees && (
+                      <button
+                        type="button"
+                        className="text-xs text-primary-600 hover:underline shrink-0"
+                        onClick={onNavigateToEmployees}
+                      >
+                        Перейти к сотруднику
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -8834,6 +8970,7 @@ type OrgEmployee = {
   teams: { name: string } | null;
   org_sort_order: number | null;
   badge_emoji: string | null;
+  hire_date: string | null;
 };
 
 type OrgTeam = { id: string; name: string; chef_employee_id: string | null };
@@ -8870,7 +9007,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji, hire_date"
           )
           .eq("status", "active")
           .order("last_name"),
@@ -9031,6 +9168,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
                 key={e.id}
                 label={e.badge_emoji ? `${employeeName(e)} ${e.badge_emoji}` : employeeName(e)}
                 tone="member"
+                trialHireDate={e.hire_date}
               />
             ))}
           </div>
@@ -9048,10 +9186,12 @@ function OrgTile({
   label,
   tone,
   className = "",
+  trialHireDate,
 }: {
   label: string;
   tone: "boss" | "bureau" | "lead" | "member";
   className?: string;
+  trialHireDate?: string | null;
 }) {
   const toneClasses: Record<typeof tone, string> = {
     boss: "bg-primary-600 border-primary-600 text-white",
@@ -9065,6 +9205,7 @@ function OrgTile({
     >
       {tone === "lead" && <Crown size={11} className="shrink-0 fill-current" />}
       <span className="truncate">{label}</span>
+      {trialHireDate !== undefined && <TrialBadge hireDate={trialHireDate} />}
     </div>
   );
 }
@@ -9156,6 +9297,7 @@ function OrgColumn({
                   : "member"
               }
               className="flex-1"
+              trialHireDate={e.hire_date}
             />
             {onReorder && (
               <div className="md:hidden flex flex-col shrink-0">
@@ -10705,7 +10847,13 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
 
 // ── Vue "Dossier salarié" — documents par type, avec péremption et périodes d'embauche ──
-type DossierEmployee = { id: string; first_name: string; last_name: string; status: EmployeeStatus };
+type DossierEmployee = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  status: EmployeeStatus;
+  hire_date: string | null;
+};
 type DocumentCategory = {
   code: string;
   label: string;
@@ -10998,7 +11146,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     async function load() {
       setLoadingEmployees(true);
       const [{ data: emp }, { data: cats }] = await Promise.all([
-        supabase.from("employees").select("id, first_name, last_name, status").order("last_name"),
+        supabase.from("employees").select("id, first_name, last_name, status, hire_date").order("last_name"),
         supabase.from("document_categories").select("*").order("sort_order"),
       ]);
       setEmployees((emp as DossierEmployee[]) ?? []);
@@ -11268,7 +11416,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       : "text-stone-600 hover:bg-stone-50"
                   }`}
                 >
-                  <span className="truncate">{employeeName(e)}</span>
+                  <span className="truncate flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{employeeName(e)}</span>
+                    <TrialBadge hireDate={e.hire_date} />
+                  </span>
                   {overdueCount > 0 && (
                     <span
                       className="badge badge-error shrink-0"
