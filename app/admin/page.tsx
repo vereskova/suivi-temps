@@ -9884,6 +9884,7 @@ type PaieEmployee = {
   status: EmployeeStatus;
   hire_date: string | null;
   end_date: string | null;
+  salaire_base_net: number | null;
 };
 
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
@@ -10089,17 +10090,18 @@ function matchPayableEmployee(
 type PaieLineInput = {
   netSouhaite: string;
   majJoursFeries: string;
-  joursRepas: string;
+  joursTravailles: string;
 };
 
-const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursRepas: "" };
+const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursTravailles: "" };
 
-/** Bureau staff never get meal-day reimbursement — always 0. For chantier
- *  employees, default to the weekdays they were actually present this month,
- *  prorated from hire_date/end_date — hired mid-month, on leave, or
- *  terminated partway through shouldn't default to a full month's repas.
- *  end_date is reused for "on_leave" too (départ en congé), not just
- *  "terminated" — both mean "stopped being present partway through". */
+/** Bureau core staff aren't tracked day-by-day the way chantier crews are —
+ *  always 0. For chantier employees, default to the weekdays they were
+ *  actually present this month, prorated from hire_date/end_date — hired
+ *  mid-month, on leave, or terminated partway through shouldn't default to
+ *  a full month worked. end_date is reused for "on_leave" too (départ en
+ *  congé), not just "terminated" — both mean "stopped being present
+ *  partway through". */
 // "Contrôle & Formation" staff are category "bureau" in the DB (that's how
 // groupPaieEmployees splits them from chantier teams) but they aren't
 // desk-only office workers, so the office-always-0 rule doesn't apply to
@@ -10108,7 +10110,7 @@ function isOfficeCore(e: PaieEmployee): boolean {
   return e.category === "bureau" && !PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "");
 }
 
-function defaultJoursRepasFor(e: PaieEmployee, monthStart: string, monthEnd: string): string {
+function defaultJoursTravaillesFor(e: PaieEmployee, monthStart: string, monthEnd: string): string {
   if (isOfficeCore(e)) return "0";
   const rangeStart = e.hire_date && e.hire_date > monthStart ? e.hire_date : monthStart;
   const rangeEnd =
@@ -10153,7 +10155,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net"
           )
           // Someone terminated mid-month, or on leave since mid-month, still
           // worked part of it and needs a partial-month line — excluding them
@@ -10176,6 +10178,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         setParams({
           tauxHoraireBase: Number(paramRow.taux_horaire_base),
           heuresNormalesMois: Number(paramRow.heures_normales_mois),
+          joursOuvresMoisStandard: Number(paramRow.jours_ouvres_mois_standard),
           majorationHs25: Number(paramRow.majoration_hs25),
           majorationHs50: Number(paramRow.majoration_hs50),
           tauxRetenues: Number(paramRow.taux_retenues),
@@ -10205,7 +10208,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
-          .select("employee_id, net_souhaite, maj_jours_feries, jours_repas")
+          .select("employee_id, net_souhaite, maj_jours_feries, jours_travailles")
           .eq("run_id", run.id);
         const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
         const map: Record<string, PaieLineInput> = {};
@@ -10219,15 +10222,15 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           map[e.id] = {
             netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
-            // Office staff never get repas — enforced even over an old saved
-            // value, since it's a hard rule, not just a suggested default.
-            // Otherwise: no saved line yet this month → suggest a prorated
-            // day count instead of leaving it blank.
-            joursRepas: isOfficeCore(employee)
+            // Office core staff never worked chantier days — enforced even
+            // over an old saved value, since it's a hard rule, not just a
+            // suggested default. Otherwise: no saved line yet this month →
+            // suggest a prorated day count instead of leaving it blank.
+            joursTravailles: isOfficeCore(employee)
               ? "0"
               : l
-                ? String(l.jours_repas ?? 0)
-                : defaultJoursRepasFor(employee, monthStart, monthEnd),
+                ? String(l.jours_travailles ?? 0)
+                : defaultJoursTravaillesFor(employee, monthStart, monthEnd),
           };
         });
         setInputs(map);
@@ -10237,9 +10240,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           const employee = e as unknown as PaieEmployee;
           map[e.id] = {
             ...EMPTY_PAIE_LINE,
-            joursRepas: isFopContractor(employee)
+            joursTravailles: isFopContractor(employee)
               ? ""
-              : defaultJoursRepasFor(employee, monthStart, monthEnd),
+              : defaultJoursTravaillesFor(employee, monthStart, monthEnd),
           };
         });
         setInputs(map);
@@ -10251,6 +10254,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   }, [supabase, year, month]);
 
   const workingDaysInMonth = useMemo(() => countWorkingDaysInMonth(year, month), [year, month]);
+  const daysInMonth = useMemo(() => new Date(year, month, 0).getDate(), [year, month]);
   const monthHolidays = useMemo(() => frenchHolidaysInMonth(year, month), [year, month]);
   const { start: currentMonthStart, end: currentMonthEnd } = useMemo(
     () => monthRange(year, month),
@@ -10265,11 +10269,23 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         if (isFopContractor(e)) return;
         next[e.id] = {
           ...(next[e.id] ?? EMPTY_PAIE_LINE),
-          joursRepas: defaultJoursRepasFor(e, currentMonthStart, currentMonthEnd),
+          joursTravailles: defaultJoursTravaillesFor(e, currentMonthStart, currentMonthEnd),
         };
       });
       return next;
     });
+  }
+
+  async function updateSalaireBaseNet(employeeId: string, value: string) {
+    const salaireBaseNet = value === "" ? null : Number(value);
+    setEmployees((prev) =>
+      prev.map((e) => (e.id === employeeId ? { ...e, salaire_base_net: salaireBaseNet } : e))
+    );
+    const { error } = await supabase
+      .from("employees")
+      .update({ salaire_base_net: salaireBaseNet })
+      .eq("id", employeeId);
+    if (error) toast.error("Erreur : " + error.message);
   }
 
   function applyHolidayCountToAll() {
@@ -10434,14 +10450,15 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     const map: Record<string, ReturnType<typeof computePayrollLine>> = {};
     employees.forEach((e) => {
       if (isFopContractor(e)) {
-        map[e.id] = { hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 };
+        map[e.id] = { joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 };
         return;
       }
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
       map[e.id] = computePayrollLine(
         {
           netSouhaite: Number(line.netSouhaite) || 0,
-          joursRepas: Number(line.joursRepas) || 0,
+          joursTravailles: Number(line.joursTravailles) || 0,
+          salaireBaseNet: e.salaire_base_net,
         },
         params
       );
@@ -10458,13 +10475,22 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           const c = computed[e.id];
           acc.netSouhaite += Number(line.netSouhaite) || 0;
           acc.majJoursFeries += Number(line.majJoursFeries) || 0;
-          acc.joursRepas += Number(line.joursRepas) || 0;
+          acc.joursTravailles += Number(line.joursTravailles) || 0;
+          acc.joursRepas += c?.joursRepas ?? 0;
           acc.hs25Heures += c?.hs25Heures ?? 0;
           acc.hs50Heures += c?.hs50Heures ?? 0;
           acc.primeExceptionnelle += c?.primeExceptionnelle ?? 0;
           return acc;
         },
-        { netSouhaite: 0, majJoursFeries: 0, joursRepas: 0, hs25Heures: 0, hs50Heures: 0, primeExceptionnelle: 0 }
+        {
+          netSouhaite: 0,
+          majJoursFeries: 0,
+          joursTravailles: 0,
+          joursRepas: 0,
+          hs25Heures: 0,
+          hs50Heures: 0,
+          primeExceptionnelle: 0,
+        }
       );
   }, [employees, inputs, computed]);
 
@@ -10479,7 +10505,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         employee_id: e.id,
         net_souhaite: Number(line.netSouhaite) || 0,
         maj_jours_feries: Number(line.majJoursFeries) || 0,
-        jours_repas: Number(line.joursRepas) || 0,
+        jours_travailles: Number(line.joursTravailles) || 0,
+        jours_repas: c?.joursRepas ?? 0,
         hs25_heures: c?.hs25Heures ?? 0,
         hs50_heures: c?.hs50Heures ?? 0,
         prime_exceptionnelle: c?.primeExceptionnelle ?? 0,
@@ -10511,8 +10538,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       return {
         "#": i + 1,
         "Nom Prénom": employeeName(e),
+        "Salaire base net €": e.salaire_base_net ?? "",
+        "Jours travaillés": Number(line.joursTravailles) || 0,
         "Jours fériés travaillés": Number(line.majJoursFeries) || 0,
-        "Jours repas": Number(line.joursRepas) || 0,
+        "Jours repas": c?.joursRepas ?? 0,
         "HS+25% h": c?.hs25Heures ?? 0,
         "HS+50% h": c?.hs50Heures ?? 0,
         "Prime except. €": c?.primeExceptionnelle ?? 0,
@@ -10522,6 +10551,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     exportRows.push({
       "#": 0,
       "Nom Prénom": "TOTAL",
+      "Salaire base net €": "",
+      "Jours travaillés": totals.joursTravailles,
       "Jours fériés travaillés": totals.majJoursFeries,
       "Jours repas": totals.joursRepas,
       "HS+25% h": totals.hs25Heures,
@@ -10687,12 +10718,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       <div className="card mb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xl font-extrabold text-stone-800">Дни питания</p>
-            <p className="text-sm text-stone-400">Jours repas</p>
+            <p className="text-xl font-extrabold text-stone-800">Дни отработано</p>
+            <p className="text-sm text-stone-400">Jours travaillés</p>
             <p className="text-sm text-stone-600 mt-2 max-w-2xl">
-              Считается только для тех, кто работает на объектах (стройка) — для офиса всегда 0.
-              По умолчанию берётся количество дней, когда сотрудник реально числился работающим в
-              этом месяце (с учётом даты приёма на работу, ухода в отпуск или увольнения).
+              Определяет базовую часть зарплаты (дни × дневная ставка из «Базы netto») и максимум
+              дней питания. Считается только для тех, кто работает на объектах (стройка) — для
+              офиса всегда 0. По умолчанию — количество дней, когда сотрудник реально числился
+              работающим в этом месяце (с учётом даты приёма на работу, ухода в отпуск или
+              увольнения).
             </p>
             <p className="text-xs text-stone-400 mt-1">
               <span className="font-bold text-stone-600">{workingDaysInMonth} jours ouvrés</span> au
@@ -10702,10 +10735,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           <button
             className="btn btn-dark text-sm px-4 py-2 shrink-0 gap-2"
             onClick={applyWorkingDaysToAll}
-            title="Recalculer « Jours repas » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни питания» по всем на основе дат приёма/отпуска/увольнения"
+            title="Recalculer « Jours travaillés » pour tout le monde à partir des dates d'embauche/congé/sortie / Пересчитать «Дни отработано» по всем на основе дат приёма/отпуска/увольнения"
           >
             <RefreshCw size={15} />
-            <Bi fr="Recalculer « Jours repas »" ru="Пересчитать «Дни питания»" />
+            <Bi fr="Recalculer « Jours travaillés »" ru="Пересчитать «Дни отработано»" />
           </button>
         </div>
       </div>
@@ -10792,6 +10825,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               <span className="block font-bold">{params.heuresNormalesMois} h</span>
             </p>
             <p>
+              <Bi fr="Jours ouvrés/mois (standard)" ru="Рабочих дней/мес (стандарт)" />{" "}
+              <span className="block font-bold">{params.joursOuvresMoisStandard} j</span>
+            </p>
+            <p>
               <Bi fr="Majoration HS+25%" ru="Надбавка СЧ+25%" />{" "}
               <span className="block font-bold">{params.majorationHs25 * 100}%</span>
             </p>
@@ -10821,7 +10858,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
 
       {loading ? (
         <div className="card">
-          <SkeletonRows rows={6} cols={7} />
+          <SkeletonRows rows={6} cols={9} />
         </div>
       ) : (
         <>
@@ -10851,6 +10888,35 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                   ) : (
                     <div className="space-y-2 text-sm">
                       <label className="block">
+                        <span className="text-xs font-bold text-stone-500">
+                          <Bi fr="Salaire base net €" ru="База нетто €" />
+                        </span>
+                        <input
+                          type="number"
+                          className="input mt-1"
+                          defaultValue={e.salaire_base_net ?? ""}
+                          key={`base-${e.id}-${e.salaire_base_net ?? ""}`}
+                          onBlur={(ev) => updateSalaireBaseNet(e.id, ev.target.value)}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-stone-500">
+                          <Bi fr="Jours travaillés" ru="Дней отработано" />
+                        </span>
+                        <select
+                          className="input mt-1"
+                          value={line.joursTravailles}
+                          onChange={(ev) => updateInput(e.id, "joursTravailles", ev.target.value)}
+                        >
+                          <option value="">0</option>
+                          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
                         <span className="text-xs font-bold text-warning-700">
                           <Bi fr="Net souhaité €" ru="Желаемый нетто €" />
                         </span>
@@ -10878,26 +10944,9 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                           ))}
                         </select>
                       </label>
-                      <label className="block">
-                        <span className="text-xs font-bold text-warning-700">
-                          <Bi fr="Jours repas" ru="Дней питания" />
-                        </span>
-                        <select
-                          className="input bg-warning-50/60 mt-1"
-                          value={line.joursRepas}
-                          onChange={(ev) => updateInput(e.id, "joursRepas", ev.target.value)}
-                        >
-                          <option value="">0</option>
-                          {Array.from(
-                            { length: Math.max(params.maxJoursRepas, workingDaysInMonth) },
-                            (_, i) => i + 1
-                          ).map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <p className="text-primary-700 font-semibold">
+                        <Bi fr="Jours repas" ru="Дней питания" />: {c?.joursRepas ?? 0}
+                      </p>
                       <div className="flex justify-between pt-1 text-primary-700 font-semibold">
                         <span>HS+25%: {c?.hs25Heures ?? 0} h</span>
                         <span>HS+50%: {c?.hs50Heures ?? 0} h</span>
@@ -10922,6 +10971,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 TOTAL <span className="font-normal opacity-60">/ ИТОГО</span>
               </p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-normal">
+                <span>Jours travaillés: {totals.joursTravailles}</span>
                 <span>Net souhaité: {totals.netSouhaite.toFixed(2)} €</span>
                 <span>Jours fériés: {totals.majJoursFeries}</span>
                 <span>Jours repas: {totals.joursRepas}</span>
@@ -10938,9 +10988,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             <thead>
               <tr className="text-left text-stone-400 whitespace-nowrap">
                 <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="py-2 pr-4 text-stone-500"><Bi fr="Salaire base net €" ru="База нетто €" /></th>
+                <th className="py-2 pr-4 text-stone-500"><Bi fr="Jours travaillés" ru="Дней отработано" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Net souhaité €" ru="Желаемый нетто €" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours fériés travaillés" ru="Отработано праздничных дней" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours repas" ru="Дней питания" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Jours repas" ru="Дней питания" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+25% h" ru="СЧ+25% ч" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+50% h" ru="СЧ+50% ч" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="Prime except. €" ru="Премия €" /></th>
@@ -10957,7 +11009,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     {showGroupHeader && (
                       <tr>
                         <td
-                          colSpan={7}
+                          colSpan={9}
                           className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400"
                         >
                           {row.groupLabel}
@@ -10969,7 +11021,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                         <td className="py-2 pr-4 font-semibold whitespace-nowrap">
                           <PaieEmployeeName employee={e} />
                         </td>
-                        <td colSpan={6} className="py-2 pr-4 italic text-stone-500">
+                        <td colSpan={8} className="py-2 pr-4 italic text-stone-500">
                           FOP — rémunération hors paie, calcul non applicable
                         </td>
                       </tr>
@@ -10977,6 +11029,31 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
                     <td className="py-2 pr-4 font-semibold whitespace-nowrap">
                       <PaieEmployeeName employee={e} />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="number"
+                        className="input"
+                        style={{ width: "7rem" }}
+                        defaultValue={e.salaire_base_net ?? ""}
+                        key={`base-${e.id}-${e.salaire_base_net ?? ""}`}
+                        onBlur={(ev) => updateSalaireBaseNet(e.id, ev.target.value)}
+                      />
+                    </td>
+                    <td className="py-2 pr-4">
+                      <select
+                        className="input"
+                        style={{ width: "6rem" }}
+                        value={line.joursTravailles}
+                        onChange={(ev) => updateInput(e.id, "joursTravailles", ev.target.value)}
+                      >
+                        <option value="">0</option>
+                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-2 pr-4">
                       <input
@@ -11002,24 +11079,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 pr-4">
-                      <select
-                        className="input bg-warning-50/60"
-                        style={{ width: "6rem" }}
-                        value={line.joursRepas}
-                        onChange={(ev) => updateInput(e.id, "joursRepas", ev.target.value)}
-                      >
-                        <option value="">0</option>
-                        {Array.from(
-                          { length: Math.max(params.maxJoursRepas, workingDaysInMonth) },
-                          (_, i) => i + 1
-                        ).map((n) => (
-                          <option key={n} value={n}>
-                            {n}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
+                    <td className="py-2 pr-4 font-semibold text-primary-700">{c?.joursRepas ?? 0}</td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs25Heures ?? 0} h</td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs50Heures ?? 0} h</td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">
@@ -11032,7 +11092,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-stone-400">
+                  <td colSpan={9} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
@@ -11044,6 +11104,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                   <td className="py-2 pr-4">
                     TOTAL <span className="font-normal opacity-60">/ ИТОГО</span>
                   </td>
+                  <td className="py-2 pr-4">—</td>
+                  <td className="py-2 pr-4">{totals.joursTravailles}</td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.majJoursFeries}</td>
                   <td className="py-2 pr-4">{totals.joursRepas}</td>
