@@ -61,6 +61,8 @@ import {
   Users,
   Wallet,
   X,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -8133,6 +8135,10 @@ const DASH_MONTH_OPTIONS: { value: number; fr: string; ru: string }[] = [
   { value: 12, fr: "Décembre", ru: "Декабрь" },
 ];
 
+/** Same visual language as the period chips (pill, flat fill) instead of the boxed .input style — a native select mixed with pill buttons in one row read as mismatched. */
+const DASH_PILL_SELECT =
+  "rounded-full bg-stone-100 border-none px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors";
+
 function DashboardsView({
   supabase,
   onNavigateToEmployees,
@@ -8152,6 +8158,7 @@ function DashboardsView({
   const [customToMonth, setCustomToMonth] = useState(Number(today().slice(5, 7)));
   const [customToYear, setCustomToYear] = useState(Number(today().slice(0, 4)));
   const [appliedCustomRange, setAppliedCustomRange] = useState<DateRange | null>(null);
+  const [barColumnWidth, setBarColumnWidth] = useState(28);
   const [drillDown, setDrillDown] = useState<DashDrillDown | null>(null);
 
   useEffect(() => {
@@ -8564,7 +8571,7 @@ function DashboardsView({
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">С</span>
               <select
-                className="input py-1.5"
+                className={DASH_PILL_SELECT}
                 style={{ width: 190 }}
                 value={customFromMonth}
                 onChange={(e) => setCustomFromMonth(Number(e.target.value))}
@@ -8576,8 +8583,8 @@ function DashboardsView({
                 ))}
               </select>
               <select
-                className="input py-1.5"
-                style={{ width: 100 }}
+                className={DASH_PILL_SELECT}
+                style={{ width: 90 }}
                 value={customFromYear}
                 onChange={(e) => setCustomFromYear(Number(e.target.value))}
               >
@@ -8592,7 +8599,7 @@ function DashboardsView({
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">по</span>
               <select
-                className="input py-1.5"
+                className={DASH_PILL_SELECT}
                 style={{ width: 190 }}
                 value={customToMonth}
                 onChange={(e) => setCustomToMonth(Number(e.target.value))}
@@ -8604,8 +8611,8 @@ function DashboardsView({
                 ))}
               </select>
               <select
-                className="input py-1.5"
-                style={{ width: 100 }}
+                className={DASH_PILL_SELECT}
+                style={{ width: 90 }}
                 value={customToYear}
                 onChange={(e) => setCustomToYear(Number(e.target.value))}
               >
@@ -8661,9 +8668,43 @@ function DashboardsView({
           </div>
         </div>
 
-        <div className="flex items-end gap-1 h-28 overflow-x-auto">
+        <div className="flex items-center justify-between mb-2">
+          <span className="flex items-center gap-3 text-xs text-stone-500">
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-success-600" /> <Bi fr="Recrutements" ru="Приём" />
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-error-600" /> <Bi fr="Départs" ru="Уход" />
+            </span>
+          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => setBarColumnWidth((w) => Math.max(16, w - 8))}
+              disabled={barColumnWidth <= 16}
+              className="rounded-full p-1.5 bg-stone-100 text-stone-500 hover:bg-stone-200 disabled:opacity-30"
+              title="Уменьшить масштаб / Réduire"
+            >
+              <ZoomOut size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setBarColumnWidth((w) => Math.min(64, w + 8))}
+              disabled={barColumnWidth >= 64}
+              className="rounded-full p-1.5 bg-stone-100 text-stone-500 hover:bg-stone-200 disabled:opacity-30"
+              title="Увеличить масштаб / Agrandir"
+            >
+              <ZoomIn size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="flex items-end gap-1 h-28 overflow-x-auto pb-1">
           {rangeTrend.map((m) => (
-            <div key={m.label} className="flex-1 min-w-[10px] flex flex-col items-center gap-0.5">
+            <div
+              key={m.label}
+              className="flex flex-col items-center gap-0.5 shrink-0"
+              style={{ width: barColumnWidth }}
+            >
               <div className="w-full flex items-end gap-0.5 h-24">
                 <button
                   type="button"
@@ -8688,14 +8729,6 @@ function DashboardsView({
               <span className="text-[0.6rem] text-stone-400 whitespace-nowrap">{m.label.slice(5)}</span>
             </div>
           ))}
-        </div>
-        <div className="flex gap-4 mt-2 text-xs text-stone-500">
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-success-600" /> <Bi fr="Recrutements" ru="Приём" />
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-error-600" /> <Bi fr="Départs" ru="Уход" />
-          </span>
         </div>
       </div>
 
