@@ -38,6 +38,7 @@ import {
   History,
   Image as ImageIcon,
   Languages,
+  LayoutDashboard,
   LogOut,
   Menu,
   MessageSquare,
@@ -363,6 +364,7 @@ type ViewKey =
   | "francais"
   | "dossier"
   | "paie"
+  | "dashboards"
   | "commercial"
   | "audit";
 
@@ -389,6 +391,12 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "medical", label: "Médical", labelRu: "Медицина", icon: HeartPulse },
       { key: "formations", label: "Formations", labelRu: "Обучение", icon: GraduationCap },
       { key: "tailles", label: "Tailles", labelRu: "Размеры", icon: Shirt },
+    ],
+  },
+  {
+    title: "Dashboards",
+    items: [
+      { key: "dashboards", label: "Dashboards RH", labelRu: "HR-дашборды", icon: LayoutDashboard },
     ],
   },
   {
@@ -796,7 +804,11 @@ export default function AdminPage() {
           .map((g) => ({
             ...g,
             items: g.items.filter(
-              (item) => item.key !== "paie" && item.key !== "commercial" && item.key !== "audit"
+              (item) =>
+                item.key !== "paie" &&
+                item.key !== "commercial" &&
+                item.key !== "audit" &&
+                item.key !== "dashboards"
             ),
           }))
           .filter((g) => g.items.length > 0)
@@ -956,6 +968,7 @@ export default function AdminPage() {
             {view === "francais" && <FrancaisView supabase={supabase} />}
             {view === "dossier" && <DossierView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
+            {view === "dashboards" && <DashboardsView supabase={supabase} />}
             {view === "commercial" && <CommercialView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
           </div>
@@ -8000,6 +8013,450 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
           </div>
         )}
       </Modal>
+    </div>
+  );
+}
+
+type DashEmployee = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  category: "chantier" | "bureau";
+  contract_type: string | null;
+  status: EmployeeStatus;
+  hire_date: string | null;
+  end_date: string | null;
+  date_of_birth: string | null;
+  teams:
+    | { name: string; chef_employee_id: string | null }
+    | { name: string; chef_employee_id: string | null }[]
+    | null;
+};
+
+function dashTeamOf(e: DashEmployee) {
+  return Array.isArray(e.teams) ? e.teams[0] ?? null : e.teams;
+}
+
+function dashIsChef(e: DashEmployee): boolean {
+  const team = dashTeamOf(e);
+  return Boolean(team && team.chef_employee_id === e.id);
+}
+
+function dashIsFop(e: DashEmployee): boolean {
+  return e.contract_type === "FOP";
+}
+
+/** Whole completed months between two ISO dates — the unit every duration on this dashboard is built from. */
+function monthsBetweenIso(startIso: string, endIso: string): number {
+  const start = new Date(startIso + "T00:00:00Z");
+  const end = new Date(endIso + "T00:00:00Z");
+  let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth());
+  if (end.getUTCDate() < start.getUTCDate()) months -= 1;
+  return Math.max(0, months);
+}
+
+function addMonthsIso(iso: string, delta: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCMonth(d.getUTCMonth() + delta);
+  return d.toISOString().split("T")[0];
+}
+
+function formatYearsMonths(totalMonths: number | null): string {
+  if (totalMonths === null) return "—";
+  const y = Math.floor(totalMonths / 12);
+  const m = Math.round(totalMonths % 12);
+  return `${y}a ${m}m`;
+}
+
+function dashAverage(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/** Reconstructs headcount at any past date directly from hire_date/end_date — no snapshot table needed or available. */
+function dashHeadcountAt(emps: DashEmployee[], dateIso: string): number {
+  return emps.filter((e) => e.hire_date && e.hire_date <= dateIso && (!e.end_date || e.end_date > dateIso)).length;
+}
+
+type DashGroupStats = {
+  label: string;
+  labelRu: string;
+  count: number;
+  avgTenureMonths: number | null;
+  avgAgeMonths: number | null;
+  hires12mo: number;
+  departures12mo: number;
+  turnoverRate: number | null;
+};
+
+/**
+ * `allInGroup` must include terminated employees too — headcount
+ * reconstruction and turnover need the full history, only the
+ * ancienneté/âge averages are restricted to people currently on the books.
+ */
+function dashGroupStats(label: string, labelRu: string, allInGroup: DashEmployee[], todayIso: string): DashGroupStats {
+  const current = allInGroup.filter((e) => e.status !== "terminated");
+  const tenureMonths = current.filter((e) => e.hire_date).map((e) => monthsBetweenIso(e.hire_date!, todayIso));
+  const ageMonths = current.filter((e) => e.date_of_birth).map((e) => monthsBetweenIso(e.date_of_birth!, todayIso));
+
+  const yearAgoIso = addMonthsIso(todayIso, -12);
+  const headcountNow = dashHeadcountAt(allInGroup, todayIso);
+  const headcountYearAgo = dashHeadcountAt(allInGroup, yearAgoIso);
+  const avgHeadcount = (headcountNow + headcountYearAgo) / 2;
+  const departures12mo = allInGroup.filter(
+    (e) => e.status === "terminated" && e.end_date && e.end_date > yearAgoIso && e.end_date <= todayIso
+  ).length;
+  const hires12mo = allInGroup.filter((e) => e.hire_date && e.hire_date > yearAgoIso && e.hire_date <= todayIso).length;
+
+  return {
+    label,
+    labelRu,
+    count: current.length,
+    avgTenureMonths: dashAverage(tenureMonths),
+    avgAgeMonths: dashAverage(ageMonths),
+    hires12mo,
+    departures12mo,
+    turnoverRate: avgHeadcount > 0 ? (departures12mo / avgHeadcount) * 100 : null,
+  };
+}
+
+const DASH_TENURE_BUCKETS = [
+  { label: "< 6 mois", labelRu: "< 6 мес", min: 0, max: 6 },
+  { label: "6–12 mois", labelRu: "6–12 мес", min: 6, max: 12 },
+  { label: "1–2 ans", labelRu: "1–2 года", min: 12, max: 24 },
+  { label: "2–5 ans", labelRu: "2–5 лет", min: 24, max: 60 },
+  { label: "5 ans et +", labelRu: "5 лет и более", min: 60, max: Infinity },
+];
+
+type DashSortKey = "tenure" | "age" | "name";
+
+function DashboardsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<DashEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<DashSortKey>("tenure");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const { data } = await supabase
+        .from("employees")
+        .select(
+          "id, first_name, last_name, category, contract_type, status, hire_date, end_date, date_of_birth, teams!employees_team_id_fkey(name, chef_employee_id)"
+        )
+        .is("archived_at", null);
+      setEmployees((data as unknown as DashEmployee[]) ?? []);
+      setLoading(false);
+    }
+    load();
+  }, [supabase]);
+
+  const todayIso = today();
+
+  const { groups, distribution, trend, caveats, detailRows, maxTrend } = useMemo(() => {
+    const nonFop = employees.filter((e) => !dashIsFop(e));
+    const fop = employees.filter(dashIsFop);
+    const chantier = nonFop.filter((e) => e.category === "chantier");
+    const chef = chantier.filter(dashIsChef);
+    const monteur = chantier.filter((e) => !dashIsChef(e));
+    const bureau = nonFop.filter((e) => e.category === "bureau");
+
+    const groups = [
+      dashGroupStats("Tous", "Все", nonFop, todayIso),
+      dashGroupStats("Chantier — total", "Стройка — всего", chantier, todayIso),
+      dashGroupStats("— Chefs d'équipe", "— Бригадиры", chef, todayIso),
+      dashGroupStats("— Monteurs", "— Монтажники", monteur, todayIso),
+      dashGroupStats("Bureau", "Офис", bureau, todayIso),
+      dashGroupStats("FOP (sous-traitants)", "FOP (подрядчики)", fop, todayIso),
+    ];
+
+    const currentNonFop = nonFop.filter((e) => e.status !== "terminated" && e.hire_date);
+    const distribution = DASH_TENURE_BUCKETS.map((b) => ({
+      ...b,
+      count: currentNonFop.filter((e) => {
+        const m = monthsBetweenIso(e.hire_date!, todayIso);
+        return m >= b.min && m < b.max;
+      }).length,
+    }));
+
+    const trend: { label: string; hires: number; departures: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const monthKey = addMonthsIso(todayIso, -i).slice(0, 7); // "YYYY-MM"
+      trend.push({
+        label: monthKey,
+        hires: nonFop.filter((e) => e.hire_date?.slice(0, 7) === monthKey).length,
+        departures: nonFop.filter((e) => e.status === "terminated" && e.end_date?.slice(0, 7) === monthKey).length,
+      });
+    }
+    const maxTrend = Math.max(1, ...trend.flatMap((m) => [m.hires, m.departures]));
+
+    const caveats = {
+      missingHireDate: nonFop.filter((e) => e.status !== "terminated" && !e.hire_date).length,
+      missingBirthDate: nonFop.filter((e) => e.status !== "terminated" && !e.date_of_birth).length,
+      unclearCount: employees.filter((e) => e.status === "unclear").length,
+    };
+
+    const detailRows = employees
+      .filter((e) => e.status !== "terminated")
+      .map((e) => {
+        const isFop = dashIsFop(e);
+        const isChef = !isFop && dashIsChef(e);
+        const groupLabel = isFop ? "FOP" : e.category === "bureau" ? "Bureau" : isChef ? "Chef" : "Monteur";
+        const team = dashTeamOf(e);
+        const tenureMonths = e.hire_date ? monthsBetweenIso(e.hire_date, todayIso) : null;
+        const ageMonths = e.date_of_birth ? monthsBetweenIso(e.date_of_birth, todayIso) : null;
+        return {
+          id: e.id,
+          name: `${e.first_name} ${e.last_name}`,
+          groupLabel,
+          teamName: team?.name ?? "—",
+          hireDate: e.hire_date,
+          tenureMonths,
+          ageMonths,
+          status: e.status,
+        };
+      });
+
+    return { groups, distribution, trend, caveats, detailRows, maxTrend };
+  }, [employees, todayIso]);
+
+  const sortedRows = useMemo(() => {
+    const rows = [...detailRows];
+    rows.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === "tenure") cmp = (a.tenureMonths ?? -1) - (b.tenureMonths ?? -1);
+      else if (sortKey === "age") cmp = (a.ageMonths ?? -1) - (b.ageMonths ?? -1);
+      else cmp = a.name.localeCompare(b.name);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return rows;
+  }, [detailRows, sortKey, sortDir]);
+
+  if (loading) {
+    return <div className="card p-6 text-center text-stone-400">…</div>;
+  }
+
+  const overall = groups[0];
+  const distMax = Math.max(1, ...distribution.map((b) => b.count));
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold">
+          <Bi fr="Dashboards RH" ru="HR-дашборды" />
+        </h1>
+        <p className="text-sm text-stone-500 mt-1">
+          <Bi
+            fr="Ancienneté, âge et turnover, calculés en direct à partir des dates d'embauche, de naissance et de fin de contrat."
+            ru="Стаж, возраст и текучесть — считаются в реальном времени по датам найма, рождения и увольнения."
+          />
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <span className="badge badge-primary gap-2 px-3 py-1.5">
+          <span className="text-xl font-extrabold leading-none">{overall.count}</span>
+          <Bi fr="salariés actifs" ru="активных сотрудников" />
+        </span>
+        <span className="badge badge-neutral gap-2 px-3 py-1.5">
+          <span className="text-xl font-extrabold leading-none">{formatYearsMonths(overall.avgTenureMonths)}</span>
+          <Bi fr="ancienneté moyenne" ru="средний стаж" />
+        </span>
+        <span className="badge badge-neutral gap-2 px-3 py-1.5">
+          <span className="text-xl font-extrabold leading-none">{formatYearsMonths(overall.avgAgeMonths)}</span>
+          <Bi fr="âge moyen" ru="средний возраст" />
+        </span>
+        <span className={`badge ${overall.turnoverRate !== null && overall.turnoverRate > 30 ? "badge-error" : "badge-warning"} gap-2 px-3 py-1.5`}>
+          <span className="text-xl font-extrabold leading-none">
+            {overall.turnoverRate !== null ? `${overall.turnoverRate.toFixed(0)}%` : "—"}
+          </span>
+          <Bi fr="turnover (12 mois)" ru="текучесть (12 мес)" />
+        </span>
+      </div>
+
+      {(caveats.missingHireDate > 0 || caveats.missingBirthDate > 0 || caveats.unclearCount > 0) && (
+        <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2">
+          ⚠{" "}
+          {caveats.missingHireDate > 0 && <>{caveats.missingHireDate} sans date d&apos;embauche · </>}
+          {caveats.missingBirthDate > 0 && <>{caveats.missingBirthDate} sans date de naissance · </>}
+          {caveats.unclearCount > 0 && <>{caveats.unclearCount} au statut incertain (exclus des départs)</>}
+        </div>
+      )}
+
+      <div className="card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-stone-400 whitespace-nowrap">
+              <th className="py-2 pr-4 pl-4">
+                <Bi fr="Groupe" ru="Группа" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Effectif" ru="Численность" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Ancienneté moy." ru="Средний стаж" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Âge moy." ru="Средний возраст" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Recrutés (12 mois)" ru="Принято (12 мес)" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Partis (12 mois)" ru="Ушло (12 мес)" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Turnover" ru="Текучесть" />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <tr key={g.label} className="border-t border-stone-100">
+                <td className="py-2 pr-4 pl-4 font-semibold">
+                  <Bi fr={g.label} ru={g.labelRu} />
+                </td>
+                <td className="py-2 pr-4">{g.count}</td>
+                <td className="py-2 pr-4">{formatYearsMonths(g.avgTenureMonths)}</td>
+                <td className="py-2 pr-4">{formatYearsMonths(g.avgAgeMonths)}</td>
+                <td className="py-2 pr-4">{g.hires12mo}</td>
+                <td className="py-2 pr-4">{g.departures12mo}</td>
+                <td className="py-2 pr-4">{g.turnoverRate !== null ? `${g.turnoverRate.toFixed(1)}%` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        <div className="card p-4">
+          <h2 className="font-semibold mb-3">
+            <Bi fr="Répartition par ancienneté" ru="Распределение по стажу" />
+          </h2>
+          <div className="space-y-2">
+            {distribution.map((b) => (
+              <div key={b.label} className="flex items-center gap-2 text-sm">
+                <span className="w-24 shrink-0 text-stone-500">
+                  <Bi fr={b.label} ru={b.labelRu} />
+                </span>
+                <div className="flex-1 h-4 bg-stone-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-primary-600 rounded-full" style={{ width: `${(b.count / distMax) * 100}%` }} />
+                </div>
+                <span className="w-8 text-right font-semibold">{b.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card p-4">
+          <h2 className="font-semibold mb-3">
+            <Bi fr="Recrutements / départs — 12 derniers mois" ru="Приём / уход — за 12 месяцев" />
+          </h2>
+          <div className="flex items-end gap-1 h-28">
+            {trend.map((m) => (
+              <div
+                key={m.label}
+                className="flex-1 flex flex-col items-center gap-0.5"
+                title={`${m.label} : +${m.hires} / -${m.departures}`}
+              >
+                <div className="w-full flex items-end gap-0.5 h-24">
+                  <div className="flex-1 bg-success-600 rounded-t" style={{ height: `${(m.hires / maxTrend) * 100}%` }} />
+                  <div className="flex-1 bg-error-600 rounded-t" style={{ height: `${(m.departures / maxTrend) * 100}%` }} />
+                </div>
+                <span className="text-[0.6rem] text-stone-400">{m.label.slice(5)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-4 mt-2 text-xs text-stone-500">
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-success-600" /> <Bi fr="Recrutements" ru="Приём" />
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-error-600" /> <Bi fr="Départs" ru="Уход" />
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <div className="flex items-center justify-between p-4 pb-0 flex-wrap gap-2">
+          <h2 className="font-semibold">
+            <Bi fr="Détail par salarié" ru="Детали по сотрудникам" />
+          </h2>
+          <div className="flex items-center gap-2 text-sm">
+            <Bi fr="Trier par" ru="Сортировать по" />
+            <select className="input" value={sortKey} onChange={(e) => setSortKey(e.target.value as DashSortKey)}>
+              <option value="tenure">Ancienneté / Стаж</option>
+              <option value="age">Âge / Возраст</option>
+              <option value="name">Nom / Имя</option>
+            </select>
+            <button
+              type="button"
+              className="btn btn-secondary text-sm px-2 py-1"
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              title={sortDir === "asc" ? "Croissant" : "Décroissant"}
+            >
+              {sortDir === "asc" ? "↑" : "↓"}
+            </button>
+          </div>
+        </div>
+        <table className="w-full text-sm mt-2">
+          <thead>
+            <tr className="text-left text-stone-400 whitespace-nowrap">
+              <th className="py-2 pr-4 pl-4">
+                <Bi fr="Nom" ru="Имя" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Groupe" ru="Группа" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Équipe" ru="Команда" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Embauché le" ru="Дата найма" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Ancienneté" ru="Стаж" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Âge" ru="Возраст" />
+              </th>
+              <th className="py-2 pr-4">
+                <Bi fr="Statut" ru="Статус" />
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedRows.map((r) => (
+              <tr key={r.id} className="border-t border-stone-100">
+                <td className="py-2 pr-4 pl-4 font-semibold">{r.name}</td>
+                <td className="py-2 pr-4">
+                  <span
+                    className={`badge ${
+                      r.groupLabel === "Chef"
+                        ? "badge-primary"
+                        : r.groupLabel === "FOP"
+                          ? "badge-warning"
+                          : r.groupLabel === "Bureau"
+                            ? "badge-success"
+                            : "badge-neutral"
+                    }`}
+                  >
+                    {r.groupLabel}
+                  </span>
+                </td>
+                <td className="py-2 pr-4">{r.teamName}</td>
+                <td className="py-2 pr-4">{r.hireDate ?? "—"}</td>
+                <td className="py-2 pr-4">{formatYearsMonths(r.tenureMonths)}</td>
+                <td className="py-2 pr-4">{r.ageMonths !== null ? Math.floor(r.ageMonths / 12) : "—"}</td>
+                <td className="py-2 pr-4">
+                  <Bi fr={STATUS_LABELS[r.status]} ru={STATUS_LABELS_RU[r.status]} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
