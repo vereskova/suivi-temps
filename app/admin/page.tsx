@@ -8135,9 +8135,37 @@ const DASH_MONTH_OPTIONS: { value: number; fr: string; ru: string }[] = [
   { value: 12, fr: "Décembre", ru: "Декабрь" },
 ];
 
-/** Same visual language as the period chips (pill, flat fill) instead of the boxed .input style — a native select mixed with pill buttons in one row read as mismatched. */
-const DASH_PILL_SELECT =
-  "rounded-full bg-stone-100 border-none px-3 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors";
+/**
+ * Same visual language as the period chips (pill, flat fill) instead of the
+ * boxed .input style. Uses its own chevron (appearance-none on the select)
+ * rather than the browser's native one — that native arrow reserves a
+ * different amount of space per browser/OS, which is exactly what made a
+ * fixed pixel width clip the text in some environments but not others.
+ */
+function DashPillSelect({
+  value,
+  onChange,
+  width,
+  children,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  width: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative shrink-0" style={{ width }}>
+      <select
+        className="w-full appearance-none rounded-full bg-stone-100 border-none pl-3 pr-7 py-1.5 text-sm font-semibold text-stone-700 hover:bg-stone-200 focus:outline-none focus:ring-2 focus:ring-primary-200 transition-colors"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      >
+        {children}
+      </select>
+      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400" />
+    </div>
+  );
+}
 
 function DashboardsView({
   supabase,
@@ -8570,58 +8598,38 @@ function DashboardsView({
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">С</span>
-              <select
-                className={DASH_PILL_SELECT}
-                style={{ width: 190 }}
-                value={customFromMonth}
-                onChange={(e) => setCustomFromMonth(Number(e.target.value))}
-              >
+              <DashPillSelect value={customFromMonth} onChange={setCustomFromMonth} width={200}>
                 {DASH_MONTH_OPTIONS.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.fr} / {m.ru}
                   </option>
                 ))}
-              </select>
-              <select
-                className={DASH_PILL_SELECT}
-                style={{ width: 90 }}
-                value={customFromYear}
-                onChange={(e) => setCustomFromYear(Number(e.target.value))}
-              >
+              </DashPillSelect>
+              <DashPillSelect value={customFromYear} onChange={setCustomFromYear} width={110}>
                 {manualYearOptions.map((y) => (
                   <option key={y} value={y}>
                     {y}
                   </option>
                 ))}
-              </select>
+              </DashPillSelect>
             </div>
             <span className="text-stone-400">—</span>
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">по</span>
-              <select
-                className={DASH_PILL_SELECT}
-                style={{ width: 190 }}
-                value={customToMonth}
-                onChange={(e) => setCustomToMonth(Number(e.target.value))}
-              >
+              <DashPillSelect value={customToMonth} onChange={setCustomToMonth} width={200}>
                 {DASH_MONTH_OPTIONS.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.fr} / {m.ru}
                   </option>
                 ))}
-              </select>
-              <select
-                className={DASH_PILL_SELECT}
-                style={{ width: 90 }}
-                value={customToYear}
-                onChange={(e) => setCustomToYear(Number(e.target.value))}
-              >
+              </DashPillSelect>
+              <DashPillSelect value={customToYear} onChange={setCustomToYear} width={110}>
                 {manualYearOptions.map((y) => (
                   <option key={y} value={y}>
                     {y}
                   </option>
                 ))}
-              </select>
+              </DashPillSelect>
             </div>
             <button type="button" onClick={applyCustomRange} className="btn btn-primary text-sm shrink-0">
               Применить
