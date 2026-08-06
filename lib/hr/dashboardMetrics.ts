@@ -230,6 +230,50 @@ export function computeHiresDeparturesTrend(employees: DashEmployee[], todayIso:
   return trend;
 }
 
+export type DateRange = { startIso: string; endIso: string };
+
+export function yearRange(year: number): DateRange {
+  return { startIso: `${year}-01-01`, endIso: `${year}-12-31` };
+}
+
+export function quarterRange(year: number, quarter: 1 | 2 | 3 | 4): DateRange {
+  const startMonth = (quarter - 1) * 3 + 1;
+  const startIso = `${year}-${String(startMonth).padStart(2, "0")}-01`;
+  const endIso = addDaysIso(addMonthsIso(startIso, 3), -1);
+  return { startIso, endIso };
+}
+
+/** Same shape as computeGroupStats's turnover fields, for an arbitrary explicit range instead of a fixed rolling window. */
+export function computeHiresDeparturesInRange(
+  employees: DashEmployee[],
+  range: DateRange
+): { hires: DashEmployee[]; departures: DashEmployee[] } {
+  return {
+    hires: employees.filter((e) => e.hire_date && e.hire_date >= range.startIso && e.hire_date <= range.endIso),
+    departures: employees.filter(
+      (e) => e.status === "terminated" && e.end_date && e.end_date >= range.startIso && e.end_date <= range.endIso
+    ),
+  };
+}
+
+/** Month-by-month breakdown of an explicit range — the manual/year/quarter counterpart to computeHiresDeparturesTrend's fixed "N months back from today". */
+export function computeHiresDeparturesTrendInRange(employees: DashEmployee[], range: DateRange): TrendMonth[] {
+  const trend: TrendMonth[] = [];
+  const endMonth = range.endIso.slice(0, 7);
+  let cursor = range.startIso.slice(0, 7);
+  let guard = 0;
+  while (cursor <= endMonth && guard < 600) {
+    trend.push({
+      label: cursor,
+      hires: employees.filter((e) => e.hire_date?.slice(0, 7) === cursor),
+      departures: employees.filter((e) => e.status === "terminated" && e.end_date?.slice(0, 7) === cursor),
+    });
+    cursor = addMonthsIso(`${cursor}-01`, 1).slice(0, 7);
+    guard += 1;
+  }
+  return trend;
+}
+
 export type TrialPeriodInfo = { endsAt: string };
 
 /** 30 calendar days from hire_date. No new column — computed purely from a field that already exists. */

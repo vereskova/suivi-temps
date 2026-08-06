@@ -68,13 +68,19 @@ import {
   HR_GROUPS,
   computeGroupStats,
   computeTenureDistribution,
-  computeHiresDeparturesTrend,
+  computeHiresDeparturesInRange,
+  computeHiresDeparturesTrendInRange,
+  yearRange,
+  quarterRange,
   isInTrialPeriod,
   formatYearsMonths,
   monthsBetweenIso,
+  addMonthsIso,
+  addDaysIso,
   dashIsFop,
   type DashEmployee,
   type HrGroupKey,
+  type DateRange,
 } from "@/lib/hr/dashboardMetrics";
 import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
 import {
@@ -8110,6 +8116,23 @@ function DashEmployeeRow({ e, todayIso }: { e: DashEmployee; todayIso: string })
 /** The 4 quick filters asked for — a subset of HR_GROUPS, not a parallel list, so they can't drift apart. */
 const DASH_FILTER_KEYS: HrGroupKey[] = ["all", "chantier", "bureau", "chef"];
 
+type DashPeriodMode = "rolling12" | "all" | "year" | "quarter" | "custom";
+
+const DASH_MONTH_OPTIONS: { value: number; fr: string; ru: string }[] = [
+  { value: 1, fr: "Janvier", ru: "Январь" },
+  { value: 2, fr: "Février", ru: "Февраль" },
+  { value: 3, fr: "Mars", ru: "Март" },
+  { value: 4, fr: "Avril", ru: "Апрель" },
+  { value: 5, fr: "Mai", ru: "Май" },
+  { value: 6, fr: "Juin", ru: "Июнь" },
+  { value: 7, fr: "Juillet", ru: "Июль" },
+  { value: 8, fr: "Août", ru: "Август" },
+  { value: 9, fr: "Septembre", ru: "Сентябрь" },
+  { value: 10, fr: "Octobre", ru: "Октябрь" },
+  { value: 11, fr: "Novembre", ru: "Ноябрь" },
+  { value: 12, fr: "Décembre", ru: "Декабрь" },
+];
+
 function DashboardsView({
   supabase,
   onNavigateToEmployees,
@@ -8121,7 +8144,14 @@ function DashboardsView({
   const [loading, setLoading] = useState(true);
   const [filterKey, setFilterKey] = useState<HrGroupKey>("all");
   const [expandedGroupKey, setExpandedGroupKey] = useState<HrGroupKey | null>(null);
-  const [trendMonths, setTrendMonths] = useState<12 | 24 | "all">(12);
+  const [periodMode, setPeriodMode] = useState<DashPeriodMode>("rolling12");
+  const [periodYear, setPeriodYear] = useState<number | null>(null);
+  const [periodQuarter, setPeriodQuarter] = useState<{ year: number; quarter: 1 | 2 | 3 | 4 } | null>(null);
+  const [customFromMonth, setCustomFromMonth] = useState(1);
+  const [customFromYear, setCustomFromYear] = useState(Number(today().slice(0, 4)) - 1);
+  const [customToMonth, setCustomToMonth] = useState(Number(today().slice(5, 7)));
+  const [customToYear, setCustomToYear] = useState(Number(today().slice(0, 4)));
+  const [appliedCustomRange, setAppliedCustomRange] = useState<DateRange | null>(null);
   const [drillDown, setDrillDown] = useState<DashDrillDown | null>(null);
 
   useEffect(() => {
@@ -8167,19 +8197,68 @@ function DashboardsView({
   );
   const distMax = Math.max(1, ...distribution.map((b) => b.count));
 
-  const effectiveTrendMonths = useMemo(() => {
-    if (trendMonths !== "all") return trendMonths;
-    const dates = filteredEmployees.flatMap((e) => [e.hire_date, e.end_date]).filter((d): d is string => Boolean(d));
-    if (dates.length === 0) return 12;
-    const earliest = dates.reduce((min, d) => (d < min ? d : min));
-    return Math.max(1, monthsBetweenIso(earliest, todayIso) + 1);
-  }, [filteredEmployees, todayIso, trendMonths]);
+  const currentYear = Number(todayIso.slice(0, 4));
+  const currentQuarter = (Math.floor((Number(todayIso.slice(5, 7)) - 1) / 3) + 1) as 1 | 2 | 3 | 4;
 
-  const trend = useMemo(
-    () => computeHiresDeparturesTrend(filteredEmployees, todayIso, effectiveTrendMonths),
-    [filteredEmployees, todayIso, effectiveTrendMonths]
+  const yearOptions = useMemo(() => [currentYear - 2, currentYear - 1, currentYear], [currentYear]);
+  const manualYearOptions = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => currentYear - 6 + i),
+    [currentYear]
   );
-  const maxTrend = Math.max(1, ...trend.flatMap((m) => [m.hires.length, m.departures.length]));
+
+  const quarterOptions = useMemo(() => {
+    const opts: { year: number; quarter: 1 | 2 | 3 | 4 }[] = [];
+    let y = currentYear;
+    let q = currentQuarter;
+    for (let i = 0; i < 6; i++) {
+      opts.unshift({ year: y, quarter: q });
+      q -= 1;
+      if (q < 1) {
+        q = 4;
+        y -= 1;
+      }
+    }
+    return opts;
+  }, [currentYear, currentQuarter]);
+
+  const resolvedRange = useMemo((): DateRange => {
+    if (periodMode === "year" && periodYear !== null) return yearRange(periodYear);
+    if (periodMode === "quarter" && periodQuarter) return quarterRange(periodQuarter.year, periodQuarter.quarter);
+    if (periodMode === "custom" && appliedCustomRange) return appliedCustomRange;
+    if (periodMode === "all") {
+      const dates = filteredEmployees.flatMap((e) => [e.hire_date, e.end_date]).filter((d): d is string => Boolean(d));
+      const earliest = dates.length > 0 ? dates.reduce((min, d) => (d < min ? d : min)) : todayIso;
+      return { startIso: earliest, endIso: todayIso };
+    }
+    return { startIso: addMonthsIso(todayIso, -12), endIso: todayIso };
+  }, [periodMode, periodYear, periodQuarter, appliedCustomRange, filteredEmployees, todayIso]);
+
+  const rangeResult = useMemo(
+    () => computeHiresDeparturesInRange(filteredEmployees, resolvedRange),
+    [filteredEmployees, resolvedRange]
+  );
+  const rangeTrend = useMemo(
+    () => computeHiresDeparturesTrendInRange(filteredEmployees, resolvedRange),
+    [filteredEmployees, resolvedRange]
+  );
+  const maxRangeTrend = Math.max(1, ...rangeTrend.flatMap((m) => [m.hires.length, m.departures.length]));
+
+  const periodLabel = useMemo(() => {
+    if (periodMode === "year" && periodYear !== null) return String(periodYear);
+    if (periodMode === "quarter" && periodQuarter) return `T${periodQuarter.quarter} ${periodQuarter.year}`;
+    if (periodMode === "all") return "Tout / Всё время";
+    if (periodMode === "custom" && appliedCustomRange) {
+      return `${appliedCustomRange.startIso.slice(0, 7)} — ${appliedCustomRange.endIso.slice(0, 7)}`;
+    }
+    return "12 mois / 12 мес.";
+  }, [periodMode, periodYear, periodQuarter, appliedCustomRange]);
+
+  function applyCustomRange() {
+    const startIso = `${customFromYear}-${String(customFromMonth).padStart(2, "0")}-01`;
+    const endIso = addDaysIso(addMonthsIso(`${customToYear}-${String(customToMonth).padStart(2, "0")}-01`, 1), -1);
+    setAppliedCustomRange({ startIso, endIso });
+    setPeriodMode("custom");
+  }
 
   const caveats = useMemo(() => {
     const nonFop = employees.filter((e) => !dashIsFop(e));
@@ -8388,84 +8467,222 @@ function DashboardsView({
         </table>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <h2 className="font-semibold mb-3">Распределение по стажу</h2>
-          <div className="space-y-2">
-            {distribution.map((b) => (
-              <button
-                key={b.label}
-                type="button"
-                disabled={b.count === 0}
-                className="w-full flex items-center gap-2 text-sm group disabled:cursor-default"
-                onClick={() => setDrillDown({ title: `${b.label} / ${b.labelRu}`, employees: b.employees })}
-              >
-                <span className="w-24 shrink-0 text-stone-500 text-left">
-                  <Bi fr={b.label} ru={b.labelRu} />
-                </span>
-                <div className="flex-1 h-4 bg-stone-100 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary-600 rounded-full group-hover:bg-primary-700 transition-colors"
-                    style={{ width: `${(b.count / distMax) * 100}%` }}
-                  />
-                </div>
-                <span className="w-8 text-right font-semibold">{b.count}</span>
-              </button>
-            ))}
+      <div className="card p-4">
+        <h2 className="font-semibold mb-3">Распределение по стажу</h2>
+        <div className="space-y-2">
+          {distribution.map((b) => (
+            <button
+              key={b.label}
+              type="button"
+              disabled={b.count === 0}
+              className="w-full flex items-center gap-2 text-sm group disabled:cursor-default"
+              onClick={() => setDrillDown({ title: `${b.label} / ${b.labelRu}`, employees: b.employees })}
+            >
+              <span className="w-24 shrink-0 text-stone-500 text-left">
+                <Bi fr={b.label} ru={b.labelRu} />
+              </span>
+              <div className="flex-1 h-4 bg-stone-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary-600 rounded-full group-hover:bg-primary-700 transition-colors"
+                  style={{ width: `${(b.count / distMax) * 100}%` }}
+                />
+              </div>
+              <span className="w-8 text-right font-semibold">{b.count}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="card p-4">
+        <h2 className="font-semibold">Движение персонала</h2>
+        <p className="text-xs text-stone-400 mb-4">Нанятые и уволенные по периоду и группе</p>
+
+        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">Выбор периода</p>
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <span className="text-xs font-semibold text-stone-400 mr-0.5">Год</span>
+          {yearOptions.map((y) => (
+            <button
+              key={y}
+              type="button"
+              onClick={() => {
+                setPeriodMode("year");
+                setPeriodYear(y);
+              }}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+                periodMode === "year" && periodYear === y
+                  ? "bg-stone-900 text-white"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              }`}
+            >
+              {y}
+            </button>
+          ))}
+          <span className="w-px h-5 bg-stone-200 mx-1" />
+          <span className="text-xs font-semibold text-stone-400 mr-0.5">Квартал</span>
+          {quarterOptions.map((q) => (
+            <button
+              key={`${q.year}-${q.quarter}`}
+              type="button"
+              onClick={() => {
+                setPeriodMode("quarter");
+                setPeriodQuarter(q);
+              }}
+              className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+                periodMode === "quarter" && periodQuarter?.year === q.year && periodQuarter?.quarter === q.quarter
+                  ? "bg-stone-900 text-white"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+              }`}
+            >
+              T{q.quarter} {q.year}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          <button
+            type="button"
+            onClick={() => setPeriodMode("rolling12")}
+            className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+              periodMode === "rolling12" ? "bg-primary-600 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+            }`}
+          >
+            12 мес.
+          </button>
+          <button
+            type="button"
+            onClick={() => setPeriodMode("all")}
+            className={`rounded-full px-3 py-1.5 text-sm font-semibold ${
+              periodMode === "all" ? "bg-primary-600 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+            }`}
+          >
+            Всё время
+          </button>
+        </div>
+
+        <div className="border-t border-stone-100 pt-3 mb-4">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-stone-500 shrink-0">Период вручную: С</span>
+            <select
+              className="input py-1.5"
+              value={customFromMonth}
+              onChange={(e) => setCustomFromMonth(Number(e.target.value))}
+            >
+              {DASH_MONTH_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.fr} / {m.ru}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input py-1.5 w-24"
+              value={customFromYear}
+              onChange={(e) => setCustomFromYear(Number(e.target.value))}
+            >
+              {manualYearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <span className="text-stone-400">—</span>
+            <span className="text-stone-500 shrink-0">по</span>
+            <select className="input py-1.5" value={customToMonth} onChange={(e) => setCustomToMonth(Number(e.target.value))}>
+              {DASH_MONTH_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.fr} / {m.ru}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input py-1.5 w-24"
+              value={customToYear}
+              onChange={(e) => setCustomToYear(Number(e.target.value))}
+            >
+              {manualYearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={applyCustomRange} className="btn btn-primary text-sm">
+              Применить
+            </button>
           </div>
         </div>
 
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <h2 className="font-semibold">Приём / уход</h2>
-            <div className="flex gap-1 text-xs">
-              {([12, 24, "all"] as const).map((opt) => (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <button
+            type="button"
+            disabled={rangeResult.hires.length === 0}
+            className="rounded-xl border border-stone-100 p-3 text-left hover:bg-stone-50 disabled:cursor-default"
+            onClick={() => setDrillDown({ title: `Recrutements — ${periodLabel}`, employees: rangeResult.hires })}
+          >
+            <p className="text-xs font-bold uppercase tracking-wide text-stone-400">Нанято</p>
+            <p className="text-3xl font-extrabold text-primary-600">{rangeResult.hires.length}</p>
+            <p className="text-xs text-stone-400">за период</p>
+          </button>
+          <button
+            type="button"
+            disabled={rangeResult.departures.length === 0}
+            className="rounded-xl border border-stone-100 p-3 text-left hover:bg-stone-50 disabled:cursor-default"
+            onClick={() => setDrillDown({ title: `Départs — ${periodLabel}`, employees: rangeResult.departures })}
+          >
+            <p className="text-xs font-bold uppercase tracking-wide text-stone-400">Ушло</p>
+            <p className="text-3xl font-extrabold text-error-600">{rangeResult.departures.length}</p>
+            <p className="text-xs text-stone-400">за период</p>
+          </button>
+          <div className="rounded-xl border border-stone-100 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-stone-400">Баланс</p>
+            <p
+              className={`text-3xl font-extrabold ${
+                rangeResult.hires.length - rangeResult.departures.length >= 0 ? "text-success-600" : "text-error-600"
+              }`}
+            >
+              {rangeResult.hires.length - rangeResult.departures.length >= 0 ? "+" : ""}
+              {rangeResult.hires.length - rangeResult.departures.length}
+            </p>
+            <p className="text-xs text-stone-400">нанято − ушло</p>
+          </div>
+          <div className="rounded-xl border border-stone-100 p-3">
+            <p className="text-xs font-bold uppercase tracking-wide text-stone-400">Период</p>
+            <p className="text-lg font-extrabold leading-tight">{periodLabel}</p>
+          </div>
+        </div>
+
+        <div className="flex items-end gap-1 h-28 overflow-x-auto">
+          {rangeTrend.map((m) => (
+            <div key={m.label} className="flex-1 min-w-[10px] flex flex-col items-center gap-0.5">
+              <div className="w-full flex items-end gap-0.5 h-24">
                 <button
-                  key={opt}
                   type="button"
-                  onClick={() => setTrendMonths(opt)}
-                  className={`rounded-full px-2.5 py-1 font-semibold ${
-                    trendMonths === opt ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
-                  }`}
-                >
-                  {opt === "all" ? "Tout" : `${opt} mois`}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-end gap-1 h-28 overflow-x-auto">
-            {trend.map((m) => (
-              <div key={m.label} className="flex-1 min-w-[10px] flex flex-col items-center gap-0.5">
-                <div className="w-full flex items-end gap-0.5 h-24">
-                  <button
-                    type="button"
-                    disabled={m.hires.length === 0}
-                    className="flex-1 bg-success-600 rounded-t hover:bg-success-700 transition-colors disabled:opacity-30 disabled:cursor-default"
-                    style={{ height: `${(m.hires.length / maxTrend) * 100}%`, minHeight: m.hires.length > 0 ? 2 : 0 }}
-                    title={`${m.label} : +${m.hires.length}`}
-                    onClick={() => setDrillDown({ title: `Recrutements — ${m.label}`, employees: m.hires })}
-                  />
-                  <button
-                    type="button"
-                    disabled={m.departures.length === 0}
-                    className="flex-1 bg-error-600 rounded-t hover:bg-error-700 transition-colors disabled:opacity-30 disabled:cursor-default"
-                    style={{ height: `${(m.departures.length / maxTrend) * 100}%`, minHeight: m.departures.length > 0 ? 2 : 0 }}
-                    title={`${m.label} : -${m.departures.length}`}
-                    onClick={() => setDrillDown({ title: `Départs — ${m.label}`, employees: m.departures })}
-                  />
-                </div>
-                <span className="text-[0.6rem] text-stone-400 whitespace-nowrap">{m.label.slice(5)}</span>
+                  disabled={m.hires.length === 0}
+                  className="flex-1 bg-success-600 rounded-t hover:bg-success-700 transition-colors disabled:opacity-30 disabled:cursor-default"
+                  style={{ height: `${(m.hires.length / maxRangeTrend) * 100}%`, minHeight: m.hires.length > 0 ? 2 : 0 }}
+                  title={`${m.label} : +${m.hires.length}`}
+                  onClick={() => setDrillDown({ title: `Recrutements — ${m.label}`, employees: m.hires })}
+                />
+                <button
+                  type="button"
+                  disabled={m.departures.length === 0}
+                  className="flex-1 bg-error-600 rounded-t hover:bg-error-700 transition-colors disabled:opacity-30 disabled:cursor-default"
+                  style={{
+                    height: `${(m.departures.length / maxRangeTrend) * 100}%`,
+                    minHeight: m.departures.length > 0 ? 2 : 0,
+                  }}
+                  title={`${m.label} : -${m.departures.length}`}
+                  onClick={() => setDrillDown({ title: `Départs — ${m.label}`, employees: m.departures })}
+                />
               </div>
-            ))}
-          </div>
-          <div className="flex gap-4 mt-2 text-xs text-stone-500">
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-success-600" /> <Bi fr="Recrutements" ru="Приём" />
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-full bg-error-600" /> <Bi fr="Départs" ru="Уход" />
-            </span>
-          </div>
+              <span className="text-[0.6rem] text-stone-400 whitespace-nowrap">{m.label.slice(5)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-4 mt-2 text-xs text-stone-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-success-600" /> <Bi fr="Recrutements" ru="Приём" />
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-error-600" /> <Bi fr="Départs" ru="Уход" />
+          </span>
         </div>
       </div>
 
