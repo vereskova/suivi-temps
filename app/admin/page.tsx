@@ -829,22 +829,19 @@ export default function AdminPage() {
     );
   }
 
-  // rh: Effectif + RH sections only — no Pointage group, no Paie,
-  // Calculateur de rupture uses only the employees table, which 'rh' already
-  // has full read/write on (see migration 0017) — no reason to keep it
-  // admin-only. Paie, Commercial, and the audit log stay rh_admin-only (the
-  // audit log's whole point is oversight of what rh/comptable/etc. changed).
+  // rh: Effectif + RH sections only — no Pointage group, no Paie.
+  // Calculateur de rupture and HR-дашборды use only the employees table,
+  // which 'rh' already has full read/write on (see migration 0017) — no
+  // reason to keep them admin-only. Paie, Commercial, and the audit log
+  // stay rh_admin-only (the audit log's whole point is oversight of what
+  // rh/comptable/etc. changed).
   const visibleNavGroups =
     role === "rh"
       ? NAV_GROUPS.filter((g) => g.title !== "Pointage")
           .map((g) => ({
             ...g,
             items: g.items.filter(
-              (item) =>
-                item.key !== "paie" &&
-                item.key !== "commercial" &&
-                item.key !== "audit" &&
-                item.key !== "dashboards"
+              (item) => item.key !== "paie" && item.key !== "commercial" && item.key !== "audit"
             ),
           }))
           .filter((g) => g.items.length > 0)
