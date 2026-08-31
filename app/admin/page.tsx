@@ -5646,21 +5646,28 @@ function DocumentsForm({
                       </option>
                     ))}
                   </select>
+                ) : f.type === "number" ? (
+                  <input
+                    className="input mt-2"
+                    type="number"
+                    step="any"
+                    defaultValue={String(formValues[f.key] ?? "")}
+                    key={`${f.key}-${String(formValues[f.key] ?? "")}`}
+                    onBlur={(ev) => {
+                      const raw = ev.target.value.trim().replace(",", ".");
+                      setFormValues((prev) => ({
+                        ...prev,
+                        [f.key]: raw === "" ? "" : Number(raw),
+                      }));
+                    }}
+                  />
                 ) : (
                   <input
                     className="input mt-2"
-                    type={f.type === "date" ? "date" : f.type === "number" ? "number" : "text"}
+                    type={f.type === "date" ? "date" : "text"}
                     value={String(formValues[f.key] ?? "")}
                     onChange={(ev) =>
-                      setFormValues((prev) => ({
-                        ...prev,
-                        [f.key]:
-                          f.type === "number"
-                            ? ev.target.value === ""
-                              ? ""
-                              : Number(ev.target.value)
-                            : ev.target.value,
-                      }))
+                      setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
                     }
                   />
                 )}
