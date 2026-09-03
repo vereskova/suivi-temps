@@ -2572,8 +2572,9 @@ function EmployeesView({
   }, [teams]);
 
   function chantierRowColor(e: EmployeeFull): string {
-    if (e.category === "bureau" || !e.team_id) return "";
-    const teamName = teamsById.get(e.team_id);
+    const teamId = e.category === "bureau" ? e.secondary_team_id : e.team_id;
+    if (!teamId) return "";
+    const teamName = teamsById.get(teamId);
     return (teamName && teamColorByName.get(teamName)) || "";
   }
 
@@ -2588,11 +2589,16 @@ function EmployeesView({
 
   const groupedFiltered = useMemo(() => {
     const bureau = filtered.filter((e) => e.category === "bureau");
+    // Bureau staff with a "équipe rattachée" show up here too, alongside the
+    // team's actual chantier members — they still appear in Bureau above as
+    // well, this is purely an additional listing, not a move.
     const chantier = filtered
-      .filter((e) => e.category !== "bureau")
+      .filter((e) => e.category !== "bureau" || e.secondary_team_id)
       .sort((a, b) => {
-        const teamA = a.team_id ? teamsById.get(a.team_id) ?? "" : "";
-        const teamB = b.team_id ? teamsById.get(b.team_id) ?? "" : "";
+        const teamIdA = a.category === "bureau" ? a.secondary_team_id : a.team_id;
+        const teamIdB = b.category === "bureau" ? b.secondary_team_id : b.team_id;
+        const teamA = teamIdA ? teamsById.get(teamIdA) ?? "" : "";
+        const teamB = teamIdB ? teamsById.get(teamIdB) ?? "" : "";
         if (!teamA && teamB) return 1;
         if (teamA && !teamB) return -1;
         return (
@@ -2936,7 +2942,7 @@ function EmployeesView({
                   {isEditing && editForm ? (
                     <div className="space-y-2 mt-2">
                       <label className="block text-xs font-bold text-stone-400">
-                        {sectionLabel === "Bureau" ? (
+                        {e.category === "bureau" ? (
                           <>
                             <Bi fr="Poste" ru="Должность" />
                             <select
@@ -2970,7 +2976,7 @@ function EmployeesView({
                           </>
                         )}
                       </label>
-                      {sectionLabel === "Bureau" && (
+                      {e.category === "bureau" && (
                         <label className="block text-xs font-bold text-stone-400">
                           <Bi fr="Équipe rattachée (optionnel)" ru="Привязанная команда (опционально)" />
                           <select
