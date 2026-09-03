@@ -31,8 +31,13 @@ export function formatDateShort(iso: string | null | undefined, fallback = "__/_
 
 export function formatEuros(amount: number | null | undefined, fallback = "____________"): string {
   if (amount === null || amount === undefined || isNaN(amount)) return fallback;
+  // fr-FR's thousands separator is U+202F (narrow no-break space), which
+  // several fonts render as a stray mark in the generated Word doc — plain
+  // space renders reliably everywhere and reads exactly the same.
   return (
-    amount.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
+    amount
+      .toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      .replace(/[  ]/g, " ") + " €"
   );
 }
 

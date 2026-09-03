@@ -3818,13 +3818,28 @@ function DetailField({
       <label className="block text-[10px] font-bold uppercase text-stone-400">
         <Bi fr={label} ru={labelRu} />
       </label>
-      <input
-        type={type}
-        className="input"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        list={listId}
-      />
+      {type === "number" ? (
+        // Uncontrolled + onBlur-commit: a live-controlled number input fights
+        // the browser's own comma-decimal handling mid-keystroke and can
+        // mangle the value (e.g. "1867,06" -> "18676") — see the same fix
+        // applied to the document-generation form's number fields.
+        <input
+          type="number"
+          step="any"
+          className="input"
+          defaultValue={value ?? ""}
+          key={`${label}-${value ?? ""}`}
+          onBlur={(e) => onChange(e.target.value.trim().replace(",", "."))}
+        />
+      ) : (
+        <input
+          type={type}
+          className="input"
+          value={value ?? ""}
+          onChange={(e) => onChange(e.target.value)}
+          list={listId}
+        />
+      )}
       {suggestions && (
         <datalist id={listId}>
           {suggestions.map((s) => (
