@@ -187,6 +187,12 @@ async function main() {
 
     const files = walk(full);
     console.log(`\n"${entry}" -> ${emp.last_name} ${emp.first_name} (${files.length} file(s))`);
+    const { data: existingDocs } = await supabase
+      .from("employee_documents")
+      .select("file_name")
+      .eq("employee_id", emp.id);
+    const alreadyUploaded = new Set((existingDocs ?? []).map((d) => d.file_name));
+
     for (const f of files) {
       const category = categorize(f.relPath);
       const displayName = f.relPath;
@@ -197,6 +203,9 @@ async function main() {
         console.log(`  [${category}${registreEntryId ? " · periode" : ""}] ${displayName}`);
         totalUploaded++;
         continue;
+      }
+      if (alreadyUploaded.has(displayName)) {
+        continue; // re-run safety: already uploaded in a previous pass
       }
       const storagePath = `${emp.id}/${category}/${uniqueFileToken()}_${sanitizeForStorageKey(f.relPath)}`;
       const buffer = fs.readFileSync(f.fullPath);
