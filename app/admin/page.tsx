@@ -9482,6 +9482,7 @@ type OrgEmployee = {
   category: "bureau" | "chantier";
   bureau_role: string | null;
   team_id: string | null;
+  secondary_team_id: string | null;
   teams: { name: string } | null;
   org_sort_order: number | null;
   badge_emoji: string | null;
@@ -9523,7 +9524,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji, can_substitute, hire_date"
+            "id, first_name, last_name, category, bureau_role, team_id, secondary_team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji, can_substitute, hire_date"
           )
           .eq("status", "active")
           .order("last_name"),
@@ -9591,9 +9592,21 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
     () => buildOrgGrid(bureauColumns, (e) => e.bureau_role, bureauEmployees),
     [bureauColumns, bureauEmployees]
   );
+  // Bureau staff with a "équipe rattachée" show up in that team's column too
+  // — same as the Effectif list — without joining chantierEmployees itself
+  // (payroll/pointage/turnover stats stay untouched, this is display-only).
+  const attachedBureau = useMemo(
+    () => bureauEmployees.filter((e) => e.secondary_team_id),
+    [bureauEmployees]
+  );
   const teamGrid = useMemo(
-    () => buildOrgGrid(teamColumns, (e) => e.team_id, chantierEmployees),
-    [teamColumns, chantierEmployees]
+    () =>
+      buildOrgGrid(
+        teamColumns,
+        (e) => (e.category === "bureau" ? e.secondary_team_id : e.team_id),
+        [...chantierEmployees, ...attachedBureau]
+      ),
+    [teamColumns, chantierEmployees, attachedBureau]
   );
   const teamChefMap = useMemo(
     () => new Map(teams.map((t) => [t.id, t.chef_employee_id])),
@@ -9795,11 +9808,15 @@ function OrgColumn({
               setOverIndex(null);
             }}
             onDrop={() => handleDrop(i)}
-            onClick={() => onToggleChef?.(e.id)}
-            title={onToggleChef ? "Cliquer pour désigner/retirer comme chef d'équipe / Нажмите, чтобы назначить/снять бригадира" : undefined}
+            onClick={() => e.category !== "bureau" && onToggleChef?.(e.id)}
+            title={
+              onToggleChef && e.category !== "bureau"
+                ? "Cliquer pour désigner/retirer comme chef d'équipe / Нажмите, чтобы назначить/снять бригадира"
+                : undefined
+            }
             className={`flex items-center gap-1 ${onReorder ? "cursor-grab active:cursor-grabbing" : ""} ${
               overIndex === i && dragIndex !== i ? "opacity-60" : ""
-            } ${onToggleChef ? "cursor-pointer" : ""}`}
+            } ${onToggleChef && e.category !== "bureau" ? "cursor-pointer" : ""}`}
           >
             <OrgTile
               label={orgTileLabel(e)}
