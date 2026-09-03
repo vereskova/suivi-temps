@@ -50,6 +50,7 @@ import {
   Plane,
   Plus,
   RefreshCw,
+  Repeat,
   Scale,
   Send,
   ShieldCheck,
@@ -135,6 +136,7 @@ type EmployeeFull = Employee & {
   end_date: string | null;
   badge_emoji: string | null;
   badge_label: string | null;
+  can_substitute: boolean;
 };
 
 type Team = { id: string; name: string; chef_employee_id: string | null };
@@ -144,6 +146,7 @@ type AbsenceType = { id: string; code: string; label: string };
 type PointageRow = {
   employee_id: string;
   work_date: string;
+  team_id: string | null;
   start_time: string | null;
   end_time: string | null;
   pause_minutes: number | null;
@@ -381,7 +384,7 @@ function monthRange(year: number, month: number) {
 }
 
 const POINTAGE_SELECT =
-  "employee_id, work_date, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label)";
+  "employee_id, work_date, team_id, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label)";
 
 type ViewKey =
   | "jour"
@@ -1119,6 +1122,8 @@ function JourView({
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [substitutes, setSubstitutes] = useState<Employee[]>([]);
+  const [addSubDraft, setAddSubDraft] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function load() {
@@ -1135,37 +1140,92 @@ function JourView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, refreshKey]);
 
+  useEffect(() => {
+    async function loadSubstitutes() {
+      const { data } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)")
+        .eq("can_substitute", true)
+        .eq("status", "active");
+      setSubstitutes((data as unknown as Employee[]) ?? []);
+    }
+    loadSubstitutes();
+  }, [supabase]);
+
   const byEmployee = useMemo(() => {
     const map = new Map<string, PointageRow>();
     rows.forEach((r) => map.set(r.employee_id, r));
     return map;
   }, [rows]);
 
+  const permanentIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
+
   const grouped = useMemo(() => {
-    const teams = new Map<string, Employee[]>();
+    const teams = new Map<string, { teamId: string | null; members: Employee[] }>();
     employees.forEach((e) => {
       const teamName = e.teams?.name ?? "Sans équipe";
-      if (!teams.has(teamName)) teams.set(teamName, []);
-      teams.get(teamName)!.push(e);
+      if (!teams.has(teamName)) teams.set(teamName, { teamId: e.team_id, members: [] });
+      teams.get(teamName)!.members.push(e);
     });
-    return Array.from(teams.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [employees]);
+    // Substitutes already logged for this day (pointage_entries.team_id) —
+    // shown even though they're not permanent members, so the card survives
+    // a reload/date-switch-and-back.
+    teams.forEach(({ teamId, members }) => {
+      if (!teamId) return;
+      rows
+        .filter((r) => r.team_id === teamId && !members.some((m) => m.id === r.employee_id))
+        .forEach((r) => {
+          const sub = substitutes.find((s) => s.id === r.employee_id);
+          if (sub) members.push({ ...sub, team_id: teamId });
+        });
+    });
+    return Array.from(teams.entries())
+      .map(([teamName, { teamId, members }]) => ({ teamName, teamId, members }))
+      .sort((a, b) => a.teamName.localeCompare(b.teamName));
+  }, [employees, rows, substitutes]);
 
   const teamOptions = useMemo(
-    () => grouped.map(([teamName]) => teamName),
+    () => grouped.map(({ teamName }) => teamName),
     [grouped]
   );
 
   const filteredGrouped = useMemo(() => {
     const q = search.trim().toLowerCase();
     return grouped
-      .filter(([teamName]) => teamFilter === "all" || teamName === teamFilter)
-      .map(([teamName, members]) => [
+      .filter(({ teamName }) => teamFilter === "all" || teamName === teamFilter)
+      .map(({ teamName, teamId, members }) => ({
         teamName,
-        q ? members.filter((m) => employeeName(m).toLowerCase().includes(q)) : members,
-      ] as [string, Employee[]])
-      .filter(([, members]) => members.length > 0);
+        teamId,
+        members: q ? members.filter((m) => employeeName(m).toLowerCase().includes(q)) : members,
+      }))
+      .filter(({ members }) => members.length > 0);
   }, [grouped, teamFilter, search]);
+
+  async function addSubstitute(teamId: string, teamName: string, employeeId: string) {
+    const { error } = await supabase
+      .from("pointage_entries")
+      .upsert({ work_date: date, team_id: teamId, employee_id: employeeId }, { onConflict: "work_date,employee_id" });
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setAddSubDraft((prev) => ({ ...prev, [teamName]: "" }));
+    setRefreshKey((k) => k + 1);
+  }
+
+  async function removeSubstitute(employeeId: string) {
+    if (!confirm("Retirer ce remplaçant de cette journée ?")) return;
+    const { error } = await supabase
+      .from("pointage_entries")
+      .delete()
+      .eq("work_date", date)
+      .eq("employee_id", employeeId);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
 
   function startEdit(e: Employee) {
     const r = byEmployee.get(e.id);
@@ -1277,9 +1337,40 @@ function JourView({
           <EmptyState titleRu="Нет результатов" description="Aucun résultat pour ces filtres." />
         </div>
       ) : (
-        filteredGrouped.map(([teamName, members]) => (
+        filteredGrouped.map(({ teamName, teamId, members }) => {
+          const availableSubs = substitutes.filter((s) => !members.some((m) => m.id === s.id));
+          return (
           <div key={teamName} className="card mb-4">
-            <p className="font-bold mb-3">{teamName}</p>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <p className="font-bold">{teamName}</p>
+              {teamId && availableSubs.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <select
+                    className="input text-xs py-1"
+                    style={{ width: "auto" }}
+                    value={addSubDraft[teamName] ?? ""}
+                    onChange={(ev) => setAddSubDraft((prev) => ({ ...prev, [teamName]: ev.target.value }))}
+                  >
+                    <option value="">
+                      + Ajouter un remplaçant / Добавить подменяющего
+                    </option>
+                    {availableSubs.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {employeeName(s)}
+                      </option>
+                    ))}
+                  </select>
+                  {addSubDraft[teamName] && (
+                    <button
+                      className="btn btn-secondary text-xs px-2 py-1"
+                      onClick={() => addSubstitute(teamId, teamName, addSubDraft[teamName])}
+                    >
+                      <Bi fr="Ajouter" ru="Добавить" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Mobile: stacked per-employee cards instead of an 8-column table. */}
             <div className="md:hidden space-y-2">
@@ -1365,8 +1456,23 @@ function JourView({
                 return (
                   <div key={e.id} className="rounded-xl border border-stone-100 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-semibold text-sm">{employeeName(e)}</p>
-                      <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e)} />
+                      <p className="font-semibold text-sm">
+                        {employeeName(e)}
+                        {!permanentIds.has(e.id) && (
+                          <span title="Remplaçant / Подменяет"><Repeat size={12} className="inline ml-1.5 text-primary-600" /></span>
+                        )}
+                      </p>
+                      <div className="flex shrink-0">
+                        <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(e)} />
+                        {!permanentIds.has(e.id) && (
+                          <RowAction
+                            icon={Trash2}
+                            title="Retirer ce remplaçant"
+                            titleRu="Убрать подменяющего"
+                            onClick={() => removeSubstitute(e.id)}
+                          />
+                        )}
+                      </div>
                     </div>
                     {!r ? (
                       <p className="text-stone-300 italic text-sm mt-1">
@@ -1517,6 +1623,9 @@ function JourView({
                     <tr key={e.id} className="border-t border-stone-100">
                       <td className="py-2 pr-4 font-semibold">
                         {employeeName(e)}
+                        {!permanentIds.has(e.id) && (
+                          <span title="Remplaçant / Подменяет"><Repeat size={12} className="inline ml-1.5 text-primary-600" /></span>
+                        )}
                       </td>
                       {!r ? (
                         <td colSpan={5} className="py-2 text-stone-300 italic">
@@ -1555,12 +1664,22 @@ function JourView({
                         {r ? "OK" : ""}
                       </td>
                       <td className="py-2">
-                        <RowAction
-                          icon={Pencil}
-                          title="Modifier"
-                          titleRu="Изменить"
-                          onClick={() => startEdit(e)}
-                        />
+                        <div className="flex">
+                          <RowAction
+                            icon={Pencil}
+                            title="Modifier"
+                            titleRu="Изменить"
+                            onClick={() => startEdit(e)}
+                          />
+                          {!permanentIds.has(e.id) && (
+                            <RowAction
+                              icon={Trash2}
+                              title="Retirer ce remplaçant"
+                              titleRu="Убрать подменяющего"
+                              onClick={() => removeSubstitute(e.id)}
+                            />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1569,7 +1688,8 @@ function JourView({
             </table>
             </div>
           </div>
-        ))
+          );
+        })
       )}
     </div>
   );
@@ -2346,13 +2466,13 @@ const STATUS_LABELS: Record<EmployeeStatus, string> = {
   active: "Actif",
   on_leave: "En congé",
   terminated: "Sorti",
-  unclear: "Statut incertain",
+  unclear: "Inactif",
 };
 const STATUS_LABELS_RU: Record<EmployeeStatus, string> = {
   active: "Активен",
   on_leave: "В отпуске",
   terminated: "Уволен",
-  unclear: "Статус неизвестен",
+  unclear: "Неактивен",
 };
 
 type EmployeeEditForm = {
@@ -2405,7 +2525,7 @@ function EmployeesView({
       const { data } = await supabase
         .from("employees")
         .select(
-          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, badge_emoji, badge_label, teams!employees_team_id_fkey(name)"
+          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, badge_emoji, badge_label, can_substitute, teams!employees_team_id_fkey(name)"
         )
         .order("category")
         .order("status")
@@ -2487,6 +2607,13 @@ function EmployeesView({
       return BUREAU_ROLE_LABELS[e.bureau_role ?? ""] ?? "Bureau";
     }
     return e.team_id ? teamsById.get(e.team_id) ?? "—" : "—";
+  }
+
+  function teamNumberLabel(e: EmployeeFull): string | null {
+    if (!e.team_id) return null;
+    const name = teamsById.get(e.team_id);
+    const m = name?.match(/\d+/);
+    return m ? m[0] : null;
   }
 
   function startEdit(e: EmployeeFull) {
@@ -2617,7 +2744,7 @@ function EmployeesView({
                 : "bg-error-100 text-error-800"
             }`}
           >
-            {counts.unclear} statut incertain <span className="opacity-70">/ статус неизвестен</span>
+            {counts.unclear} inactifs <span className="opacity-70">/ неактивны</span>
           </button>
           <button
             onClick={() => setStatusFilter("all")}
@@ -2758,9 +2885,19 @@ function EmployeesView({
                 <div key={e.id} className={`rounded-xl border border-stone-100 p-3 ${chantierRowColor(e)}`}>
                   <div className="flex items-start justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 font-semibold">
+                      {teamNumberLabel(e) && (
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-stone-100 text-[10px] font-bold text-stone-500 shrink-0">
+                          {teamNumberLabel(e)}
+                        </span>
+                      )}
                       {isChef(e) && <Crown size={13} className="shrink-0 fill-current text-success-600" />}
                       {employeeName(e)}
                       {e.badge_emoji && <span title={e.badge_label ?? undefined}>{e.badge_emoji}</span>}
+                      {e.can_substitute && (
+                        <span title="Remplace parfois sur chantier / Иногда подменяет на объекте">
+                          <Repeat size={13} className="shrink-0 text-primary-600" />
+                        </span>
+                      )}
                       <TrialBadge hireDate={e.hire_date} />
                     </span>
                     {!isEditing && (
@@ -2900,6 +3037,11 @@ function EmployeesView({
                   <tr className={`border-t border-stone-100 ${chantierRowColor(e)}`}>
                     <td className="py-2 pr-4 font-semibold">
                       <span className="inline-flex items-center gap-1.5">
+                        {teamNumberLabel(e) && (
+                          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-stone-100 text-[10px] font-bold text-stone-500 shrink-0">
+                            {teamNumberLabel(e)}
+                          </span>
+                        )}
                         {isChef(e) && (
                           <Crown
                             size={13}
@@ -2909,6 +3051,11 @@ function EmployeesView({
                         {employeeName(e)}
                         {e.badge_emoji && (
                           <span title={e.badge_label ?? undefined}>{e.badge_emoji}</span>
+                        )}
+                        {e.can_substitute && (
+                          <span title="Remplace parfois sur chantier / Иногда подменяет на объекте">
+                            <Repeat size={13} className="shrink-0 text-primary-600" />
+                          </span>
                         )}
                         <TrialBadge hireDate={e.hire_date} />
                       </span>
@@ -3149,6 +3296,7 @@ type EmployeeProfileFields = {
   weekly_hours: number | null;
   badge_emoji: string | null;
   badge_label: string | null;
+  can_substitute: boolean;
 };
 
 type ConfidentialFields = {
@@ -3249,7 +3397,7 @@ function EmployeeDetailPanel({
       const empPromise = supabase
         .from("employees")
         .select(
-          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label"
+          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute"
         )
         .eq("id", employeeId)
         .single();
@@ -3350,6 +3498,14 @@ function EmployeeDetailPanel({
           value={profile.badge_label}
           onChange={(v) => setProfile({ ...profile, badge_label: v })}
         />
+        <label className="flex items-center gap-2 text-sm font-bold md:col-span-2">
+          <input
+            type="checkbox"
+            checked={profile.can_substitute}
+            onChange={(ev) => setProfile({ ...profile, can_substitute: ev.target.checked })}
+          />
+          <Bi fr="Peut remplacer sur chantier" ru="Может подменять на объекте" />
+        </label>
       </DetailSection>
 
       <DetailSection title="Identité" titleRu="Личные данные">
@@ -4444,7 +4600,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
             >
               <option value="active">Actifs / Активны</option>
               <option value="on_leave">En congé / В отпуске</option>
-              <option value="unclear">Statut incertain / Статус неизвестен</option>
+              <option value="unclear">Inactif / Неактивен</option>
               <option value="terminated">Sortis / Уволены</option>
               <option value="all">Tous / Все</option>
             </select>
@@ -5442,7 +5598,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
           <option value="active">Actifs / Активны</option>
           <option value="on_leave">En congé / В отпуске</option>
           <option value="terminated">Sortis / Уволены</option>
-          <option value="unclear">Statut incertain / Статус неизвестен</option>
+          <option value="unclear">Inactif / Неактивен</option>
           <option value="all">Tous / Все</option>
         </select>
 
@@ -5894,7 +6050,7 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <option value="active">Actifs / Активны</option>
           <option value="on_leave">En congé / В отпуске</option>
           <option value="terminated">Sortis / Уволены</option>
-          <option value="unclear">Statut incertain / Статус неизвестен</option>
+          <option value="unclear">Inactif / Неактивен</option>
           <option value="all">Tous / Все</option>
         </select>
         {loadingEmployees ? (
@@ -8414,9 +8570,9 @@ function DashboardsView({
               <button
                 type="button"
                 className="underline underline-offset-2 hover:no-underline"
-                onClick={() => setDrillDown({ title: "Statut incertain / Статус неизвестен", employees: caveats.unclear })}
+                onClick={() => setDrillDown({ title: "Inactif / Неактивен", employees: caveats.unclear })}
               >
-                {caveats.unclear.length} au statut incertain (exclus des départs)
+                {caveats.unclear.length} inactifs (exclus des départs)
               </button>
             </>
           )}
@@ -9223,6 +9379,11 @@ function teamLabelRu(name: string): string {
   return name.replace(/^équipe/i, "Бригада").replace(/^equipe/i, "Бригада");
 }
 
+function orgTileLabel(e: OrgEmployee): string {
+  const suffix = [e.badge_emoji, e.can_substitute ? "🔁" : null].filter(Boolean).join(" ");
+  return suffix ? `${employeeName(e)} ${suffix}` : employeeName(e);
+}
+
 type OrgEmployee = {
   id: string;
   first_name: string;
@@ -9233,6 +9394,7 @@ type OrgEmployee = {
   teams: { name: string } | null;
   org_sort_order: number | null;
   badge_emoji: string | null;
+  can_substitute: boolean;
   hire_date: string | null;
 };
 
@@ -9270,7 +9432,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji, hire_date"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name), org_sort_order, badge_emoji, can_substitute, hire_date"
           )
           .eq("status", "active")
           .order("last_name"),
@@ -9429,7 +9591,7 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
             {[...unassignedBureau, ...unassignedChantier].map((e) => (
               <OrgTile
                 key={e.id}
-                label={e.badge_emoji ? `${employeeName(e)} ${e.badge_emoji}` : employeeName(e)}
+                label={orgTileLabel(e)}
                 tone="member"
                 trialHireDate={e.hire_date}
               />
@@ -9549,7 +9711,7 @@ function OrgColumn({
             } ${onToggleChef ? "cursor-pointer" : ""}`}
           >
             <OrgTile
-              label={e.badge_emoji ? `${employeeName(e)} ${e.badge_emoji}` : employeeName(e)}
+              label={orgTileLabel(e)}
               tone={
                 e.bureau_role === "boss"
                   ? "boss"
@@ -11878,7 +12040,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <option value="active">Actifs / Активны</option>
           <option value="on_leave">En congé / В отпуске</option>
           <option value="terminated">Sortis / Уволены</option>
-          <option value="unclear">Statut incertain / Статус неизвестен</option>
+          <option value="unclear">Inactif / Неактивен</option>
           <option value="all">Tous / Все</option>
         </select>
         {loadingEmployees ? (

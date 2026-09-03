@@ -56,6 +56,8 @@ export default function Home() {
   const [selectedTeamId, setSelectedTeamId] = useState("");
   const [status, setStatus] = useState("");
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
+  const [substitutes, setSubstitutes] = useState<{ id: string; name: string }[]>([]);
+  const [substituteDraft, setSubstituteDraft] = useState("");
 
   useEffect(() => {
     async function init() {
@@ -79,12 +81,35 @@ export default function Home() {
         .order("label");
       setAbsenceTypes(absenceRows ?? []);
 
+      // Bureau staff who occasionally fill in for someone on a chantier team
+      // — not tied to any one team (their permanent team_id is null), so
+      // they're offered regardless of which team is currently selected.
+      const { data: subRows } = await supabase
+        .from("pointage_roster")
+        .select("id, first_name, last_name, team_id")
+        .is("team_id", null)
+        .eq("status", "active");
+      setSubstitutes(
+        (subRows ?? []).map((e) => ({ id: e.id, name: `${e.last_name} ${e.first_name}`.trim() }))
+      );
+
       setLoading(false);
     }
 
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function addSubstitute() {
+    if (!substituteDraft) return;
+    const sub = substitutes.find((s) => s.id === substituteDraft);
+    if (!sub || workers.some((w) => w.employeeId === sub.id)) return;
+    setWorkers((prev) => [
+      ...prev,
+      { employeeId: sub.id, name: sub.name, start: "", end: "", pause: "", extra: "", absent: false, absenceTypeId: "" },
+    ]);
+    setSubstituteDraft("");
+  }
 
   async function changeTeam(teamId: string) {
     if (!teamId) return;
@@ -277,6 +302,30 @@ export default function Home() {
             <span className="block text-xs font-normal opacity-80">Стандарт</span>
           </button>
         </div>
+
+        {selectedTeamId && substitutes.filter((s) => !workers.some((w) => w.employeeId === s.id)).length > 0 && (
+          <div className="mt-4 flex items-center gap-2">
+            <select
+              className="input"
+              value={substituteDraft}
+              onChange={(e) => setSubstituteDraft(e.target.value)}
+            >
+              <option value="">+ Ajouter un remplaçant / Добавить подменяющего</option>
+              {substitutes
+                .filter((s) => !workers.some((w) => w.employeeId === s.id))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+            </select>
+            {substituteDraft && (
+              <button onClick={addSubstitute} className="btn btn-secondary shrink-0">
+                +
+              </button>
+            )}
+          </div>
+        )}
 
         {workers.length === 0 && (
           <div className="mt-6 rounded-2xl bg-stone-50">
