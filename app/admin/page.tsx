@@ -12397,7 +12397,13 @@ type MaintenanceVisit = {
   provider: string | null;
   notes: string | null;
 };
-type MaintenanceVisitItem = { id: string; visit_id: string; component_code: string; done: boolean };
+type MaintenanceVisitItem = {
+  id: string;
+  visit_id: string;
+  component_code: string | null;
+  custom_label: string | null;
+  done: boolean;
+};
 type VehicleDocCategory = { code: string; label: string; sort_order: number };
 type VehicleDocRow = {
   id: string;
@@ -12410,7 +12416,8 @@ type VehicleDocRow = {
 };
 
 function vehicleLabel(v: VehicleRow) {
-  return [v.brand, v.model].filter(Boolean).join(" ") || "—";
+  const brandModel = [v.brand, v.model].filter(Boolean).join(" ");
+  return brandModel || VEHICLE_TYPE_LABEL[v.vehicle_type];
 }
 
 function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -12435,6 +12442,8 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
   const [visitProvider, setVisitProvider] = useState("");
   const [visitNotes, setVisitNotes] = useState("");
   const [visitChecklist, setVisitChecklist] = useState<Record<string, boolean>>({});
+  const [customItems, setCustomItems] = useState<{ label: string; done: boolean }[]>([]);
+  const [customItemDraft, setCustomItemDraft] = useState("");
   const [savingVisit, setSavingVisit] = useState(false);
 
   useEffect(() => {
@@ -12467,7 +12476,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
     }
     const { data: items } = await supabase
       .from("vehicle_maintenance_visit_items")
-      .select("id, visit_id, component_code, done")
+      .select("id, visit_id, component_code, custom_label, done")
       .in(
         "visit_id",
         rows.map((r) => r.id)
@@ -12534,7 +12543,16 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
     setVisitProvider("");
     setVisitNotes("");
     setVisitChecklist(Object.fromEntries(components.map((c) => [c.code, false])));
+    setCustomItems([]);
+    setCustomItemDraft("");
     setShowVisitModal(true);
+  }
+
+  function addCustomItem() {
+    const label = customItemDraft.trim();
+    if (!label) return;
+    setCustomItems((prev) => [...prev, { label, done: true }]);
+    setCustomItemDraft("");
   }
 
   async function saveVisit() {
@@ -12557,11 +12575,20 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
       toast.error("Erreur : " + (error?.message ?? "inconnue"));
       return;
     }
-    const itemRows = components.map((c) => ({
-      visit_id: visit.id,
-      component_code: c.code,
-      done: visitChecklist[c.code] ?? false,
-    }));
+    const itemRows = [
+      ...components.map((c) => ({
+        visit_id: visit.id,
+        component_code: c.code,
+        custom_label: null,
+        done: visitChecklist[c.code] ?? false,
+      })),
+      ...customItems.map((item) => ({
+        visit_id: visit.id,
+        component_code: null,
+        custom_label: item.label,
+        done: item.done,
+      })),
+    ];
     const { error: itemsError } = await supabase.from("vehicle_maintenance_visit_items").insert(itemRows);
     if (itemsError) {
       setSavingVisit(false);
@@ -12935,6 +12962,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   <div className="space-y-3">
                     {visits.map((visit) => {
                       const items = visitItems.filter((it) => it.visit_id === visit.id);
+                      const customVisitItems = items.filter((it) => it.component_code === null);
                       const doneCount = items.filter((it) => it.done).length;
                       return (
                         <div key={visit.id} className="rounded-xl border border-stone-100 p-3">
@@ -12946,7 +12974,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                             </p>
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-stone-400">
-                                {doneCount}/{components.length}
+                                {doneCount}/{items.length}
                               </span>
                               <button onClick={() => deleteVisit(visit.id)} className="text-stone-300 hover:text-error-600">
                                 <Trash2 size={14} />
@@ -12965,6 +12993,19 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                                   }`}
                                 >
                                   <Icon size={13} /> {c.label}
+                                </span>
+                              );
+                            })}
+                            {customVisitItems.map((item) => {
+                              const Icon = item.done ? SquareCheck : Square;
+                              return (
+                                <span
+                                  key={item.id}
+                                  className={`flex items-center gap-1 text-xs ${
+                                    item.done ? "text-success-600" : "text-stone-300"
+                                  }`}
+                                >
+                                  <Icon size={13} /> {item.custom_label}
                                 </span>
                               );
                             })}
@@ -13090,6 +13131,48 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
               {c.label}
             </button>
           ))}
+          {customItems.map((item, idx) => (
+            <button
+              key={`custom-${idx}`}
+              type="button"
+              onClick={() =>
+                setCustomItems((prev) => prev.map((it, i) => (i === idx ? { ...it, done: !it.done } : it)))
+              }
+              className={`flex items-center gap-2 text-sm text-left px-2 py-1 rounded-lg hover:bg-stone-50 ${
+                item.done ? "text-success-600" : "text-stone-500"
+              }`}
+            >
+              {item.done ? <SquareCheck size={15} /> : <Square size={15} />}
+              <span className="truncate">{item.label}</span>
+              <span
+                role="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCustomItems((prev) => prev.filter((_, i) => i !== idx));
+                }}
+                className="ml-auto shrink-0 text-stone-300 hover:text-error-600"
+              >
+                <X size={13} />
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 mb-4">
+          <input
+            className="input text-sm"
+            placeholder="Ajouter un point personnalisé… / Добавить свой пункт…"
+            value={customItemDraft}
+            onChange={(e) => setCustomItemDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addCustomItem();
+              }
+            }}
+          />
+          <button type="button" className="btn btn-secondary text-sm shrink-0" onClick={addCustomItem}>
+            <Plus size={15} /> <Bi fr="Ajouter" ru="Добавить" />
+          </button>
         </div>
         <label className="text-sm font-bold block mb-3">
           Notes

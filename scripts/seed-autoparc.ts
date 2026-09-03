@@ -374,6 +374,18 @@ async function main() {
           if (itemsError) console.error(`  ✗ ${plate} @ ${visit.visitDate} items: ${itemsError.message}`);
         }
       }
+      // Keep the vehicle's own mileage in sync with the latest visit that
+      // actually recorded one — same thing the UI's "Add visit" does.
+      const latestWithMileage = [...visits]
+        .filter((v) => v.mileageKm !== null)
+        .sort((a, b) => b.visitDate.localeCompare(a.visitDate))[0];
+      if (latestWithMileage) {
+        const { error: mileageError } = await supabase
+          .from("vehicles")
+          .update({ mileage_km: latestWithMileage.mileageKm, mileage_updated_at: latestWithMileage.visitDate })
+          .eq("id", id);
+        if (mileageError) console.error(`  ✗ ${plate} mileage update: ${mileageError.message}`);
+      }
     }
   }
   console.log(`\n${dryRun ? "Would insert" : "Inserted"} ${totalVisits} maintenance visits total.`);
