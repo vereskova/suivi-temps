@@ -2477,6 +2477,7 @@ const STATUS_LABELS_RU: Record<EmployeeStatus, string> = {
 
 type EmployeeEditForm = {
   teamId: string;
+  bureauRole: string;
   status: EmployeeStatus;
   endDate: string;
 };
@@ -2620,6 +2621,7 @@ function EmployeesView({
     setEditingId(e.id);
     setEditForm({
       teamId: e.team_id ?? "",
+      bureauRole: e.bureau_role ?? "",
       status: e.status,
       endDate: e.end_date ?? "",
     });
@@ -2631,7 +2633,9 @@ function EmployeesView({
     const { error } = await supabase
       .from("employees")
       .update({
-        team_id: editForm.teamId || null,
+        ...(e.category === "bureau"
+          ? { bureau_role: editForm.bureauRole || null }
+          : { team_id: editForm.teamId || null }),
         status: editForm.status,
         end_date:
           editForm.status === "terminated" || editForm.status === "on_leave" || editForm.status === "unclear"
@@ -2926,19 +2930,39 @@ function EmployeesView({
                   {isEditing && editForm ? (
                     <div className="space-y-2 mt-2">
                       <label className="block text-xs font-bold text-stone-400">
-                        {sectionLabel === "Bureau" ? <Bi fr="Poste" ru="Должность" /> : <Bi fr="Équipe" ru="Бригада" />}
-                        <select
-                          className="input text-sm mt-1"
-                          value={editForm.teamId}
-                          onChange={(ev) => setEditForm({ ...editForm, teamId: ev.target.value })}
-                        >
-                          <option value="">—</option>
-                          {teams.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </select>
+                        {sectionLabel === "Bureau" ? (
+                          <>
+                            <Bi fr="Poste" ru="Должность" />
+                            <select
+                              className="input text-sm mt-1"
+                              value={editForm.bureauRole}
+                              onChange={(ev) => setEditForm({ ...editForm, bureauRole: ev.target.value })}
+                            >
+                              <option value="">—</option>
+                              {BUREAU_ROLE_ORDER.map((role) => (
+                                <option key={role} value={role}>
+                                  {BUREAU_ROLE_LABELS[role]}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        ) : (
+                          <>
+                            <Bi fr="Équipe" ru="Бригада" />
+                            <select
+                              className="input text-sm mt-1"
+                              value={editForm.teamId}
+                              onChange={(ev) => setEditForm({ ...editForm, teamId: ev.target.value })}
+                            >
+                              <option value="">—</option>
+                              {teams.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                          </>
+                        )}
                       </label>
                       <label className="block text-xs font-bold text-stone-400">
                         <Bi fr="Statut" ru="Статус" />
@@ -3063,21 +3087,39 @@ function EmployeesView({
                     {isEditing && editForm ? (
                       <>
                         <td className="py-2 pr-4">
-                          <select
-                            className="input text-sm px-2 py-1"
-                            style={{ width: "auto" }}
-                            value={editForm.teamId}
-                            onChange={(ev) =>
-                              setEditForm({ ...editForm, teamId: ev.target.value })
-                            }
-                          >
-                            <option value="">—</option>
-                            {teams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
+                          {e.category === "bureau" ? (
+                            <select
+                              className="input text-sm px-2 py-1"
+                              style={{ width: "auto" }}
+                              value={editForm.bureauRole}
+                              onChange={(ev) =>
+                                setEditForm({ ...editForm, bureauRole: ev.target.value })
+                              }
+                            >
+                              <option value="">—</option>
+                              {BUREAU_ROLE_ORDER.map((role) => (
+                                <option key={role} value={role}>
+                                  {BUREAU_ROLE_LABELS[role]}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <select
+                              className="input text-sm px-2 py-1"
+                              style={{ width: "auto" }}
+                              value={editForm.teamId}
+                              onChange={(ev) =>
+                                setEditForm({ ...editForm, teamId: ev.target.value })
+                              }
+                            >
+                              <option value="">—</option>
+                              {teams.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </td>
                         <td className="py-2 pr-4">
                           <select
