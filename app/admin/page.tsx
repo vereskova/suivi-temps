@@ -57,6 +57,7 @@ import {
   Square,
   SquareCheck,
   Trash2,
+  Truck,
   Upload,
   User,
   Users,
@@ -401,6 +402,7 @@ type ViewKey =
   | "paie"
   | "dashboards"
   | "commercial"
+  | "autoparc"
   | "audit";
 
 type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon };
@@ -450,6 +452,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Commercial",
     items: [{ key: "commercial", label: "Commercial", labelRu: "Коммерция", icon: Briefcase }],
+  },
+  {
+    title: "Autoparc",
+    items: [{ key: "autoparc", label: "Autoparc", labelRu: "Автопарк", icon: Truck }],
   },
 ];
 
@@ -841,7 +847,11 @@ export default function AdminPage() {
           .map((g) => ({
             ...g,
             items: g.items.filter(
-              (item) => item.key !== "paie" && item.key !== "commercial" && item.key !== "audit"
+              (item) =>
+                item.key !== "paie" &&
+                item.key !== "commercial" &&
+                item.key !== "autoparc" &&
+                item.key !== "audit"
             ),
           }))
           .filter((g) => g.items.length > 0)
@@ -1003,6 +1013,7 @@ export default function AdminPage() {
             {view === "paie" && <PaieView supabase={supabase} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialView supabase={supabase} />}
+            {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
           </div>
         </div>
@@ -12321,6 +12332,777 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
             </div>
           </>
         )}
+      </Modal>
+    </div>
+  );
+}
+
+// ============================== Autoparc ==============================
+
+const AUTOPARK_BUCKET = "autopark-documents";
+
+type VehicleType = "van" | "car" | "trailer" | "heavy_equipment" | "other";
+type VehicleStatus = "active" | "sold" | "stolen" | "archived";
+
+type VehicleRow = {
+  id: string;
+  plate: string;
+  plate_old: string | null;
+  vin: string | null;
+  brand: string | null;
+  model: string | null;
+  vehicle_type: VehicleType;
+  assigned_label: string | null;
+  status: VehicleStatus;
+  mileage_km: number | null;
+  mileage_updated_at: string | null;
+  has_warranty: boolean | null;
+  warranty_until: string | null;
+  ct_due_date: string | null;
+  insurer_name: string | null;
+  insurance_contract_number: string | null;
+  insurance_annual_premium: number | null;
+  insurance_end_date: string | null;
+  leasing_company: string | null;
+  leasing_contract_number: string | null;
+  leasing_monthly_payment: number | null;
+  leasing_end_date: string | null;
+  notes: string | null;
+};
+
+const VEHICLE_SELECT =
+  "id, plate, plate_old, vin, brand, model, vehicle_type, assigned_label, status, mileage_km, mileage_updated_at, has_warranty, warranty_until, ct_due_date, insurer_name, insurance_contract_number, insurance_annual_premium, insurance_end_date, leasing_company, leasing_contract_number, leasing_monthly_payment, leasing_end_date, notes";
+
+const VEHICLE_TYPE_LABEL: Record<VehicleType, string> = {
+  van: "Utilitaire / Фургон",
+  car: "Voiture / Легковая",
+  trailer: "Remorque / Прицеп",
+  heavy_equipment: "Engin / Спецтехника",
+  other: "Autre / Другое",
+};
+
+const VEHICLE_STATUS_LABEL: Record<VehicleStatus, { label: string; className: string }> = {
+  active: { label: "Actif / Активна", className: "text-stone-700" },
+  sold: { label: "Vendu / Продана", className: "text-stone-400" },
+  stolen: { label: "Volé / Угнана", className: "text-error-600 font-semibold" },
+  archived: { label: "Archivé / В архиве", className: "text-stone-400" },
+};
+
+type MaintenanceComponent = { code: string; label: string; sort_order: number };
+type MaintenanceVisit = {
+  id: string;
+  vehicle_id: string;
+  visit_date: string;
+  mileage_km: number | null;
+  provider: string | null;
+  notes: string | null;
+};
+type MaintenanceVisitItem = { id: string; visit_id: string; component_code: string; done: boolean };
+type VehicleDocCategory = { code: string; label: string; sort_order: number };
+type VehicleDocRow = {
+  id: string;
+  vehicle_id: string;
+  category_code: string;
+  file_name: string;
+  storage_path: string;
+  file_size: number | null;
+  created_at: string;
+};
+
+function vehicleLabel(v: VehicleRow) {
+  return [v.brand, v.model].filter(Boolean).join(" ") || "—";
+}
+
+function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [search, setSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<VehicleType | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<VehicleStatus | "all">("active");
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+
+  const [components, setComponents] = useState<MaintenanceComponent[]>([]);
+  const [docCategories, setDocCategories] = useState<VehicleDocCategory[]>([]);
+  const [visits, setVisits] = useState<MaintenanceVisit[]>([]);
+  const [visitItems, setVisitItems] = useState<MaintenanceVisitItem[]>([]);
+  const [documents, setDocuments] = useState<VehicleDocRow[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [showVisitModal, setShowVisitModal] = useState(false);
+  const [visitDate, setVisitDate] = useState(() => today());
+  const [visitMileage, setVisitMileage] = useState("");
+  const [visitProvider, setVisitProvider] = useState("");
+  const [visitNotes, setVisitNotes] = useState("");
+  const [visitChecklist, setVisitChecklist] = useState<Record<string, boolean>>({});
+  const [savingVisit, setSavingVisit] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoadingList(true);
+      const [{ data: v }, { data: comps }, { data: cats }] = await Promise.all([
+        supabase.from("vehicles").select(VEHICLE_SELECT).order("plate"),
+        supabase.from("vehicle_maintenance_components").select("code, label, sort_order").order("sort_order"),
+        supabase.from("vehicle_document_categories").select("code, label, sort_order").order("sort_order"),
+      ]);
+      setVehicles((v as VehicleRow[]) ?? []);
+      setComponents((comps as MaintenanceComponent[]) ?? []);
+      setDocCategories((cats as VehicleDocCategory[]) ?? []);
+      setLoadingList(false);
+    }
+    load();
+  }, [supabase]);
+
+  async function reloadVisits(vehicleId: string) {
+    const { data: v } = await supabase
+      .from("vehicle_maintenance_visits")
+      .select("id, vehicle_id, visit_date, mileage_km, provider, notes")
+      .eq("vehicle_id", vehicleId)
+      .order("visit_date", { ascending: false });
+    const rows = (v as MaintenanceVisit[]) ?? [];
+    setVisits(rows);
+    if (rows.length === 0) {
+      setVisitItems([]);
+      return;
+    }
+    const { data: items } = await supabase
+      .from("vehicle_maintenance_visit_items")
+      .select("id, visit_id, component_code, done")
+      .in(
+        "visit_id",
+        rows.map((r) => r.id)
+      );
+    setVisitItems((items as MaintenanceVisitItem[]) ?? []);
+  }
+
+  async function reloadDocuments(vehicleId: string) {
+    const { data } = await supabase
+      .from("vehicle_documents")
+      .select("id, vehicle_id, category_code, file_name, storage_path, file_size, created_at")
+      .eq("vehicle_id", vehicleId)
+      .order("created_at", { ascending: false });
+    setDocuments((data as VehicleDocRow[]) ?? []);
+  }
+
+  useEffect(() => {
+    async function loadDetail() {
+      if (!selectedVehicleId) {
+        setVisits([]);
+        setVisitItems([]);
+        setDocuments([]);
+        return;
+      }
+      setLoadingDetail(true);
+      await Promise.all([reloadVisits(selectedVehicleId), reloadDocuments(selectedVehicleId)]);
+      setLoadingDetail(false);
+    }
+    loadDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, selectedVehicleId]);
+
+  const filteredVehicles = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return vehicles.filter((v) => {
+      if (statusFilter !== "all" && v.status !== statusFilter) return false;
+      if (typeFilter !== "all" && v.vehicle_type !== typeFilter) return false;
+      if (
+        q &&
+        !v.plate.toLowerCase().includes(q) &&
+        !vehicleLabel(v).toLowerCase().includes(q) &&
+        !(v.vin ?? "").toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [vehicles, statusFilter, typeFilter, search]);
+
+  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) ?? null;
+
+  async function updateVehicleField<K extends keyof VehicleRow>(field: K, value: VehicleRow[K]) {
+    if (!selectedVehicleId) return;
+    setVehicles((prev) => prev.map((v) => (v.id === selectedVehicleId ? { ...v, [field]: value } : v)));
+    const { error } = await supabase
+      .from("vehicles")
+      .update({ [field]: value })
+      .eq("id", selectedVehicleId);
+    if (error) toast.error("Erreur : " + error.message);
+  }
+
+  function openAddVisit() {
+    setVisitDate(today());
+    setVisitMileage(selectedVehicle?.mileage_km ? String(selectedVehicle.mileage_km) : "");
+    setVisitProvider("");
+    setVisitNotes("");
+    setVisitChecklist(Object.fromEntries(components.map((c) => [c.code, false])));
+    setShowVisitModal(true);
+  }
+
+  async function saveVisit() {
+    if (!selectedVehicleId) return;
+    setSavingVisit(true);
+    const mileage = visitMileage.trim() === "" ? null : Number(visitMileage.trim().replace(",", "."));
+    const { data: visit, error } = await supabase
+      .from("vehicle_maintenance_visits")
+      .insert({
+        vehicle_id: selectedVehicleId,
+        visit_date: visitDate,
+        mileage_km: mileage,
+        provider: visitProvider.trim() || null,
+        notes: visitNotes.trim() || null,
+      })
+      .select("id")
+      .single();
+    if (error || !visit) {
+      setSavingVisit(false);
+      toast.error("Erreur : " + (error?.message ?? "inconnue"));
+      return;
+    }
+    const itemRows = components.map((c) => ({
+      visit_id: visit.id,
+      component_code: c.code,
+      done: visitChecklist[c.code] ?? false,
+    }));
+    const { error: itemsError } = await supabase.from("vehicle_maintenance_visit_items").insert(itemRows);
+    if (itemsError) {
+      setSavingVisit(false);
+      toast.error("Erreur : " + itemsError.message);
+      return;
+    }
+    if (mileage !== null) {
+      await updateVehicleField("mileage_km", mileage);
+      await updateVehicleField("mileage_updated_at", visitDate);
+    }
+    setSavingVisit(false);
+    setShowVisitModal(false);
+    await reloadVisits(selectedVehicleId);
+    toast.success("Visite ajoutée");
+  }
+
+  async function deleteVisit(id: string) {
+    if (!selectedVehicleId) return;
+    if (!confirm("Supprimer cette visite ?")) return;
+    const { error } = await supabase.from("vehicle_maintenance_visits").delete().eq("id", id);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    await reloadVisits(selectedVehicleId);
+  }
+
+  async function uploadDoc(categoryCode: string, file: File) {
+    if (!selectedVehicleId) return;
+    setUploadingKey(categoryCode);
+    const path = `${selectedVehicleId}/${categoryCode}/${uniqueFileToken()}_${file.name}`;
+    const { error: uploadError } = await supabase.storage.from(AUTOPARK_BUCKET).upload(path, file);
+    if (uploadError) {
+      setUploadingKey(null);
+      toast.error("Erreur d'envoi : " + uploadError.message);
+      return;
+    }
+    const { error: insertError } = await supabase.from("vehicle_documents").insert({
+      vehicle_id: selectedVehicleId,
+      category_code: categoryCode,
+      file_name: file.name,
+      storage_path: path,
+      file_size: file.size,
+      mime_type: file.type || null,
+    });
+    setUploadingKey(null);
+    if (insertError) {
+      toast.error("Erreur : " + insertError.message);
+      return;
+    }
+    await reloadDocuments(selectedVehicleId);
+    toast.success("Document ajouté");
+  }
+
+  async function downloadDoc(doc: VehicleDocRow) {
+    const { data, error } = await supabase.storage.from(AUTOPARK_BUCKET).download(doc.storage_path);
+    if (error || !data) {
+      toast.error("Erreur de téléchargement : " + (error?.message ?? "fichier introuvable"));
+      return;
+    }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.file_name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function previewDoc(doc: VehicleDocRow) {
+    const { data, error } = await supabase.storage.from(AUTOPARK_BUCKET).createSignedUrl(doc.storage_path, 60);
+    if (error || !data) {
+      toast.error("Erreur d'aperçu : " + (error?.message ?? "fichier introuvable"));
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function deleteDoc(doc: VehicleDocRow) {
+    if (!selectedVehicleId) return;
+    if (!confirm(`Supprimer « ${doc.file_name} » ?`)) return;
+    const { error: storageError } = await supabase.storage.from(AUTOPARK_BUCKET).remove([doc.storage_path]);
+    if (storageError) {
+      toast.error("Erreur : " + storageError.message);
+      return;
+    }
+    const { error: dbError } = await supabase.from("vehicle_documents").delete().eq("id", doc.id);
+    if (dbError) {
+      toast.error("Erreur : " + dbError.message);
+      return;
+    }
+    await reloadDocuments(selectedVehicleId);
+    toast.success("Document supprimé");
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold">
+          Autoparc <span className="text-base font-normal text-stone-400">/ Автопарк</span>
+        </h1>
+      </div>
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="md:w-72 shrink-0 space-y-3">
+          <input
+            className="input"
+            placeholder="Plaque, modèle, VIN…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <select
+              className="input text-sm"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as VehicleType | "all")}
+            >
+              <option value="all">Tous types</option>
+              {(Object.keys(VEHICLE_TYPE_LABEL) as VehicleType[]).map((t) => (
+                <option key={t} value={t}>
+                  {VEHICLE_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input text-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as VehicleStatus | "all")}
+            >
+              <option value="active">Actifs</option>
+              <option value="all">Tous statuts</option>
+              <option value="sold">Vendus</option>
+              <option value="stolen">Volés</option>
+              <option value="archived">Archivés</option>
+            </select>
+          </div>
+          {loadingList ? (
+            <SkeletonRows rows={6} cols={1} />
+          ) : (
+            <div className="space-y-1 max-h-[70vh] overflow-y-auto">
+              {filteredVehicles.map((v) => {
+                const ctUrgency = dateUrgency(v.ct_due_date);
+                const insUrgency = dateUrgency(v.insurance_end_date);
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setSelectedVehicleId(v.id)}
+                    className={`w-full text-left rounded-xl px-3 py-2 border ${
+                      selectedVehicleId === v.id ? "border-primary-400 bg-primary-50" : "border-stone-100 hover:bg-stone-50"
+                    }`}
+                  >
+                    <p className={`font-semibold text-sm ${VEHICLE_STATUS_LABEL[v.status].className}`}>{v.plate}</p>
+                    <p className="text-xs text-stone-400 truncate">
+                      {vehicleLabel(v)}
+                      {v.assigned_label ? ` · ${v.assigned_label}` : ""}
+                    </p>
+                    {(ctUrgency || insUrgency) && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {ctUrgency && (
+                          <span className={`badge badge-${ctUrgency.tone} text-[0.6rem]`}>CT {ctUrgency.label}</span>
+                        )}
+                        {insUrgency && (
+                          <span className={`badge badge-${insUrgency.tone} text-[0.6rem]`}>
+                            Assur. {insUrgency.label}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {filteredVehicles.length === 0 && <p className="text-center text-sm text-stone-400 py-4">Aucun véhicule.</p>}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {!selectedVehicle ? (
+            <div className="card text-center text-stone-400 py-12">
+              Sélectionnez un véhicule. <span className="opacity-70">/ Выберите машину.</span>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="card">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xl font-extrabold text-stone-800">{selectedVehicle.plate}</p>
+                    <p className="text-sm text-stone-400">
+                      {vehicleLabel(selectedVehicle)}
+                      {selectedVehicle.vin ? ` · VIN ${selectedVehicle.vin}` : ""}
+                      {selectedVehicle.plate_old ? ` · ex-${selectedVehicle.plate_old}` : ""}
+                    </p>
+                  </div>
+                  <select
+                    className="input text-sm"
+                    style={{ width: "auto" }}
+                    value={selectedVehicle.status}
+                    onChange={(e) => updateVehicleField("status", e.target.value as VehicleStatus)}
+                  >
+                    {(Object.keys(VEHICLE_STATUS_LABEL) as VehicleStatus[]).map((s) => (
+                      <option key={s} value={s}>
+                        {VEHICLE_STATUS_LABEL[s].label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="card">
+                <p className="font-bold mb-3">
+                  Informations <span className="text-xs font-normal text-stone-400">/ Информация</span>
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <label className="font-bold">
+                    Équipe / conducteur <span className="text-xs font-normal text-stone-400 block">Команда / водитель</span>
+                    <input
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.assigned_label ?? ""}
+                      key={`assigned-${selectedVehicle.id}-${selectedVehicle.assigned_label ?? ""}`}
+                      onBlur={(e) => updateVehicleField("assigned_label", e.target.value.trim() || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Type
+                    <select
+                      className="input mt-1"
+                      value={selectedVehicle.vehicle_type}
+                      onChange={(e) => updateVehicleField("vehicle_type", e.target.value as VehicleType)}
+                    >
+                      {(Object.keys(VEHICLE_TYPE_LABEL) as VehicleType[]).map((t) => (
+                        <option key={t} value={t}>
+                          {VEHICLE_TYPE_LABEL[t]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="font-bold">
+                    Kilométrage <span className="text-xs font-normal text-stone-400 block">Пробег, км</span>
+                    <input
+                      type="number"
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.mileage_km ?? ""}
+                      key={`km-${selectedVehicle.id}-${selectedVehicle.mileage_km ?? ""}`}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim();
+                        const value = raw === "" ? null : Number(raw.replace(",", "."));
+                        updateVehicleField("mileage_km", value);
+                        if (value !== null) updateVehicleField("mileage_updated_at", today());
+                      }}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Contrôle technique <span className="text-xs font-normal text-stone-400 block">Техосмотр — срок</span>
+                    <input
+                      type="date"
+                      className="input mt-1"
+                      value={selectedVehicle.ct_due_date ?? ""}
+                      onChange={(e) => updateVehicleField("ct_due_date", e.target.value || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Assurance — société <span className="text-xs font-normal text-stone-400 block">Страховая компания</span>
+                    <input
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.insurer_name ?? ""}
+                      key={`ins-name-${selectedVehicle.id}-${selectedVehicle.insurer_name ?? ""}`}
+                      onBlur={(e) => updateVehicleField("insurer_name", e.target.value.trim() || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    N° contrat assurance <span className="text-xs font-normal text-stone-400 block">№ договора страхования</span>
+                    <input
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.insurance_contract_number ?? ""}
+                      key={`ins-contract-${selectedVehicle.id}-${selectedVehicle.insurance_contract_number ?? ""}`}
+                      onBlur={(e) => updateVehicleField("insurance_contract_number", e.target.value.trim() || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Assurance — échéance <span className="text-xs font-normal text-stone-400 block">Страховка — срок</span>
+                    <input
+                      type="date"
+                      className="input mt-1"
+                      value={selectedVehicle.insurance_end_date ?? ""}
+                      onChange={(e) => updateVehicleField("insurance_end_date", e.target.value || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Assurance — prime annuelle €{" "}
+                    <span className="text-xs font-normal text-stone-400 block">Годовая премия €</span>
+                    <input
+                      type="number"
+                      step="any"
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.insurance_annual_premium ?? ""}
+                      key={`ins-premium-${selectedVehicle.id}-${selectedVehicle.insurance_annual_premium ?? ""}`}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim().replace(",", ".");
+                        updateVehicleField("insurance_annual_premium", raw === "" ? null : Number(raw));
+                      }}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Leasing — société <span className="text-xs font-normal text-stone-400 block">Лизинговая компания</span>
+                    <input
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.leasing_company ?? ""}
+                      key={`leasing-co-${selectedVehicle.id}-${selectedVehicle.leasing_company ?? ""}`}
+                      onBlur={(e) => updateVehicleField("leasing_company", e.target.value.trim() || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    N° contrat leasing <span className="text-xs font-normal text-stone-400 block">№ договора лизинга</span>
+                    <input
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.leasing_contract_number ?? ""}
+                      key={`leasing-contract-${selectedVehicle.id}-${selectedVehicle.leasing_contract_number ?? ""}`}
+                      onBlur={(e) => updateVehicleField("leasing_contract_number", e.target.value.trim() || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Leasing — échéance <span className="text-xs font-normal text-stone-400 block">Лизинг — срок</span>
+                    <input
+                      type="date"
+                      className="input mt-1"
+                      value={selectedVehicle.leasing_end_date ?? ""}
+                      onChange={(e) => updateVehicleField("leasing_end_date", e.target.value || null)}
+                    />
+                  </label>
+                  <label className="font-bold">
+                    Leasing — mensualité €{" "}
+                    <span className="text-xs font-normal text-stone-400 block">Ежемесячный платёж €</span>
+                    <input
+                      type="number"
+                      step="any"
+                      className="input mt-1"
+                      defaultValue={selectedVehicle.leasing_monthly_payment ?? ""}
+                      key={`leasing-pay-${selectedVehicle.id}-${selectedVehicle.leasing_monthly_payment ?? ""}`}
+                      onBlur={(e) => {
+                        const raw = e.target.value.trim().replace(",", ".");
+                        updateVehicleField("leasing_monthly_payment", raw === "" ? null : Number(raw));
+                      }}
+                    />
+                  </label>
+                </div>
+                <label className="font-bold text-sm block mt-4">
+                  Notes
+                  <textarea
+                    className="input mt-1 min-h-20"
+                    defaultValue={selectedVehicle.notes ?? ""}
+                    key={`notes-${selectedVehicle.id}-${selectedVehicle.notes ?? ""}`}
+                    onBlur={(e) => updateVehicleField("notes", e.target.value.trim() || null)}
+                  />
+                </label>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-bold">
+                    Entretien <span className="text-xs font-normal text-stone-400">/ Обслуживание</span>
+                  </p>
+                  <button className="btn btn-dark text-sm" onClick={openAddVisit}>
+                    <Plus size={15} /> Ajouter une visite
+                  </button>
+                </div>
+                {loadingDetail ? (
+                  <SkeletonRows rows={3} cols={1} />
+                ) : visits.length === 0 ? (
+                  <p className="text-sm text-stone-400">
+                    Aucune visite enregistrée. <span className="opacity-70">/ Нет визитов.</span>
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {visits.map((visit) => {
+                      const items = visitItems.filter((it) => it.visit_id === visit.id);
+                      const doneCount = items.filter((it) => it.done).length;
+                      return (
+                        <div key={visit.id} className="rounded-xl border border-stone-100 p-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold">
+                              {visit.visit_date}
+                              {visit.mileage_km != null && <span className="text-stone-400"> · {visit.mileage_km} km</span>}
+                              {visit.provider && <span className="text-stone-400"> · {visit.provider}</span>}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-stone-400">
+                                {doneCount}/{components.length}
+                              </span>
+                              <button onClick={() => deleteVisit(visit.id)} className="text-stone-300 hover:text-error-600">
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                            {components.map((c) => {
+                              const item = items.find((it) => it.component_code === c.code);
+                              const Icon = item?.done ? SquareCheck : Square;
+                              return (
+                                <span
+                                  key={c.code}
+                                  className={`flex items-center gap-1 text-xs ${
+                                    item?.done ? "text-success-600" : "text-stone-300"
+                                  }`}
+                                >
+                                  <Icon size={13} /> {c.label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {visit.notes && <p className="text-xs text-stone-500 mt-2 italic">{visit.notes}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="card">
+                <p className="font-bold mb-3">Documents</p>
+                {loadingDetail ? (
+                  <SkeletonRows rows={3} cols={1} />
+                ) : (
+                  <div className="space-y-3">
+                    {docCategories.map((cat) => {
+                      const docs = documents.filter((d) => d.category_code === cat.code);
+                      return (
+                        <div key={cat.code} className="rounded-xl border border-stone-100 p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-bold flex items-center gap-2">
+                              <FileText size={15} className="text-stone-400" /> {cat.label}
+                            </p>
+                            <label className="btn btn-secondary text-xs px-3 py-1.5 cursor-pointer">
+                              {uploadingKey === cat.code ? (
+                                "Envoi…"
+                              ) : (
+                                <>
+                                  <Upload size={13} /> <Bi fr="Ajouter" ru="Добавить" />
+                                </>
+                              )}
+                              <input
+                                type="file"
+                                className="hidden"
+                                disabled={uploadingKey !== null}
+                                onChange={(ev) => {
+                                  const file = ev.target.files?.[0];
+                                  ev.target.value = "";
+                                  if (file) uploadDoc(cat.code, file);
+                                }}
+                              />
+                            </label>
+                          </div>
+                          {docs.length === 0 ? (
+                            <p className="text-xs text-stone-400">
+                              Aucun document. <span className="opacity-70">/ Нет документов.</span>
+                            </p>
+                          ) : (
+                            <ul className="space-y-1">
+                              {docs.map((doc) => (
+                                <li
+                                  key={doc.id}
+                                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-stone-50"
+                                >
+                                  <span className="min-w-0 truncate">{doc.file_name}</span>
+                                  <span className="flex items-center gap-2 shrink-0">
+                                    <span className="text-xs text-stone-400">{formatFileSize(doc.file_size)}</span>
+                                    <button onClick={() => previewDoc(doc)} className="text-stone-400 hover:text-primary-600">
+                                      <Eye size={15} />
+                                    </button>
+                                    <button onClick={() => downloadDoc(doc)} className="text-stone-400 hover:text-primary-600">
+                                      <Download size={15} />
+                                    </button>
+                                    <button onClick={() => deleteDoc(doc)} className="text-stone-400 hover:text-error-600">
+                                      <Trash2 size={15} />
+                                    </button>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <Modal open={showVisitModal} onClose={() => setShowVisitModal(false)} title="Nouvelle visite d'entretien">
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <label className="text-sm font-bold">
+            Date
+            <input type="date" className="input mt-1" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
+          </label>
+          <label className="text-sm font-bold">
+            Kilométrage
+            <input
+              type="number"
+              className="input mt-1"
+              value={visitMileage}
+              onChange={(e) => setVisitMileage(e.target.value)}
+            />
+          </label>
+          <label className="text-sm font-bold col-span-2">
+            Prestataire <span className="text-xs font-normal text-stone-400">/ Исполнитель</span>
+            <input
+              className="input mt-1"
+              value={visitProvider}
+              onChange={(e) => setVisitProvider(e.target.value)}
+              placeholder="Lux Motors…"
+            />
+          </label>
+        </div>
+        <p className="text-sm font-bold mb-2">Checklist</p>
+        <div className="grid grid-cols-2 gap-1 mb-3 max-h-64 overflow-y-auto">
+          {components.map((c) => (
+            <button
+              key={c.code}
+              type="button"
+              onClick={() => setVisitChecklist((prev) => ({ ...prev, [c.code]: !prev[c.code] }))}
+              className={`flex items-center gap-2 text-sm text-left px-2 py-1 rounded-lg hover:bg-stone-50 ${
+                visitChecklist[c.code] ? "text-success-600" : "text-stone-500"
+              }`}
+            >
+              {visitChecklist[c.code] ? <SquareCheck size={15} /> : <Square size={15} />}
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <label className="text-sm font-bold block mb-3">
+          Notes
+          <textarea className="input mt-1 min-h-16" value={visitNotes} onChange={(e) => setVisitNotes(e.target.value)} />
+        </label>
+        <div className="flex justify-end gap-2">
+          <button className="btn btn-secondary" onClick={() => setShowVisitModal(false)}>
+            <Bi fr="Annuler" ru="Отмена" />
+          </button>
+          <button className="btn btn-primary" onClick={saveVisit} disabled={savingVisit}>
+            {savingVisit ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
       </Modal>
     </div>
   );
