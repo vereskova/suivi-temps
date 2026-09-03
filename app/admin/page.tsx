@@ -137,6 +137,7 @@ type EmployeeFull = Employee & {
   badge_emoji: string | null;
   badge_label: string | null;
   can_substitute: boolean;
+  secondary_team_id: string | null;
 };
 
 type Team = { id: string; name: string; chef_employee_id: string | null };
@@ -2478,6 +2479,7 @@ const STATUS_LABELS_RU: Record<EmployeeStatus, string> = {
 type EmployeeEditForm = {
   teamId: string;
   bureauRole: string;
+  secondaryTeamId: string;
   status: EmployeeStatus;
   endDate: string;
 };
@@ -2526,7 +2528,7 @@ function EmployeesView({
       const { data } = await supabase
         .from("employees")
         .select(
-          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, badge_emoji, badge_label, can_substitute, teams!employees_team_id_fkey(name)"
+          "id, first_name, last_name, team_id, status, category, bureau_role, hire_date, end_date, badge_emoji, badge_label, can_substitute, secondary_team_id, teams!employees_team_id_fkey(name)"
         )
         .order("category")
         .order("status")
@@ -2605,14 +2607,17 @@ function EmployeesView({
 
   function equipeOrPoste(e: EmployeeFull) {
     if (e.category === "bureau") {
-      return BUREAU_ROLE_LABELS[e.bureau_role ?? ""] ?? "Bureau";
+      const role = BUREAU_ROLE_LABELS[e.bureau_role ?? ""] ?? "Bureau";
+      const teamName = e.secondary_team_id ? teamsById.get(e.secondary_team_id) : null;
+      return teamName ? `${role} · ${teamName}` : role;
     }
     return e.team_id ? teamsById.get(e.team_id) ?? "—" : "—";
   }
 
   function teamNumberLabel(e: EmployeeFull): string | null {
-    if (!e.team_id) return null;
-    const name = teamsById.get(e.team_id);
+    const teamId = e.team_id ?? e.secondary_team_id;
+    if (!teamId) return null;
+    const name = teamsById.get(teamId);
     const m = name?.match(/\d+/);
     return m ? m[0] : null;
   }
@@ -2622,6 +2627,7 @@ function EmployeesView({
     setEditForm({
       teamId: e.team_id ?? "",
       bureauRole: e.bureau_role ?? "",
+      secondaryTeamId: e.secondary_team_id ?? "",
       status: e.status,
       endDate: e.end_date ?? "",
     });
@@ -2634,7 +2640,7 @@ function EmployeesView({
       .from("employees")
       .update({
         ...(e.category === "bureau"
-          ? { bureau_role: editForm.bureauRole || null }
+          ? { bureau_role: editForm.bureauRole || null, secondary_team_id: editForm.secondaryTeamId || null }
           : { team_id: editForm.teamId || null }),
         status: editForm.status,
         end_date:
@@ -2964,6 +2970,23 @@ function EmployeesView({
                           </>
                         )}
                       </label>
+                      {sectionLabel === "Bureau" && (
+                        <label className="block text-xs font-bold text-stone-400">
+                          <Bi fr="Équipe rattachée (optionnel)" ru="Привязанная команда (опционально)" />
+                          <select
+                            className="input text-sm mt-1"
+                            value={editForm.secondaryTeamId}
+                            onChange={(ev) => setEditForm({ ...editForm, secondaryTeamId: ev.target.value })}
+                          >
+                            <option value="">—</option>
+                            {teams.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       <label className="block text-xs font-bold text-stone-400">
                         <Bi fr="Statut" ru="Статус" />
                         <select
@@ -3088,21 +3111,41 @@ function EmployeesView({
                       <>
                         <td className="py-2 pr-4">
                           {e.category === "bureau" ? (
-                            <select
-                              className="input text-sm px-2 py-1"
-                              style={{ width: "auto" }}
-                              value={editForm.bureauRole}
-                              onChange={(ev) =>
-                                setEditForm({ ...editForm, bureauRole: ev.target.value })
-                              }
-                            >
-                              <option value="">—</option>
-                              {BUREAU_ROLE_ORDER.map((role) => (
-                                <option key={role} value={role}>
-                                  {BUREAU_ROLE_LABELS[role]}
+                            <div className="space-y-1">
+                              <select
+                                className="input text-sm px-2 py-1"
+                                style={{ width: "auto" }}
+                                value={editForm.bureauRole}
+                                onChange={(ev) =>
+                                  setEditForm({ ...editForm, bureauRole: ev.target.value })
+                                }
+                              >
+                                <option value="">—</option>
+                                {BUREAU_ROLE_ORDER.map((role) => (
+                                  <option key={role} value={role}>
+                                    {BUREAU_ROLE_LABELS[role]}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                className="input text-sm px-2 py-1"
+                                style={{ width: "auto" }}
+                                value={editForm.secondaryTeamId}
+                                title="Équipe rattachée (optionnel) / Привязанная команда (опционально)"
+                                onChange={(ev) =>
+                                  setEditForm({ ...editForm, secondaryTeamId: ev.target.value })
+                                }
+                              >
+                                <option value="">
+                                  — équipe / команда —
                                 </option>
-                              ))}
-                            </select>
+                                {teams.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
                           ) : (
                             <select
                               className="input text-sm px-2 py-1"
