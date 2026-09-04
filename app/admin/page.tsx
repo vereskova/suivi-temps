@@ -6395,6 +6395,7 @@ type CongesLineState = {
   joursConges: string;
   sommeBrutePeriodeReference: string;
   joursAcquisPeriodeReference: string;
+  joursCongeSansSolde: string;
 };
 
 const EMPTY_CONGES_LINE: CongesLineState = {
@@ -6402,6 +6403,7 @@ const EMPTY_CONGES_LINE: CongesLineState = {
   joursConges: "",
   sommeBrutePeriodeReference: "",
   joursAcquisPeriodeReference: "25",
+  joursCongeSansSolde: "",
 };
 
 function defaultMonthlyGrossSalary(e: CongesEmployee): number | null {
@@ -6456,6 +6458,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
               joursConges: saved.jours_conges?.toString() ?? "",
               sommeBrutePeriodeReference: saved.somme_brute_periode_reference?.toString() ?? "",
               joursAcquisPeriodeReference: saved.jours_acquis_periode_reference?.toString() ?? "25",
+              joursCongeSansSolde: saved.jours_conge_sans_solde?.toString() ?? "",
             }
           : { ...EMPTY_CONGES_LINE, salaireMensuelBrut: defaultMonthlyGrossSalary(e)?.toString() ?? "" };
       });
@@ -6474,6 +6477,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
       joursConges: "jours_conges",
       sommeBrutePeriodeReference: "somme_brute_periode_reference",
       joursAcquisPeriodeReference: "jours_acquis_periode_reference",
+      joursCongeSansSolde: "jours_conge_sans_solde",
     }[field];
     const { error } = await supabase
       .from("conges_payes_line_items")
@@ -6624,6 +6628,18 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                             }
                           />
                         </label>
+                        <label className="block">
+                          <span className="text-xs font-bold text-stone-500">
+                            <Bi fr="Jours de congé sans solde" ru="Дней без сохранения зарплаты" />
+                          </span>
+                          <input
+                            type="number"
+                            className="input mt-1"
+                            defaultValue={l.joursCongeSansSolde}
+                            key={`css-${e.id}-${l.joursCongeSansSolde}`}
+                            onBlur={(ev) => updateLineField(e.id, "joursCongeSansSolde", ev.target.value.replace(",", "."))}
+                          />
+                        </label>
                         {r && (l.salaireMensuelBrut || l.joursConges) && (
                           <div className="pt-2 mt-2 border-t border-stone-100 space-y-1">
                             <p>
@@ -6671,6 +6687,9 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                   <th className="py-2 pr-4 text-stone-500">
                     <Bi fr="Jours acquis période réf." ru="Приобретённых дней" />
                   </th>
+                  <th className="py-2 pr-4 text-error-600">
+                    <Bi fr="Jours sans solde" ru="Дней без содержания" />
+                  </th>
                   <th className="py-2 pr-4 text-primary-600">
                     <Bi fr="Retenue CP €" ru="Удержание €" />
                   </th>
@@ -6692,7 +6711,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                     <Fragment key={e.id}>
                       {showGroupHeader && (
                         <tr>
-                          <td colSpan={8} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                          <td colSpan={9} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
                             {row.groupLabel}
                           </td>
                         </tr>
@@ -6702,7 +6721,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                           <td className="py-2 pr-4 font-semibold whitespace-nowrap">
                             <PaieEmployeeName employee={e} />
                           </td>
-                          <td colSpan={7} className="py-2 pr-4 italic text-stone-500">
+                          <td colSpan={8} className="py-2 pr-4 italic text-stone-500">
                             FOP — hors calcul de paie
                           </td>
                         </tr>
@@ -6755,6 +6774,16 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                               }
                             />
                           </td>
+                          <td className="py-2 pr-4">
+                            <input
+                              type="number"
+                              className="input bg-error-50/60"
+                              style={{ width: "6rem" }}
+                              defaultValue={l.joursCongeSansSolde}
+                              key={`css-${e.id}-${l.joursCongeSansSolde}`}
+                              onBlur={(ev) => updateLineField(e.id, "joursCongeSansSolde", ev.target.value.replace(",", "."))}
+                            />
+                          </td>
                           <td className="py-2 pr-4 font-semibold text-stone-500">
                             {r ? formatEuros(r.retenueCongesPayes) : "—"}
                           </td>
@@ -6769,7 +6798,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                 })}
                 {employees.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-6 text-center text-stone-400">
+                    <td colSpan={9} className="py-6 text-center text-stone-400">
                       Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                     </td>
                   </tr>
