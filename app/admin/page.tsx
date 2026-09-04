@@ -6402,7 +6402,7 @@ const EMPTY_CONGES_LINE: CongesLineState = {
   salaireMensuelBrut: "",
   joursConges: "",
   sommeBrutePeriodeReference: "",
-  joursAcquisPeriodeReference: "25",
+  joursAcquisPeriodeReference: "",
   joursCongeSansSolde: "",
 };
 
@@ -6466,7 +6466,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
               salaireMensuelBrut: saved.salaire_mensuel_brut?.toString() ?? "",
               joursConges: saved.jours_conges?.toString() ?? "",
               sommeBrutePeriodeReference: saved.somme_brute_periode_reference?.toString() ?? "",
-              joursAcquisPeriodeReference: saved.jours_acquis_periode_reference?.toString() ?? "25",
+              joursAcquisPeriodeReference: saved.jours_acquis_periode_reference?.toString() ?? "",
               joursCongeSansSolde: saved.jours_conge_sans_solde?.toString() ?? "",
             }
           : { ...EMPTY_CONGES_LINE, salaireMensuelBrut: defaultMonthlyGrossSalary(e)?.toString() ?? "" };
@@ -6690,11 +6690,19 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
           </div>
 
           {/* Breaks out of the page's centered 1400px column so all 9 columns
-              fit without a resize gesture — the drag-corner approach put the
-              handle at the bottom of a 100+ row table, effectively unreachable. */}
+              fit by default, plus a resize handle (bottom-right corner) in
+              case that's still not enough on a given screen. */}
           <div
-            className="hidden md:block card overflow-x-auto"
-            style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)", width: "100vw" }}
+            className="hidden md:block card"
+            style={{
+              marginLeft: "calc(50% - 50vw)",
+              marginRight: "calc(50% - 50vw)",
+              width: "100vw",
+              overflow: "auto",
+              resize: "horizontal",
+              maxWidth: "250vw",
+            }}
+            title="Faites glisser le coin en bas à droite pour élargir davantage / Потяните за уголок внизу справа, чтобы растянуть ещё шире"
           >
             <table className="w-full text-sm">
               <thead>
