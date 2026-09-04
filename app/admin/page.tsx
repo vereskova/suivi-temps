@@ -3402,6 +3402,8 @@ type EmployeeProfileFields = {
   device_label: string | null;
   hire_date: string | null;
   date_of_birth: string | null;
+  birthday_month: number | null;
+  birthday_day: number | null;
   phone: string | null;
   phone_pro: string | null;
   email: string | null;
@@ -3513,7 +3515,7 @@ function EmployeeDetailPanel({
       const empPromise = supabase
         .from("employees")
         .select(
-          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, phone_pro, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute"
+          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, birthday_month, birthday_day, phone, phone_pro, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute"
         )
         .eq("id", employeeId)
         .single();
@@ -3639,6 +3641,24 @@ function EmployeeDetailPanel({
           value={profile.date_of_birth}
           onChange={(v) => setProfile({ ...profile, date_of_birth: v })}
         />
+        {!profile.date_of_birth && (
+          <>
+            <DetailField
+              label="Jour de naissance (année inconnue)"
+              labelRu="День рождения — число (год неизвестен)"
+              type="number"
+              value={profile.birthday_day?.toString() ?? null}
+              onChange={(v) => setProfile({ ...profile, birthday_day: v === "" ? null : Number(v) })}
+            />
+            <DetailField
+              label="Jour de naissance — mois (année inconnue)"
+              labelRu="День рождения — месяц (год неизвестен)"
+              type="number"
+              value={profile.birthday_month?.toString() ?? null}
+              onChange={(v) => setProfile({ ...profile, birthday_month: v === "" ? null : Number(v) })}
+            />
+          </>
+        )}
         <DetailField
           label="Lieu de naissance"
           labelRu="Место рождения"
@@ -8211,19 +8231,21 @@ function isLeapYear(y: number): boolean {
 }
 
 /** Next occurrence (this year, or next year if already passed) of a
- *  recurring birth date — clamps Feb 29 to Feb 28 on non-leap years. */
-function nextBirthdayIso(dobIso: string): string {
-  const [, moStr, dStr] = dobIso.split("-");
-  const mo = Number(moStr);
-  const d = Number(dStr);
+ *  recurring month/day — clamps Feb 29 to Feb 28 on non-leap years. */
+function nextOccurrenceOfMonthDay(mo: number, d: number): string {
   const todayIso = today();
   const thisYear = Number(todayIso.split("-")[0]);
   function build(year: number): string {
     const day = mo === 2 && d === 29 && !isLeapYear(year) ? 28 : d;
-    return `${year}-${moStr}-${String(day).padStart(2, "0")}`;
+    return `${year}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
   const candidate = build(thisYear);
   return candidate < todayIso ? build(thisYear + 1) : candidate;
+}
+
+function nextBirthdayIso(dobIso: string): string {
+  const [, moStr, dStr] = dobIso.split("-");
+  return nextOccurrenceOfMonthDay(Number(moStr), Number(dStr));
 }
 
 /** Russian pluralization for "года/лет/год" — e.g. 21 год, 22 года, 25 лет. */
@@ -8245,7 +8267,7 @@ function notificationKey(r: NotificationRow): string {
 async function fetchNotificationRows(
   supabase: ReturnType<typeof createClient>
 ): Promise<NotificationRow[]> {
-  const [{ data: docs }, { data: visits }, { data: emps }] = await Promise.all([
+  const [{ data: docs }, { data: visits }, { data: emps }, { data: noYearBdays }] = await Promise.all([
     supabase
       .from("employee_documents")
       .select(
@@ -8261,6 +8283,12 @@ async function fetchNotificationRows(
       .from("employees")
       .select("id, first_name, last_name, status, date_of_birth")
       .not("date_of_birth", "is", null),
+    supabase
+      .from("employees")
+      .select("id, first_name, last_name, status, birthday_month, birthday_day")
+      .is("date_of_birth", null)
+      .not("birthday_month", "is", null)
+      .not("birthday_day", "is", null),
   ]);
 
   type DocRow = {
@@ -8282,6 +8310,14 @@ async function fetchNotificationRows(
     last_name: string;
     status: string;
     date_of_birth: string;
+  };
+  type NoYearBirthdayRow = {
+    id: string;
+    first_name: string;
+    last_name: string;
+    status: string;
+    birthday_month: number;
+    birthday_day: number;
   };
 
   const rows: NotificationRow[] = [];
@@ -8342,6 +8378,20 @@ async function fetchNotificationRows(
       employeeId: e.id,
       employeeName: employeeName(e),
       type: `Anniversaire (${age} ans) / День рождения (${age} ${ruYears(age)})`,
+      date: nextBday,
+      tier,
+    });
+  });
+
+  ((noYearBdays as unknown as NoYearBirthdayRow[]) ?? []).forEach((e) => {
+    if (e.status === "terminated") return;
+    const nextBday = nextOccurrenceOfMonthDay(e.birthday_month, e.birthday_day);
+    const tier = notificationTier(nextBday);
+    if (!tier) return;
+    rows.push({
+      employeeId: e.id,
+      employeeName: employeeName(e),
+      type: "Anniversaire / День рождения",
       date: nextBday,
       tier,
     });
