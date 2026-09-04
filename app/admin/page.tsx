@@ -6689,10 +6689,12 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
             })}
           </div>
 
+          {/* Breaks out of the page's centered 1400px column so all 9 columns
+              fit without a resize gesture — the drag-corner approach put the
+              handle at the bottom of a 100+ row table, effectively unreachable. */}
           <div
-            className="hidden md:block card"
-            style={{ overflow: "auto", resize: "horizontal", minWidth: "100%", maxWidth: "200%" }}
-            title="Faites glisser le coin en bas à droite pour élargir le tableau / Потяните за уголок внизу справа, чтобы растянуть таблицу"
+            className="hidden md:block card overflow-x-auto"
+            style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)", width: "100vw" }}
           >
             <table className="w-full text-sm">
               <thead>
