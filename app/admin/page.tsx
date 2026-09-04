@@ -14,6 +14,7 @@ import {
   Bell,
   BookText,
   Briefcase,
+  Calculator,
   CalendarDays,
   Car,
   Check,
@@ -51,7 +52,6 @@ import {
   Plus,
   RefreshCw,
   Repeat,
-  Scale,
   Send,
   ShieldCheck,
   Shirt,
@@ -95,6 +95,8 @@ import {
   type FieldSchema,
 } from "@/lib/documents/registry";
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
+import { computeCongesPayes } from "@/lib/conges-payes/compute";
+import { formatEuros } from "@/lib/documents/helpers";
 import {
   CompanyRow,
   EMPLOYEE_DOC_SELECT,
@@ -397,7 +399,7 @@ type ViewKey =
   | "formations"
   | "tailles"
   | "documents"
-  | "rupture"
+  | "calculators"
   | "echeances"
   | "registre"
   | "organigramme"
@@ -441,10 +443,13 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
+    title: "Calculateurs",
+    items: [{ key: "calculators", label: "Calculateurs", labelRu: "Калькуляторы", icon: Calculator }],
+  },
+  {
     title: "RH",
     items: [
       { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
-      { key: "rupture", label: "Calculateur de rupture", labelRu: "Калькулятор увольнения", icon: Scale },
       { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
@@ -840,7 +845,7 @@ export default function AdminPage() {
   }
 
   // rh: Effectif + RH sections only — no Pointage group, no Paie.
-  // Calculateur de rupture and HR-дашборды use only the employees table,
+  // Calculateurs and HR-дашборды use only the employees table,
   // which 'rh' already has full read/write on (see migration 0017) — no
   // reason to keep them admin-only. Paie, Commercial, and the audit log
   // stay rh_admin-only (the audit log's whole point is oversight of what
@@ -1001,7 +1006,7 @@ export default function AdminPage() {
             {view === "formations" && <FormationsView supabase={supabase} />}
             {view === "tailles" && <TaillesView supabase={supabase} />}
             {view === "documents" && <DocumentsView supabase={supabase} />}
-            {view === "rupture" && <RuptureView supabase={supabase} />}
+            {view === "calculators" && <CalculatorsView supabase={supabase} />}
             {view === "echeances" && (
               <NotificationsView
                 notifications={notifications}
@@ -5999,6 +6004,35 @@ function DocumentsForm({
   );
 }
 
+// ── Vue "Calculateurs" — onglets Rupture / Congés payés ─────────────────────
+function CalculatorsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [tab, setTab] = useState<"rupture" | "conges">("rupture");
+
+  const tabs: { key: "rupture" | "conges"; label: string; labelRu: string }[] = [
+    { key: "rupture", label: "Rupture", labelRu: "Увольнение" },
+    { key: "conges", label: "Congés payés", labelRu: "Отпускные" },
+  ];
+
+  return (
+    <div>
+      <div className="flex gap-2 mb-4">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`rounded-xl px-4 py-2 text-sm font-bold ${
+              tab === t.key ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+            }`}
+          >
+            <Bi fr={t.label} ru={t.labelRu} />
+          </button>
+        ))}
+      </div>
+      {tab === "rupture" ? <RuptureView supabase={supabase} /> : <CongesPayesView supabase={supabase} />}
+    </div>
+  );
+}
+
 // ── Vue "Calculateur de rupture" — préavis, procédure RC et indemnités ──────
 function ageFromBirthDate(dobIso: string, refIso: string): number {
   const dob = new Date(dobIso + "T00:00:00Z");
@@ -6339,6 +6373,265 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     <span className="block opacity-70">
                       Это ориентировочный расчёт по правилам конвенции Métallurgie и трудового
                       кодекса. По спорным случаям консультируйтесь с юристом.
+                    </span>
+                  </p>
+                </>
+              )
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Vue "Congés payés" — retenue & indemnisation (méthode maintien vs dixième) ──
+function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<DocEmployeeListRow[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+  const [search, setSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [employeeDoc, setEmployeeDoc] = useState<EmployeeDoc | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [salaireMensuelBrut, setSalaireMensuelBrut] = useState("");
+  const [nombreJoursConges, setNombreJoursConges] = useState("");
+  const [sommeBrutePeriodeReference, setSommeBrutePeriodeReference] = useState("");
+  const [joursAcquisPeriodeReference, setJoursAcquisPeriodeReference] = useState("25");
+  const [tauxCotisationsApprox, setTauxCotisationsApprox] = useState("21");
+
+  useEffect(() => {
+    async function load() {
+      setLoadingEmployees(true);
+      const { data } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, status, category")
+        .order("last_name");
+      setEmployees((data as unknown as DocEmployeeListRow[]) ?? []);
+      setLoadingEmployees(false);
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function load() {
+      if (!selectedEmployeeId) {
+        setEmployeeDoc(null);
+        return;
+      }
+      setLoadingDetail(true);
+      const { data } = await supabase
+        .from("employees")
+        .select(EMPLOYEE_DOC_SELECT)
+        .eq("id", selectedEmployeeId)
+        .maybeSingle<DocEmployeeRow>();
+      const doc = data ? mapEmployeeRow(data) : null;
+      setEmployeeDoc(doc);
+      setLoadingDetail(false);
+      setSalaireMensuelBrut(doc?.monthlyGrossSalary?.toString() ?? "");
+      setNombreJoursConges("");
+      setSommeBrutePeriodeReference("");
+      setJoursAcquisPeriodeReference("25");
+      setTauxCotisationsApprox("21");
+    }
+    load();
+  }, [supabase, selectedEmployeeId]);
+
+  const result = useMemo(
+    () =>
+      computeCongesPayes({
+        salaireMensuelBrut: salaireMensuelBrut === "" ? null : Number(salaireMensuelBrut),
+        nombreJoursConges: nombreJoursConges === "" ? null : Number(nombreJoursConges),
+        sommeBrutePeriodeReference: sommeBrutePeriodeReference === "" ? null : Number(sommeBrutePeriodeReference),
+        joursAcquisPeriodeReference: joursAcquisPeriodeReference === "" ? null : Number(joursAcquisPeriodeReference),
+        tauxCotisationsApprox: tauxCotisationsApprox === "" ? 0 : Number(tauxCotisationsApprox) / 100,
+      }),
+    [salaireMensuelBrut, nombreJoursConges, sommeBrutePeriodeReference, joursAcquisPeriodeReference, tauxCotisationsApprox]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, search]);
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+      <div className="card w-full lg:w-72 shrink-0">
+        <p className="font-bold mb-3 flex items-center">
+          <Bi fr="Employés" ru="Сотрудники" />
+          <InfoNote
+            title="Congés payés"
+            text={
+              "Считает две строки, которые идут в расчётном листке при уходе сотрудника в отпуск:\n\n" +
+              "• Retenue de congés payés — всегда по методу maintien (сохранение оклада): оклад / 21.67 × число дней.\n" +
+              "• Indemnité de congés payés — берётся более выгодный из двух методов: maintien или dixième (десятина): (сумма брутто за период приобретения / приобретённые дни) × 10% × число взятых дней.\n\n" +
+              "Период приобретения отпускных — с 1 июня по 31 мая следующего года. «Сумму брутто за период» и «приобретённые дни» нужно ввести вручную — в приложении это не отслеживается.\n\n" +
+              "Net estimé — это прикидка после вычета ~21% взносов, а не точная цифра — процент дал бухгалтер как ориентир, не как точное правило."
+            }
+          />
+        </p>
+        <input
+          className="input mb-2"
+          placeholder="Rechercher…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input mb-3"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
+        >
+          <option value="active">Actifs / Активны</option>
+          <option value="on_leave">En congé / В отпуске</option>
+          <option value="terminated">Sortis / Уволены</option>
+          <option value="unclear">Inactif / Неактивен</option>
+          <option value="all">Tous / Все</option>
+        </select>
+        {loadingEmployees ? (
+          <SkeletonRows rows={4} cols={1} />
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto -mx-1">
+            {filtered.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedEmployeeId(e.id)}
+                className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
+                  selectedEmployeeId === e.id
+                    ? "bg-stone-900 text-white font-bold"
+                    : "hover:bg-stone-50 text-stone-600"
+                }`}
+              >
+                {employeeName(e)}
+                <span className="block text-xs opacity-60">
+                  {e.category === "bureau" ? "Bureau" : "Chantier"}
+                </span>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-sm text-stone-400 px-1">
+                Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 card">
+        {!selectedEmployeeId ? (
+          <p className="text-stone-400">
+            Sélectionnez un employé à gauche.{" "}
+            <span className="opacity-70">/ Выберите сотрудника слева.</span>
+          </p>
+        ) : loadingDetail ? (
+          <SkeletonRows rows={4} cols={2} />
+        ) : (
+          <>
+            <p className="font-bold text-lg mb-4">
+              {employeeDoc ? employeeDoc.fullNameUpper : "…"}
+            </p>
+
+            <DetailSection title="Congé posé" titleRu="Отпуск">
+              <DetailField
+                label="Salaire mensuel brut (€)"
+                labelRu="Оклад брутто в месяц (€)"
+                type="number"
+                value={salaireMensuelBrut}
+                onChange={setSalaireMensuelBrut}
+              />
+              <DetailField
+                label="Jours de congés posés (ouvrés)"
+                labelRu="Дней отпуска (рабочих)"
+                type="number"
+                value={nombreJoursConges}
+                onChange={setNombreJoursConges}
+              />
+            </DetailSection>
+
+            <DetailSection title="Période de référence (1er juin → 31 mai)" titleRu="Период приобретения (1 июня → 31 мая)">
+              <DetailField
+                label="Somme brute touchée sur la période (€)"
+                labelRu="Сумма брутто за период (€)"
+                type="number"
+                value={sommeBrutePeriodeReference}
+                onChange={setSommeBrutePeriodeReference}
+              />
+              <DetailField
+                label="Jours de CP acquis sur la période"
+                labelRu="Приобретённых дней за период"
+                type="number"
+                value={joursAcquisPeriodeReference}
+                onChange={setJoursAcquisPeriodeReference}
+              />
+              <DetailField
+                label="Taux de cotisations approximatif (%)"
+                labelRu="Примерная ставка взносов (%)"
+                type="number"
+                value={tauxCotisationsApprox}
+                onChange={setTauxCotisationsApprox}
+              />
+            </DetailSection>
+
+            {!salaireMensuelBrut || !nombreJoursConges ? (
+              <p className="text-sm text-stone-400">
+                Renseignez le salaire brut et le nombre de jours posés pour voir le calcul.{" "}
+                <span className="opacity-70">
+                  / Укажите оклад брутто и число дней отпуска, чтобы увидеть расчёт.
+                </span>
+              </p>
+            ) : (
+              result && (
+                <>
+                  <RuptureResultSection
+                    title="Les deux méthodes"
+                    titleRu="Оба метода"
+                    rows={[
+                      {
+                        label: "Méthode du maintien",
+                        labelRu: "Метод maintien (сохранение оклада)",
+                        value: formatEuros(result.methodeMaintien),
+                      },
+                      {
+                        label: "Méthode du dixième",
+                        labelRu: "Метод dixième (десятина)",
+                        value:
+                          result.methodeDixieme === null
+                            ? "— (période de référence non renseignée)"
+                            : formatEuros(result.methodeDixieme),
+                      },
+                    ]}
+                  />
+                  <RuptureResultSection
+                    title="Lignes du bulletin"
+                    titleRu="Строки в расчётном листке"
+                    rows={[
+                      {
+                        label: "Retenue de congés payés",
+                        labelRu: "Удержание за отпуск",
+                        value: formatEuros(result.retenueCongesPayes),
+                      },
+                      {
+                        label: `Indemnité de congés payés (${result.methodeRetenue === "dixieme" ? "dixième" : "maintien"})`,
+                        labelRu: `Отпускные (метод ${result.methodeRetenue === "dixieme" ? "dixième" : "maintien"})`,
+                        value: formatEuros(result.indemniteCongesPayes),
+                      },
+                      {
+                        label: `Net estimé (~${tauxCotisationsApprox || 0}% de cotisations)`,
+                        labelRu: `Примерно на руки (~${tauxCotisationsApprox || 0}% взносов)`,
+                        value: formatEuros(result.netEstime),
+                      },
+                    ]}
+                  />
+                  <p className="text-xs text-stone-400 mt-2">
+                    ⚠ Le net estimé utilise un taux de cotisations approximatif, pas un calcul de
+                    paie exact. Vérifiez toujours avec le comptable avant émission du bulletin.
+                    <span className="block opacity-70">
+                      Расчёт «на руки» — приблизительный, не точный расчёт зарплаты. Перед выпуском
+                      расчётного листка всегда сверяйтесь с бухгалтером.
                     </span>
                   </p>
                 </>
