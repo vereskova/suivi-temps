@@ -6648,7 +6648,11 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
             })}
           </div>
 
-          <div className="hidden md:block card overflow-x-auto">
+          <div
+            className="hidden md:block card"
+            style={{ overflow: "auto", resize: "horizontal", minWidth: "100%", maxWidth: "200%" }}
+            title="Faites glisser le coin en bas à droite pour élargir le tableau / Потяните за уголок внизу справа, чтобы растянуть таблицу"
+          >
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-stone-400 whitespace-nowrap">
