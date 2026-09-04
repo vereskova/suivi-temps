@@ -6386,260 +6386,403 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
 }
 
 // ── Vue "Congés payés" — retenue & indemnisation (méthode maintien vs dixième) ──
-function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [employees, setEmployees] = useState<DocEmployeeListRow[]>([]);
-  const [loadingEmployees, setLoadingEmployees] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
-  const [search, setSearch] = useState("");
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-  const [employeeDoc, setEmployeeDoc] = useState<EmployeeDoc | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+type CongesEmployee = PaieEmployee & {
+  employee_confidential: { monthly_gross_salary: number | null } | { monthly_gross_salary: number | null }[] | null;
+};
 
-  const [salaireMensuelBrut, setSalaireMensuelBrut] = useState("");
-  const [nombreJoursConges, setNombreJoursConges] = useState("");
-  const [sommeBrutePeriodeReference, setSommeBrutePeriodeReference] = useState("");
-  const [joursAcquisPeriodeReference, setJoursAcquisPeriodeReference] = useState("25");
+type CongesLineState = {
+  salaireMensuelBrut: string;
+  joursConges: string;
+  sommeBrutePeriodeReference: string;
+  joursAcquisPeriodeReference: string;
+};
+
+const EMPTY_CONGES_LINE: CongesLineState = {
+  salaireMensuelBrut: "",
+  joursConges: "",
+  sommeBrutePeriodeReference: "",
+  joursAcquisPeriodeReference: "25",
+};
+
+function defaultMonthlyGrossSalary(e: CongesEmployee): number | null {
+  const confidential = Array.isArray(e.employee_confidential) ? e.employee_confidential[0] : e.employee_confidential;
+  return confidential?.monthly_gross_salary ?? null;
+}
+
+function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [loading, setLoading] = useState(true);
+  const [employees, setEmployees] = useState<CongesEmployee[]>([]);
+  const [lines, setLines] = useState<Record<string, CongesLineState>>({});
   const [tauxCotisationsApprox, setTauxCotisationsApprox] = useState("21");
 
   useEffect(() => {
     async function load() {
-      setLoadingEmployees(true);
-      const { data } = await supabase
-        .from("employees")
-        .select("id, first_name, last_name, status, category")
-        .order("last_name");
-      setEmployees((data as unknown as DocEmployeeListRow[]) ?? []);
-      setLoadingEmployees(false);
+      setLoading(true);
+      const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
+      const { start: monthStart, end: monthEnd } = monthRange(year, month);
+
+      const [{ data: emp }, { data: existingLines }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net, employee_confidential(monthly_gross_salary)"
+          )
+          .or(
+            `status.eq.active,` +
+              `and(status.eq.on_leave,end_date.gte.${monthIso}),` +
+              `and(status.eq.on_leave,end_date.is.null),` +
+              `and(status.eq.terminated,end_date.gte.${monthIso})`
+          )
+          .order("last_name"),
+        supabase.from("conges_payes_line_items").select("*").eq("month", monthIso),
+      ]);
+      void monthStart;
+      void monthEnd;
+
+      const empList = (emp as unknown as CongesEmployee[]) ?? [];
+      setEmployees(empList);
+
+      const savedByEmployee = new Map((existingLines ?? []).map((l) => [l.employee_id, l]));
+      const map: Record<string, CongesLineState> = {};
+      empList.forEach((e) => {
+        if (isFopContractor(e)) return;
+        const saved = savedByEmployee.get(e.id);
+        map[e.id] = saved
+          ? {
+              salaireMensuelBrut: saved.salaire_mensuel_brut?.toString() ?? "",
+              joursConges: saved.jours_conges?.toString() ?? "",
+              sommeBrutePeriodeReference: saved.somme_brute_periode_reference?.toString() ?? "",
+              joursAcquisPeriodeReference: saved.jours_acquis_periode_reference?.toString() ?? "25",
+            }
+          : { ...EMPTY_CONGES_LINE, salaireMensuelBrut: defaultMonthlyGrossSalary(e)?.toString() ?? "" };
+      });
+      setLines(map);
+      setLoading(false);
     }
     load();
-  }, [supabase]);
+  }, [supabase, year, month]);
 
-  useEffect(() => {
-    async function load() {
-      if (!selectedEmployeeId) {
-        setEmployeeDoc(null);
-        return;
-      }
-      setLoadingDetail(true);
-      const { data } = await supabase
-        .from("employees")
-        .select(EMPLOYEE_DOC_SELECT)
-        .eq("id", selectedEmployeeId)
-        .maybeSingle<DocEmployeeRow>();
-      const doc = data ? mapEmployeeRow(data) : null;
-      setEmployeeDoc(doc);
-      setLoadingDetail(false);
-      setSalaireMensuelBrut(doc?.monthlyGrossSalary?.toString() ?? "");
-      setNombreJoursConges("");
-      setSommeBrutePeriodeReference("");
-      setJoursAcquisPeriodeReference("25");
-      setTauxCotisationsApprox("21");
-    }
-    load();
-  }, [supabase, selectedEmployeeId]);
+  async function updateLineField(employeeId: string, field: keyof CongesLineState, rawValue: string) {
+    const value = rawValue.trim();
+    setLines((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_CONGES_LINE), [field]: value } }));
+    const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
+    const dbField = {
+      salaireMensuelBrut: "salaire_mensuel_brut",
+      joursConges: "jours_conges",
+      sommeBrutePeriodeReference: "somme_brute_periode_reference",
+      joursAcquisPeriodeReference: "jours_acquis_periode_reference",
+    }[field];
+    const { error } = await supabase
+      .from("conges_payes_line_items")
+      .upsert({ employee_id: employeeId, month: monthIso, [dbField]: value === "" ? null : Number(value) }, { onConflict: "employee_id,month" });
+    if (error) toast.error("Erreur : " + error.message);
+  }
 
-  const result = useMemo(
-    () =>
-      computeCongesPayes({
-        salaireMensuelBrut: salaireMensuelBrut === "" ? null : Number(salaireMensuelBrut),
-        nombreJoursConges: nombreJoursConges === "" ? null : Number(nombreJoursConges),
-        sommeBrutePeriodeReference: sommeBrutePeriodeReference === "" ? null : Number(sommeBrutePeriodeReference),
-        joursAcquisPeriodeReference: joursAcquisPeriodeReference === "" ? null : Number(joursAcquisPeriodeReference),
-        tauxCotisationsApprox: tauxCotisationsApprox === "" ? 0 : Number(tauxCotisationsApprox) / 100,
-      }),
-    [salaireMensuelBrut, nombreJoursConges, sommeBrutePeriodeReference, joursAcquisPeriodeReference, tauxCotisationsApprox]
-  );
+  const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return employees.filter((e) => {
-      if (statusFilter !== "all" && e.status !== statusFilter) return false;
-      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
-      return true;
+  const results = useMemo(() => {
+    const taux = tauxCotisationsApprox === "" ? 0 : Number(tauxCotisationsApprox) / 100;
+    const map: Record<string, ReturnType<typeof computeCongesPayes>> = {};
+    employees.forEach((e) => {
+      const l = lines[e.id];
+      if (!l) return;
+      map[e.id] = computeCongesPayes({
+        salaireMensuelBrut: l.salaireMensuelBrut === "" ? null : Number(l.salaireMensuelBrut),
+        nombreJoursConges: l.joursConges === "" ? null : Number(l.joursConges),
+        sommeBrutePeriodeReference: l.sommeBrutePeriodeReference === "" ? null : Number(l.sommeBrutePeriodeReference),
+        joursAcquisPeriodeReference: l.joursAcquisPeriodeReference === "" ? null : Number(l.joursAcquisPeriodeReference),
+        tauxCotisationsApprox: taux,
+      });
     });
-  }, [employees, statusFilter, search]);
+    return map;
+  }, [employees, lines, tauxCotisationsApprox]);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
-      <div className="card w-full lg:w-72 shrink-0">
-        <p className="font-bold mb-3 flex items-center">
-          <Bi fr="Employés" ru="Сотрудники" />
-          <InfoNote
-            title="Congés payés"
-            text={
-              "Считает две строки, которые идут в расчётном листке при уходе сотрудника в отпуск:\n\n" +
-              "• Retenue de congés payés — всегда по методу maintien (сохранение оклада): оклад / 21.67 × число дней.\n" +
-              "• Indemnité de congés payés — берётся более выгодный из двух методов: maintien или dixième (десятина): (сумма брутто за период приобретения / приобретённые дни) × 10% × число взятых дней.\n\n" +
-              "Период приобретения отпускных — с 1 июня по 31 мая следующего года. «Сумму брутто за период» и «приобретённые дни» нужно ввести вручную — в приложении это не отслеживается.\n\n" +
-              "Net estimé — это прикидка после вычета ~21% взносов, а не точная цифра — процент дал бухгалтер как ориентир, не как точное правило."
-            }
-          />
-        </p>
-        <input
-          className="input mb-2"
-          placeholder="Rechercher…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+    <div>
+      <div className="mb-3 font-bold flex items-center">
+        <Bi fr="Congés payés" ru="Отпускные" />
+        <InfoNote
+          title="Congés payés"
+          text={
+            "Считает две строки, которые идут в расчётном листке при уходе сотрудника в отпуск:\n\n" +
+            "• Retenue de congés payés — всегда по методу maintien (сохранение оклада): оклад / 21.67 × число дней.\n" +
+            "• Indemnité de congés payés — берётся более выгодный из двух методов: maintien или dixième (десятина): (сумма брутто за период приобретения / приобретённые дни) × 10% × число взятых дней.\n\n" +
+            "Период приобретения отпускных — с 1 июня по 31 мая следующего года. «Сумму брутто за период» и «приобретённые дни» нужно вписать вручную для каждого, кто уходит в отпуск — в приложении это не отслеживается.\n\n" +
+            "Net estimé — это прикидка после вычета ставки взносов ниже, а не точная цифра — процент дал бухгалтер как ориентир, не как точное правило."
+          }
         />
-        <select
-          className="input mb-3"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
-        >
-          <option value="active">Actifs / Активны</option>
-          <option value="on_leave">En congé / В отпуске</option>
-          <option value="terminated">Sortis / Уволены</option>
-          <option value="unclear">Inactif / Неактивен</option>
-          <option value="all">Tous / Все</option>
-        </select>
-        {loadingEmployees ? (
-          <SkeletonRows rows={4} cols={1} />
-        ) : (
-          <div className="max-h-[28rem] overflow-y-auto -mx-1">
-            {filtered.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => setSelectedEmployeeId(e.id)}
-                className={`w-full text-left rounded-xl px-3 py-2 text-sm mb-1 ${
-                  selectedEmployeeId === e.id
-                    ? "bg-stone-900 text-white font-bold"
-                    : "hover:bg-stone-50 text-stone-600"
-                }`}
-              >
-                {employeeName(e)}
-                <span className="block text-xs opacity-60">
-                  {e.category === "bureau" ? "Bureau" : "Chantier"}
-                </span>
-              </button>
-            ))}
-            {filtered.length === 0 && (
-              <p className="text-sm text-stone-400 px-1">
-                Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
-              </p>
-            )}
+      </div>
+
+      <div className="card mb-4 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-wrap gap-4 items-end">
+          <label className="font-bold text-sm">
+            <Bi fr="Mois" ru="Месяц" />
+            <select className="input mt-2" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+              {MONTHS_FR.map((m, i) => (
+                <option key={m} value={i + 1}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="font-bold text-sm">
+            <Bi fr="Année" ru="Год" />
+            <input type="number" className="input mt-2" value={year} onChange={(e) => setYear(Number(e.target.value))} />
+          </label>
+          <label className="font-bold text-sm">
+            <Bi fr="Taux de cotisations approx. (%)" ru="Примерная ставка взносов (%)" />
+            <input
+              type="number"
+              className="input mt-2"
+              style={{ width: "8rem" }}
+              defaultValue={tauxCotisationsApprox}
+              key={`taux-${tauxCotisationsApprox}`}
+              onBlur={(e) => setTauxCotisationsApprox(e.target.value.trim().replace(",", "."))}
+            />
+          </label>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={8} />
+        </div>
+      ) : (
+        <>
+          {/* Mobile: one card per employee instead of a wide table. */}
+          <div className="md:hidden space-y-3">
+            {groupedRows.map((row, idx) => {
+              const e = row.employee as CongesEmployee;
+              const l = lines[e.id] ?? EMPTY_CONGES_LINE;
+              const r = results[e.id];
+              const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
+              return (
+                <Fragment key={e.id}>
+                  {showGroupHeader && (
+                    <p className="pt-2 text-xs font-bold uppercase tracking-wide text-stone-400">{row.groupLabel}</p>
+                  )}
+                  <div className={`card ${row.colorClass}`}>
+                    <p className="font-semibold mb-2">
+                      <PaieEmployeeName employee={e} />
+                    </p>
+                    {isFopContractor(e) ? (
+                      <p className="italic text-stone-500 text-sm">FOP — hors calcul</p>
+                    ) : (
+                      <div className="space-y-2 text-sm">
+                        <label className="block">
+                          <span className="text-xs font-bold text-stone-500">
+                            <Bi fr="Salaire mensuel brut (€)" ru="Оклад брутто/мес (€)" />
+                          </span>
+                          <input
+                            type="number"
+                            className="input mt-1"
+                            defaultValue={l.salaireMensuelBrut}
+                            key={`sal-${e.id}-${l.salaireMensuelBrut}`}
+                            onBlur={(ev) => updateLineField(e.id, "salaireMensuelBrut", ev.target.value.replace(",", "."))}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold text-stone-500">
+                            <Bi fr="Jours de congés posés" ru="Дней отпуска" />
+                          </span>
+                          <input
+                            type="number"
+                            className="input mt-1"
+                            defaultValue={l.joursConges}
+                            key={`jc-${e.id}-${l.joursConges}`}
+                            onBlur={(ev) => updateLineField(e.id, "joursConges", ev.target.value.replace(",", "."))}
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold text-stone-500">
+                            <Bi fr="Somme brute période réf. (€)" ru="Сумма брутто за период (€)" />
+                          </span>
+                          <input
+                            type="number"
+                            className="input mt-1"
+                            defaultValue={l.sommeBrutePeriodeReference}
+                            key={`sb-${e.id}-${l.sommeBrutePeriodeReference}`}
+                            onBlur={(ev) =>
+                              updateLineField(e.id, "sommeBrutePeriodeReference", ev.target.value.replace(",", "."))
+                            }
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-xs font-bold text-stone-500">
+                            <Bi fr="Jours acquis période réf." ru="Приобретённых дней" />
+                          </span>
+                          <input
+                            type="number"
+                            className="input mt-1"
+                            defaultValue={l.joursAcquisPeriodeReference}
+                            key={`ja-${e.id}-${l.joursAcquisPeriodeReference}`}
+                            onBlur={(ev) =>
+                              updateLineField(e.id, "joursAcquisPeriodeReference", ev.target.value.replace(",", "."))
+                            }
+                          />
+                        </label>
+                        {r && (l.salaireMensuelBrut || l.joursConges) && (
+                          <div className="pt-2 mt-2 border-t border-stone-100 space-y-1">
+                            <p>
+                              <Bi fr="Retenue" ru="Удержание" />:{" "}
+                              <span className="font-bold">{formatEuros(r.retenueCongesPayes)}</span>
+                            </p>
+                            <p>
+                              <Bi fr="Indemnité" ru="Отпускные" /> ({r.methodeRetenue}):{" "}
+                              <span className="font-bold text-primary-700">{formatEuros(r.indemniteCongesPayes)}</span>
+                            </p>
+                            <p>
+                              <Bi fr="Net estimé" ru="На руки (прикидка)" />:{" "}
+                              <span className="font-bold">{formatEuros(r.netEstime)}</span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </Fragment>
+              );
+            })}
           </div>
-        )}
-      </div>
 
-      <div className="flex-1 min-w-0 card">
-        {!selectedEmployeeId ? (
-          <p className="text-stone-400">
-            Sélectionnez un employé à gauche.{" "}
-            <span className="opacity-70">/ Выберите сотрудника слева.</span>
+          <div className="hidden md:block card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-stone-400 whitespace-nowrap">
+                  <th className="py-2 pr-4">
+                    <Bi fr="Nom Prénom" ru="Фамилия Имя" />
+                  </th>
+                  <th className="py-2 pr-4 text-stone-500">
+                    <Bi fr="Salaire mensuel brut €" ru="Оклад брутто/мес €" />
+                  </th>
+                  <th className="py-2 pr-4 text-warning-700">
+                    <Bi fr="Jours de congés posés" ru="Дней отпуска" />
+                  </th>
+                  <th className="py-2 pr-4 text-stone-500">
+                    <Bi fr="Somme brute période réf. €" ru="Сумма брутто за период €" />
+                  </th>
+                  <th className="py-2 pr-4 text-stone-500">
+                    <Bi fr="Jours acquis période réf." ru="Приобретённых дней" />
+                  </th>
+                  <th className="py-2 pr-4 text-primary-600">
+                    <Bi fr="Retenue CP €" ru="Удержание €" />
+                  </th>
+                  <th className="py-2 pr-4 text-primary-600">
+                    <Bi fr="Indemnité CP €" ru="Отпускные €" />
+                  </th>
+                  <th className="py-2 pr-4 text-primary-600">
+                    <Bi fr="Net estimé €" ru="На руки (прикидка) €" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedRows.map((row, idx) => {
+                  const e = row.employee as CongesEmployee;
+                  const l = lines[e.id] ?? EMPTY_CONGES_LINE;
+                  const r = results[e.id];
+                  const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
+                  return (
+                    <Fragment key={e.id}>
+                      {showGroupHeader && (
+                        <tr>
+                          <td colSpan={8} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                            {row.groupLabel}
+                          </td>
+                        </tr>
+                      )}
+                      {isFopContractor(e) ? (
+                        <tr className={`border-t border-stone-100 ${row.colorClass}`}>
+                          <td className="py-2 pr-4 font-semibold whitespace-nowrap">
+                            <PaieEmployeeName employee={e} />
+                          </td>
+                          <td colSpan={7} className="py-2 pr-4 italic text-stone-500">
+                            FOP — hors calcul de paie
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr className={`border-t border-stone-100 ${row.colorClass}`}>
+                          <td className="py-2 pr-4 font-semibold whitespace-nowrap">
+                            <PaieEmployeeName employee={e} />
+                          </td>
+                          <td className="py-2 pr-4">
+                            <input
+                              type="number"
+                              className="input"
+                              style={{ width: "7rem" }}
+                              defaultValue={l.salaireMensuelBrut}
+                              key={`sal-${e.id}-${l.salaireMensuelBrut}`}
+                              onBlur={(ev) => updateLineField(e.id, "salaireMensuelBrut", ev.target.value.replace(",", "."))}
+                            />
+                          </td>
+                          <td className="py-2 pr-4">
+                            <input
+                              type="number"
+                              className="input bg-warning-50/60"
+                              style={{ width: "6rem" }}
+                              defaultValue={l.joursConges}
+                              key={`jc-${e.id}-${l.joursConges}`}
+                              onBlur={(ev) => updateLineField(e.id, "joursConges", ev.target.value.replace(",", "."))}
+                            />
+                          </td>
+                          <td className="py-2 pr-4">
+                            <input
+                              type="number"
+                              className="input"
+                              style={{ width: "8rem" }}
+                              defaultValue={l.sommeBrutePeriodeReference}
+                              key={`sb-${e.id}-${l.sommeBrutePeriodeReference}`}
+                              onBlur={(ev) =>
+                                updateLineField(e.id, "sommeBrutePeriodeReference", ev.target.value.replace(",", "."))
+                              }
+                            />
+                          </td>
+                          <td className="py-2 pr-4">
+                            <input
+                              type="number"
+                              className="input"
+                              style={{ width: "6rem" }}
+                              defaultValue={l.joursAcquisPeriodeReference}
+                              key={`ja-${e.id}-${l.joursAcquisPeriodeReference}`}
+                              onBlur={(ev) =>
+                                updateLineField(e.id, "joursAcquisPeriodeReference", ev.target.value.replace(",", "."))
+                              }
+                            />
+                          </td>
+                          <td className="py-2 pr-4 font-semibold text-stone-500">
+                            {r ? formatEuros(r.retenueCongesPayes) : "—"}
+                          </td>
+                          <td className="py-2 pr-4 font-semibold text-primary-700">
+                            {r ? `${formatEuros(r.indemniteCongesPayes)} (${r.methodeRetenue})` : "—"}
+                          </td>
+                          <td className="py-2 pr-4 font-semibold text-primary-700">{r ? formatEuros(r.netEstime) : "—"}</td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {employees.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-6 text-center text-stone-400">
+                      Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-stone-400 mt-2">
+            ⚠ Le net estimé utilise un taux de cotisations approximatif, pas un calcul de paie
+            exact. Vérifiez toujours avec le comptable avant émission du bulletin.
+            <span className="block opacity-70">
+              Расчёт «на руки» — приблизительный, не точный расчёт зарплаты. Перед выпуском
+              расчётного листка всегда сверяйтесь с бухгалтером.
+            </span>
           </p>
-        ) : loadingDetail ? (
-          <SkeletonRows rows={4} cols={2} />
-        ) : (
-          <>
-            <p className="font-bold text-lg mb-4">
-              {employeeDoc ? employeeDoc.fullNameUpper : "…"}
-            </p>
-
-            <DetailSection title="Congé posé" titleRu="Отпуск">
-              <DetailField
-                label="Salaire mensuel brut (€)"
-                labelRu="Оклад брутто в месяц (€)"
-                type="number"
-                value={salaireMensuelBrut}
-                onChange={setSalaireMensuelBrut}
-              />
-              <DetailField
-                label="Jours de congés posés (ouvrés)"
-                labelRu="Дней отпуска (рабочих)"
-                type="number"
-                value={nombreJoursConges}
-                onChange={setNombreJoursConges}
-              />
-            </DetailSection>
-
-            <DetailSection title="Période de référence (1er juin → 31 mai)" titleRu="Период приобретения (1 июня → 31 мая)">
-              <DetailField
-                label="Somme brute touchée sur la période (€)"
-                labelRu="Сумма брутто за период (€)"
-                type="number"
-                value={sommeBrutePeriodeReference}
-                onChange={setSommeBrutePeriodeReference}
-              />
-              <DetailField
-                label="Jours de CP acquis sur la période"
-                labelRu="Приобретённых дней за период"
-                type="number"
-                value={joursAcquisPeriodeReference}
-                onChange={setJoursAcquisPeriodeReference}
-              />
-              <DetailField
-                label="Taux de cotisations approximatif (%)"
-                labelRu="Примерная ставка взносов (%)"
-                type="number"
-                value={tauxCotisationsApprox}
-                onChange={setTauxCotisationsApprox}
-              />
-            </DetailSection>
-
-            {!salaireMensuelBrut || !nombreJoursConges ? (
-              <p className="text-sm text-stone-400">
-                Renseignez le salaire brut et le nombre de jours posés pour voir le calcul.{" "}
-                <span className="opacity-70">
-                  / Укажите оклад брутто и число дней отпуска, чтобы увидеть расчёт.
-                </span>
-              </p>
-            ) : (
-              result && (
-                <>
-                  <RuptureResultSection
-                    title="Les deux méthodes"
-                    titleRu="Оба метода"
-                    rows={[
-                      {
-                        label: "Méthode du maintien",
-                        labelRu: "Метод maintien (сохранение оклада)",
-                        value: formatEuros(result.methodeMaintien),
-                      },
-                      {
-                        label: "Méthode du dixième",
-                        labelRu: "Метод dixième (десятина)",
-                        value:
-                          result.methodeDixieme === null
-                            ? "— (période de référence non renseignée)"
-                            : formatEuros(result.methodeDixieme),
-                      },
-                    ]}
-                  />
-                  <RuptureResultSection
-                    title="Lignes du bulletin"
-                    titleRu="Строки в расчётном листке"
-                    rows={[
-                      {
-                        label: "Retenue de congés payés",
-                        labelRu: "Удержание за отпуск",
-                        value: formatEuros(result.retenueCongesPayes),
-                      },
-                      {
-                        label: `Indemnité de congés payés (${result.methodeRetenue === "dixieme" ? "dixième" : "maintien"})`,
-                        labelRu: `Отпускные (метод ${result.methodeRetenue === "dixieme" ? "dixième" : "maintien"})`,
-                        value: formatEuros(result.indemniteCongesPayes),
-                      },
-                      {
-                        label: `Net estimé (~${tauxCotisationsApprox || 0}% de cotisations)`,
-                        labelRu: `Примерно на руки (~${tauxCotisationsApprox || 0}% взносов)`,
-                        value: formatEuros(result.netEstime),
-                      },
-                    ]}
-                  />
-                  <p className="text-xs text-stone-400 mt-2">
-                    ⚠ Le net estimé utilise un taux de cotisations approximatif, pas un calcul de
-                    paie exact. Vérifiez toujours avec le comptable avant émission du bulletin.
-                    <span className="block opacity-70">
-                      Расчёт «на руки» — приблизительный, не точный расчёт зарплаты. Перед выпуском
-                      расчётного листка всегда сверяйтесь с бухгалтером.
-                    </span>
-                  </p>
-                </>
-              )
-            )}
-          </>
-        )}
-      </div>
+        </>
+      )}
     </div>
   );
 }
