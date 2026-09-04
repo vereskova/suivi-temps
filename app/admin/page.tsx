@@ -6411,6 +6411,15 @@ function defaultMonthlyGrossSalary(e: CongesEmployee): number | null {
   return confidential?.monthly_gross_salary ?? null;
 }
 
+/** Jours sans solde = ce qui dépasse le solde accumulé — jamais saisi à la
+ *  main, toujours dérivé de "Jours de congés posés" (total) moins "Jours
+ *  acquis période réf." (ce qui est réellement couvert par l'indemnité). */
+function sansSoldeFor(joursConges: string, joursAcquisPeriodeReference: string): string {
+  if (joursConges === "") return "";
+  const acquis = joursAcquisPeriodeReference === "" ? 0 : Number(joursAcquisPeriodeReference);
+  return String(Math.max(0, Number(joursConges) - acquis));
+}
+
 function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -6468,20 +6477,38 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
     load();
   }, [supabase, year, month]);
 
-  async function updateLineField(employeeId: string, field: keyof CongesLineState, rawValue: string) {
+  async function updateLineField(
+    employeeId: string,
+    field: "salaireMensuelBrut" | "joursConges" | "sommeBrutePeriodeReference" | "joursAcquisPeriodeReference",
+    rawValue: string
+  ) {
     const value = rawValue.trim();
-    setLines((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_CONGES_LINE), [field]: value } }));
+    const current = lines[employeeId] ?? EMPTY_CONGES_LINE;
+    const nextLine: CongesLineState = { ...current, [field]: value };
+    const sansSoldeChanged = field === "joursConges" || field === "joursAcquisPeriodeReference";
+    if (sansSoldeChanged) {
+      nextLine.joursCongeSansSolde = sansSoldeFor(nextLine.joursConges, nextLine.joursAcquisPeriodeReference);
+    }
+    setLines((prev) => ({ ...prev, [employeeId]: nextLine }));
+
     const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
     const dbField = {
       salaireMensuelBrut: "salaire_mensuel_brut",
       joursConges: "jours_conges",
       sommeBrutePeriodeReference: "somme_brute_periode_reference",
       joursAcquisPeriodeReference: "jours_acquis_periode_reference",
-      joursCongeSansSolde: "jours_conge_sans_solde",
     }[field];
+    const payload: Record<string, string | number | null> = {
+      employee_id: employeeId,
+      month: monthIso,
+      [dbField]: value === "" ? null : Number(value),
+    };
+    if (sansSoldeChanged) {
+      payload.jours_conge_sans_solde = nextLine.joursCongeSansSolde === "" ? null : Number(nextLine.joursCongeSansSolde);
+    }
     const { error } = await supabase
       .from("conges_payes_line_items")
-      .upsert({ employee_id: employeeId, month: monthIso, [dbField]: value === "" ? null : Number(value) }, { onConflict: "employee_id,month" });
+      .upsert(payload, { onConflict: "employee_id,month" });
     if (error) toast.error("Erreur : " + error.message);
   }
 
@@ -6493,9 +6520,11 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
     employees.forEach((e) => {
       const l = lines[e.id];
       if (!l) return;
+      const sansSolde = sansSoldeFor(l.joursConges, l.joursAcquisPeriodeReference);
+      const joursPayes = l.joursConges === "" ? null : Number(l.joursConges) - (sansSolde === "" ? 0 : Number(sansSolde));
       map[e.id] = computeCongesPayes({
         salaireMensuelBrut: l.salaireMensuelBrut === "" ? null : Number(l.salaireMensuelBrut),
-        nombreJoursConges: l.joursConges === "" ? null : Number(l.joursConges),
+        nombreJoursConges: joursPayes,
         sommeBrutePeriodeReference: l.sommeBrutePeriodeReference === "" ? null : Number(l.sommeBrutePeriodeReference),
         joursAcquisPeriodeReference: l.joursAcquisPeriodeReference === "" ? null : Number(l.joursAcquisPeriodeReference),
         tauxCotisationsApprox: taux,
@@ -6630,15 +6659,11 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                         </label>
                         <label className="block">
                           <span className="text-xs font-bold text-stone-500">
-                            <Bi fr="Jours de congé sans solde" ru="Дней без сохранения зарплаты" />
+                            <Bi fr="Jours sans solde (auto)" ru="Дней без содержания (авто)" />
                           </span>
-                          <input
-                            type="number"
-                            className="input mt-1"
-                            defaultValue={l.joursCongeSansSolde}
-                            key={`css-${e.id}-${l.joursCongeSansSolde}`}
-                            onBlur={(ev) => updateLineField(e.id, "joursCongeSansSolde", ev.target.value.replace(",", "."))}
-                          />
+                          <p className="input mt-1 bg-stone-50 text-stone-600">
+                            {sansSoldeFor(l.joursConges, l.joursAcquisPeriodeReference) || "0"}
+                          </p>
                         </label>
                         {r && (l.salaireMensuelBrut || l.joursConges) && (
                           <div className="pt-2 mt-2 border-t border-stone-100 space-y-1">
@@ -6688,7 +6713,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                     <Bi fr="Jours acquis période réf." ru="Приобретённых дней" />
                   </th>
                   <th className="py-2 pr-4 text-error-600">
-                    <Bi fr="Jours sans solde" ru="Дней без содержания" />
+                    <Bi fr="Jours sans solde (auto)" ru="Дней без содержания (авто)" />
                   </th>
                   <th className="py-2 pr-4 text-primary-600">
                     <Bi fr="Retenue CP €" ru="Удержание €" />
@@ -6774,15 +6799,8 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                               }
                             />
                           </td>
-                          <td className="py-2 pr-4">
-                            <input
-                              type="number"
-                              className="input bg-error-50/60"
-                              style={{ width: "6rem" }}
-                              defaultValue={l.joursCongeSansSolde}
-                              key={`css-${e.id}-${l.joursCongeSansSolde}`}
-                              onBlur={(ev) => updateLineField(e.id, "joursCongeSansSolde", ev.target.value.replace(",", "."))}
-                            />
+                          <td className="py-2 pr-4 font-semibold text-error-600">
+                            {sansSoldeFor(l.joursConges, l.joursAcquisPeriodeReference) || "0"}
                           </td>
                           <td className="py-2 pr-4 font-semibold text-stone-500">
                             {r ? formatEuros(r.retenueCongesPayes) : "—"}
