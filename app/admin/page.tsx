@@ -6689,20 +6689,10 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
             })}
           </div>
 
-          {/* Breaks out of the page's centered 1400px column so all 9 columns
-              fit by default, plus a resize handle (bottom-right corner) in
-              case that's still not enough on a given screen. */}
           <div
             className="hidden md:block card"
-            style={{
-              marginLeft: "calc(50% - 50vw)",
-              marginRight: "calc(50% - 50vw)",
-              width: "100vw",
-              overflow: "auto",
-              resize: "horizontal",
-              maxWidth: "250vw",
-            }}
-            title="Faites glisser le coin en bas à droite pour élargir davantage / Потяните за уголок внизу справа, чтобы растянуть ещё шире"
+            style={{ overflow: "auto", resize: "horizontal", minWidth: "100%", maxWidth: "200%" }}
+            title="Faites glisser le coin en bas à droite pour élargir le tableau / Потяните за уголок внизу справа, чтобы растянуть таблицу"
           >
             <table className="w-full text-sm">
               <thead>
