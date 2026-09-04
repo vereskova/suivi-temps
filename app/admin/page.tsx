@@ -468,14 +468,33 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+/** Keeps a piece of UI navigation state (which section/tab is open) across a
+ *  page reload — read once from localStorage on mount, written back on every
+ *  change. `validValues`, when given, guards against a stale stored value
+ *  from a since-renamed/removed key (e.g. the old "rupture" view). */
+function usePersistedView<T extends string>(key: string, defaultValue: T, validValues?: Set<string>): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    if (typeof window === "undefined") return defaultValue;
+    const stored = window.localStorage.getItem(key);
+    if (!stored) return defaultValue;
+    return !validValues || validValues.has(stored) ? (stored as T) : defaultValue;
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(key, value);
+  }, [key, value]);
+  return [value, setValue];
+}
+
+const VALID_VIEW_KEYS = new Set<string>(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key)));
+
 export default function AdminPage() {
   const [supabase] = useState(() => createClient());
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
-  const [view, setView] = useState<ViewKey>("jour");
-  const [comptableView, setComptableView] = useState<"paie" | "employees">("paie");
+  const [view, setView] = usePersistedView<ViewKey>("admin_view", "jour", VALID_VIEW_KEYS);
+  const [comptableView, setComptableView] = usePersistedView<"paie" | "employees">("admin_comptable_view", "paie");
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -6006,7 +6025,7 @@ function DocumentsForm({
 
 // ── Vue "Calculateurs" — onglets Rupture / Congés payés ─────────────────────
 function CalculatorsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [tab, setTab] = useState<"rupture" | "conges">("rupture");
+  const [tab, setTab] = usePersistedView<"rupture" | "conges">("admin_calculators_tab", "rupture");
 
   const tabs: { key: "rupture" | "conges"; label: string; labelRu: string }[] = [
     { key: "rupture", label: "Rupture", labelRu: "Увольнение" },
