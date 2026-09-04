@@ -3379,6 +3379,7 @@ type EmployeeProfileFields = {
   hire_date: string | null;
   date_of_birth: string | null;
   phone: string | null;
+  phone_pro: string | null;
   email: string | null;
   address: string | null;
   birth_place: string | null;
@@ -3488,7 +3489,7 @@ function EmployeeDetailPanel({
       const empPromise = supabase
         .from("employees")
         .select(
-          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute"
+          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, phone, phone_pro, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute"
         )
         .eq("id", employeeId)
         .single();
@@ -3686,6 +3687,12 @@ function EmployeeDetailPanel({
           labelRu="Телефон"
           value={profile.phone}
           onChange={(v) => setProfile({ ...profile, phone: v })}
+        />
+        <DetailField
+          label="Téléphone professionnel"
+          labelRu="Рабочий телефон"
+          value={profile.phone_pro}
+          onChange={(v) => setProfile({ ...profile, phone_pro: v })}
         />
         <DetailField
           label="Email"
