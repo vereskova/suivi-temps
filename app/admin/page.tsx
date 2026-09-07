@@ -7280,7 +7280,7 @@ function CommercialView({
   const [newPuissanceKwc, setNewPuissanceKwc] = useState("");
   const [newLongueurCableM, setNewLongueurCableM] = useState("");
   const [newSurfaceToitureM2, setNewSurfaceToitureM2] = useState("");
-  const [newToitureMateriau, setNewToitureMateriau] = useState<"bac_acier" | "fibrociment">("bac_acier");
+  const [newToitureMateriau, setNewToitureMateriau] = useState<"" | "bac_acier" | "fibrociment">("");
   const [creatingCase, setCreatingCase] = useState(false);
   const [clientTemplates, setClientTemplates] = useState<{ id: string; variant_label: string }[]>([]);
   const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
@@ -7489,6 +7489,7 @@ function CommercialView({
       const puissanceKwc = newPuissanceKwc === "" ? null : Number(newPuissanceKwc);
       const longueurCableM = newLongueurCableM === "" ? null : Number(newLongueurCableM);
       const surfaceToitureM2 = newSurfaceToitureM2 === "" ? null : Number(newSurfaceToitureM2);
+      const toitureMateriau = newToitureMateriau === "" ? null : newToitureMateriau;
       const startDate = newStart || (puissanceKwc ? today() : null);
 
       const { data: templateItems } = await supabase
@@ -7514,7 +7515,7 @@ function CommercialView({
           puissance_kwc: puissanceKwc,
           longueur_cable_m: longueurCableM,
           surface_toiture_m2: surfaceToitureM2,
-          toiture_materiau: newToitureMateriau,
+          toiture_materiau: toitureMateriau,
           created_by: user?.id,
         })
         .select("id")
@@ -7547,7 +7548,7 @@ function CommercialView({
             longueurCableM,
             ombriere,
             surfaceToitureM2,
-            newToitureMateriau
+            toitureMateriau
           );
           await Promise.all(
             fills.map((f) =>
@@ -7564,7 +7565,7 @@ function CommercialView({
       setNewPuissanceKwc("");
       setNewLongueurCableM("");
       setNewSurfaceToitureM2("");
-      setNewToitureMateriau("bac_acier");
+      setNewToitureMateriau("");
       await reloadCases(selectedClientId);
       setSelectedCaseId(caseRow.id);
     } catch (err) {
@@ -8638,12 +8639,15 @@ function CommercialView({
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Matériau de toiture</label>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+              Matériau de toiture <span className="normal-case font-normal text-stone-400">(optionnel)</span>
+            </label>
             <select
               className="input"
               value={newToitureMateriau}
-              onChange={(e) => setNewToitureMateriau(e.target.value as "bac_acier" | "fibrociment")}
+              onChange={(e) => setNewToitureMateriau(e.target.value as "" | "bac_acier" | "fibrociment")}
             >
+              <option value="">—</option>
               <option value="bac_acier">Bac acier</option>
               <option value="fibrociment">Fibrociment</option>
             </select>
