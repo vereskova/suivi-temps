@@ -105,6 +105,8 @@ import {
   POSE_BAC_ACIER_JOURS,
   DEPOSE_BAC_ACIER_JOURS,
   DEMONTAGE_PANNEAU_JOURS,
+  securiteCollectiveJours,
+  filetSurFaceJours,
 } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
 import {
@@ -6900,6 +6902,7 @@ type CommercialCaseRow = {
   team_doc_generated_at: string | null;
   puissance_kwc: number | null;
   longueur_cable_m: number | null;
+  surface_toiture_m2: number | null;
 };
 type CommercialCategoryRow = { code: string; label: string; label_ru: string; sort_order: number };
 type CommercialItemStatus = "active" | "inactive" | "pending";
@@ -6954,7 +6957,7 @@ const COMMERCIAL_STATUS_LABEL_CLASS: Record<CommercialItemStatus, string> = {
 const COMMERCIAL_PRICE_WARN_THRESHOLD = 100000;
 
 const COMMERCIAL_CASE_SELECT =
-  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, longueur_cable_m";
+  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, longueur_cable_m, surface_toiture_m2";
 
 /** Stub quote ids (no Sinao API key configured yet) are prefixed so the UI
  *  can tell a simulated push apart from a real one — a stub still allows
@@ -6983,7 +6986,8 @@ function computeDelaiFills(
   itemsToScan: { id: string; label: string }[],
   puissanceKwc: number | null,
   longueurCableM: number | null,
-  ombriere: boolean
+  ombriere: boolean,
+  surfaceToitureM2: number | null = null
 ): { id: string; delai_prevu: string }[] {
   const fills: { id: string; delai_prevu: string }[] = [];
   for (const item of itemsToScan) {
@@ -7002,6 +7006,13 @@ function computeDelaiFills(
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
     } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
+    } else if (/s[ée]curit[ée]\s+colle?ctive/.test(label) && puissanceKwc && puissanceKwc > 0) {
+      // "Pose & dépose sécurité colective" — filet de périmètre, par puissance.
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(securiteCollectiveJours(puissanceKwc).jours) });
+    } else if (/^pose\b.*fille\s+sur\s+face/.test(label) && surfaceToitureM2 && surfaceToitureM2 > 0) {
+      // "Pose /depose fille sur face" (filet sous bac acier), par surface de toiture —
+      // "Fournis fille sur face" (fourniture, pas pose) est délibérément exclu.
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(filetSurFaceJours(surfaceToitureM2).jours) });
     }
   }
   return fills;
@@ -7026,6 +7037,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newTitle, setNewTitle] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newPuissanceKwc, setNewPuissanceKwc] = useState("");
+  const [newSurfaceToitureM2, setNewSurfaceToitureM2] = useState("");
   const [creatingCase, setCreatingCase] = useState(false);
   const [clientTemplates, setClientTemplates] = useState<{ id: string; variant_label: string }[]>([]);
   const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
@@ -7113,7 +7125,8 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       freshItems,
       selectedCase?.puissance_kwc ?? null,
       selectedCase?.longueur_cable_m ?? null,
-      ombriere
+      ombriere,
+      selectedCase?.surface_toiture_m2 ?? null
     );
     if (fills.length > 0) {
       await Promise.all(
@@ -7136,6 +7149,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [editingCaseDate, setEditingCaseDate] = useState(false);
   const [editingCasePuissance, setEditingCasePuissance] = useState(false);
   const [editingCaseCable, setEditingCaseCable] = useState(false);
+  const [editingCaseSurface, setEditingCaseSurface] = useState(false);
 
   const [generating, setGenerating] = useState<"client" | "team" | null>(null);
   const [pushingSinao, setPushingSinao] = useState(false);
@@ -7227,6 +7241,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       } = await supabase.auth.getUser();
 
       const puissanceKwc = newPuissanceKwc === "" ? null : Number(newPuissanceKwc);
+      const surfaceToitureM2 = newSurfaceToitureM2 === "" ? null : Number(newSurfaceToitureM2);
       const startDate = newStart || (puissanceKwc ? today() : null);
 
       const { data: templateItems } = await supabase
@@ -7247,6 +7262,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               ? addWorkingDays(startDate, mainDOeuvreJours(puissanceKwc, ombriere).jours)
               : null,
           puissance_kwc: puissanceKwc,
+          surface_toiture_m2: surfaceToitureM2,
           created_by: user?.id,
         })
         .select("id")
@@ -7272,7 +7288,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         // Même correspondance libellé → norme qu'à l'édition (saveCaseDurationInputs),
         // appliquée directement dès la création du dossier.
         if (insertedItems) {
-          const fills = computeDelaiFills(insertedItems, puissanceKwc, null, ombriere);
+          const fills = computeDelaiFills(insertedItems, puissanceKwc, null, ombriere, surfaceToitureM2);
           await Promise.all(
             fills.map((f) =>
               supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id)
@@ -7286,6 +7302,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       setNewTitle("");
       setNewStart("");
       setNewPuissanceKwc("");
+      setNewSurfaceToitureM2("");
       await reloadCases(selectedClientId);
       setSelectedCaseId(caseRow.id);
     } catch (err) {
@@ -7359,12 +7376,27 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   function updateCasePuissance(caseId: string, value: string) {
     const current = cases.find((c) => c.id === caseId);
     const puissanceKwc = value === "" ? null : Number(value);
-    saveCaseDurationInputs(caseId, puissanceKwc, current?.longueur_cable_m ?? null);
+    saveCaseDurationInputs(
+      caseId,
+      puissanceKwc,
+      current?.longueur_cable_m ?? null,
+      current?.surface_toiture_m2 ?? null
+    );
   }
   function updateCaseCable(caseId: string, value: string) {
     const current = cases.find((c) => c.id === caseId);
     const longueurCableM = value === "" ? null : Number(value);
-    saveCaseDurationInputs(caseId, current?.puissance_kwc ?? null, longueurCableM);
+    saveCaseDurationInputs(caseId, current?.puissance_kwc ?? null, longueurCableM, current?.surface_toiture_m2 ?? null);
+  }
+  function updateCaseSurface(caseId: string, value: string) {
+    const current = cases.find((c) => c.id === caseId);
+    const surfaceToitureM2 = value === "" ? null : Number(value);
+    saveCaseDurationInputs(
+      caseId,
+      current?.puissance_kwc ?? null,
+      current?.longueur_cable_m ?? null,
+      surfaceToitureM2
+    );
   }
 
   /** Saves the dossier's puissance/longueur de câble, derives "Fin
@@ -7377,13 +7409,19 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
    *  ombrière) — every other line (Com/Fournis/Livraison/Récupération,
    *  administratif, Pose/Dépose Bac acier…) is left exactly as it was, no
    *  norm for those yet. */
-  async function saveCaseDurationInputs(caseId: string, puissanceKwc: number | null, longueurCableM: number | null) {
+  async function saveCaseDurationInputs(
+    caseId: string,
+    puissanceKwc: number | null,
+    longueurCableM: number | null,
+    surfaceToitureM2: number | null = null
+  ) {
     const current = cases.find((c) => c.id === caseId);
     const desired_start_date = current?.desired_start_date ?? today();
     const ombriere = checklistHasOmbriereLines(items.map((i) => i.label));
     const patch: Record<string, string | number | null> = {
       puissance_kwc: puissanceKwc,
       longueur_cable_m: longueurCableM,
+      surface_toiture_m2: surfaceToitureM2,
     };
 
     if (puissanceKwc && puissanceKwc > 0) {
@@ -7404,6 +7442,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               ...c,
               puissance_kwc: puissanceKwc,
               longueur_cable_m: longueurCableM,
+              surface_toiture_m2: surfaceToitureM2,
               ...(patch.desired_start_date ? { desired_start_date: patch.desired_start_date as string } : {}),
               ...(patch.desired_end_date ? { desired_end_date: patch.desired_end_date as string } : {}),
             }
@@ -7420,7 +7459,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     // Bac acier et Démonter panneau n'ont qu'un seul point de mesure dans
     // la source (pas de courbe) : la valeur s'applique dès que la ligne
     // existe, sans dépendre de la puissance ou du câble.
-    const fills = computeDelaiFills(items, puissanceKwc, longueurCableM, ombriere);
+    const fills = computeDelaiFills(items, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
     if (fills.length > 0) {
       setItems((prev) =>
         prev.map((i) => {
@@ -7835,6 +7874,36 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                     </div>
                   )}
                 </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <label className="text-[10px] font-bold uppercase text-stone-400">Surface toiture (m²)</label>
+                  {editingCaseSurface ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      className="input text-xs py-0.5 px-1.5 w-24"
+                      defaultValue={selectedCase?.surface_toiture_m2?.toString() ?? ""}
+                      onBlur={(e) => {
+                        if (selectedCase) updateCaseSurface(selectedCase.id, e.target.value);
+                        setEditingCaseSurface(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setEditingCaseSurface(false);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">{selectedCase?.surface_toiture_m2 ?? "—"}</span>
+                      <button
+                        className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
+                        title="Modifier la surface de toiture"
+                        onClick={() => setEditingCaseSurface(true)}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button
@@ -8224,6 +8293,16 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               value={newPuissanceKwc}
               onChange={(e) => setNewPuissanceKwc(e.target.value)}
               placeholder="Ex. 300"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Surface toiture (m²)</label>
+            <input
+              type="number"
+              className="input"
+              value={newSurfaceToitureM2}
+              onChange={(e) => setNewSurfaceToitureM2(e.target.value)}
+              placeholder="Ex. 800"
             />
           </div>
           {clientTemplates.length > 1 && (

@@ -162,3 +162,21 @@ export function tirageCableJoursFor(m: number) {
 export const POSE_BAC_ACIER_JOURS = 1;
 export const DEPOSE_BAC_ACIER_JOURS = 1;
 export const DEMONTAGE_PANNEAU_JOURS = 1;
+
+/** "Сетка по périmètre снять/поставить" — filet de sécurité collective en
+ *  périmètre, par puissance (kWc, déjà saisie sur le dossier). */
+function securiteCollectiveJoursRaw(kwc: number): number {
+  return kwc <= 300 ? 1 : 2; // 0-300 / 300-500 kWc dans la source
+}
+export function securiteCollectiveJours(kwc: number) {
+  return { jours: securiteCollectiveJoursRaw(kwc), extrapolated: kwc > 500 };
+}
+
+/** "Сетка под bac acier снять/поставить" — filet posé sous la toiture bac
+ *  acier, par surface de toiture (m²). */
+function filetSurFaceJoursRaw(m2: number): number {
+  return m2 <= 600 ? 1 : 2; // 0-600 / 600-1000 m² dans la source
+}
+export function filetSurFaceJours(m2: number) {
+  return { jours: filetSurFaceJoursRaw(m2), extrapolated: m2 > 1000 };
+}
