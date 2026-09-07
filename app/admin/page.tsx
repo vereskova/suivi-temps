@@ -7037,6 +7037,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newTitle, setNewTitle] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newPuissanceKwc, setNewPuissanceKwc] = useState("");
+  const [newLongueurCableM, setNewLongueurCableM] = useState("");
   const [newSurfaceToitureM2, setNewSurfaceToitureM2] = useState("");
   const [creatingCase, setCreatingCase] = useState(false);
   const [clientTemplates, setClientTemplates] = useState<{ id: string; variant_label: string }[]>([]);
@@ -7241,6 +7242,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       } = await supabase.auth.getUser();
 
       const puissanceKwc = newPuissanceKwc === "" ? null : Number(newPuissanceKwc);
+      const longueurCableM = newLongueurCableM === "" ? null : Number(newLongueurCableM);
       const surfaceToitureM2 = newSurfaceToitureM2 === "" ? null : Number(newSurfaceToitureM2);
       const startDate = newStart || (puissanceKwc ? today() : null);
 
@@ -7262,6 +7264,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               ? addWorkingDays(startDate, mainDOeuvreJours(puissanceKwc, ombriere).jours)
               : null,
           puissance_kwc: puissanceKwc,
+          longueur_cable_m: longueurCableM,
           surface_toiture_m2: surfaceToitureM2,
           created_by: user?.id,
         })
@@ -7288,7 +7291,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         // Même correspondance libellé → norme qu'à l'édition (saveCaseDurationInputs),
         // appliquée directement dès la création du dossier.
         if (insertedItems) {
-          const fills = computeDelaiFills(insertedItems, puissanceKwc, null, ombriere, surfaceToitureM2);
+          const fills = computeDelaiFills(insertedItems, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
           await Promise.all(
             fills.map((f) =>
               supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id)
@@ -7302,6 +7305,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       setNewTitle("");
       setNewStart("");
       setNewPuissanceKwc("");
+      setNewLongueurCableM("");
       setNewSurfaceToitureM2("");
       await reloadCases(selectedClientId);
       setSelectedCaseId(caseRow.id);
@@ -8293,6 +8297,16 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
               value={newPuissanceKwc}
               onChange={(e) => setNewPuissanceKwc(e.target.value)}
               placeholder="Ex. 300"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Tirage de câble (m)</label>
+            <input
+              type="number"
+              className="input"
+              value={newLongueurCableM}
+              onChange={(e) => setNewLongueurCableM(e.target.value)}
+              placeholder="Ex. 150"
             />
           </div>
           <div>
