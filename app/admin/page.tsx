@@ -96,18 +96,7 @@ import {
 } from "@/lib/documents/registry";
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import { computeCongesPayes } from "@/lib/conges-payes/compute";
-import {
-  addWorkingDays,
-  mainDOeuvreJours,
-  poseSIJours,
-  posePPVJours,
-  tirageCableJoursFor,
-  POSE_BAC_ACIER_JOURS,
-  DEPOSE_BAC_ACIER_JOURS,
-  DEMONTAGE_PANNEAU_JOURS,
-  securiteCollectiveJours,
-  filetSurFaceJours,
-} from "@/lib/commercial-durations/compute";
+import { addWorkingDays, evalNorm, type NormDef, type NormMode } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
 import {
   CompanyRow,
@@ -867,7 +856,7 @@ export default function AdminPage() {
               </nav>
             </aside>
             <div className="flex-1 min-w-0">
-              <CommercialView supabase={supabase} />
+              <CommercialSection supabase={supabase} />
             </div>
           </div>
         </div>
@@ -1052,7 +1041,7 @@ export default function AdminPage() {
             {view === "dossier" && <DossierView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
-            {view === "commercial" && <CommercialView supabase={supabase} />}
+            {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
           </div>
@@ -6977,6 +6966,12 @@ function checklistHasOmbriereLines(labels: string[]): boolean {
   return labels.some((l) => /pose\s*si\b/i.test(l) || /pose\s*ppv\b/i.test(l));
 }
 
+/** Les normes elles-mêmes (points x→jours) viennent de la table éditable
+ *  `commercial_duration_norms`/`..._points` (onglet "Normes") — cette map
+ *  est construite une fois par `CommercialView` et passée partout où un
+ *  calcul de délai est nécessaire, plutôt que hardcodée dans le code. */
+type NormsMap = Record<string, NormDef>;
+
 /** Correspondance libellé de checklist → norme, factorisée pour être
  *  ré-appliquée à chaque fois que le jeu de lignes change (édition
  *  puissance/câble, création du dossier, ou ajout d'une ligne depuis
@@ -6984,6 +6979,7 @@ function checklistHasOmbriereLines(labels: string[]): boolean {
  *  remplie tout de suite, sans attendre que la puissance soit re-saisie). */
 function computeDelaiFills(
   itemsToScan: { id: string; label: string }[],
+  norms: NormsMap,
   puissanceKwc: number | null,
   longueurCableM: number | null,
   ombriere: boolean,
@@ -6993,32 +6989,271 @@ function computeDelaiFills(
   for (const item of itemsToScan) {
     const label = item.label.toLowerCase().trim();
     if (/main.?d.?(œuvre|oeuvre)/.test(label) && puissanceKwc && puissanceKwc > 0) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(puissanceKwc, ombriere).jours) });
+      const code = ombriere ? "main_doeuvre_ombriere" : "main_doeuvre_standard";
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms[code], puissanceKwc).jours) });
     } else if (/tirage/.test(label) && longueurCableM && longueurCableM > 0) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(tirageCableJoursFor(longueurCableM).jours) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.tirage_cable, longueurCableM).jours) });
     } else if (/pose\s*si\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(poseSIJours(puissanceKwc).jours) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_si, puissanceKwc).jours) });
     } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(posePPVJours(puissanceKwc).jours) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_ppv, puissanceKwc).jours) });
     } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEPOSE_BAC_ACIER_JOURS) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.depose_bac_acier, 0).jours) });
     } else if (/^pose\s+bac\s+acier/.test(label)) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_bac_acier, 0).jours) });
     } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.demontage_panneau, 0).jours) });
     } else if (/s[ée]curit[ée]\s+colle?ctive/.test(label) && puissanceKwc && puissanceKwc > 0) {
       // "Pose & dépose sécurité colective" — filet de périmètre, par puissance.
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(securiteCollectiveJours(puissanceKwc).jours) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.securite_collective, puissanceKwc).jours) });
     } else if (/^pose\b.*fille\s+sur\s+face/.test(label) && surfaceToitureM2 && surfaceToitureM2 > 0) {
       // "Pose /depose fille sur face" (filet sous bac acier), par surface de toiture —
       // "Fournis fille sur face" (fourniture, pas pose) est délibérément exclu.
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(filetSurFaceJours(surfaceToitureM2).jours) });
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.filet_sur_face, surfaceToitureM2).jours) });
     }
   }
   return fills;
 }
 
-function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+type DurationNormRow = {
+  id: string;
+  code: string;
+  label: string;
+  label_ru: string;
+  unit: "kwc" | "m" | "m2";
+  mode: NormMode;
+  checklist_hint: string | null;
+  position: number;
+};
+type DurationNormPointRow = { id: string; norm_id: string; x: number; y: number; position: number };
+
+function normUnitLabel(unit: DurationNormRow["unit"]): string {
+  return unit === "kwc" ? "kWc" : unit === "m2" ? "m²" : "m";
+}
+
+/** Onglet "Normes" du module Commercial — la table éditable qui alimente
+ *  computeDelaiFills. Éditer un point ici change le résultat pour tous les
+ *  dossiers, tout de suite, sans toucher au code. */
+function CommercialNormsView({
+  supabase,
+  normRows,
+  normPoints,
+  loading,
+  onReload,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  normRows: DurationNormRow[];
+  normPoints: DurationNormPointRow[];
+  loading: boolean;
+  onReload: () => void;
+}) {
+  async function updatePoint(pointId: string, field: "x" | "y", raw: string) {
+    const value = Number(raw.replace(",", "."));
+    if (!Number.isFinite(value)) return;
+    const { error } = await supabase.from("commercial_duration_norm_points").update({ [field]: value }).eq("id", pointId);
+    if (error) {
+      toast.error("Erreur lors de la mise à jour.");
+      return;
+    }
+    onReload();
+  }
+
+  async function addPoint(normId: string, nextPosition: number) {
+    const { error } = await supabase
+      .from("commercial_duration_norm_points")
+      .insert({ norm_id: normId, x: 0, y: 0, position: nextPosition });
+    if (error) {
+      toast.error("Erreur lors de l'ajout du point.");
+      return;
+    }
+    onReload();
+  }
+
+  async function deletePoint(pointId: string) {
+    const { error } = await supabase.from("commercial_duration_norm_points").delete().eq("id", pointId);
+    if (error) {
+      toast.error("Erreur lors de la suppression.");
+      return;
+    }
+    onReload();
+  }
+
+  if (loading) return <p className="text-sm text-stone-400">Chargement…</p>;
+
+  return (
+    <div className="space-y-4">
+      <p className="max-w-2xl text-sm text-stone-500">
+        <Bi
+          fr="Ces valeurs alimentent directement le calcul des délais (Puissance/Tirage de câble/Surface toiture → Délai prévu sur la checklist). Modifier un point ici change le résultat pour tous les dossiers, tout de suite — sans code à changer."
+          ru="Эти значения напрямую используются в расчёте сроков (мощность/кабель/поверхность → Délai prévu в чек-листе). Изменение точки здесь сразу меняет результат для всех досье — без изменений в коде."
+        />
+      </p>
+      {normRows.map((norm) => {
+        const points = normPoints.filter((p) => p.norm_id === norm.id).sort((a, b) => a.position - b.position);
+        const unit = normUnitLabel(norm.unit);
+        return (
+          <div key={norm.id} className="card p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="text-sm font-bold">
+                <Bi fr={norm.label} ru={norm.label_ru} />
+              </h3>
+              <span className="text-[10px] font-bold uppercase text-stone-400">
+                {unit} · <Bi fr={norm.mode === "step" ? "palier" : "linéaire"} ru={norm.mode === "step" ? "порог" : "линейно"} />
+              </span>
+            </div>
+            {norm.checklist_hint && <p className="mt-1 text-xs text-stone-400">{norm.checklist_hint}</p>}
+            <div className="mt-3 overflow-x-auto">
+              <table className="text-sm">
+                <thead>
+                  <tr className="text-left text-stone-400">
+                    <th className="pr-4 pb-1 font-semibold">
+                      {unit}
+                      {norm.mode === "step" && points.length > 1 ? " (borne haute)" : ""}
+                    </th>
+                    <th className="pr-4 pb-1 font-semibold">Jours</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {points.map((p) => (
+                    <tr key={p.id}>
+                      <td className="pr-4 py-0.5">
+                        <input
+                          type="number"
+                          step="any"
+                          className="input w-24 py-0.5 px-1.5 text-xs"
+                          defaultValue={p.x}
+                          onBlur={(e) => updatePoint(p.id, "x", e.target.value)}
+                        />
+                      </td>
+                      <td className="pr-4 py-0.5">
+                        <input
+                          type="number"
+                          step="any"
+                          className="input w-24 py-0.5 px-1.5 text-xs"
+                          defaultValue={p.y}
+                          onBlur={(e) => updatePoint(p.id, "y", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        {points.length > 1 && (
+                          <button
+                            className="text-stone-400 hover:text-error-600"
+                            title="Supprimer ce point"
+                            onClick={() => deletePoint(p.id)}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button
+              type="button"
+              className="mt-2 text-xs font-bold text-primary-600 hover:text-primary-700"
+              onClick={() => addPoint(norm.id, points.length + 1)}
+            >
+              <Bi fr="+ Ajouter un point" ru="+ Добавить точку" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Point d'entrée du module Commercial : bascule entre les dossiers
+ *  (CommercialView, inchangée) et l'onglet "Normes" éditable — les normes
+ *  sont chargées une fois ici et passées en prop, comme un calculateur avec
+ *  une feuille de données séparée que le calcul principal va lire. */
+function CommercialSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [commercialTab, setCommercialTab] = useState<"dossiers" | "normes">("dossiers");
+
+  const [normRows, setNormRows] = useState<DurationNormRow[]>([]);
+  const [normPoints, setNormPoints] = useState<DurationNormPointRow[]>([]);
+  const [loadingNorms, setLoadingNorms] = useState(true);
+
+  const reloadNorms = async () => {
+    const { data: nRows } = await supabase
+      .from("commercial_duration_norms")
+      .select("id, code, label, label_ru, unit, mode, checklist_hint, position")
+      .order("position");
+    const { data: pRows } = await supabase
+      .from("commercial_duration_norm_points")
+      .select("id, norm_id, x, y, position")
+      .order("position");
+    setNormRows((nRows as DurationNormRow[]) ?? []);
+    setNormPoints((pRows as DurationNormPointRow[]) ?? []);
+    setLoadingNorms(false);
+  };
+
+  useEffect(() => {
+    async function load() {
+      await reloadNorms();
+    }
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
+  const norms: NormsMap = useMemo(() => {
+    const map: NormsMap = {};
+    normRows.forEach((n) => {
+      map[n.code] = {
+        mode: n.mode,
+        points: normPoints
+          .filter((p) => p.norm_id === n.id)
+          .sort((a, b) => a.position - b.position)
+          .map((p) => ({ x: Number(p.x), y: Number(p.y) })),
+      };
+    });
+    return map;
+  }, [normRows, normPoints]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        <button
+          onClick={() => setCommercialTab("dossiers")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold ${
+            commercialTab === "dossiers" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          <Bi fr="Dossiers" ru="Досье" />
+        </button>
+        <button
+          onClick={() => setCommercialTab("normes")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold ${
+            commercialTab === "normes" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          <Bi fr="Normes" ru="Нормы" />
+        </button>
+      </div>
+      {commercialTab === "dossiers" ? (
+        <CommercialView supabase={supabase} norms={norms} />
+      ) : (
+        <CommercialNormsView
+          supabase={supabase}
+          normRows={normRows}
+          normPoints={normPoints}
+          loading={loadingNorms}
+          onReload={reloadNorms}
+        />
+      )}
+    </div>
+  );
+}
+
+function CommercialView({
+  supabase,
+  norms,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  norms: NormsMap;
+}) {
   const [clients, setClients] = useState<CommercialClientRow[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
   const [search, setSearch] = useState("");
@@ -7124,6 +7359,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     const ombriere = checklistHasOmbriereLines(freshItems.map((i) => i.label));
     const fills = computeDelaiFills(
       freshItems,
+      norms,
       selectedCase?.puissance_kwc ?? null,
       selectedCase?.longueur_cable_m ?? null,
       ombriere,
@@ -7261,7 +7497,10 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
           desired_start_date: startDate,
           desired_end_date:
             puissanceKwc && puissanceKwc > 0 && startDate
-              ? addWorkingDays(startDate, mainDOeuvreJours(puissanceKwc, ombriere).jours)
+              ? addWorkingDays(
+                  startDate,
+                  evalNorm(norms[ombriere ? "main_doeuvre_ombriere" : "main_doeuvre_standard"], puissanceKwc).jours
+                )
               : null,
           puissance_kwc: puissanceKwc,
           longueur_cable_m: longueurCableM,
@@ -7291,7 +7530,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         // Même correspondance libellé → norme qu'à l'édition (saveCaseDurationInputs),
         // appliquée directement dès la création du dossier.
         if (insertedItems) {
-          const fills = computeDelaiFills(insertedItems, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
+          const fills = computeDelaiFills(insertedItems, norms, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
           await Promise.all(
             fills.map((f) =>
               supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id)
@@ -7429,7 +7668,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     };
 
     if (puissanceKwc && puissanceKwc > 0) {
-      const main = mainDOeuvreJours(puissanceKwc, ombriere);
+      const main = evalNorm(norms[ombriere ? "main_doeuvre_ombriere" : "main_doeuvre_standard"], puissanceKwc);
       patch.desired_start_date = desired_start_date;
       patch.desired_end_date = addWorkingDays(desired_start_date, main.jours);
     }
@@ -7463,7 +7702,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     // Bac acier et Démonter panneau n'ont qu'un seul point de mesure dans
     // la source (pas de courbe) : la valeur s'applique dès que la ligne
     // existe, sans dépendre de la puissance ou du câble.
-    const fills = computeDelaiFills(items, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
+    const fills = computeDelaiFills(items, norms, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
     if (fills.length > 0) {
       setItems((prev) =>
         prev.map((i) => {
