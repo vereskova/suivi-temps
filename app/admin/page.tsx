@@ -6974,6 +6974,39 @@ function checklistHasOmbriereLines(labels: string[]): boolean {
   return labels.some((l) => /pose\s*si\b/i.test(l) || /pose\s*ppv\b/i.test(l));
 }
 
+/** Correspondance libellé de checklist → norme, factorisée pour être
+ *  ré-appliquée à chaque fois que le jeu de lignes change (édition
+ *  puissance/câble, création du dossier, ou ajout d'une ligne depuis
+ *  "Autres" — une ligne "Pose SI"/"Pose PPV" ajoutée après coup doit être
+ *  remplie tout de suite, sans attendre que la puissance soit re-saisie). */
+function computeDelaiFills(
+  itemsToScan: { id: string; label: string }[],
+  puissanceKwc: number | null,
+  longueurCableM: number | null,
+  ombriere: boolean
+): { id: string; delai_prevu: string }[] {
+  const fills: { id: string; delai_prevu: string }[] = [];
+  for (const item of itemsToScan) {
+    const label = item.label.toLowerCase().trim();
+    if (/main.?d.?(œuvre|oeuvre)/.test(label) && puissanceKwc && puissanceKwc > 0) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(puissanceKwc, ombriere).jours) });
+    } else if (/tirage/.test(label) && longueurCableM && longueurCableM > 0) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(tirageCableJoursFor(longueurCableM).jours) });
+    } else if (/pose\s*si\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(poseSIJours(puissanceKwc).jours) });
+    } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(posePPVJours(puissanceKwc).jours) });
+    } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEPOSE_BAC_ACIER_JOURS) });
+    } else if (/^pose\s+bac\s+acier/.test(label)) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
+    } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
+    }
+  }
+  return fills;
+}
+
 function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [clients, setClients] = useState<CommercialClientRow[]>([]);
   const [loadingClients, setLoadingClients] = useState(true);
@@ -7069,7 +7102,29 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       .select(COMMERCIAL_ITEM_SELECT)
       .eq("case_id", selectedCaseId)
       .order("position");
-    setItems((data as CommercialItemRow[]) ?? []);
+    const freshItems = (data as CommercialItemRow[]) ?? [];
+
+    // Une ligne ajoutée depuis "Autres" (Pose SI/Pose PPV, typiquement) doit
+    // recevoir son délai tout de suite si la puissance/le câble du dossier
+    // sont déjà connus — sans attendre que l'utilisatrice retouche ces
+    // champs pour que le calcul se redéclenche.
+    const ombriere = checklistHasOmbriereLines(freshItems.map((i) => i.label));
+    const fills = computeDelaiFills(
+      freshItems,
+      selectedCase?.puissance_kwc ?? null,
+      selectedCase?.longueur_cable_m ?? null,
+      ombriere
+    );
+    if (fills.length > 0) {
+      await Promise.all(
+        fills.map((f) => supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id))
+      );
+      fills.forEach((f) => {
+        const item = freshItems.find((i) => i.id === f.id);
+        if (item) item.delai_prevu = f.delai_prevu;
+      });
+    }
+    setItems(freshItems);
     toast.success(`${toAdd.length} ligne(s) ajoutée(s).`);
     closeAutrePicker();
   }
@@ -7216,24 +7271,8 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
         // Même correspondance libellé → norme qu'à l'édition (saveCaseDurationInputs),
         // appliquée directement dès la création du dossier.
-        if (puissanceKwc && puissanceKwc > 0 && insertedItems) {
-          const fills: { id: string; delai_prevu: string }[] = [];
-          for (const item of insertedItems) {
-            const label = item.label.toLowerCase().trim();
-            if (/main.?d.?(œuvre|oeuvre)/.test(label)) {
-              fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(puissanceKwc, ombriere).jours) });
-            } else if (/pose\s*si\b/.test(label)) {
-              fills.push({ id: item.id, delai_prevu: formatJoursLabel(poseSIJours(puissanceKwc).jours) });
-            } else if (/pose\s*ppv\b/.test(label)) {
-              fills.push({ id: item.id, delai_prevu: formatJoursLabel(posePPVJours(puissanceKwc).jours) });
-            } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
-              fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEPOSE_BAC_ACIER_JOURS) });
-            } else if (/^pose\s+bac\s+acier/.test(label)) {
-              fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
-            } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
-              fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
-            }
-          }
+        if (insertedItems) {
+          const fills = computeDelaiFills(insertedItems, puissanceKwc, null, ombriere);
           await Promise.all(
             fills.map((f) =>
               supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id)
@@ -7381,25 +7420,7 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     // Bac acier et Démonter panneau n'ont qu'un seul point de mesure dans
     // la source (pas de courbe) : la valeur s'applique dès que la ligne
     // existe, sans dépendre de la puissance ou du câble.
-    const fills: { id: string; delai_prevu: string }[] = [];
-    for (const item of items) {
-      const label = item.label.toLowerCase().trim();
-      if (/main.?d.?(œuvre|oeuvre)/.test(label) && puissanceKwc && puissanceKwc > 0) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(puissanceKwc, ombriere).jours) });
-      } else if (/tirage/.test(label) && longueurCableM && longueurCableM > 0) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(tirageCableJoursFor(longueurCableM).jours) });
-      } else if (/pose\s*si\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(poseSIJours(puissanceKwc).jours) });
-      } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(posePPVJours(puissanceKwc).jours) });
-      } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEPOSE_BAC_ACIER_JOURS) });
-      } else if (/^pose\s+bac\s+acier/.test(label)) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
-      } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
-      }
-    }
+    const fills = computeDelaiFills(items, puissanceKwc, longueurCableM, ombriere);
     if (fills.length > 0) {
       setItems((prev) =>
         prev.map((i) => {
