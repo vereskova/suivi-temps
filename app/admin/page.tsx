@@ -1999,6 +1999,14 @@ function EmployeView({
   );
 }
 
+type MoisPointageRow = {
+  employee_id: string;
+  team_id: string | null;
+  total_minutes: number | null;
+  employees: { first_name: string; last_name: string; status: EmployeeStatus } | null;
+  teams: { name: string } | null;
+};
+
 // ── Vue "Totaux du mois" — remplace l'onglet Heures totales ─────────────────
 function MoisView({
   supabase,
@@ -2010,7 +2018,7 @@ function MoisView({
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [rows, setRows] = useState<PointageRow[]>([]);
+  const [rows, setRows] = useState<MoisPointageRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -2019,10 +2027,12 @@ function MoisView({
       const { start, end } = monthRange(year, month);
       const { data } = await supabase
         .from("pointage_entries")
-        .select("employee_id, total_minutes")
+        .select(
+          "employee_id, team_id, total_minutes, employees!pointage_entries_employee_id_fkey(first_name, last_name, status), teams!pointage_entries_team_id_fkey(name)"
+        )
         .gte("work_date", start)
         .lte("work_date", end);
-      setRows((data as unknown as PointageRow[]) ?? []);
+      setRows((data as unknown as MoisPointageRow[]) ?? []);
       setLoading(false);
     }
     load();
@@ -2048,6 +2058,32 @@ function MoisView({
       }),
     [employees]
   );
+
+  // Employés licenciés entre-temps : absents de `employees` (déjà filtré
+  // actif/chantier en amont), mais on veut quand même voir leurs heures/
+  // équipe pour les mois où ils ont réellement pointé — l'équipe vient de
+  // la ligne de pointage elle-même (leur équipe permanente peut avoir
+  // disparu ou changé depuis), pas de employees.team_id.
+  const terminatedRows = useMemo(() => {
+    const map = new Map<
+      string,
+      { first_name: string; last_name: string; teamName: string; minutes: number }
+    >();
+    rows.forEach((r) => {
+      if (r.employees?.status !== "terminated") return;
+      const key = `${r.employee_id}|${r.team_id ?? ""}`;
+      const existing = map.get(key);
+      map.set(key, {
+        first_name: r.employees.first_name,
+        last_name: r.employees.last_name,
+        teamName: r.teams?.name ?? "—",
+        minutes: (existing?.minutes ?? 0) + (r.total_minutes ?? 0),
+      });
+    });
+    return [...map.values()].sort(
+      (a, b) => a.teamName.localeCompare(b.teamName) || a.last_name.localeCompare(b.last_name)
+    );
+  }, [rows]);
 
   return (
     <div>
@@ -2164,6 +2200,51 @@ function MoisView({
             </tbody>
           </table>
         </div>
+
+        {terminatedRows.length > 0 && (
+          <div className="mt-6">
+            <p className="mb-2 text-sm font-bold text-stone-500">
+              <Bi
+                fr="Salariés sortis ayant travaillé ce mois-ci"
+                ru="Уволенные, работавшие в этом месяце"
+              />
+            </p>
+            <div className="md:hidden space-y-1.5">
+              {terminatedRows.map((r, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{employeeName(r)}</p>
+                    <p className="text-xs text-stone-400 truncate">{r.teamName}</p>
+                  </div>
+                  <p className="font-bold shrink-0">{fmtMinutes(r.minutes)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="hidden md:block card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-stone-400">
+                    <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                    <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                    <th className="pb-2"><Bi fr="Heures totales" ru="Часы всего" /></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {terminatedRows.map((r, i) => (
+                    <tr key={i} className="border-t border-stone-100">
+                      <td className="py-2 pr-4 font-semibold">{employeeName(r)}</td>
+                      <td className="py-2 pr-4 text-stone-500">{r.teamName}</td>
+                      <td className="py-2 pr-4 font-bold">{fmtMinutes(r.minutes)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
         </>
       )}
     </div>
