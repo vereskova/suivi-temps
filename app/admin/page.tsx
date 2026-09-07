@@ -6892,6 +6892,7 @@ type CommercialCaseRow = {
   puissance_kwc: number | null;
   longueur_cable_m: number | null;
   surface_toiture_m2: number | null;
+  toiture_materiau: "bac_acier" | "fibrociment" | null;
 };
 type CommercialCategoryRow = { code: string; label: string; label_ru: string; sort_order: number };
 type CommercialItemStatus = "active" | "inactive" | "pending";
@@ -6946,7 +6947,7 @@ const COMMERCIAL_STATUS_LABEL_CLASS: Record<CommercialItemStatus, string> = {
 const COMMERCIAL_PRICE_WARN_THRESHOLD = 100000;
 
 const COMMERCIAL_CASE_SELECT =
-  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, longueur_cable_m, surface_toiture_m2";
+  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, longueur_cable_m, surface_toiture_m2, toiture_materiau";
 
 /** Stub quote ids (no Sinao API key configured yet) are prefixed so the UI
  *  can tell a simulated push apart from a real one — a stub still allows
@@ -6983,7 +6984,8 @@ function computeDelaiFills(
   puissanceKwc: number | null,
   longueurCableM: number | null,
   ombriere: boolean,
-  surfaceToitureM2: number | null = null
+  surfaceToitureM2: number | null = null,
+  toitureMateriau: "bac_acier" | "fibrociment" | null = null
 ): { id: string; delai_prevu: string }[] {
   const fills: { id: string; delai_prevu: string }[] = [];
   for (const item of itemsToScan) {
@@ -6998,7 +7000,11 @@ function computeDelaiFills(
     } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_ppv, puissanceKwc).jours) });
     } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.depose_bac_acier, 0).jours) });
+      // Un toit est soit bac acier, soit fibrociment, jamais les deux — le
+      // libellé de la ligne ("Dépose Bac acier") ne change jamais, seule la
+      // norme qui alimente son "Délai prévu" dépend du matériau du dossier.
+      const code = toitureMateriau === "fibrociment" ? "depose_fibrociment" : "depose_bac_acier";
+      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms[code], 0).jours) });
     } else if (/^pose\s+bac\s+acier/.test(label)) {
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_bac_acier, 0).jours) });
     } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
@@ -7274,6 +7280,7 @@ function CommercialView({
   const [newPuissanceKwc, setNewPuissanceKwc] = useState("");
   const [newLongueurCableM, setNewLongueurCableM] = useState("");
   const [newSurfaceToitureM2, setNewSurfaceToitureM2] = useState("");
+  const [newToitureMateriau, setNewToitureMateriau] = useState<"bac_acier" | "fibrociment">("bac_acier");
   const [creatingCase, setCreatingCase] = useState(false);
   const [clientTemplates, setClientTemplates] = useState<{ id: string; variant_label: string }[]>([]);
   const [newTemplateId, setNewTemplateId] = useState<string | null>(null);
@@ -7363,7 +7370,8 @@ function CommercialView({
       selectedCase?.puissance_kwc ?? null,
       selectedCase?.longueur_cable_m ?? null,
       ombriere,
-      selectedCase?.surface_toiture_m2 ?? null
+      selectedCase?.surface_toiture_m2 ?? null,
+      selectedCase?.toiture_materiau ?? null
     );
     if (fills.length > 0) {
       await Promise.all(
@@ -7387,6 +7395,7 @@ function CommercialView({
   const [editingCasePuissance, setEditingCasePuissance] = useState(false);
   const [editingCaseCable, setEditingCaseCable] = useState(false);
   const [editingCaseSurface, setEditingCaseSurface] = useState(false);
+  const [editingCaseToitureMateriau, setEditingCaseToitureMateriau] = useState(false);
 
   const [generating, setGenerating] = useState<"client" | "team" | null>(null);
   const [pushingSinao, setPushingSinao] = useState(false);
@@ -7505,6 +7514,7 @@ function CommercialView({
           puissance_kwc: puissanceKwc,
           longueur_cable_m: longueurCableM,
           surface_toiture_m2: surfaceToitureM2,
+          toiture_materiau: newToitureMateriau,
           created_by: user?.id,
         })
         .select("id")
@@ -7530,7 +7540,15 @@ function CommercialView({
         // Même correspondance libellé → norme qu'à l'édition (saveCaseDurationInputs),
         // appliquée directement dès la création du dossier.
         if (insertedItems) {
-          const fills = computeDelaiFills(insertedItems, norms, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
+          const fills = computeDelaiFills(
+            insertedItems,
+            norms,
+            puissanceKwc,
+            longueurCableM,
+            ombriere,
+            surfaceToitureM2,
+            newToitureMateriau
+          );
           await Promise.all(
             fills.map((f) =>
               supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id)
@@ -7546,6 +7564,7 @@ function CommercialView({
       setNewPuissanceKwc("");
       setNewLongueurCableM("");
       setNewSurfaceToitureM2("");
+      setNewToitureMateriau("bac_acier");
       await reloadCases(selectedClientId);
       setSelectedCaseId(caseRow.id);
     } catch (err) {
@@ -7623,13 +7642,20 @@ function CommercialView({
       caseId,
       puissanceKwc,
       current?.longueur_cable_m ?? null,
-      current?.surface_toiture_m2 ?? null
+      current?.surface_toiture_m2 ?? null,
+      current?.toiture_materiau ?? null
     );
   }
   function updateCaseCable(caseId: string, value: string) {
     const current = cases.find((c) => c.id === caseId);
     const longueurCableM = value === "" ? null : Number(value);
-    saveCaseDurationInputs(caseId, current?.puissance_kwc ?? null, longueurCableM, current?.surface_toiture_m2 ?? null);
+    saveCaseDurationInputs(
+      caseId,
+      current?.puissance_kwc ?? null,
+      longueurCableM,
+      current?.surface_toiture_m2 ?? null,
+      current?.toiture_materiau ?? null
+    );
   }
   function updateCaseSurface(caseId: string, value: string) {
     const current = cases.find((c) => c.id === caseId);
@@ -7638,7 +7664,19 @@ function CommercialView({
       caseId,
       current?.puissance_kwc ?? null,
       current?.longueur_cable_m ?? null,
-      surfaceToitureM2
+      surfaceToitureM2,
+      current?.toiture_materiau ?? null
+    );
+  }
+  function updateCaseToitureMateriau(caseId: string, value: string) {
+    const current = cases.find((c) => c.id === caseId);
+    const toitureMateriau = value === "" ? null : (value as "bac_acier" | "fibrociment");
+    saveCaseDurationInputs(
+      caseId,
+      current?.puissance_kwc ?? null,
+      current?.longueur_cable_m ?? null,
+      current?.surface_toiture_m2 ?? null,
+      toitureMateriau
     );
   }
 
@@ -7656,7 +7694,8 @@ function CommercialView({
     caseId: string,
     puissanceKwc: number | null,
     longueurCableM: number | null,
-    surfaceToitureM2: number | null = null
+    surfaceToitureM2: number | null = null,
+    toitureMateriau: "bac_acier" | "fibrociment" | null = null
   ) {
     const current = cases.find((c) => c.id === caseId);
     const desired_start_date = current?.desired_start_date ?? today();
@@ -7665,6 +7704,7 @@ function CommercialView({
       puissance_kwc: puissanceKwc,
       longueur_cable_m: longueurCableM,
       surface_toiture_m2: surfaceToitureM2,
+      toiture_materiau: toitureMateriau,
     };
 
     if (puissanceKwc && puissanceKwc > 0) {
@@ -7686,6 +7726,7 @@ function CommercialView({
               puissance_kwc: puissanceKwc,
               longueur_cable_m: longueurCableM,
               surface_toiture_m2: surfaceToitureM2,
+              toiture_materiau: toitureMateriau,
               ...(patch.desired_start_date ? { desired_start_date: patch.desired_start_date as string } : {}),
               ...(patch.desired_end_date ? { desired_end_date: patch.desired_end_date as string } : {}),
             }
@@ -7702,7 +7743,7 @@ function CommercialView({
     // Bac acier et Démonter panneau n'ont qu'un seul point de mesure dans
     // la source (pas de courbe) : la valeur s'applique dès que la ligne
     // existe, sans dépendre de la puissance ou du câble.
-    const fills = computeDelaiFills(items, norms, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2);
+    const fills = computeDelaiFills(items, norms, puissanceKwc, longueurCableM, ombriere, surfaceToitureM2, toitureMateriau);
     if (fills.length > 0) {
       setItems((prev) =>
         prev.map((i) => {
@@ -8147,6 +8188,40 @@ function CommercialView({
                     </div>
                   )}
                 </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <label className="text-[10px] font-bold uppercase text-stone-400">Matériau de toiture</label>
+                  {editingCaseToitureMateriau ? (
+                    <select
+                      autoFocus
+                      className="input text-xs py-0.5 px-1.5 w-auto"
+                      defaultValue={selectedCase?.toiture_materiau ?? "bac_acier"}
+                      onBlur={(e) => {
+                        if (selectedCase) updateCaseToitureMateriau(selectedCase.id, e.target.value);
+                        setEditingCaseToitureMateriau(false);
+                      }}
+                      onChange={(e) => {
+                        if (selectedCase) updateCaseToitureMateriau(selectedCase.id, e.target.value);
+                        setEditingCaseToitureMateriau(false);
+                      }}
+                    >
+                      <option value="bac_acier">Bac acier</option>
+                      <option value="fibrociment">Fibrociment</option>
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">
+                        {selectedCase?.toiture_materiau === "fibrociment" ? "Fibrociment" : "Bac acier"}
+                      </span>
+                      <button
+                        className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
+                        title="Modifier le matériau de toiture"
+                        onClick={() => setEditingCaseToitureMateriau(true)}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button
@@ -8561,6 +8636,17 @@ function CommercialView({
               onChange={(e) => setNewSurfaceToitureM2(e.target.value)}
               placeholder="Ex. 800"
             />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Matériau de toiture</label>
+            <select
+              className="input"
+              value={newToitureMateriau}
+              onChange={(e) => setNewToitureMateriau(e.target.value as "bac_acier" | "fibrociment")}
+            >
+              <option value="bac_acier">Bac acier</option>
+              <option value="fibrociment">Fibrociment</option>
+            </select>
           </div>
           {clientTemplates.length > 1 && (
             <div>
