@@ -8300,7 +8300,9 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Tirage de câble (m)</label>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+              Tirage de câble (m) <span className="normal-case font-normal text-stone-400">(optionnel)</span>
+            </label>
             <input
               type="number"
               className="input"
@@ -8310,7 +8312,9 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             />
           </div>
           <div>
-            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Surface toiture (m²)</label>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
+              Surface toiture (m²) <span className="normal-case font-normal text-stone-400">(optionnel)</span>
+            </label>
             <input
               type="number"
               className="input"
