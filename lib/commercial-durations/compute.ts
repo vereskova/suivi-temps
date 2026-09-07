@@ -1,9 +1,18 @@
 /**
  * Délais de pose — durée de chantier estimée à partir de la puissance (kWc),
  * portée depuis "Normes travail sur les objets pour les équipes Delais.numbers".
- * Les paliers manquants dans la source (dépose/pose bac acier, démontage
- * panneaux, fibrociment) n'ont pas pu être lus fiablement dans l'export —
- * volontairement absents plutôt que devinés.
+ * Ces normes sont universelles (mêmes chiffres pour tous les clients) — voir
+ * app/admin/page.tsx pour comment elles se rattachent aux lignes réelles de
+ * la checklist ("Main-d'œuvre", "Tirage AC", "Pose SI"...), par correspondance
+ * de libellé, sans jamais renommer ces libellés.
+ *
+ * Il n'y a pas de notion de "type de site" à choisir à la main : la checklist
+ * du dossier dit elle-même si c'est une ombrière (présence d'une ligne
+ * "Pose SI" / "Pose PPV"), auquel cas la courbe Main-d'œuvre "ombrière" (plus
+ * élevée) s'applique au lieu de la courbe standard.
+ *
+ * "Depose Fibrociment" n'a aucune valeur en jours dans la source (case vide)
+ * et n'a pas de ligne de checklist correspondante — volontairement absent.
  */
 import { frenchHolidaysForYear } from "@/lib/payroll/frenchHolidays";
 
@@ -39,58 +48,38 @@ export function addWorkingDays(startIso: string, jours: number): string {
   return cur;
 }
 
-export type SiteTypeCode = "agricole" | "advanced_energie" | "ombrier";
-
-export const SITE_TYPE_LABELS: Record<SiteTypeCode, { fr: string; ru: string }> = {
-  agricole: { fr: "Agricole (horizon HML)", ru: "Agricole (horizon HML)" },
-  advanced_energie: { fr: "Advanced Energie / LT / Feedgy", ru: "Advanced Energie / LT / Feedgy" },
-  ombrier: { fr: "Ombrière", ru: "Навес (ombrière)" },
-};
-
 type Bracket = [kwc: number, jours: number];
 
-const SITE_TYPE_NORMS: Record<SiteTypeCode, Bracket[]> = {
-  // "agricole" utilise volontairement la même courbe que "advanced énergie /
-  // LT / Feedgy" — la courbe propre à "agricol horizon HML" dans la source
-  // est obsolète, remplacée par celle-ci sur instruction de l'utilisatrice.
-  agricole: [
-    [100, 6],
-    [150, 8],
-    [200, 10],
-    [250, 12],
-    [300, 14],
-    [350, 16],
-    [400, 18],
-    [450, 20],
-    [500, 22],
-  ],
-  advanced_energie: [
-    [100, 6],
-    [150, 8],
-    [200, 10],
-    [250, 12],
-    [300, 14],
-    [350, 16],
-    [400, 18],
-    [450, 20],
-    [500, 22],
-  ],
-  ombrier: [
-    [100, 5],
-    [200, 8],
-    [300, 12],
-    [400, 16],
-    [500, 20],
-    [600, 24],
-    [700, 28],
-    [800, 32],
-    [900, 36],
-    [1000, 40],
-  ],
-};
+// Courbe "Main-d'œuvre" standard (la courbe "agricole" de la source,
+// obsolète, a été remplacée par celle-ci — mêmes chiffres que "Advanced
+// Energie / LT / Feedgy" — sur instruction de l'utilisatrice).
+const MAIN_DOEUVRE_NORMS: Bracket[] = [
+  [100, 6],
+  [150, 8],
+  [200, 10],
+  [250, 12],
+  [300, 14],
+  [350, 16],
+  [400, 18],
+  [450, 20],
+  [500, 22],
+];
 
-// Postes optionnels propres à l'ombrière — mêmes paliers de puissance que la
-// courbe "ombrier" ci-dessus.
+// Courbe "Main-d'œuvre" pour une ombrière (plus élevée, va jusqu'à 1000 kWc)
+// — s'applique quand le dossier a aussi des lignes Pose SI/Pose PPV.
+const OMBRIER_MAIN_DOEUVRE_NORMS: Bracket[] = [
+  [100, 5],
+  [200, 8],
+  [300, 12],
+  [400, 16],
+  [500, 20],
+  [600, 24],
+  [700, 28],
+  [800, 32],
+  [900, 36],
+  [1000, 40],
+];
+
 const OMBRIER_POSE_SI: Bracket[] = [
   [100, 1],
   [200, 1],
@@ -143,48 +132,16 @@ function interpolate(brackets: Bracket[], x: number): { jours: number; extrapola
   return { jours: last[1], extrapolated: false };
 }
 
-export type DurationAddons = {
-  poseSI: boolean;
-  posePPV: boolean;
-  tirageCableM: number | null; // longueur de câble à tirer, en mètres
-  setkaBacAcierM2: number | null; // grille sous bac acier à poser/déposer, en m²
-  setkaPerimetreKwc: number | null; // grille de périmètre ombrière, sur la puissance en kWc
-};
-
-export const EMPTY_ADDONS: DurationAddons = {
-  poseSI: false,
-  posePPV: false,
-  tirageCableM: null,
-  setkaBacAcierM2: null,
-  setkaPerimetreKwc: null,
-};
-
-export type DurationLineItem = { label: string; labelRu: string; jours: number; extrapolated: boolean };
-
-export type DurationResult = {
-  totalJours: number;
-  extrapolated: boolean;
-  lines: DurationLineItem[];
-};
-
 /** Tirage de câble : paliers discrets par tranche de longueur (pas de courbe continue dans la source). */
 function tirageCableJours(m: number): number {
   if (m <= 100) return 1;
   if (m <= 200) return 2;
   return 3; // 200-400m dans la source ; au-delà, à vérifier manuellement
 }
-function setkaBacAcierJours(m2: number): number {
-  return m2 <= 600 ? 1 : 2; // 0-600 / 600-1000 m² dans la source
-}
-function setkaPerimetreJours(kwc: number): number {
-  return kwc <= 300 ? 1 : 2; // 0-300 / 300-500 kWc dans la source
-}
 
-/** Jours "Main-d'œuvre" seuls, sans les postes annexes — c'est cette valeur
- *  qui alimente à la fois la case "Fin souhaitée" du dossier et la ligne de
- *  checklist "Main-d'œuvre". */
-export function mainDOeuvreJours(siteType: SiteTypeCode, powerKwc: number) {
-  return interpolate(SITE_TYPE_NORMS[siteType], powerKwc);
+/** `ombriere` sélectionne la courbe "ombrière" — vrai dès que le dossier a des lignes Pose SI/Pose PPV. */
+export function mainDOeuvreJours(powerKwc: number, ombriere = false) {
+  return interpolate(ombriere ? OMBRIER_MAIN_DOEUVRE_NORMS : MAIN_DOEUVRE_NORMS, powerKwc);
 }
 export function poseSIJours(powerKwc: number) {
   return interpolate(OMBRIER_POSE_SI, powerKwc);
@@ -196,51 +153,12 @@ export function tirageCableJoursFor(m: number) {
   return { jours: tirageCableJours(m), extrapolated: m > 400 };
 }
 
-export function computeDuration(siteType: SiteTypeCode, powerKwc: number, addons: DurationAddons): DurationResult {
-  const base = interpolate(SITE_TYPE_NORMS[siteType], powerKwc);
-  const lines: DurationLineItem[] = [
-    {
-      label: `${SITE_TYPE_LABELS[siteType].fr} — ${powerKwc} kWc`,
-      labelRu: `${SITE_TYPE_LABELS[siteType].ru} — ${powerKwc} кВт`,
-      jours: base.jours,
-      extrapolated: base.extrapolated,
-    },
-  ];
-
-  if (siteType === "ombrier" && addons.poseSI) {
-    const r = interpolate(OMBRIER_POSE_SI, powerKwc);
-    lines.push({ label: "Pose SI", labelRu: "Pose SI (монтаж системы)", jours: r.jours, extrapolated: r.extrapolated });
-  }
-  if (siteType === "ombrier" && addons.posePPV) {
-    const r = interpolate(OMBRIER_POSE_PPV, powerKwc);
-    lines.push({ label: "Pose PPV", labelRu: "Pose PPV (монтаж панелей)", jours: r.jours, extrapolated: r.extrapolated });
-  }
-  if (addons.tirageCableM) {
-    lines.push({
-      label: `Tirage de câble (${addons.tirageCableM} m)`,
-      labelRu: `Протяжка кабеля (${addons.tirageCableM} м)`,
-      jours: tirageCableJours(addons.tirageCableM),
-      extrapolated: addons.tirageCableM > 400,
-    });
-  }
-  if (addons.setkaBacAcierM2) {
-    lines.push({
-      label: `Grille sous bac acier (${addons.setkaBacAcierM2} m²)`,
-      labelRu: `Сетка под bac acier (${addons.setkaBacAcierM2} м²)`,
-      jours: setkaBacAcierJours(addons.setkaBacAcierM2),
-      extrapolated: addons.setkaBacAcierM2 > 1000,
-    });
-  }
-  if (addons.setkaPerimetreKwc) {
-    lines.push({
-      label: `Grille de périmètre (${addons.setkaPerimetreKwc} kWc)`,
-      labelRu: `Сетка по периметру (${addons.setkaPerimetreKwc} кВт)`,
-      jours: setkaPerimetreJours(addons.setkaPerimetreKwc),
-      extrapolated: addons.setkaPerimetreKwc > 500,
-    });
-  }
-
-  const totalJours = lines.reduce((s, l) => s + l.jours, 0);
-  const extrapolated = lines.some((l) => l.extrapolated);
-  return { totalJours, extrapolated, lines };
-}
+// Un seul point de mesure dans la source pour chacun de ces trois postes (pas
+// de courbe possible) : "pose bac aciers" à 230m, "Dépose bac aciers" à
+// 360m, "demontage panneaux" à 150 (unité non précisée dans la source) —
+// chacun donne 1 jour. Faute d'un deuxième point pour en déduire un taux,
+// la valeur s'applique telle quelle dès que la ligne existe, plutôt que
+// d'inventer une mise à l'échelle non fondée sur la source.
+export const POSE_BAC_ACIER_JOURS = 1;
+export const DEPOSE_BAC_ACIER_JOURS = 1;
+export const DEMONTAGE_PANNEAU_JOURS = 1;

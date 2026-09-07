@@ -98,12 +98,13 @@ import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import { computeCongesPayes } from "@/lib/conges-payes/compute";
 import {
   addWorkingDays,
-  SITE_TYPE_LABELS,
   mainDOeuvreJours,
   poseSIJours,
   posePPVJours,
   tirageCableJoursFor,
-  type SiteTypeCode,
+  POSE_BAC_ACIER_JOURS,
+  DEPOSE_BAC_ACIER_JOURS,
+  DEMONTAGE_PANNEAU_JOURS,
 } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
 import {
@@ -6898,7 +6899,6 @@ type CommercialCaseRow = {
   client_doc_sent_at: string | null;
   team_doc_generated_at: string | null;
   puissance_kwc: number | null;
-  type_site: SiteTypeCode | null;
   longueur_cable_m: number | null;
 };
 type CommercialCategoryRow = { code: string; label: string; label_ru: string; sort_order: number };
@@ -6954,7 +6954,7 @@ const COMMERCIAL_STATUS_LABEL_CLASS: Record<CommercialItemStatus, string> = {
 const COMMERCIAL_PRICE_WARN_THRESHOLD = 100000;
 
 const COMMERCIAL_CASE_SELECT =
-  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, type_site, longueur_cable_m";
+  "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, longueur_cable_m";
 
 /** Stub quote ids (no Sinao API key configured yet) are prefixed so the UI
  *  can tell a simulated push apart from a real one — a stub still allows
@@ -6968,116 +6968,10 @@ function formatJoursLabel(jours: number): string {
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} j`;
 }
 
-/** Puissance / type de site / longueur de câble à tirer — saisis une fois
- *  pour le dossier, avec un aperçu live du "Main-d'œuvre" (+ Pose SI/PPV
- *  pour une ombrière, + Tirage de câble) avant de les appliquer au dossier
- *  et aux lignes de checklist correspondantes. `key={case.id}` côté appelant
- *  fait qu'un changement de dossier repart d'un état local propre. */
-function DurationCalcPanel({
-  selectedCase,
-  onApply,
-}: {
-  selectedCase: CommercialCaseRow;
-  onApply: (
-    caseId: string,
-    typeSite: SiteTypeCode,
-    puissanceKwc: number | null,
-    longueurCableM: number | null
-  ) => void;
-}) {
-  const [typeSite, setTypeSite] = useState<SiteTypeCode>(selectedCase.type_site ?? "ombrier");
-  const [puissanceKwc, setPuissanceKwc] = useState(selectedCase.puissance_kwc?.toString() ?? "");
-  const [longueurCableM, setLongueurCableM] = useState(selectedCase.longueur_cable_m?.toString() ?? "");
-
-  const kwc = puissanceKwc === "" ? null : Number(puissanceKwc);
-  const cableM = longueurCableM === "" ? null : Number(longueurCableM);
-
-  /** Auto-applies whenever puissance/type de site/longueur de câble changes
-   *  — no separate "confirmer" step, per the user's "автоматом при вводе
-   *  мощности". `nextTypeSite` lets the <select>'s onChange pass its fresh
-   *  value straight through, since state updates aren't visible yet inside
-   *  the same handler. */
-  function autoApply(nextTypeSite?: SiteTypeCode) {
-    onApply(selectedCase.id, nextTypeSite ?? typeSite, kwc, cableM);
-  }
-
-  const preview =
-    kwc && kwc > 0
-      ? [
-          { label: "Main-d'œuvre", labelRu: "Main-d'œuvre (общий труд)", ...mainDOeuvreJours(typeSite, kwc) },
-          ...(typeSite === "ombrier" ? [{ label: "Pose SI", labelRu: "Pose SI", ...poseSIJours(kwc) }] : []),
-          ...(typeSite === "ombrier" ? [{ label: "Pose PPV", labelRu: "Pose PPV", ...posePPVJours(kwc) }] : []),
-          ...(cableM && cableM > 0
-            ? [{ label: "Tirage AC", labelRu: "Tirage AC (кабель)", ...tirageCableJoursFor(cableM) }]
-            : []),
-        ]
-      : [];
-
-  return (
-    <div className="card bg-stone-50 mt-2 p-3 space-y-2 max-w-md">
-      <div className="flex flex-wrap gap-2 items-end">
-        <label className="text-xs">
-          <span className="block text-[10px] font-bold uppercase text-stone-400">Type de site</span>
-          <select
-            className="input text-xs py-1"
-            value={typeSite}
-            onChange={(e) => {
-              const next = e.target.value as SiteTypeCode;
-              setTypeSite(next);
-              autoApply(next);
-            }}
-          >
-            {(Object.keys(SITE_TYPE_LABELS) as SiteTypeCode[]).map((code) => (
-              <option key={code} value={code}>
-                {SITE_TYPE_LABELS[code].fr}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs">
-          <span className="block text-[10px] font-bold uppercase text-stone-400">Puissance (kWc)</span>
-          <input
-            type="number"
-            className="input text-xs py-1"
-            style={{ width: "6rem" }}
-            value={puissanceKwc}
-            onChange={(e) => setPuissanceKwc(e.target.value)}
-            onBlur={() => autoApply()}
-          />
-        </label>
-        <label className="text-xs">
-          <span className="block text-[10px] font-bold uppercase text-stone-400">Tirage de câble (m)</span>
-          <input
-            type="number"
-            className="input text-xs py-1"
-            style={{ width: "6rem" }}
-            value={longueurCableM}
-            onChange={(e) => setLongueurCableM(e.target.value)}
-            onBlur={() => autoApply()}
-          />
-        </label>
-      </div>
-      {preview.length > 0 && (
-        <div className="border-t border-stone-200 pt-2 space-y-1">
-          {preview.map((l, i) => (
-            <p key={i} className="text-xs text-stone-500 flex justify-between gap-2">
-              <Bi fr={l.label} ru={l.labelRu} />
-              <span className="font-semibold text-stone-700 whitespace-nowrap">
-                {formatJoursLabel(l.jours)}
-                {l.extrapolated ? " ⚠" : ""}
-              </span>
-            </p>
-          ))}
-          <p className="text-[11px] text-stone-400">
-            <Bi
-              fr="Ces lignes remplaceront le « Délai prévu » des lignes de checklist correspondantes (Main-d'œuvre, Pose SI, Pose PPV, Tirage AC) — les autres lignes ne sont pas concernées."
-              ru="Эти строки заменят «Délai prévu» у соответствующих строк чек-листа — остальные строки не затрагиваются."
-            />
-          </p>
-        </div>
-      )}
-    </div>
-  );
+/** Une checklist qui contient "Pose SI" et/ou "Pose PPV" EST ce qui fait
+ *  d'un dossier une "ombrière" — pas de champ séparé à cocher. */
+function checklistHasOmbriereLines(labels: string[]): boolean {
+  return labels.some((l) => /pose\s*si\b/i.test(l) || /pose\s*ppv\b/i.test(l));
 }
 
 function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -7098,7 +6992,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newCaseOpen, setNewCaseOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newStart, setNewStart] = useState("");
-  const [newTypeSite, setNewTypeSite] = useState<SiteTypeCode>("ombrier");
   const [newPuissanceKwc, setNewPuissanceKwc] = useState("");
   const [creatingCase, setCreatingCase] = useState(false);
   const [clientTemplates, setClientTemplates] = useState<{ id: string; variant_label: string }[]>([]);
@@ -7186,6 +7079,8 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
   const [editingCaseTitle, setEditingCaseTitle] = useState(false);
   const [editingCaseDate, setEditingCaseDate] = useState(false);
+  const [editingCasePuissance, setEditingCasePuissance] = useState(false);
+  const [editingCaseCable, setEditingCaseCable] = useState(false);
 
   const [generating, setGenerating] = useState<"client" | "team" | null>(null);
   const [pushingSinao, setPushingSinao] = useState(false);
@@ -7278,6 +7173,14 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
       const puissanceKwc = newPuissanceKwc === "" ? null : Number(newPuissanceKwc);
       const startDate = newStart || (puissanceKwc ? today() : null);
+
+      const { data: templateItems } = await supabase
+        .from("commercial_checklist_template_items")
+        .select("category_code, position, label")
+        .eq("template_id", newTemplateId)
+        .order("position");
+      const ombriere = checklistHasOmbriereLines((templateItems ?? []).map((t) => t.label));
+
       const { data: caseRow, error: caseError } = await supabase
         .from("commercial_cases")
         .insert({
@@ -7286,9 +7189,8 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
           desired_start_date: startDate,
           desired_end_date:
             puissanceKwc && puissanceKwc > 0 && startDate
-              ? addWorkingDays(startDate, mainDOeuvreJours(newTypeSite, puissanceKwc).jours)
+              ? addWorkingDays(startDate, mainDOeuvreJours(puissanceKwc, ombriere).jours)
               : null,
-          type_site: newTypeSite,
           puissance_kwc: puissanceKwc,
           created_by: user?.id,
         })
@@ -7296,24 +7198,48 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         .single();
       if (caseError || !caseRow) throw caseError ?? new Error("Erreur lors de la création du dossier.");
 
-      const { data: templateItems } = await supabase
-        .from("commercial_checklist_template_items")
-        .select("category_code, position, label")
-        .eq("template_id", newTemplateId)
-        .order("position");
-
       if (templateItems && templateItems.length > 0) {
-        const { error: itemsError } = await supabase.from("commercial_case_items").insert(
-          templateItems.map((t) => ({
-            case_id: caseRow.id,
-            category_code: t.category_code,
-            position: t.position,
-            label: t.label,
-            origin: "template",
-            status: "active",
-          }))
-        );
+        const { data: insertedItems, error: itemsError } = await supabase
+          .from("commercial_case_items")
+          .insert(
+            templateItems.map((t) => ({
+              case_id: caseRow.id,
+              category_code: t.category_code,
+              position: t.position,
+              label: t.label,
+              origin: "template",
+              status: "active",
+            }))
+          )
+          .select("id, label");
         if (itemsError) throw itemsError;
+
+        // Même correspondance libellé → norme qu'à l'édition (saveCaseDurationInputs),
+        // appliquée directement dès la création du dossier.
+        if (puissanceKwc && puissanceKwc > 0 && insertedItems) {
+          const fills: { id: string; delai_prevu: string }[] = [];
+          for (const item of insertedItems) {
+            const label = item.label.toLowerCase().trim();
+            if (/main.?d.?(œuvre|oeuvre)/.test(label)) {
+              fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(puissanceKwc, ombriere).jours) });
+            } else if (/pose\s*si\b/.test(label)) {
+              fills.push({ id: item.id, delai_prevu: formatJoursLabel(poseSIJours(puissanceKwc).jours) });
+            } else if (/pose\s*ppv\b/.test(label)) {
+              fills.push({ id: item.id, delai_prevu: formatJoursLabel(posePPVJours(puissanceKwc).jours) });
+            } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
+              fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEPOSE_BAC_ACIER_JOURS) });
+            } else if (/^pose\s+bac\s+acier/.test(label)) {
+              fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
+            } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
+              fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
+            }
+          }
+          await Promise.all(
+            fills.map((f) =>
+              supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id)
+            )
+          );
+        }
       }
 
       toast.success("Dossier créé.");
@@ -7321,7 +7247,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
       setNewTitle("");
       setNewStart("");
       setNewPuissanceKwc("");
-      setNewTypeSite("ombrier");
       await reloadCases(selectedClientId);
       setSelectedCaseId(caseRow.id);
     } catch (err) {
@@ -7388,29 +7313,42 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
     if (error) toast.error("Erreur lors de la mise à jour de la date.");
   }
 
-  /** Saves the dossier's puissance/type de site/longueur de câble, derives
-   *  "Fin souhaitée" from the main-d'œuvre estimate (keeping "Début
-   *  souhaité" if one is already set, otherwise defaulting it to today),
-   *  and auto-fills "Délai prévu" on the checklist lines these norms are
-   *  actually known for (Main-d'œuvre, Tirage AC, Pose SI, Pose PPV) —
-   *  every other line (Com/Fournis/Livraison/Récupération, administratif,
-   *  Pose/Dépose Bac acier…) is left exactly as it was, no norm for those yet. */
-  async function saveCaseDurationInputs(
-    caseId: string,
-    typeSite: SiteTypeCode,
-    puissanceKwc: number | null,
-    longueurCableM: number | null
-  ) {
+  /** Puissance/Tirage de câble live directly in the dossier header (no
+   *  separate panel) — editing either one re-derives "Fin souhaitée" and
+   *  re-fills the matching checklist lines via saveCaseDurationInputs,
+   *  keeping the other field's current value untouched. */
+  function updateCasePuissance(caseId: string, value: string) {
+    const current = cases.find((c) => c.id === caseId);
+    const puissanceKwc = value === "" ? null : Number(value);
+    saveCaseDurationInputs(caseId, puissanceKwc, current?.longueur_cable_m ?? null);
+  }
+  function updateCaseCable(caseId: string, value: string) {
+    const current = cases.find((c) => c.id === caseId);
+    const longueurCableM = value === "" ? null : Number(value);
+    saveCaseDurationInputs(caseId, current?.puissance_kwc ?? null, longueurCableM);
+  }
+
+  /** Saves the dossier's puissance/longueur de câble, derives "Fin
+   *  souhaitée" from the main-d'œuvre estimate (keeping "Début souhaité" if
+   *  one is already set, otherwise defaulting it to today), and auto-fills
+   *  "Délai prévu" on the checklist lines these norms are actually known
+   *  for (Main-d'œuvre, Tirage AC, and Pose SI/Pose PPV whenever the
+   *  dossier's checklist happens to contain those lines — no separate
+   *  "type de site" needed, the checklist itself says whether it's an
+   *  ombrière) — every other line (Com/Fournis/Livraison/Récupération,
+   *  administratif, Pose/Dépose Bac acier…) is left exactly as it was, no
+   *  norm for those yet. */
+  async function saveCaseDurationInputs(caseId: string, puissanceKwc: number | null, longueurCableM: number | null) {
     const current = cases.find((c) => c.id === caseId);
     const desired_start_date = current?.desired_start_date ?? today();
+    const ombriere = checklistHasOmbriereLines(items.map((i) => i.label));
     const patch: Record<string, string | number | null> = {
-      type_site: typeSite,
       puissance_kwc: puissanceKwc,
       longueur_cable_m: longueurCableM,
     };
 
     if (puissanceKwc && puissanceKwc > 0) {
-      const main = mainDOeuvreJours(typeSite, puissanceKwc);
+      const main = mainDOeuvreJours(puissanceKwc, ombriere);
       patch.desired_start_date = desired_start_date;
       patch.desired_end_date = addWorkingDays(desired_start_date, main.jours);
     }
@@ -7425,7 +7363,6 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
         c.id === caseId
           ? {
               ...c,
-              type_site: typeSite,
               puissance_kwc: puissanceKwc,
               longueur_cable_m: longueurCableM,
               ...(patch.desired_start_date ? { desired_start_date: patch.desired_start_date as string } : {}),
@@ -7437,18 +7374,30 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
 
     // Auto-fill "Délai prévu" on the checklist lines these norms cover —
     // matched by label, since items are free-text copied from the client's
-    // template rather than a fixed enum.
+    // template rather than a fixed enum (le libellé lui-même n'est jamais
+    // modifié). Pose SI/Pose PPV/Main-d'œuvre-ombrière fillent dès que ces
+    // lignes existent, quel que soit le client — leur présence dans la
+    // checklist du dossier EST ce qui en fait une "ombrière". Pose/Dépose
+    // Bac acier et Démonter panneau n'ont qu'un seul point de mesure dans
+    // la source (pas de courbe) : la valeur s'applique dès que la ligne
+    // existe, sans dépendre de la puissance ou du câble.
     const fills: { id: string; delai_prevu: string }[] = [];
     for (const item of items) {
-      const label = item.label.toLowerCase();
+      const label = item.label.toLowerCase().trim();
       if (/main.?d.?(œuvre|oeuvre)/.test(label) && puissanceKwc && puissanceKwc > 0) {
-        fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(typeSite, puissanceKwc).jours) });
+        fills.push({ id: item.id, delai_prevu: formatJoursLabel(mainDOeuvreJours(puissanceKwc, ombriere).jours) });
       } else if (/tirage/.test(label) && longueurCableM && longueurCableM > 0) {
         fills.push({ id: item.id, delai_prevu: formatJoursLabel(tirageCableJoursFor(longueurCableM).jours) });
-      } else if (typeSite === "ombrier" && /pose\s*si\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
+      } else if (/pose\s*si\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
         fills.push({ id: item.id, delai_prevu: formatJoursLabel(poseSIJours(puissanceKwc).jours) });
-      } else if (typeSite === "ombrier" && /pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
+      } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
         fills.push({ id: item.id, delai_prevu: formatJoursLabel(posePPVJours(puissanceKwc).jours) });
+      } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
+        fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEPOSE_BAC_ACIER_JOURS) });
+      } else if (/^pose\s+bac\s+acier/.test(label)) {
+        fills.push({ id: item.id, delai_prevu: formatJoursLabel(POSE_BAC_ACIER_JOURS) });
+      } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
+        fills.push({ id: item.id, delai_prevu: formatJoursLabel(DEMONTAGE_PANNEAU_JOURS) });
       }
     }
     if (fills.length > 0) {
@@ -7805,13 +7754,66 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
                     {selectedCase?.desired_end_date ? formatDateShortDMY(selectedCase.desired_end_date) : "—"}
                   </span>
                 </div>
-                {selectedCase && (
-                  <DurationCalcPanel
-                    key={selectedCase.id}
-                    selectedCase={selectedCase}
-                    onApply={saveCaseDurationInputs}
-                  />
-                )}
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <label className="text-[10px] font-bold uppercase text-stone-400">Puissance (kWc)</label>
+                  {editingCasePuissance ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      className="input text-xs py-0.5 px-1.5 w-24"
+                      defaultValue={selectedCase?.puissance_kwc?.toString() ?? ""}
+                      onBlur={(e) => {
+                        if (selectedCase) updateCasePuissance(selectedCase.id, e.target.value);
+                        setEditingCasePuissance(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setEditingCasePuissance(false);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">{selectedCase?.puissance_kwc ?? "—"}</span>
+                      <button
+                        className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
+                        title="Modifier la puissance"
+                        onClick={() => setEditingCasePuissance(true)}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <label className="text-[10px] font-bold uppercase text-stone-400">Tirage de câble (m)</label>
+                  {editingCaseCable ? (
+                    <input
+                      type="number"
+                      autoFocus
+                      className="input text-xs py-0.5 px-1.5 w-24"
+                      defaultValue={selectedCase?.longueur_cable_m?.toString() ?? ""}
+                      onBlur={(e) => {
+                        if (selectedCase) updateCaseCable(selectedCase.id, e.target.value);
+                        setEditingCaseCable(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                        if (e.key === "Escape") setEditingCaseCable(false);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs">{selectedCase?.longueur_cable_m ?? "—"}</span>
+                      <button
+                        className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
+                        title="Modifier la longueur de câble"
+                        onClick={() => setEditingCaseCable(true)}
+                      >
+                        <Pencil size={11} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button
@@ -8193,31 +8195,15 @@ function CommercialView({ supabase }: { supabase: ReturnType<typeof createClient
             <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Début souhaité</label>
             <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Type de site</label>
-              <select
-                className="input"
-                value={newTypeSite}
-                onChange={(e) => setNewTypeSite(e.target.value as SiteTypeCode)}
-              >
-                {(Object.keys(SITE_TYPE_LABELS) as SiteTypeCode[]).map((code) => (
-                  <option key={code} value={code}>
-                    {SITE_TYPE_LABELS[code].fr}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex-1">
-              <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Puissance (kWc)</label>
-              <input
-                type="number"
-                className="input"
-                value={newPuissanceKwc}
-                onChange={(e) => setNewPuissanceKwc(e.target.value)}
-                placeholder="Ex. 300"
-              />
-            </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Puissance (kWc)</label>
+            <input
+              type="number"
+              className="input"
+              value={newPuissanceKwc}
+              onChange={(e) => setNewPuissanceKwc(e.target.value)}
+              placeholder="Ex. 300"
+            />
           </div>
           {clientTemplates.length > 1 && (
             <div>
