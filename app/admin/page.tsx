@@ -2003,7 +2003,7 @@ type MoisPointageRow = {
   employee_id: string;
   team_id: string | null;
   total_minutes: number | null;
-  employees: { first_name: string; last_name: string; status: EmployeeStatus } | null;
+  employees: { first_name: string; last_name: string; status: EmployeeStatus; end_date: string | null } | null;
   teams: { name: string } | null;
 };
 
@@ -2028,7 +2028,7 @@ function MoisView({
       const { data } = await supabase
         .from("pointage_entries")
         .select(
-          "employee_id, team_id, total_minutes, employees!pointage_entries_employee_id_fkey(first_name, last_name, status), teams!pointage_entries_team_id_fkey(name)"
+          "employee_id, team_id, total_minutes, employees!pointage_entries_employee_id_fkey(first_name, last_name, status, end_date), teams!pointage_entries_team_id_fkey(name)"
         )
         .gte("work_date", start)
         .lte("work_date", end);
@@ -2067,7 +2067,7 @@ function MoisView({
   const terminatedRows = useMemo(() => {
     const map = new Map<
       string,
-      { first_name: string; last_name: string; teamName: string; minutes: number }
+      { first_name: string; last_name: string; teamName: string; minutes: number; endDate: string | null }
     >();
     rows.forEach((r) => {
       if (r.employees?.status !== "terminated") return;
@@ -2078,6 +2078,7 @@ function MoisView({
         last_name: r.employees.last_name,
         teamName: r.teams?.name ?? "—",
         minutes: (existing?.minutes ?? 0) + (r.total_minutes ?? 0),
+        endDate: r.employees.end_date,
       });
     });
     return [...map.values()].sort(
@@ -2217,7 +2218,15 @@ function MoisView({
                 >
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{employeeName(r)}</p>
-                    <p className="text-xs text-stone-400 truncate">{r.teamName}</p>
+                    <p className="text-xs text-stone-400 truncate">
+                      {r.teamName}
+                      {r.endDate && (
+                        <>
+                          {" · "}
+                          <Bi fr="sorti le" ru="уволен(а)" /> {formatDateShortDMY(r.endDate)}
+                        </>
+                      )}
+                    </p>
                   </div>
                   <p className="font-bold shrink-0">{fmtMinutes(r.minutes)}</p>
                 </div>
@@ -2229,6 +2238,7 @@ function MoisView({
                   <tr className="text-left text-stone-400">
                     <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
                     <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                    <th className="pb-2 pr-4"><Bi fr="Date de sortie" ru="Дата увольнения" /></th>
                     <th className="pb-2"><Bi fr="Heures totales" ru="Часы всего" /></th>
                   </tr>
                 </thead>
@@ -2237,6 +2247,9 @@ function MoisView({
                     <tr key={i} className="border-t border-stone-100">
                       <td className="py-2 pr-4 font-semibold">{employeeName(r)}</td>
                       <td className="py-2 pr-4 text-stone-500">{r.teamName}</td>
+                      <td className="py-2 pr-4 text-stone-500">
+                        {r.endDate ? formatDateShortDMY(r.endDate) : "—"}
+                      </td>
                       <td className="py-2 pr-4 font-bold">{fmtMinutes(r.minutes)}</td>
                     </tr>
                   ))}
