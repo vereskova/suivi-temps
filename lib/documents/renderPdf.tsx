@@ -30,19 +30,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 56,
     fontSize: 12,
     fontFamily: FONT,
-    lineHeight: 1.35,
+    lineHeight: 1.28,
   },
   title: { fontSize: 16, fontWeight: 700, textAlign: "center", marginBottom: 10, textDecoration: "underline" },
   subtitle: { fontSize: 14, fontWeight: 700, textAlign: "center", marginBottom: 12 },
-  heading: { fontSize: 14, fontWeight: 700, marginTop: 16, marginBottom: 8 },
+  heading: { fontSize: 14, fontWeight: 700, marginTop: 12, marginBottom: 6 },
   rule: { borderBottomWidth: 1, borderBottomColor: "#999999", marginBottom: 10 },
-  paragraphBase: { fontSize: 12, marginBottom: 8 },
+  // Tightened from 8 — long contracts (10+ articles) were landing their
+  // closing signature block alone on an otherwise-blank trailing page by a
+  // narrow margin; this reliably reclaims enough height to avoid that
+  // without hurting legibility.
+  paragraphBase: { fontSize: 12, marginBottom: 6 },
   alignJustify: { textAlign: "justify" },
   alignCenter: { textAlign: "center" },
   alignRight: { textAlign: "right" },
   alignLeft: { textAlign: "left" },
-  listItem: { fontSize: 12, marginBottom: 6, marginLeft: 14 },
-  spacer: { height: 10 },
+  listItem: { fontSize: 12, marginBottom: 5, marginLeft: 14 },
+  spacer: { height: 8 },
   bold: { fontWeight: 700 },
   italic: { fontStyle: "italic" },
   signatureRow: { flexDirection: "row", marginTop: 20 },
@@ -98,21 +102,6 @@ function renderBlock(block: Block, index: number) {
           ))}
         </View>
       );
-    case "signatureBlock":
-      return (
-        <View key={index} style={styles.signatureRow} wrap={false}>
-          {[block.left, block.right].map((party, i) => (
-            <View key={i} style={styles.signatureCol}>
-              <Text style={styles.signatureLabel}>{party.label}</Text>
-              {party.lines.map((line, j) => (
-                <Text key={j} style={styles.signatureLine}>
-                  {line}
-                </Text>
-              ))}
-            </View>
-          ))}
-        </View>
-      );
     case "paragraph":
       return (
         <Text key={index} style={[styles.paragraphBase, alignStyleFor(block.align)]}>
@@ -122,6 +111,24 @@ function renderBlock(block: Block, index: number) {
             </Text>
           ))}
         </Text>
+      );
+    case "closing":
+      return (
+        <View key={index} wrap={false}>
+          <Text style={styles.paragraphBase}>{block.text}</Text>
+          <View style={styles.signatureRow}>
+            {[block.left, block.right].map((party, i) => (
+              <View key={i} style={styles.signatureCol}>
+                <Text style={styles.signatureLabel}>{party.label}</Text>
+                {party.lines.map((line, j) => (
+                  <Text key={j} style={styles.signatureLine}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
+            ))}
+          </View>
+        </View>
       );
   }
 }

@@ -13,7 +13,7 @@ export type Block =
   | { type: "spacer" }
   | { type: "rule" }
   | { type: "list"; items: string[] }
-  | { type: "signatureBlock"; left: SignatureParty; right: SignatureParty };
+  | { type: "closing"; text: string; left: SignatureParty; right: SignatureParty };
 
 export type DocContent = {
   /** Used as the download filename base (sanitized) and as a fallback title. */
@@ -52,8 +52,12 @@ export function rule(): Block {
   return { type: "rule" };
 }
 
-export function signatureBlock(left: SignatureParty, right: SignatureParty): Block {
-  return { type: "signatureBlock", left, right };
+/** The closing "Fait à ... le ..." line plus the signature block, as ONE
+ *  unbreakable unit — a page break must never separate the closing line
+ *  from the signatures that follow it (or, worse, strand the signatures
+ *  alone on an otherwise-empty page). */
+export function closing(text: string, left: SignatureParty, right: SignatureParty): Block {
+  return { type: "closing", text, left, right };
 }
 
 export type Sex = "M" | "F" | null;

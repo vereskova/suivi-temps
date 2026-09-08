@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, signatureBlock } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, t, b, rule, closing } from "../types";
 import { formatDateShort, formatEuros } from "../helpers";
 import { agr, civility, pronoun, pronounCap, salarieLabel } from "../gender";
 
@@ -148,8 +148,8 @@ export function contratChantier(
     ),
 
     { type: "spacer" },
-    para(`Fait en double exemplaire à ${params.signingCity} le ${formatDateShort(params.signingDate)}`),
-    signatureBlock(
+    closing(
+      `Fait en double exemplaire à ${params.signingCity} le ${formatDateShort(params.signingDate)}`,
       { label: `L'employeur — ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
       {
         label: salarieLabel(sex),

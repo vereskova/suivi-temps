@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, signatureBlock } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, closing } from "../types";
 import { formatDateFr, formatEuros } from "../helpers";
 import { agr, civility, pronoun, salarieLabel } from "../gender";
 
@@ -342,8 +342,8 @@ export function contratBureau(
     para("Le présent contrat est établi en deux exemplaires originaux dont l'un est remis à chaque partie."),
 
     { type: "spacer" },
-    para(`Fait en double exemplaire à ${params.signingCity}, le ${formatDateFr(params.signingDate)}.`),
-    signatureBlock(
+    closing(
+      `Fait en double exemplaire à ${params.signingCity}, le ${formatDateFr(params.signingDate)}.`,
       {
         label: "L'employeur",
         lines: [`${company.name}, ${company.legalForm}`, company.representativeName, company.representativeTitle],

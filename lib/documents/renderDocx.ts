@@ -107,8 +107,22 @@ function blockToNodes(block: Block): (Paragraph | Table)[] {
             children: [new TextRun({ text: item, font: FONT, size: BODY_SIZE })],
           })
       );
-    case "signatureBlock":
+    case "paragraph":
       return [
+        new Paragraph({
+          alignment: alignmentFor(block.align),
+          spacing: { after: 160, line: 276, lineRule: "auto" },
+          children: block.runs.map(
+            (r) => new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: FONT, size: BODY_SIZE })
+          ),
+        }),
+      ];
+    case "closing":
+      return [
+        new Paragraph({
+          spacing: { after: 160, line: 276, lineRule: "auto" },
+          children: [new TextRun({ text: block.text, font: FONT, size: BODY_SIZE })],
+        }),
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
           borders: {
@@ -120,16 +134,6 @@ function blockToNodes(block: Block): (Paragraph | Table)[] {
             insideVertical: NO_BORDER,
           },
           rows: [new TableRow({ children: [signatureCell(block.left), signatureCell(block.right)] })],
-        }),
-      ];
-    case "paragraph":
-      return [
-        new Paragraph({
-          alignment: alignmentFor(block.align),
-          spacing: { after: 160, line: 276, lineRule: "auto" },
-          children: block.runs.map(
-            (r) => new TextRun({ text: r.text, bold: r.bold, italics: r.italic, font: FONT, size: BODY_SIZE })
-          ),
         }),
       ];
   }

@@ -1,4 +1,4 @@
-import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, signatureBlock } from "../types";
+import { Block, CompanyDoc, EmployeeDoc, DocContent, para, p, b, rule, closing } from "../types";
 import { formatDateShort } from "../helpers";
 import { agr } from "../gender";
 
@@ -92,8 +92,8 @@ export function nda(employee: EmployeeDoc, company: CompanyDoc, params: NdaParam
     ),
 
     { type: "spacer" },
-    para(`Fait à ${params.signingCity}, le ${formatDateShort(params.signingDate)}`),
-    signatureBlock(
+    closing(
+      `Fait à ${params.signingCity}, le ${formatDateShort(params.signingDate)}`,
       { label: `Pour la Société ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
       { label: "Le Signataire", lines: [fullName, "« Lu et approuvé »"] }
     ),
