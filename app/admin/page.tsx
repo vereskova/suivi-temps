@@ -488,6 +488,85 @@ function usePersistedView<T extends string>(key: string, defaultValue: T, validV
 
 const VALID_VIEW_KEYS = new Set<string>(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key)));
 
+const ROLE_LABELS: Record<string, { fr: string; ru: string }> = {
+  rh_admin: { fr: "RH Admin", ru: "HR-админ" },
+  rh: { fr: "RH", ru: "HR" },
+  comptable: { fr: "Comptable", ru: "Бухгалтер" },
+  commercial: { fr: "Commercial", ru: "Коммерция" },
+};
+
+/** Purement informatif (visible seulement pour rh_admin, via PageAccessBadge
+ *  ci-dessous) — reflète la logique d'accès réelle ci-dessus (le filtre
+ *  `visibleNavGroups` pour "rh", et les shells séparés comptable/commercial)
+ *  mais ne remplace en rien les policies RLS / requireRole côté serveur qui,
+ *  elles, décident vraiment qui accède à quoi. À tenir à jour si cette
+ *  logique change. */
+const VIEW_ACCESS_ROLES: Record<string, string[]> = {
+  echeances: ["rh_admin", "rh"],
+  jour: ["rh_admin"],
+  employe: ["rh_admin"],
+  mois: ["rh_admin"],
+  export: ["rh_admin"],
+  effectif: ["rh_admin", "rh", "comptable"],
+  medical: ["rh_admin", "rh"],
+  formations: ["rh_admin", "rh"],
+  tailles: ["rh_admin", "rh"],
+  dashboards: ["rh_admin", "rh"],
+  calculators: ["rh_admin", "rh"],
+  documents: ["rh_admin", "rh"],
+  registre: ["rh_admin", "rh"],
+  organigramme: ["rh_admin", "rh"],
+  francais: ["rh_admin", "rh"],
+  dossier: ["rh_admin", "rh"],
+  paie: ["rh_admin", "comptable"],
+  audit: ["rh_admin"],
+  commercial: ["rh_admin", "commercial"],
+  autoparc: ["rh_admin"],
+};
+
+/** rh_admin-only indicator of which roles can see the currently open page —
+ *  small badge, click to expand the list (style repris d'un pattern
+ *  "qui d'autre voit ceci" vu par l'utilisatrice ailleurs). */
+function PageAccessBadge({ viewKey }: { viewKey: string }) {
+  const [open, setOpen] = useState(false);
+  const roles = VIEW_ACCESS_ROLES[viewKey] ?? [];
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-500 hover:bg-stone-50"
+        title="Qui voit cette page ? / Кто видит эту страницу?"
+      >
+        <Eye size={13} />
+        {roles.length}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="card absolute right-0 z-20 mt-1.5 w-56 p-3 shadow-lg">
+            <p className="mb-2 text-[10px] font-bold uppercase text-stone-400">
+              <Bi fr="Accès à cette page" ru="Доступ к этой странице" />
+            </p>
+            <div className="space-y-1.5">
+              {roles.map((r) => (
+                <div key={r} className="flex items-center gap-2 text-sm">
+                  <span
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold text-white ${avatarColorClass(r)}`}
+                  >
+                    {(ROLE_LABELS[r]?.fr ?? r).slice(0, 1).toUpperCase()}
+                  </span>
+                  <Bi fr={ROLE_LABELS[r]?.fr ?? r} ru={ROLE_LABELS[r]?.ru ?? r} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const [supabase] = useState(() => createClient());
   const router = useRouter();
@@ -919,10 +998,13 @@ export default function AdminPage() {
               </p>
             </div>
           </div>
-          <Link href="/" className="btn btn-secondary text-sm shrink-0">
-            <ArrowLeft size={15} />
-            <span className="hidden sm:inline">Retour au pointage</span>
-          </Link>
+          <div className="flex items-center gap-2 shrink-0">
+            {role === "rh_admin" && <PageAccessBadge viewKey={view} />}
+            <Link href="/" className="btn btn-secondary text-sm shrink-0">
+              <ArrowLeft size={15} />
+              <span className="hidden sm:inline">Retour au pointage</span>
+            </Link>
+          </div>
         </div>
 
         {mobileNavOpen && (
