@@ -77,7 +77,7 @@ export async function findOrganizationByName(name: string): Promise<SinaoOrganiz
 export type SinaoQuoteCategory = {
   label: string;
   /** amount is cents (Sinao's own unit — "Price without taxes in cents"), vatPercent is basis points (20% = 2000). */
-  items: { label: string; amount: number; vatPercent: number }[];
+  items: { label: string; amount: number; vatPercent: number; note?: string | null }[];
 };
 
 /**
@@ -92,16 +92,22 @@ export type SinaoQuoteCategory = {
  * the price field that actually takes effect is `amount_accurately`
  * (cents × 1000 — `amount` alone is accepted but silently ignored).
  */
-type SinaoContentLine = {
-  detail: string;
-  action?: "sell";
-  quantity?: number;
-  amount_accurately?: number;
-  vat_percent?: number;
-  unity?: string;
-  type: "product";
-  account_id: number;
-};
+type SinaoContentLine =
+  | {
+      detail: string;
+      action?: "sell";
+      quantity?: number;
+      amount_accurately?: number;
+      vat_percent?: number;
+      unity?: string;
+      type: "product";
+      account_id: number;
+    }
+  // Note/description-only row (no price, no quantity) — renders as small
+  // text right under the product line above it. `type: "product"` values
+  // like "text"/"note"/"comment" all fail Sinao's validation; "description"
+  // is the one that's accepted and actually shows up, confirmed live.
+  | { detail: string; type: "description" };
 
 type SinaoContentSection = {
   detail?: string;
@@ -121,16 +127,26 @@ function buildContent(categories: SinaoQuoteCategory[]): SinaoContentSection[] {
     .filter((category) => category.items.length > 0)
     .map((category) => ({
       detail: category.label,
-      lines: category.items.map((item) => ({
-        detail: item.label,
-        action: "sell" as const,
-        quantity: 1,
-        amount_accurately: item.amount * 1000,
-        vat_percent: item.vatPercent,
-        unity: "forfait",
-        type: "product" as const,
-        account_id: SINAO_SALES_ACCOUNT_ID,
-      })),
+      lines: category.items.flatMap((item): SinaoContentLine[] => {
+        const productLine: SinaoContentLine = {
+          detail: item.label,
+          action: "sell" as const,
+          quantity: 1,
+          amount_accurately: item.amount * 1000,
+          vat_percent: item.vatPercent,
+          unity: "forfait",
+          type: "product" as const,
+          account_id: SINAO_SALES_ACCOUNT_ID,
+        };
+        // The checklist's free-text note on this line (commercial_case_items.note)
+        // becomes its own text-only row right underneath, matching how VLADIS's
+        // real quotes show a clarifying line (e.g. "75 m *Pour un tirage AC...")
+        // under the priced line it belongs to.
+        const noteLine: SinaoContentLine[] = item.note?.trim()
+          ? [{ detail: item.note.trim(), type: "description" as const }]
+          : [];
+        return [productLine, ...noteLine];
+      }),
     }));
 }
 
@@ -147,6 +163,25 @@ async function pushContent(quoteId: string, categories: SinaoQuoteCategory[]): P
     body: JSON.stringify({ content: buildContent(categories) }),
   });
 }
+
+/**
+ * Fixed quote-level fields VLADIS's real quotes always carry (confirmed by
+ * reading real quotes back, and by round-tripping these exact values
+ * through a test push). Sinao doesn't apply the organization's own
+ * defaults when a quote is created via the API — only the account/bank
+ * shown in Réglages — so these have to be sent explicitly on every create,
+ * or the quote is missing its RIB, its "TVA non applicable" notice, and
+ * its signature mention.
+ */
+const SINAO_BANK_DETAILS_ID = 1;
+const SINAO_LEGAL_NOTICE = "Signature du client précédée de la mention Bon pour accord :";
+const SINAO_VAT_EXEMPTION = {
+  exempted: true,
+  reason: "micro",
+  article: "<p>TVA non applicable, art. 293 B du CGI</p>",
+};
+/** Matches the ~30-day window VLADIS's real quotes are given. */
+const SINAO_VALIDITY_DAYS = 30;
 
 export type CreateDraftQuoteResult = {
   quoteId: string;
@@ -195,13 +230,24 @@ export async function createDraftQuote(params: {
       ? { id: organizationId, type: "organization" as const }
       : { type: "organization" as const, name: clientName };
 
+  const now = new Date();
+  const validityDeadline = new Date(now.getTime() + SINAO_VALIDITY_DAYS * 24 * 3600 * 1000);
+
   const created = await sinaoFetch("/quotes", {
     method: "POST",
-    // `written_at` is the quote's own date (shown to the client, separate
-    // from the record's system `created_at`) — omitting it left every quote
-    // dated 1970-01-01 (confirmed by reading real quotes back: existing
-    // ones all carry a real written_at, e.g. "2026-09-02T22:00:00.000000Z").
-    body: JSON.stringify({ contact_infos, title, written_at: new Date().toISOString() }),
+    body: JSON.stringify({
+      contact_infos,
+      title,
+      // The quote's own date (shown to the client, separate from the
+      // record's system `created_at`) — omitting it left every quote dated
+      // 1970-01-01 (confirmed by reading real quotes back: existing ones
+      // all carry a real written_at, e.g. "2026-09-02T22:00:00.000000Z").
+      written_at: now.toISOString(),
+      commercialvalidity_deadline: validityDeadline.toISOString(),
+      bank_details_id: SINAO_BANK_DETAILS_ID,
+      legal_notice: SINAO_LEGAL_NOTICE,
+      vat_exemption: SINAO_VAT_EXEMPTION,
+    }),
   });
 
   const resolvedOrganizationId: number = created?.contact_infos?.id ?? organizationId;

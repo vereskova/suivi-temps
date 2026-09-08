@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("commercial_case_items")
-    .select("category_code, label, status, position, price_ht, vat_rate")
+    .select("category_code, label, status, position, price_ht, vat_rate, note")
     .eq("case_id", caseId);
 
   if (itemsError) {
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
           // decimal — hence the ×100. vat_percent is basis points (20% = 2000).
           amount: Math.round((i.price_ht ?? 0) * 100),
           vatPercent: Math.round((i.vat_rate ?? 20) * 100),
+          note: i.note,
         })),
     }))
     .filter((c) => c.items.length > 0);
