@@ -72,6 +72,8 @@ const styles = StyleSheet.create({
   rowLabelPending: { color: COLORS.warning700 },
   rowDates: { fontSize: 8, color: COLORS.stoneFaint, width: 66, textAlign: "right", marginTop: 2.5 },
   rowPrice: { fontSize: 9.5, color: COLORS.stone, width: 44, textAlign: "right" },
+  rowQty: { fontSize: 9.5, color: COLORS.stone, width: 28, textAlign: "right" },
+  rowUnite: { fontSize: 8.5, color: COLORS.stoneMuted, width: 36, textAlign: "right" },
   noteText: { fontSize: 9, color: COLORS.warning700, maxWidth: 150, textAlign: "right" },
   totalsBox: {
     flexDirection: "row",
@@ -107,6 +109,8 @@ export type CommercialCaseItemDoc = {
   note: string | null;
   position: number;
   delaiPrevu: string | null;
+  unite: string | null;
+  quantite: number;
   priceHt: number | null;
   vatRate: number;
 };
@@ -144,8 +148,13 @@ function groupByCategory<T extends { categoryCode: string; position: number }>(
     .sort((a, b) => a.category.sortOrder - b.category.sortOrder);
 }
 
-function itemTtc(item: { priceHt: number | null; vatRate: number }): number | null {
-  return item.priceHt == null ? null : item.priceHt * (1 + item.vatRate / 100);
+/** priceHt is the UNIT price HT — the line's Total HT is quantite × priceHt. */
+function itemTotalHt(item: { priceHt: number | null; quantite: number }): number | null {
+  return item.priceHt == null ? null : item.priceHt * (item.quantite || 1);
+}
+function itemTtc(item: { priceHt: number | null; quantite: number; vatRate: number }): number | null {
+  const totalHt = itemTotalHt(item);
+  return totalHt == null ? null : totalHt * (1 + item.vatRate / 100);
 }
 
 /** Drawn as vector shapes (not Unicode glyphs — a symbol font isn't guaranteed
@@ -189,7 +198,7 @@ function ClientChecklistDocument({
   const inactiveCount = items.filter((i) => i.status === "inactive").length;
   const pendingCount = items.filter((i) => i.status === "pending").length;
   const groups = groupByCategory(items, categories);
-  const totalHt = items.filter((i) => i.status === "active").reduce((sum, i) => sum + (i.priceHt ?? 0), 0);
+  const totalHt = items.filter((i) => i.status === "active").reduce((sum, i) => sum + (itemTotalHt(i) ?? 0), 0);
   const totalTtc = items
     .filter((i) => i.status === "active")
     .reduce((sum, i) => sum + (itemTtc(i) ?? 0), 0);
@@ -231,7 +240,9 @@ function ClientChecklistDocument({
               <View style={{ width: 21 }} />
               <Text style={[styles.rowLabel, { fontSize: 8, color: COLORS.stoneFaint }]}></Text>
               <Text style={styles.rowDates}>Délai prévu</Text>
-              <Text style={styles.rowPrice}>HT</Text>
+              <Text style={styles.rowQty}>Qté</Text>
+              <Text style={styles.rowUnite}>Unité</Text>
+              <Text style={styles.rowPrice}>Total HT</Text>
               <Text style={styles.rowPrice}>TTC</Text>
             </View>
           )}
@@ -256,7 +267,11 @@ function ClientChecklistDocument({
                   {item.status === "active" && (
                     <>
                       <Text style={styles.rowDates}>{item.delaiPrevu ?? ""}</Text>
-                      <Text style={styles.rowPrice}>{item.priceHt != null ? item.priceHt.toFixed(2) : "—"}</Text>
+                      <Text style={styles.rowQty}>{item.quantite}</Text>
+                      <Text style={styles.rowUnite}>{item.unite ?? ""}</Text>
+                      <Text style={styles.rowPrice}>
+                        {itemTotalHt(item) != null ? itemTotalHt(item)!.toFixed(2) : "—"}
+                      </Text>
                       <Text style={styles.rowPrice}>{itemTtc(item) != null ? itemTtc(item)!.toFixed(2) : "—"}</Text>
                     </>
                   )}

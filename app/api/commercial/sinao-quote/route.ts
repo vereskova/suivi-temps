@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("commercial_case_items")
-    .select("category_code, label, status, position, price_ht, vat_rate, note")
+    .select("category_code, label, status, position, price_ht, vat_rate, note, unite, quantite")
     .eq("case_id", caseId);
 
   if (itemsError) {
@@ -68,14 +68,18 @@ export async function POST(request: NextRequest) {
         .filter((i) => i.category_code === c.code)
         .map((i) => ({
           label: i.label,
-          // Full transfer of the checklist's own pricing — Sinao computes the
-          // line's TTC itself from amount + vat_percent. Sinao's "amount" is
-          // an integer number of cents (its own SalesLine schema: "Price
-          // without taxes in cents"), while price_ht here is euros as a
-          // decimal — hence the ×100. vat_percent is basis points (20% = 2000).
+          // Full transfer of the checklist's own pricing — price_ht is the
+          // UNIT price HT, quantite the real quantity; Sinao multiplies them
+          // itself (confirmed live) and computes TTC from amount + vat_percent.
+          // Sinao's "amount" is an integer number of cents (its own SalesLine
+          // schema: "Price without taxes in cents"), while price_ht here is
+          // euros as a decimal — hence the ×100. vat_percent is basis points
+          // (20% = 2000).
           amount: Math.round((i.price_ht ?? 0) * 100),
           vatPercent: Math.round((i.vat_rate ?? 20) * 100),
           note: i.note,
+          unite: i.unite,
+          quantite: i.quantite,
         })),
     }))
     .filter((c) => c.items.length > 0);

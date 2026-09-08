@@ -7113,6 +7113,8 @@ type CommercialItemRow = {
   note: string | null;
   position: number;
   delai_prevu: string | null;
+  unite: string | null;
+  quantite: number;
   price_ht: number | null;
   vat_rate: number;
   autre_item_id: string | null;
@@ -7120,13 +7122,20 @@ type CommercialItemRow = {
 type CommercialAutreItemRow = { id: string; category_code: string; position: number; label: string };
 
 const COMMERCIAL_ITEM_SELECT =
-  "id, category_code, label, status, note, position, delai_prevu, price_ht, vat_rate, autre_item_id";
+  "id, category_code, label, status, note, position, delai_prevu, unite, quantite, price_ht, vat_rate, autre_item_id";
 
-function commercialItemTtc(item: CommercialItemRow): number | null {
-  return item.price_ht == null ? null : item.price_ht * (1 + item.vat_rate / 100);
+const COMMERCIAL_UNITE_OPTIONS = ["kWc", "ml", "m²", "unité", "pièce", "jour", "semaine", "heure", "forfait"];
+const COMMERCIAL_VAT_OPTIONS = [5, 10, 20];
+
+/** `price_ht` is the UNIT price HT ("prix unitaire HT") — Total HT is
+ *  quantite × price_ht, never stored (existing rows keep their old total
+ *  exactly since quantite defaults to 1). */
+function commercialItemTotalHt(item: CommercialItemRow): number | null {
+  return item.price_ht == null ? null : item.price_ht * item.quantite;
 }
-function commercialHtFromTtc(ttc: number, vatRate: number): number {
-  return ttc / (1 + vatRate / 100);
+function commercialItemTtc(item: CommercialItemRow): number | null {
+  const totalHt = commercialItemTotalHt(item);
+  return totalHt == null ? null : totalHt * (1 + item.vat_rate / 100);
 }
 
 const COMMERCIAL_STATUS_CYCLE: Record<CommercialItemStatus, CommercialItemStatus> = {
@@ -8002,6 +8011,13 @@ function CommercialView({
     if (error) toast.error("Erreur lors de la mise à jour du délai.");
   }
 
+  async function updateItemUnite(itemId: string, uniteInput: string) {
+    const unite = uniteInput.trim() === "" ? null : uniteInput.trim();
+    setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, unite } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ unite }).eq("id", itemId);
+    if (error) toast.error("Erreur lors de la mise à jour de l'unité.");
+  }
+
   async function updateItemPriceHt(item: CommercialItemRow, htInput: string) {
     const price_ht = htInput.trim() === "" ? null : Number(htInput.replace(",", "."));
     if (price_ht !== null && !Number.isFinite(price_ht)) return;
@@ -8010,13 +8026,20 @@ function CommercialView({
     if (error) toast.error("Erreur lors de la mise à jour du prix.");
   }
 
-  async function updateItemPriceTtc(item: CommercialItemRow, ttcInput: string) {
-    const ttc = ttcInput.trim() === "" ? null : Number(ttcInput.replace(",", "."));
-    if (ttc !== null && !Number.isFinite(ttc)) return;
-    const price_ht = ttc === null ? null : commercialHtFromTtc(ttc, item.vat_rate);
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, price_ht } : i)));
-    const { error } = await supabase.from("commercial_case_items").update({ price_ht }).eq("id", item.id);
-    if (error) toast.error("Erreur lors de la mise à jour du prix.");
+  async function updateItemQuantite(item: CommercialItemRow, quantiteInput: string) {
+    const parsed = Number(quantiteInput.replace(",", "."));
+    const quantite = quantiteInput.trim() === "" || !Number.isFinite(parsed) ? 1 : parsed;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, quantite } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ quantite }).eq("id", item.id);
+    if (error) toast.error("Erreur lors de la mise à jour de la quantité.");
+  }
+
+  async function updateItemVatRate(item: CommercialItemRow, vatInput: string) {
+    const vat_rate = Number(vatInput.replace(",", "."));
+    if (!Number.isFinite(vat_rate)) return;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, vat_rate } : i)));
+    const { error } = await supabase.from("commercial_case_items").update({ vat_rate }).eq("id", item.id);
+    if (error) toast.error("Erreur lors de la mise à jour de la TVA.");
   }
 
   async function downloadDoc(kind: "client" | "team") {
@@ -8088,7 +8111,7 @@ function CommercialView({
       .reduce(
         (acc, i) => {
           if (i.price_ht != null) {
-            acc.ht += i.price_ht;
+            acc.ht += commercialItemTotalHt(i) ?? 0;
             acc.ttc += commercialItemTtc(i) ?? 0;
           }
           return acc;
@@ -8515,11 +8538,12 @@ function CommercialView({
                     <div className="space-y-2">
                       {group.items.map((item) => {
                         const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
+                        const totalHt = commercialItemTotalHt(item);
                         const ttc = commercialItemTtc(item);
                         const flagMissing = item.status === "active";
                         const missingDelai = flagMissing && !item.delai_prevu;
                         const missingPrice = flagMissing && item.price_ht == null;
-                        const priceTooHigh = item.price_ht != null && item.price_ht > COMMERCIAL_PRICE_WARN_THRESHOLD;
+                        const priceTooHigh = totalHt != null && totalHt > COMMERCIAL_PRICE_WARN_THRESHOLD;
                         return (
                           <div
                             key={item.id}
@@ -8572,7 +8596,32 @@ function CommercialView({
                               />
                             </div>
                             <div className="flex items-center gap-2 mt-2 ml-7">
-                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">HT</label>
+                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">Unité</label>
+                              <select
+                                className="input input-ghost text-xs py-1 px-1.5 flex-1"
+                                defaultValue={item.unite ?? ""}
+                                key={`m-unite-${item.id}-${item.unite ?? ""}`}
+                                onChange={(e) => updateItemUnite(item.id, e.target.value)}
+                              >
+                                <option value="">—</option>
+                                {COMMERCIAL_UNITE_OPTIONS.map((u) => (
+                                  <option key={u} value={u}>
+                                    {u}
+                                  </option>
+                                ))}
+                              </select>
+                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">Qté</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="input input-ghost text-sm py-1.5 px-2 w-16 text-right shrink-0"
+                                defaultValue={item.quantite}
+                                key={`m-qte-${item.id}-${item.quantite}`}
+                                onBlur={(e) => updateItemQuantite(item, e.target.value)}
+                              />
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 ml-7">
+                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">P.U. HT</label>
                               {priceTooHigh && (
                                 <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
                                   <AlertTriangle size={13} className="text-warning-600 shrink-0" />
@@ -8587,16 +8636,31 @@ function CommercialView({
                                 key={`m-ht-${item.id}-${item.price_ht ?? ""}`}
                                 onBlur={(e) => updateItemPriceHt(item, e.target.value)}
                               />
-                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">TTC</label>
-                              <input
-                                type="number"
-                                step="0.01"
-                                className="input input-ghost text-sm font-semibold py-1.5 px-2 w-full text-right"
-                                placeholder="0.00"
-                                defaultValue={ttc != null ? ttc.toFixed(2) : ""}
-                                key={`m-ttc-${item.id}-${ttc ?? ""}`}
-                                onBlur={(e) => updateItemPriceTtc(item, e.target.value)}
-                              />
+                              <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">TVA</label>
+                              <select
+                                className="input input-ghost text-xs py-1 px-1.5 w-16 shrink-0"
+                                defaultValue={item.vat_rate}
+                                key={`m-vat-${item.id}-${item.vat_rate}`}
+                                onChange={(e) => updateItemVatRate(item, e.target.value)}
+                              >
+                                {[...new Set([...COMMERCIAL_VAT_OPTIONS, item.vat_rate])]
+                                  .sort((a, b) => a - b)
+                                  .map((v) => (
+                                    <option key={v} value={v}>
+                                      {v} %
+                                    </option>
+                                  ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 ml-7 text-sm">
+                              <span className="text-[10px] font-bold uppercase text-stone-400 shrink-0">Total HT</span>
+                              <span className="flex-1 text-right font-semibold text-stone-600">
+                                {totalHt != null ? totalHt.toFixed(2) : "—"}
+                              </span>
+                              <span className="text-[10px] font-bold uppercase text-stone-400 shrink-0">TTC</span>
+                              <span className="flex-1 text-right font-semibold text-stone-600">
+                                {ttc != null ? ttc.toFixed(2) : "—"}
+                              </span>
                             </div>
                             {noteEditingId === item.id && (
                               <div className="flex gap-2 mt-2 ml-7">
@@ -8639,8 +8703,12 @@ function CommercialView({
                     <th className="py-2 pl-1 pr-2 w-8"></th>
                     <th className="py-2 pr-3">Tâche</th>
                     <th className="py-2 pr-3">Délai prévu</th>
-                    <th className="py-2 pr-3 text-right">Prix HT €</th>
-                    <th className="py-2 pr-3 text-right">Prix TTC €</th>
+                    <th className="py-2 pr-3">Unité</th>
+                    <th className="py-2 pr-3 text-right">Qté</th>
+                    <th className="py-2 pr-3 text-right">P.U. HT €</th>
+                    <th className="py-2 pr-3 text-right">Total HT €</th>
+                    <th className="py-2 pr-3">TVA</th>
+                    <th className="py-2 pr-3 text-right">Total TTC €</th>
                     <th className="py-2 pr-1 w-8"></th>
                   </tr>
                 </thead>
@@ -8650,7 +8718,7 @@ function CommercialView({
                     return (
                       <Fragment key={group.category.code}>
                         <tr>
-                          <td colSpan={6} className="pt-4 pb-1">
+                          <td colSpan={10} className="pt-4 pb-1">
                             <div className="flex items-center justify-between">
                               <p className="text-xs font-bold uppercase tracking-wide text-stone-400">
                                 {group.category.label}
@@ -8668,11 +8736,12 @@ function CommercialView({
                         </tr>
                         {group.items.map((item) => {
                           const StatusIcon = COMMERCIAL_STATUS_ICON[item.status];
+                          const totalHt = commercialItemTotalHt(item);
                           const ttc = commercialItemTtc(item);
                           const flagMissing = item.status === "active";
                           const missingDelai = flagMissing && !item.delai_prevu;
                           const missingPrice = flagMissing && item.price_ht == null;
-                          const priceTooHigh = item.price_ht != null && item.price_ht > COMMERCIAL_PRICE_WARN_THRESHOLD;
+                          const priceTooHigh = totalHt != null && totalHt > COMMERCIAL_PRICE_WARN_THRESHOLD;
                           return (
                             <Fragment key={item.id}>
                               <tr className="border-t border-stone-100">
@@ -8712,23 +8781,30 @@ function CommercialView({
                                     onBlur={(e) => updateItemDelai(item.id, e.target.value)}
                                   />
                                 </td>
-                                <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
-                                  <div className="flex items-center gap-1 justify-end">
-                                    {priceTooHigh && (
-                                      <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
-                                        <AlertTriangle size={13} className="text-warning-600 shrink-0" />
-                                      </span>
-                                    )}
-                                    <input
-                                      type="number"
-                                      step="0.01"
-                                      className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
-                                      placeholder="0.00"
-                                      defaultValue={item.price_ht ?? ""}
-                                      key={`ht-${item.id}-${item.price_ht ?? ""}`}
-                                      onBlur={(e) => updateItemPriceHt(item, e.target.value)}
-                                    />
-                                  </div>
+                                <td className="py-1.5 pr-3">
+                                  <select
+                                    className="input input-ghost text-xs py-0.5 px-1 w-24"
+                                    defaultValue={item.unite ?? ""}
+                                    key={`unite-${item.id}-${item.unite ?? ""}`}
+                                    onChange={(e) => updateItemUnite(item.id, e.target.value)}
+                                  >
+                                    <option value="">—</option>
+                                    {COMMERCIAL_UNITE_OPTIONS.map((u) => (
+                                      <option key={u} value={u}>
+                                        {u}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="py-1.5 pr-3">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    className="input input-ghost text-sm py-1.5 px-2 w-16 text-right"
+                                    defaultValue={item.quantite}
+                                    key={`qte-${item.id}-${item.quantite}`}
+                                    onBlur={(e) => updateItemQuantite(item, e.target.value)}
+                                  />
                                 </td>
                                 <td className={`py-1.5 pr-3 rounded-lg ${missingPrice ? "bg-warning-50" : ""}`}>
                                   <input
@@ -8736,10 +8812,41 @@ function CommercialView({
                                     step="0.01"
                                     className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
                                     placeholder="0.00"
-                                    defaultValue={ttc != null ? ttc.toFixed(2) : ""}
-                                    key={`ttc-${item.id}-${ttc ?? ""}`}
-                                    onBlur={(e) => updateItemPriceTtc(item, e.target.value)}
+                                    defaultValue={item.price_ht ?? ""}
+                                    key={`ht-${item.id}-${item.price_ht ?? ""}`}
+                                    onBlur={(e) => updateItemPriceHt(item, e.target.value)}
                                   />
+                                </td>
+                                <td className="py-1.5 pr-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    {priceTooHigh && (
+                                      <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
+                                        <AlertTriangle size={13} className="text-warning-600 shrink-0" />
+                                      </span>
+                                    )}
+                                    <span className="font-semibold text-stone-600">
+                                      {totalHt != null ? totalHt.toFixed(2) : "—"}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-1.5 pr-3">
+                                  <select
+                                    className="input input-ghost text-xs py-0.5 px-1 w-16"
+                                    defaultValue={item.vat_rate}
+                                    key={`vat-${item.id}-${item.vat_rate}`}
+                                    onChange={(e) => updateItemVatRate(item, e.target.value)}
+                                  >
+                                    {[...new Set([...COMMERCIAL_VAT_OPTIONS, item.vat_rate])]
+                                      .sort((a, b) => a - b)
+                                      .map((v) => (
+                                        <option key={v} value={v}>
+                                          {v} %
+                                        </option>
+                                      ))}
+                                  </select>
+                                </td>
+                                <td className="py-1.5 pr-3 text-right font-semibold text-stone-600">
+                                  {ttc != null ? ttc.toFixed(2) : "—"}
                                 </td>
                                 <td className="py-1.5 pl-1 pr-1">
                                   <button

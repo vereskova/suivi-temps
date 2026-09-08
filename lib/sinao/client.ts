@@ -77,7 +77,14 @@ export async function findOrganizationByName(name: string): Promise<SinaoOrganiz
 export type SinaoQuoteCategory = {
   label: string;
   /** amount is cents (Sinao's own unit — "Price without taxes in cents"), vatPercent is basis points (20% = 2000). */
-  items: { label: string; amount: number; vatPercent: number; note?: string | null }[];
+  items: {
+    label: string;
+    amount: number;
+    vatPercent: number;
+    note?: string | null;
+    unite?: string | null;
+    quantite?: number | null;
+  }[];
 };
 
 /**
@@ -131,10 +138,13 @@ function buildContent(categories: SinaoQuoteCategory[]): SinaoContentSection[] {
         const productLine: SinaoContentLine = {
           detail: item.label,
           action: "sell" as const,
-          quantity: 1,
+          quantity: item.quantite ?? 1,
           amount_accurately: item.amount * 1000,
           vat_percent: item.vatPercent,
-          unity: "forfait",
+          // The checklist's own unit (e.g. "toit", "KWC") when the user has
+          // set one — matches how VLADIS's real quotes show a meaningful
+          // Unité column instead of the generic "forfait" fallback.
+          unity: item.unite?.trim() || "forfait",
           type: "product" as const,
           account_id: SINAO_SALES_ACCOUNT_ID,
         };

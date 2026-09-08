@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("commercial_case_items")
-    .select("category_code, label, status, note, position, delai_prevu, price_ht, vat_rate")
+    .select("category_code, label, status, note, position, delai_prevu, unite, quantite, price_ht, vat_rate")
     .eq("case_id", caseId);
 
   if (itemsError) {
@@ -75,6 +75,8 @@ export async function POST(request: NextRequest) {
     note: i.note,
     position: i.position,
     delaiPrevu: i.delai_prevu,
+    unite: i.unite,
+    quantite: i.quantite,
     priceHt: i.price_ht,
     vatRate: i.vat_rate,
   }));
