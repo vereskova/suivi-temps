@@ -197,7 +197,11 @@ export async function createDraftQuote(params: {
 
   const created = await sinaoFetch("/quotes", {
     method: "POST",
-    body: JSON.stringify({ contact_infos, title }),
+    // `written_at` is the quote's own date (shown to the client, separate
+    // from the record's system `created_at`) — omitting it left every quote
+    // dated 1970-01-01 (confirmed by reading real quotes back: existing
+    // ones all carry a real written_at, e.g. "2026-09-02T22:00:00.000000Z").
+    body: JSON.stringify({ contact_infos, title, written_at: new Date().toISOString() }),
   });
 
   const resolvedOrganizationId: number = created?.contact_infos?.id ?? organizationId;
