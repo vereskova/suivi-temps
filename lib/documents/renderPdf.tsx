@@ -100,7 +100,7 @@ function renderBlock(block: Block, index: number) {
       );
     case "signatureBlock":
       return (
-        <View key={index} style={styles.signatureRow}>
+        <View key={index} style={styles.signatureRow} wrap={false}>
           {[block.left, block.right].map((party, i) => (
             <View key={i} style={styles.signatureCol}>
               <Text style={styles.signatureLabel}>{party.label}</Text>
