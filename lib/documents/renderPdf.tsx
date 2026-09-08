@@ -1,8 +1,27 @@
+import path from "path";
 import React from "react";
-import { Document, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
+import { Document, Font, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import { Align, Block, DocContent } from "./types";
 
-const FONT = "Times-Roman";
+/**
+ * The built-in PDF fonts (Times-Roman etc.) only cover WinAnsi/Latin-1 —
+ * Moldovan/Romanian names and places (Ă, Â, Î, Ș, Ț) fall outside that and
+ * silently render as mojibake or drop the glyph entirely (e.g. "FĂLEȘTI"
+ * came out as "FLEȚI"). PT Sans (ParaType, OFL) covers these — same fix
+ * already applied to the commercial checklist PDF, see
+ * lib/commercial/renderChecklistPdf.tsx for the full rationale (the
+ * .ttf files here have their GSUB ligature table pre-stripped for the
+ * same reason described there).
+ */
+Font.register({
+  family: "PT Sans",
+  fonts: [
+    { src: path.join(process.cwd(), "public/fonts/PTSans-Regular.ttf"), fontWeight: "normal" },
+    { src: path.join(process.cwd(), "public/fonts/PTSans-Bold.ttf"), fontWeight: "bold" },
+  ],
+});
+
+const FONT = "PT Sans";
 
 const styles = StyleSheet.create({
   page: {
