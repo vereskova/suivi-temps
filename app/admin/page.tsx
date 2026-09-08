@@ -3603,6 +3603,8 @@ function EmployeeDetailPanel({
     useState<ConfidentialFields>(EMPTY_CONFIDENTIAL);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoBroken, setPhotoBroken] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -3639,6 +3641,28 @@ function EmployeeDetailPanel({
     load();
   }, [employeeId, supabase, confidentialMode]);
 
+  // Shows the employee's own "Photo" dossier document instead of the
+  // initials circle, when they have one on file — the "photo" category is
+  // a deliberate RH-curated headshot, unlike ID-scan categories.
+  useEffect(() => {
+    async function loadPhoto() {
+      setPhotoUrl(null);
+      setPhotoBroken(false);
+      const { data: docs } = await supabase
+        .from("employee_documents")
+        .select("storage_path, mime_type, created_at")
+        .eq("employee_id", employeeId)
+        .eq("category_code", "photo")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      const photoDoc = (docs ?? []).find((d) => d.mime_type?.startsWith("image/") && d.mime_type !== "image/heic");
+      if (!photoDoc) return;
+      const { data: signed } = await supabase.storage.from(DOSSIER_BUCKET).createSignedUrl(photoDoc.storage_path, 3600);
+      if (signed?.signedUrl) setPhotoUrl(signed.signedUrl);
+    }
+    loadPhoto();
+  }, [employeeId, supabase]);
+
   async function save() {
     if (!profile) return;
     setSaving(true);
@@ -3672,13 +3696,22 @@ function EmployeeDetailPanel({
   return (
     <div>
       <div className="flex items-center gap-3 mb-5 pb-5 border-b border-stone-100">
-        <div
-          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-extrabold ${avatarColorClass(
-            employee.id
-          )}`}
-        >
-          {initialsOf(employee.first_name, employee.last_name)}
-        </div>
+        {photoUrl && !photoBroken ? (
+          <img
+            src={photoUrl}
+            alt={employeeName(employee)}
+            className="h-12 w-12 shrink-0 rounded-full object-cover"
+            onError={() => setPhotoBroken(true)}
+          />
+        ) : (
+          <div
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-extrabold ${avatarColorClass(
+              employee.id
+            )}`}
+          >
+            {initialsOf(employee.first_name, employee.last_name)}
+          </div>
+        )}
         <div className="min-w-0">
           <p className="text-lg font-extrabold tracking-tight text-stone-900 truncate">
             {employeeName(employee)}
