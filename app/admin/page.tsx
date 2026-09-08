@@ -7198,7 +7198,14 @@ function CommercialNormsView({
                 <Bi fr={norm.label} ru={norm.label_ru} />
               </h3>
               <span className="text-[10px] font-bold uppercase text-stone-400">
-                {unit} · <Bi fr={norm.mode === "step" ? "palier" : "linéaire"} ru={norm.mode === "step" ? "порог" : "линейно"} />
+                {unit} ·{" "}
+                {norm.mode === "step_ceil" ? (
+                  <Bi fr="palier (borne haute)" ru="порог (верхняя граница)" />
+                ) : norm.mode === "step_floor" ? (
+                  <Bi fr="palier (seuil atteint)" ru="порог (по достижении)" />
+                ) : (
+                  <Bi fr="linéaire" ru="линейно" />
+                )}
               </span>
             </div>
             {norm.checklist_hint && <p className="mt-1 text-xs text-stone-400">{norm.checklist_hint}</p>}
@@ -7208,7 +7215,8 @@ function CommercialNormsView({
                   <tr className="text-left text-stone-400">
                     <th className="pr-4 pb-1 font-semibold">
                       {unit}
-                      {norm.mode === "step" && points.length > 1 ? " (borne haute)" : ""}
+                      {norm.mode === "step_ceil" && points.length > 1 ? " (borne haute)" : ""}
+                      {norm.mode === "step_floor" && points.length > 1 ? " (seuil)" : ""}
                     </th>
                     <th className="pr-4 pb-1 font-semibold">Jours</th>
                     <th></th>
@@ -13684,6 +13692,12 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                                 setIssueDate("");
                                 setNoIssueDate(false);
                                 setNoExpiryDate(false);
+                              } else if (cat.code === "archive") {
+                                // Archive is the free-form catch-all (multiple unrelated
+                                // files per employee) — keep each file's own name instead
+                                // of the standardized "Catégorie - date" naming that other,
+                                // one-file-per-period categories rely on.
+                                uploadFile(cat.code, file, { fileNameOverride: file.name });
                               } else {
                                 const documentDateIso =
                                   cat.code === "medical_prevaly" ? mostRecentMedicalVisitDate(medicalVisits) : undefined;

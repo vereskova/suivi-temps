@@ -40,7 +40,7 @@ export function addWorkingDays(startIso: string, jours: number): string {
   return cur;
 }
 
-export type NormMode = "linear" | "step";
+export type NormMode = "linear" | "step_ceil" | "step_floor";
 export type NormPoint = { x: number; y: number };
 /** Une norme telle que chargée depuis `commercial_duration_norms`/`..._points`. */
 export type NormDef = {
@@ -51,7 +51,9 @@ export type NormDef = {
 export type NormResult = { jours: number; extrapolated: boolean };
 
 /** Interpolation linéaire entre les deux points encadrant `x` ; extrapole
- *  au-delà du dernier point connu (signalé côté UI). */
+ *  au-delà du dernier point connu (signalé côté UI). Non utilisé par les
+ *  normes actuelles (toutes en paliers fixes) — gardé si besoin un jour
+ *  d'une vraie courbe continue. */
 function evalLinear(points: NormPoint[], x: number): NormResult {
   const first = points[0];
   if (x <= first.x) {
@@ -76,16 +78,35 @@ function evalLinear(points: NormPoint[], x: number): NormResult {
   return { jours: last.y, extrapolated: false };
 }
 
-/** Palier : chaque point est une borne haute de tranche ("x = 300 kWc" veut
- *  dire "de 0 (ou de la borne précédente) à 300"), sa valeur `y` s'applique
- *  telle quelle sur toute la tranche — pas d'interpolation entre paliers. */
-function evalStep(points: NormPoint[], x: number): NormResult {
+/** Palier "borne haute" : chaque point est la fin de sa tranche ("x = 300"
+ *  veut dire "de la borne précédente jusqu'à 300 inclus"), sa valeur `y`
+ *  s'applique telle quelle — aucune interpolation. C'est la lecture
+ *  naturelle d'une norme écrite comme une plage explicite dans la source
+ *  ("0-300 kWc → 1 jour, 300-500 kWc → 2 jours") : 350 tombe dans la
+ *  tranche "300-500" donc vaut 2, fixe. */
+function evalStepCeil(points: NormPoint[], x: number): NormResult {
   const sorted = [...points].sort((a, b) => a.x - b.x);
   for (const p of sorted) {
     if (x <= p.x) return { jours: p.y, extrapolated: false };
   }
   const last = sorted[sorted.length - 1];
   return { jours: last.y, extrapolated: true };
+}
+
+/** Palier "borne basse" : chaque point est le SEUIL à partir duquel sa
+ *  valeur s'applique, jusqu'au seuil suivant — aucune interpolation. C'est
+ *  la lecture naturelle d'une norme écrite comme une liste de paliers bruts
+ *  ("100 → 6 jours, 150 → 8 jours, 200 → 10 jours...") : 170 n'a pas encore
+ *  atteint le palier 200, donc reste au palier 150, fixe à 8. */
+function evalStepFloor(points: NormPoint[], x: number): NormResult {
+  const sorted = [...points].sort((a, b) => a.x - b.x);
+  let current = sorted[0];
+  for (const p of sorted) {
+    if (p.x <= x) current = p;
+    else break;
+  }
+  const extrapolated = x < sorted[0].x || x > sorted[sorted.length - 1].x;
+  return { jours: current.y, extrapolated };
 }
 
 /** Point d'entrée unique pour toutes les normes de délais — `def` vient de
@@ -95,5 +116,7 @@ function evalStep(points: NormPoint[], x: number): NormResult {
 export function evalNorm(def: NormDef | undefined, x: number): NormResult {
   if (!def || def.points.length === 0) return { jours: 0, extrapolated: false };
   if (def.points.length === 1) return { jours: def.points[0].y, extrapolated: false };
-  return def.mode === "step" ? evalStep(def.points, x) : evalLinear(def.points, x);
+  if (def.mode === "step_ceil") return evalStepCeil(def.points, x);
+  if (def.mode === "step_floor") return evalStepFloor(def.points, x);
+  return evalLinear(def.points, x);
 }
