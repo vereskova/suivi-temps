@@ -4211,6 +4211,34 @@ type MedicalRosterRow = {
   teams: { name: string } | null;
 };
 
+type RequestVia = "prevaly" | "email" | "telephone";
+type RequestStatus = "en_attente" | "repondu" | "planifie" | "termine";
+
+type MedicalVisitRequest = {
+  id: string;
+  employee_id: string;
+  subject: string;
+  requested_via: RequestVia;
+  requested_at: string;
+  status: RequestStatus;
+  response_at: string | null;
+  notes: string | null;
+  employees: { first_name: string; last_name: string } | null;
+};
+
+const REQUEST_VIA_LABELS: Record<RequestVia, { fr: string; ru: string }> = {
+  prevaly: { fr: "Prevaly", ru: "Prevaly" },
+  email: { fr: "E-mail", ru: "Почта" },
+  telephone: { fr: "Téléphone", ru: "Телефон" },
+};
+
+const REQUEST_STATUS_LABELS: Record<RequestStatus, { fr: string; ru: string; className: string }> = {
+  en_attente: { fr: "En attente", ru: "Ожидаем", className: "bg-warning-100 text-warning-700" },
+  repondu: { fr: "Répondu", ru: "Есть ответ", className: "bg-sky-100 text-sky-700" },
+  planifie: { fr: "Planifié", ru: "Запланировано", className: "bg-violet-100 text-violet-700" },
+  termine: { fr: "Terminé", ru: "Завершено", className: "bg-success-100 text-success-700" },
+};
+
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [visits, setVisits] = useState<MedicalVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4233,6 +4261,102 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     updatedCount: number;
     unmatched: string[];
   } | null>(null);
+
+  const [requests, setRequests] = useState<MedicalVisitRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [savingRequest, setSavingRequest] = useState(false);
+  const [checkingEmails, setCheckingEmails] = useState(false);
+  const [emailsError, setEmailsError] = useState<string | null>(null);
+  const [prevalyEmails, setPrevalyEmails] = useState<
+    { uid: number; date: string | null; from: string; subject: string; snippet: string }[] | null
+  >(null);
+
+  async function checkPrevalyEmails() {
+    setCheckingEmails(true);
+    setEmailsError(null);
+    try {
+      const res = await fetch("/api/medical/prevaly-emails");
+      const json = await res.json();
+      if (!res.ok) {
+        setEmailsError(json.error ?? "Erreur inconnue");
+        return;
+      }
+      setPrevalyEmails(json.emails);
+    } catch (err) {
+      setEmailsError(err instanceof Error ? err.message : "Erreur de connexion");
+    } finally {
+      setCheckingEmails(false);
+    }
+  }
+  const [newRequest, setNewRequest] = useState({
+    employeeId: "",
+    subject: "",
+    requestedVia: "prevaly" as RequestVia,
+    requestedAt: today(),
+    notes: "",
+  });
+
+  useEffect(() => {
+    async function load() {
+      setRequestsLoading(true);
+      const { data } = await supabase
+        .from("medical_visit_requests")
+        .select(
+          "id, employee_id, subject, requested_via, requested_at, status, response_at, notes, employees(first_name, last_name)"
+        )
+        .order("requested_at", { ascending: false });
+      setRequests((data as unknown as MedicalVisitRequest[]) ?? []);
+      setRequestsLoading(false);
+    }
+    load();
+  }, [supabase, refreshKey]);
+
+  async function addRequest() {
+    if (!newRequest.employeeId || !newRequest.subject.trim()) {
+      toast.error("Salarié et sujet obligatoires.");
+      return;
+    }
+    setSavingRequest(true);
+    const { error } = await supabase.from("medical_visit_requests").insert({
+      employee_id: newRequest.employeeId,
+      subject: newRequest.subject.trim(),
+      requested_via: newRequest.requestedVia,
+      requested_at: newRequest.requestedAt,
+      notes: newRequest.notes.trim() || null,
+    });
+    setSavingRequest(false);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setNewRequest({ employeeId: "", subject: "", requestedVia: "prevaly", requestedAt: today(), notes: "" });
+    setShowRequestForm(false);
+    setRefreshKey((k) => k + 1);
+    toast.success("Demande enregistrée");
+  }
+
+  async function updateRequestStatus(r: MedicalVisitRequest, status: RequestStatus) {
+    const responseAt = status === "en_attente" ? null : r.response_at ?? today();
+    const { error } = await supabase
+      .from("medical_visit_requests")
+      .update({ status, response_at: responseAt })
+      .eq("id", r.id);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
+
+  async function deleteRequest(id: string) {
+    const { error } = await supabase.from("medical_visit_requests").delete().eq("id", id);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
 
   useEffect(() => {
     async function load() {
@@ -4457,11 +4581,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   function visitGroupKey(v: MedicalVisit): "urgent" | "later" {
     return v.next_visit_date && v.next_visit_date <= visitHorizon ? "urgent" : "later";
   }
-  /** Visite médicale obligatoire tous les 3 ans — signale qu'il faut prendre
-   *  un nouveau rendez-vous dès que 3 ans se sont écoulés depuis la dernière visite. */
+  /** Visite médicale obligatoire tous les 2 ans — signale qu'il faut prendre
+   *  un nouveau rendez-vous dès que 2 ans se sont écoulés depuis la dernière visite. */
   function needsNewAppointment(v: MedicalVisit): boolean {
     if (!v.last_visit_date) return false;
-    return v.last_visit_date <= addDaysIsoLocal(todayIso, -3 * 365);
+    return v.last_visit_date <= addDaysIsoLocal(todayIso, -2 * 365);
   }
 
   return (
@@ -4474,7 +4598,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               title="Médical"
               text={
                 "Медосмотры каждого сотрудника: дата последнего визита, дата и время следующего.\n\n" +
-                "Записи с визитом в ближайшие 3 месяца показаны отдельным блоком сверху. Восклицательный знак у даты последнего визита означает, что прошло больше 3 лет — по закону пора записываться на новый медосмотр.\n\n" +
+                "Записи с визитом в ближайшие 3 месяца показаны отдельным блоком сверху. Восклицательный знак у даты последнего визита означает, что прошло больше 2 лет — по закону пора записываться на новый медосмотр.\n\n" +
                 "Кнопка «Importer Prevaly» загружает выгрузку из системы Prevaly и подставляет даты визитов автоматически, сопоставляя по имени и фамилии."
               }
             />
@@ -4519,6 +4643,177 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             </select>
           </div>
         </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="flex items-center justify-between">
+          <div className="font-bold flex items-center">
+            <Bi fr="Suivi des demandes" ru="Учёт запросов" />
+            <InfoNote
+              title="Suivi des demandes"
+              text={
+                "Здесь фиксируется переписка с медицинской службой (Prevaly / почта / телефон): что мы запросили, когда, и на каком этапе дело — ждём ответа, ответ получен, визит запланирован, вопрос закрыт.\n\n" +
+                "Это не сами визиты (они выше), а именно история обращений — чтобы не забыть, что мы уже спрашивали и что ещё нет ответа."
+              }
+            />
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-secondary text-sm" disabled={checkingEmails} onClick={checkPrevalyEmails}>
+              <MessageSquare size={15} />
+              <Bi fr={checkingEmails ? "Vérification…" : "Vérifier les e-mails"} ru={checkingEmails ? "Проверка…" : "Проверить письма"} />
+            </button>
+            <button className="btn btn-secondary text-sm" onClick={() => setShowRequestForm((s) => !s)}>
+              <Plus size={15} /> <Bi fr="Nouvelle demande" ru="Новый запрос" />
+            </button>
+          </div>
+        </div>
+
+        {emailsError && <p className="text-sm text-error-600 mt-2">{emailsError}</p>}
+
+        {prevalyEmails && (
+          <div className="mt-3 rounded-lg bg-stone-50 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-stone-500">
+                <Bi
+                  fr={`${prevalyEmails.length} e-mail(s) Prevaly (60 derniers jours)`}
+                  ru={`${prevalyEmails.length} писем от/к Prevaly (за 60 дней)`}
+                />
+              </p>
+              <button className="text-stone-300 hover:text-stone-600" onClick={() => setPrevalyEmails(null)}>
+                <X size={15} />
+              </button>
+            </div>
+            {prevalyEmails.length === 0 ? (
+              <p className="text-sm text-stone-400">
+                <Bi fr="Aucun e-mail trouvé." ru="Писем не найдено." />
+              </p>
+            ) : (
+              <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                {prevalyEmails.map((m) => (
+                  <div key={m.uid} className="rounded-lg bg-white px-3 py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-semibold text-sm truncate">{m.subject}</p>
+                      <p className="text-xs text-stone-400 whitespace-nowrap shrink-0">
+                        {m.date ? formatDateShortDMY(m.date.slice(0, 10)) : "—"}
+                      </p>
+                    </div>
+                    <p className="text-xs text-stone-400 truncate">{m.from}</p>
+                    {m.snippet && <p className="text-xs text-stone-500 mt-0.5 truncate">{m.snippet}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {showRequestForm && (
+          <div className="mt-3 rounded-lg bg-stone-50 p-3 space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="input flex-1 min-w-[180px]"
+                value={newRequest.employeeId}
+                onChange={(e) => setNewRequest({ ...newRequest, employeeId: e.target.value })}
+              >
+                <option value="">— Salarié —</option>
+                {roster.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {employeeName(e)}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input flex-1 min-w-[220px]"
+                placeholder="Sujet (ex : renouvellement visite, ajout salarié…)"
+                value={newRequest.subject}
+                onChange={(e) => setNewRequest({ ...newRequest, subject: e.target.value })}
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="input"
+                value={newRequest.requestedVia}
+                onChange={(e) => setNewRequest({ ...newRequest, requestedVia: e.target.value as RequestVia })}
+              >
+                {Object.entries(REQUEST_VIA_LABELS).map(([value, l]) => (
+                  <option key={value} value={value}>
+                    {l.fr}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                className="input"
+                value={newRequest.requestedAt}
+                onChange={(e) => setNewRequest({ ...newRequest, requestedAt: e.target.value })}
+              />
+              <input
+                className="input flex-1 min-w-[200px]"
+                placeholder="Notes (facultatif)"
+                value={newRequest.notes}
+                onChange={(e) => setNewRequest({ ...newRequest, notes: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button className="btn btn-secondary text-sm" onClick={() => setShowRequestForm(false)}>
+                <Bi fr="Annuler" ru="Отмена" />
+              </button>
+              <button className="btn btn-primary text-sm" disabled={savingRequest} onClick={addRequest}>
+                <Bi fr="Enregistrer" ru="Сохранить" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!requestsLoading && requests.length === 0 && !showRequestForm && (
+          <p className="text-sm text-stone-400 mt-3">
+            <Bi fr="Aucune demande enregistrée." ru="Запросов пока нет." />
+          </p>
+        )}
+
+        {requests.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            {requests.map((r) => {
+              const statusInfo = REQUEST_STATUS_LABELS[r.status];
+              return (
+                <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
+                  <div className="min-w-[160px]">
+                    <p className="font-semibold text-sm truncate">
+                      {r.employees ? employeeName(r.employees) : "—"}
+                    </p>
+                    <p className="text-xs text-stone-400 truncate">{r.subject}</p>
+                  </div>
+                  <p className="text-xs text-stone-400 whitespace-nowrap">
+                    {formatDateShortDMY(r.requested_at)} · {REQUEST_VIA_LABELS[r.requested_via].fr}
+                  </p>
+                  <select
+                    className={`text-xs font-bold rounded-full px-2.5 py-1 border-0 ${statusInfo.className}`}
+                    value={r.status}
+                    onChange={(e) => updateRequestStatus(r, e.target.value as RequestStatus)}
+                  >
+                    {Object.entries(REQUEST_STATUS_LABELS).map(([value, l]) => (
+                      <option key={value} value={value}>
+                        {l.fr}
+                      </option>
+                    ))}
+                  </select>
+                  {r.response_at && (
+                    <p className="text-xs text-stone-400 whitespace-nowrap">
+                      <Bi fr="réponse" ru="ответ" /> {formatDateShortDMY(r.response_at)}
+                    </p>
+                  )}
+                  {r.notes && <p className="text-xs text-stone-400 truncate max-w-[200px]">{r.notes}</p>}
+                  <button
+                    className="ml-auto text-stone-300 hover:text-error-600 shrink-0"
+                    title="Supprimer"
+                    onClick={() => deleteRequest(r.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {employeesWithoutVisit.length > 0 && (
@@ -4662,7 +4957,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         {needsNewAppointment(v) && (
                           <span
                             className="ml-1 inline-block align-text-bottom text-error-600"
-                            title="Plus de 3 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 3 лет с последнего визита — нужно записаться"
+                            title="Plus de 2 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 2 лет с последнего визита — нужно записаться"
                           >
                             <AlertTriangle size={14} className="inline shrink-0" />
                           </span>
@@ -4806,7 +5101,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           {needsNewAppointment(v) && (
                             <span
                               className="ml-1 inline-block align-text-bottom text-error-600"
-                              title="Plus de 3 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 3 лет с последнего визита — нужно записаться"
+                              title="Plus de 2 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 2 лет с последнего визита — нужно записаться"
                             >
                               <AlertTriangle size={14} className="inline shrink-0" />
                             </span>
@@ -9452,13 +9747,13 @@ async function fetchNotificationRows(
     }
 
     if (v.last_visit_date) {
-      const legalDeadline = addDaysIsoLocal(v.last_visit_date, 3 * 365);
+      const legalDeadline = addDaysIsoLocal(v.last_visit_date, 2 * 365);
       const tier = notificationTier(legalDeadline);
       if (tier) {
         rows.push({
           employeeId: v.employee_id,
           employeeName: employeeName(v.employees),
-          type: "Rappel légal — visite médicale (3 ans)",
+          type: "Rappel légal — visite médicale (2 ans)",
           date: legalDeadline,
           tier,
         });
@@ -9542,7 +9837,7 @@ function NotificationsView({
               <InfoNote
                 title="Notifications"
                 text={
-                  "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 3 года (по закону) — и дни рождения сотрудников.\n\n" +
+                  "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 2 года (по закону) — и дни рождения сотрудников.\n\n" +
                   "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
                   "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу.\n\n" +
                   "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке).\n\n" +
@@ -9553,10 +9848,10 @@ function NotificationsView({
           />
         </div>
         <p className="text-xs text-stone-400 mb-3">
-          Documents, visites médicales, rappels légaux (3 ans) et anniversaires arrivant dans le
+          Documents, visites médicales, rappels légaux (2 ans) et anniversaires arrivant dans le
           mois, tous employés confondus.{" "}
           <span className="opacity-70">
-            / Документы, медосмотры, юридические напоминания (3 года) и дни рождения сотрудников,
+            / Документы, медосмотры, юридические напоминания (2 года) и дни рождения сотрудников,
             наступающие в течение месяца.
           </span>
         </p>
