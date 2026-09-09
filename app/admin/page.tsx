@@ -493,6 +493,8 @@ const ROLE_LABELS: Record<string, { fr: string; ru: string }> = {
   rh: { fr: "RH", ru: "HR" },
   comptable: { fr: "Comptable", ru: "Бухгалтер" },
   commercial: { fr: "Commercial", ru: "Коммерция" },
+  rh_readonly: { fr: "Employés (lecture)", ru: "Сотрудники (просмотр)" },
+  commercial_rh: { fr: "Commercial + Employés", ru: "Коммерция + сотрудники" },
 };
 
 /** Purement informatif (visible seulement pour rh_admin, via PageAccessBadge
@@ -507,7 +509,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   employe: ["rh_admin"],
   mois: ["rh_admin"],
   export: ["rh_admin"],
-  effectif: ["rh_admin", "rh", "comptable"],
+  effectif: ["rh_admin", "rh", "comptable", "rh_readonly", "commercial_rh"],
   medical: ["rh_admin", "rh"],
   formations: ["rh_admin", "rh"],
   tailles: ["rh_admin", "rh"],
@@ -515,12 +517,12 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   calculators: ["rh_admin", "rh"],
   documents: ["rh_admin", "rh"],
   registre: ["rh_admin", "rh"],
-  organigramme: ["rh_admin", "rh"],
+  organigramme: ["rh_admin", "rh", "rh_readonly", "commercial_rh"],
   francais: ["rh_admin", "rh"],
   dossier: ["rh_admin", "rh"],
   paie: ["rh_admin", "comptable"],
   audit: ["rh_admin"],
-  commercial: ["rh_admin", "commercial"],
+  commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
 };
 
@@ -529,7 +531,18 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
  *  "qui d'autre voit ceci" vu par l'utilisatrice ailleurs). */
 function PageAccessBadge({ viewKey }: { viewKey: string }) {
   const [open, setOpen] = useState(false);
+  const [emailsByRole, setEmailsByRole] = useState<Record<string, string[]> | null>(null);
   const roles = VIEW_ACCESS_ROLES[viewKey] ?? [];
+
+  useEffect(() => {
+    if (!open || emailsByRole) return;
+    fetch("/api/admin/user-roles")
+      .then((res) => res.json())
+      .then((json) => setEmailsByRole(json.byRole ?? {}))
+      .catch(() => setEmailsByRole({}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   return (
     <div className="relative">
       <button
@@ -544,21 +557,39 @@ function PageAccessBadge({ viewKey }: { viewKey: string }) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="card absolute right-0 z-20 mt-1.5 w-56 p-3 shadow-lg">
+          <div className="card absolute right-0 z-20 mt-1.5 w-72 p-3 shadow-lg">
             <p className="mb-2 text-[10px] font-bold uppercase text-stone-400">
               <Bi fr="Accès à cette page" ru="Доступ к этой странице" />
             </p>
-            <div className="space-y-1.5">
-              {roles.map((r) => (
-                <div key={r} className="flex items-center gap-2 text-sm">
-                  <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold text-white ${avatarColorClass(r)}`}
-                  >
-                    {(ROLE_LABELS[r]?.fr ?? r).slice(0, 1).toUpperCase()}
-                  </span>
-                  <Bi fr={ROLE_LABELS[r]?.fr ?? r} ru={ROLE_LABELS[r]?.ru ?? r} />
-                </div>
-              ))}
+            <div className="space-y-2">
+              {roles.map((r) => {
+                const emails = emailsByRole?.[r] ?? [];
+                return (
+                  <div key={r} className="flex items-start gap-2 text-sm">
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold text-white ${avatarColorClass(r)}`}
+                    >
+                      {(ROLE_LABELS[r]?.fr ?? r).slice(0, 1).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p><Bi fr={ROLE_LABELS[r]?.fr ?? r} ru={ROLE_LABELS[r]?.ru ?? r} /></p>
+                      {emailsByRole === null ? (
+                        <p className="text-xs text-stone-300">…</p>
+                      ) : emails.length === 0 ? (
+                        <p className="text-xs text-stone-300">
+                          <Bi fr="aucun compte" ru="нет аккаунтов" />
+                        </p>
+                      ) : (
+                        emails.map((email) => (
+                          <p key={email} className="text-xs text-stone-400 truncate">
+                            {email}
+                          </p>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>
@@ -4496,6 +4527,28 @@ const REQUEST_STATUS_LABELS: Record<RequestStatus, { fr: string; ru: string; cla
   termine: { fr: "Terminé", ru: "Завершено", className: "bg-success-100 text-success-700" },
 };
 
+// One composite status per employee, replacing the old three-way split
+// (a red "no visit" card, a bare exclamation icon on the date, and a
+// separate 90-day "urgent" grouping) with a single plain-language pill —
+// agreed with the user as the whole point of this table: filterable by
+// status, no icon-only signal to decode.
+type EmployeeMedicalStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour";
+
+const MEDICAL_STATUS_LABELS: Record<EmployeeMedicalStatus, { fr: string; ru: string; className: string }> = {
+  jamais_visite: { fr: "Jamais visité", ru: "Не был на осмотре", className: "bg-error-100 text-error-700" },
+  a_renouveler: { fr: "À renouveler", ru: "Пора обновить", className: "bg-warning-100 text-warning-700" },
+  visite_prevue: { fr: "Visite prévue", ru: "Визит назначен", className: "bg-primary-100 text-primary-700" },
+  a_jour: { fr: "À jour", ru: "Всё в порядке", className: "bg-success-100 text-success-700" },
+};
+
+type EmployeeMedicalRow = {
+  employee: MedicalRosterRow;
+  visit: MedicalVisit | null;
+  status: EmployeeMedicalStatus;
+};
+
+const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = ["jamais_visite", "a_renouveler", "visite_prevue", "a_jour"];
+
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [visits, setVisits] = useState<MedicalVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4511,6 +4564,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<EmployeeMedicalStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [showPrevalyModal, setShowPrevalyModal] = useState(false);
   const [importingPrevaly, setImportingPrevaly] = useState(false);
@@ -4760,45 +4814,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
   const teamOptions = useMemo(() => {
     const map = new Map<string, string>();
-    visits.forEach((v) => {
-      if (v.employees?.team_id && v.employees.teams?.name) {
-        map.set(v.employees.team_id, v.employees.teams.name);
-      }
+    roster.forEach((e) => {
+      if (e.team_id && e.teams?.name) map.set(e.team_id, e.teams.name);
     });
     return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [visits]);
+  }, [roster]);
 
-  const filteredVisits = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return visits.filter((v) => {
-      if (teamFilter !== "all" && v.employees?.team_id !== teamFilter) return false;
-      if (q && !(v.employees && employeeName(v.employees).toLowerCase().includes(q)))
-        return false;
-      return true;
-    });
-  }, [visits, teamFilter, search]);
-
-  const employeesWithoutVisit = useMemo(() => {
-    const withVisit = new Set(visits.map((v) => v.employee_id));
-    const q = search.trim().toLowerCase();
-    return roster.filter((e) => {
-      if (withVisit.has(e.id)) return false;
-      if (teamFilter !== "all" && e.team_id !== teamFilter) return false;
-      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [roster, visits, teamFilter, search]);
-
-  async function addBlankVisit(employeeId: string) {
-    setAddingVisitFor(employeeId);
-    const { error } = await supabase.from("medical_visits").insert({ employee_id: employeeId });
-    setAddingVisitFor(null);
-    if (error) {
-      toast.error("Erreur : " + error.message);
-      return;
-    }
-    setRefreshKey((k) => k + 1);
-  }
 
   function startEdit(v: MedicalVisit) {
     setEditingId(v.id);
@@ -4834,10 +4855,6 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   }
 
   const todayIso = today();
-  const visitHorizon = addDaysIsoLocal(todayIso, 90);
-  function visitGroupKey(v: MedicalVisit): "urgent" | "later" {
-    return v.next_visit_date && v.next_visit_date <= visitHorizon ? "urgent" : "later";
-  }
   /** Visite médicale obligatoire tous les 2 ans — signale qu'il faut prendre
    *  un nouveau rendez-vous dès que 2 ans se sont écoulés depuis la dernière visite. */
   function needsNewAppointment(v: MedicalVisit): boolean {
@@ -4845,17 +4862,102 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     return v.last_visit_date <= addDaysIsoLocal(todayIso, -2 * 365);
   }
 
+  // One row per active employee (not per visit row) — the whole point being
+  // that someone with zero medical_visits rows still shows up, with a status
+  // instead of only appearing in a separate "missing" list.
+  const employeeRows: EmployeeMedicalRow[] = useMemo(() => {
+    const visitsByEmployee = new Map<string, MedicalVisit[]>();
+    visits.forEach((v) => {
+      if (!visitsByEmployee.has(v.employee_id)) visitsByEmployee.set(v.employee_id, []);
+      visitsByEmployee.get(v.employee_id)!.push(v);
+    });
+    return roster.map((employee) => {
+      const empVisits = visitsByEmployee.get(employee.id) ?? [];
+      const withNext = empVisits
+        .filter((v) => v.next_visit_date)
+        .sort((a, b) => a.next_visit_date!.localeCompare(b.next_visit_date!));
+      let visit: MedicalVisit | null = null;
+      if (withNext.length > 0) {
+        visit = withNext.find((v) => v.next_visit_date! >= todayIso) ?? withNext[withNext.length - 1];
+      } else if (empVisits.length > 0) {
+        visit = [...empVisits].sort((a, b) => (b.last_visit_date ?? "").localeCompare(a.last_visit_date ?? ""))[0];
+      }
+
+      let status: EmployeeMedicalStatus;
+      if (visit?.next_visit_date) {
+        status = "visite_prevue";
+      } else if (!visit?.last_visit_date) {
+        status = "jamais_visite";
+      } else if (needsNewAppointment(visit)) {
+        status = "a_renouveler";
+      } else {
+        status = "a_jour";
+      }
+      return { employee, visit, status };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roster, visits, todayIso]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<EmployeeMedicalStatus, number> = {
+      jamais_visite: 0,
+      a_renouveler: 0,
+      visite_prevue: 0,
+      a_jour: 0,
+    };
+    employeeRows.forEach((r) => counts[r.status]++);
+    return counts;
+  }, [employeeRows]);
+
+  const filteredEmployeeRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employeeRows
+      .filter((r) => {
+        if (teamFilter !== "all" && r.employee.team_id !== teamFilter) return false;
+        if (statusFilter !== "all" && r.status !== statusFilter) return false;
+        if (q && !employeeName(r.employee).toLowerCase().includes(q)) return false;
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          MEDICAL_STATUS_ORDER.indexOf(a.status) - MEDICAL_STATUS_ORDER.indexOf(b.status) ||
+          employeeName(a.employee).localeCompare(employeeName(b.employee))
+      );
+  }, [employeeRows, teamFilter, statusFilter, search]);
+
+  async function startEditForEmployee(row: EmployeeMedicalRow) {
+    if (row.visit) {
+      startEdit(row.visit);
+      return;
+    }
+    // No medical_visits row yet — create a blank one, then open it for
+    // editing once the refetch brings it back.
+    setAddingVisitFor(row.employee.id);
+    const { data, error } = await supabase
+      .from("medical_visits")
+      .insert({ employee_id: row.employee.id })
+      .select()
+      .single();
+    setAddingVisitFor(null);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+    startEdit({ ...data, employees: null } as MedicalVisit);
+  }
+
   return (
     <div>
       <div className="card mb-4">
         <div className="flex items-center justify-between">
           <div className="font-bold flex items-center">
-            Visites médicales ({filteredVisits.length}/{visits.length})
+            Visites médicales ({filteredEmployeeRows.length}/{employeeRows.length})
             <InfoNote
               title="Médical"
               text={
-                "Медосмотры каждого сотрудника: дата последнего визита, дата и время следующего.\n\n" +
-                "Записи с визитом в ближайшие 3 месяца показаны отдельным блоком сверху. Восклицательный знак у даты последнего визита означает, что прошло больше 2 лет — по закону пора записываться на новый медосмотр.\n\n" +
+                "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет — пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
+                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу.\n\n" +
                 "Кнопка «Importer Prevaly» загружает выгрузку из системы Prevaly и подставляет даты визитов автоматически, сопоставляя по имени и фамилии."
               }
             />
@@ -4869,6 +4971,23 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           >
             <Upload size={15} /> <Bi fr="Importer Prevaly" ru="Импорт из Prevaly" />
           </button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {MEDICAL_STATUS_ORDER.map((s) => {
+            const info = MEDICAL_STATUS_LABELS[s];
+            const active = statusFilter === s;
+            return (
+              <button
+                key={s}
+                onClick={() => setStatusFilter(active ? "all" : s)}
+                className={`text-xs font-bold rounded-full px-3 py-1 ${info.className} ${
+                  active ? "ring-2 ring-offset-1 ring-stone-400" : ""
+                }`}
+              >
+                <Bi fr={info.fr} ru={info.ru} /> · {statusCounts[s]}
+              </button>
+            );
+          })}
         </div>
         <div className="flex flex-wrap items-end gap-3 mt-3">
           <div>
@@ -5073,168 +5192,124 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         )}
       </div>
 
-      {employeesWithoutVisit.length > 0 && (
-        <div className="card mb-4 border-2 border-error-200 bg-error-50">
-          <p className="font-bold text-error-700 flex items-center gap-1.5">
-            <AlertTriangle size={16} className="shrink-0" />
-            <Bi
-              fr={`Aucune visite médicale enregistrée (${employeesWithoutVisit.length})`}
-              ru={`Ни одной записи о медосмотре (${employeesWithoutVisit.length})`}
-            />
-          </p>
-          <div className="mt-2 space-y-1.5">
-            {employeesWithoutVisit.map((e) => (
-              <div
-                key={e.id}
-                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5"
-              >
-                <div className="min-w-0">
-                  <p className="font-semibold truncate">{employeeName(e)}</p>
-                  <p className="text-xs text-stone-400 truncate">{e.teams?.name ?? "—"}</p>
-                </div>
-                <button
-                  className="btn btn-secondary text-xs shrink-0"
-                  disabled={addingVisitFor === e.id}
-                  onClick={() => addBlankVisit(e.id)}
-                >
-                  <Plus size={13} />
-                  <Bi fr="Ajouter une date" ru="Добавить дату" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {loading ? (
         <div className="card">
           <SkeletonRows rows={5} cols={5} />
         </div>
-      ) : filteredVisits.length === 0 ? (
+      ) : filteredEmployeeRows.length === 0 ? (
         <div className="card">
-          <EmptyState titleRu="Нет результатов" description="Aucune visite ne correspond à ces filtres." />
+          <EmptyState titleRu="Нет результатов" description="Aucun salarié ne correspond à ces filtres." />
         </div>
       ) : (
         <>
-        {/* Mobile: one card per visit instead of a 5-column table. */}
+        {/* Mobile: one card per employee. */}
         <div className="md:hidden space-y-2">
-          {filteredVisits.map((v, idx) => {
-            const isEditing = editingId === v.id;
-            const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
-            const groupKey = visitGroupKey(v);
-            const showGroupHeader = idx === 0 || visitGroupKey(filteredVisits[idx - 1]) !== groupKey;
+          {filteredEmployeeRows.map((row) => {
+            const v = row.visit;
+            const isEditing = !!v && editingId === v.id;
+            const statusInfo = MEDICAL_STATUS_LABELS[row.status];
             return (
-              <Fragment key={v.id}>
-                {showGroupHeader && (
-                  <p
-                    className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide ${
-                      groupKey === "urgent" ? "bg-warning-500 text-white" : "bg-stone-100 text-stone-500"
-                    } ${idx === 0 ? "" : "mt-4"}`}
-                  >
-                    {groupKey === "urgent" ? (
-                      <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
-                    ) : (
-                      <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
-                    )}
-                  </p>
-                )}
-                <div className={`card ${groupKey === "urgent" ? "bg-warning-100" : ""}`}>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <p className="font-semibold">{v.employees ? employeeName(v.employees) : "—"}</p>
-                    {!isEditing && (
-                      <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(v)} />
-                    )}
+              <div key={row.employee.id} className="card">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{employeeName(row.employee)}</p>
+                    <p className="text-xs text-stone-400 truncate">{row.employee.teams?.name ?? "—"}</p>
                   </div>
-                  {isEditing && editForm ? (
-                    <div className="space-y-2">
-                      <label className="block text-xs font-bold text-stone-400">
-                        <Bi fr="Dernière visite" ru="Последний визит" />
-                        <input
-                          type="date"
-                          className="input text-sm mt-1"
-                          value={editForm.last}
-                          onChange={(e) => setEditForm({ ...editForm, last: e.target.value })}
-                        />
-                      </label>
-                      <label className="block text-xs font-bold text-stone-400">
-                        <Bi fr="Prochaine visite" ru="Следующий визит" />
-                        <div className="flex gap-1 mt-1">
-                          <input
-                            type="date"
-                            className="input text-sm"
-                            value={editForm.next}
-                            onChange={(e) => setEditForm({ ...editForm, next: e.target.value })}
-                          />
-                          <input
-                            type="time"
-                            title="Heure du rendez-vous / Время встречи"
-                            className="input text-sm w-24"
-                            value={editForm.nextTime}
-                            onChange={(e) => setEditForm({ ...editForm, nextTime: e.target.value })}
-                          />
-                        </div>
-                      </label>
-                      <label className="block text-xs font-bold text-stone-400">
-                        <Bi fr="Sous-type" ru="Подтип" />
-                        <select
-                          className="input text-sm mt-1"
-                          value={editForm.subtype}
-                          onChange={(e) => setEditForm({ ...editForm, subtype: e.target.value })}
-                        >
-                          <option value="">—</option>
-                          {editForm.subtype &&
-                            !VISIT_SUBTYPE_OPTIONS.some((o) => o.value === editForm.subtype) && (
-                              <option value={editForm.subtype}>{editForm.subtype}</option>
-                            )}
-                          {VISIT_SUBTYPE_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="flex gap-3 pt-1">
-                        <button
-                          className="btn btn-green text-xs px-3 py-1"
-                          disabled={saving}
-                          onClick={() => saveEdit(v)}
-                        >
-                          <Bi fr="Enregistrer" ru="Сохранить" />
-                        </button>
-                        <button className="text-xs text-stone-400 underline" onClick={() => setEditingId(null)}>
-                          <Bi fr="Annuler" ru="Отмена" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm space-y-0.5">
-                      <p>
-                        <span className="text-stone-400">Dernière: </span>
-                        {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
-                        {needsNewAppointment(v) && (
-                          <span
-                            className="ml-1 inline-block align-text-bottom text-error-600"
-                            title="Plus de 2 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 2 лет с последнего визита — нужно записаться"
-                          >
-                            <AlertTriangle size={14} className="inline shrink-0" />
-                          </span>
-                        )}
-                      </p>
-                      <p className={isOverdue ? "text-error-600 font-semibold" : ""}>
-                        <span className={isOverdue ? "" : "text-stone-400"}>Prochaine: </span>
-                        {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
-                        {v.next_visit_date && v.next_visit_time && (
-                          <span className="ml-1 font-normal text-stone-400">{v.next_visit_time.slice(0, 5)}</span>
-                        )}
-                      </p>
-                      <p className="text-stone-500">
-                        <span className="text-stone-400">Sous-type: </span>
-                        {v.visit_subtype ?? "—"}
-                      </p>
-                    </div>
+                  {!isEditing && (
+                    <RowAction
+                      icon={Pencil}
+                      title="Modifier"
+                      titleRu="Изменить"
+                      onClick={() => startEditForEmployee(row)}
+                    />
                   )}
                 </div>
-              </Fragment>
+                {isEditing && editForm ? (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="Dernière visite" ru="Последний визит" />
+                      <input
+                        type="date"
+                        className="input text-sm mt-1"
+                        value={editForm.last}
+                        onChange={(e) => setEditForm({ ...editForm, last: e.target.value })}
+                      />
+                    </label>
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="Prochaine visite" ru="Следующий визит" />
+                      <div className="flex gap-1 mt-1">
+                        <input
+                          type="date"
+                          className="input text-sm"
+                          value={editForm.next}
+                          onChange={(e) => setEditForm({ ...editForm, next: e.target.value })}
+                        />
+                        <input
+                          type="time"
+                          title="Heure du rendez-vous / Время встречи"
+                          className="input text-sm w-24"
+                          value={editForm.nextTime}
+                          onChange={(e) => setEditForm({ ...editForm, nextTime: e.target.value })}
+                        />
+                      </div>
+                    </label>
+                    <label className="block text-xs font-bold text-stone-400">
+                      <Bi fr="Sous-type" ru="Подтип" />
+                      <select
+                        className="input text-sm mt-1"
+                        value={editForm.subtype}
+                        onChange={(e) => setEditForm({ ...editForm, subtype: e.target.value })}
+                      >
+                        <option value="">—</option>
+                        {editForm.subtype &&
+                          !VISIT_SUBTYPE_OPTIONS.some((o) => o.value === editForm.subtype) && (
+                            <option value={editForm.subtype}>{editForm.subtype}</option>
+                          )}
+                        {VISIT_SUBTYPE_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex gap-3 pt-1">
+                      <button
+                        className="btn btn-green text-xs px-3 py-1"
+                        disabled={saving}
+                        onClick={() => v && saveEdit(v)}
+                      >
+                        <Bi fr="Enregistrer" ru="Сохранить" />
+                      </button>
+                      <button className="text-xs text-stone-400 underline" onClick={() => setEditingId(null)}>
+                        <Bi fr="Annuler" ru="Отмена" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm space-y-1">
+                    <span className={`inline-block text-xs font-bold rounded-full px-2.5 py-0.5 ${statusInfo.className}`}>
+                      <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
+                    </span>
+                    <p>
+                      <span className="text-stone-400">Dernière: </span>
+                      {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
+                    </p>
+                    <p>
+                      <span className="text-stone-400">Prochaine: </span>
+                      {v?.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
+                      {v?.next_visit_date && v.next_visit_time && (
+                        <span className="ml-1 font-normal text-stone-400">{v.next_visit_time.slice(0, 5)}</span>
+                      )}
+                    </p>
+                    {v?.visit_subtype && (
+                      <p className="text-stone-500">
+                        <span className="text-stone-400">Sous-type: </span>
+                        {v.visit_subtype}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -5244,53 +5319,30 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             <thead>
               <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Dernière visite" ru="Последний визит" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Prochaine visite" ru="Следующий визит" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Sous-type" ru="Подтип" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Statut" ru="Статус" /></th>
                 <th className="pb-2" />
               </tr>
             </thead>
             <tbody>
-              {filteredVisits.map((v, idx) => {
-                const isEditing = editingId === v.id;
-                const isOverdue = !!v.next_visit_date && v.next_visit_date < todayIso;
-                const groupKey = visitGroupKey(v);
-                const showGroupHeader = idx === 0 || visitGroupKey(filteredVisits[idx - 1]) !== groupKey;
+              {filteredEmployeeRows.map((row) => {
+                const v = row.visit;
+                const isEditing = !!v && editingId === v.id;
+                const statusInfo = MEDICAL_STATUS_LABELS[row.status];
                 return (
-                  <Fragment key={v.id}>
-                  {showGroupHeader && (
-                    <tr>
-                      <td colSpan={5} className={idx === 0 ? "p-0" : "pt-4 p-0"}>
-                        <p
-                          className={`px-4 py-2 text-xs font-bold uppercase tracking-wide ${
-                            groupKey === "urgent"
-                              ? "bg-warning-500 text-white"
-                              : "bg-stone-100 text-stone-500"
-                          }`}
-                        >
-                          {groupKey === "urgent" ? (
-                            <Bi fr="Dans les 3 prochains mois" ru="В ближайшие 3 месяца" />
-                          ) : (
-                            <Bi fr="Plus tard / sans date" ru="Позже / без даты" />
-                          )}
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                  <tr className={`border-t border-stone-100 ${groupKey === "urgent" ? "bg-warning-100" : ""}`}>
-                    <td className="py-2 pr-4 font-semibold">
-                      {v.employees ? employeeName(v.employees) : "—"}
-                    </td>
+                  <tr key={row.employee.id} className="border-t border-stone-100">
+                    <td className="py-2 pr-4 font-semibold">{employeeName(row.employee)}</td>
                     {isEditing && editForm ? (
                       <>
+                        <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "—"}</td>
                         <td className="py-2 pr-4">
                           <input
                             type="date"
                             className="input text-sm px-2 py-1"
                             value={editForm.last}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm, last: e.target.value })
-                            }
+                            onChange={(e) => setEditForm({ ...editForm, last: e.target.value })}
                           />
                         </td>
                         <td className="py-2 pr-4">
@@ -5299,9 +5351,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                               type="date"
                               className="input text-sm px-2 py-1"
                               value={editForm.next}
-                              onChange={(e) =>
-                                setEditForm({ ...editForm, next: e.target.value })
-                              }
+                              onChange={(e) => setEditForm({ ...editForm, next: e.target.value })}
                             />
                             <input
                               type="time"
@@ -5309,9 +5359,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                               className="input text-sm px-2 py-1"
                               style={{ width: "6rem" }}
                               value={editForm.nextTime}
-                              onChange={(e) =>
-                                setEditForm({ ...editForm, nextTime: e.target.value })
-                              }
+                              onChange={(e) => setEditForm({ ...editForm, nextTime: e.target.value })}
                             />
                           </div>
                         </td>
@@ -5319,9 +5367,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           <select
                             className="input text-sm px-2 py-1"
                             value={editForm.subtype}
-                            onChange={(e) =>
-                              setEditForm({ ...editForm, subtype: e.target.value })
-                            }
+                            onChange={(e) => setEditForm({ ...editForm, subtype: e.target.value })}
                           >
                             <option value="">—</option>
                             {editForm.subtype &&
@@ -5339,58 +5385,45 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           <button
                             className="btn btn-green text-xs px-3 py-1 mr-2"
                             disabled={saving}
-                            onClick={() => saveEdit(v)}
+                            onClick={() => v && saveEdit(v)}
                           >
                             <Bi fr="Enregistrer" ru="Сохранить" />
                           </button>
-                          <button
-                            className="text-xs text-stone-400 underline"
-                            onClick={() => setEditingId(null)}
-                          >
+                          <button className="text-xs text-stone-400 underline" onClick={() => setEditingId(null)}>
                             <Bi fr="Annuler" ru="Отмена" />
                           </button>
                         </td>
                       </>
                     ) : (
                       <>
+                        <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "—"}</td>
                         <td className="py-2 pr-4">
-                          {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
-                          {needsNewAppointment(v) && (
-                            <span
-                              className="ml-1 inline-block align-text-bottom text-error-600"
-                              title="Plus de 2 ans depuis la dernière visite — rendez-vous à prendre / Прошло больше 2 лет с последнего визита — нужно записаться"
-                            >
-                              <AlertTriangle size={14} className="inline shrink-0" />
-                            </span>
-                          )}
+                          {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
                         </td>
-                        <td
-                          className={`py-2 pr-4 font-semibold ${
-                            isOverdue ? "text-error-600" : ""
-                          }`}
-                        >
-                          {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
-                          {v.next_visit_date && v.next_visit_time && (
+                        <td className="py-2 pr-4">
+                          {v?.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
+                          {v?.next_visit_date && v.next_visit_time && (
                             <span className="ml-1 font-normal text-stone-400">
                               {v.next_visit_time.slice(0, 5)}
                             </span>
                           )}
                         </td>
-                        <td className="py-2 pr-4 text-stone-500">
-                          {v.visit_subtype ?? "—"}
+                        <td className="py-2 pr-4">
+                          <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 ${statusInfo.className}`}>
+                            <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
+                          </span>
                         </td>
                         <td className="py-2">
                           <RowAction
-                            icon={Pencil}
+                            icon={addingVisitFor === row.employee.id ? RefreshCw : Pencil}
                             title="Modifier"
                             titleRu="Изменить"
-                            onClick={() => startEdit(v)}
+                            onClick={() => startEditForEmployee(row)}
                           />
                         </td>
                       </>
                     )}
                   </tr>
-                  </Fragment>
                 );
               })}
             </tbody>
