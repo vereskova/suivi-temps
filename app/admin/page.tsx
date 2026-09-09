@@ -4203,9 +4203,19 @@ function MedicalSectionView({ supabase }: { supabase: ReturnType<typeof createCl
   );
 }
 
+type MedicalRosterRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  team_id: string | null;
+  teams: { name: string } | null;
+};
+
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [visits, setVisits] = useState<MedicalVisit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [roster, setRoster] = useState<MedicalRosterRow[]>([]);
+  const [addingVisitFor, setAddingVisitFor] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{
     last: string;
@@ -4235,6 +4245,21 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         .order("next_visit_date", { ascending: true, nullsFirst: false });
       setVisits((data as unknown as MedicalVisit[]) ?? []);
       setLoading(false);
+    }
+    load();
+  }, [supabase, refreshKey]);
+
+  // Full active roster, so employees with ZERO medical_visits row — never
+  // shown at all otherwise, since the list above is built from visits, not
+  // employees — can be surfaced and flagged instead of silently missing.
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)")
+        .eq("status", "active")
+        .order("last_name");
+      setRoster((data as unknown as MedicalRosterRow[]) ?? []);
     }
     load();
   }, [supabase, refreshKey]);
@@ -4372,6 +4397,28 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     });
   }, [visits, teamFilter, search]);
 
+  const employeesWithoutVisit = useMemo(() => {
+    const withVisit = new Set(visits.map((v) => v.employee_id));
+    const q = search.trim().toLowerCase();
+    return roster.filter((e) => {
+      if (withVisit.has(e.id)) return false;
+      if (teamFilter !== "all" && e.team_id !== teamFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [roster, visits, teamFilter, search]);
+
+  async function addBlankVisit(employeeId: string) {
+    setAddingVisitFor(employeeId);
+    const { error } = await supabase.from("medical_visits").insert({ employee_id: employeeId });
+    setAddingVisitFor(null);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
+
   function startEdit(v: MedicalVisit) {
     setEditingId(v.id);
     setEditForm({
@@ -4473,6 +4520,39 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </div>
         </div>
       </div>
+
+      {employeesWithoutVisit.length > 0 && (
+        <div className="card mb-4 border-2 border-error-200 bg-error-50">
+          <p className="font-bold text-error-700 flex items-center gap-1.5">
+            <AlertTriangle size={16} className="shrink-0" />
+            <Bi
+              fr={`Aucune visite médicale enregistrée (${employeesWithoutVisit.length})`}
+              ru={`Ни одной записи о медосмотре (${employeesWithoutVisit.length})`}
+            />
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {employeesWithoutVisit.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold truncate">{employeeName(e)}</p>
+                  <p className="text-xs text-stone-400 truncate">{e.teams?.name ?? "—"}</p>
+                </div>
+                <button
+                  className="btn btn-secondary text-xs shrink-0"
+                  disabled={addingVisitFor === e.id}
+                  onClick={() => addBlankVisit(e.id)}
+                >
+                  <Plus size={13} />
+                  <Bi fr="Ajouter une date" ru="Добавить дату" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="card">
