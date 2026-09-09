@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing or invalid parameters" }, { status: 400 });
   }
 
-  const check = await requireRole(["commercial", "rh_admin"]);
+  const check = await requireRole(["commercial", "commercial_rh", "rh_admin"]);
   if (!check.ok) return check.response;
   const { supabase } = check.ctx;
 

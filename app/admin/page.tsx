@@ -575,6 +575,10 @@ export default function AdminPage() {
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = usePersistedView<ViewKey>("admin_view", "jour", VALID_VIEW_KEYS);
   const [comptableView, setComptableView] = usePersistedView<"paie" | "employees">("admin_comptable_view", "paie");
+  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees">(
+    "admin_commercial_rh_view",
+    "commercial"
+  );
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -775,7 +779,14 @@ export default function AdminPage() {
   // "chef" and "boss" are legacy app_role values with no code path of their
   // own since migration 0022 made the daily pointage form public — anyone
   // still carrying one of those roles falls through to the gate below.
-  if (role !== "rh_admin" && role !== "comptable" && role !== "rh" && role !== "commercial") {
+  if (
+    role !== "rh_admin" &&
+    role !== "comptable" &&
+    role !== "rh" &&
+    role !== "commercial" &&
+    role !== "rh_readonly" &&
+    role !== "commercial_rh"
+  ) {
     return (
       <main className="min-h-screen p-4 md:p-8 flex items-center justify-center">
         <div className="card max-w-sm text-center">
@@ -881,6 +892,164 @@ export default function AdminPage() {
             <div className="flex-1 min-w-0">
               {comptableView === "paie" ? (
                 <PaieView supabase={supabase} />
+              ) : (
+                <EmployeesView
+                  supabase={supabase}
+                  teams={teams}
+                  onChanged={() => {}}
+                  onToggleChef={() => {}}
+                  readOnly
+                  confidentialMode="rib_only"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // rh_readonly: Employés only, same restricted (read-only, RIB-only) view
+  // as comptable's Employés tab — for accounts that need to look someone up
+  // without full rh-level edit/confidential access.
+  if (role === "rh_readonly") {
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-[1400px]">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+                <LogoMark size={24} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">Employés</p>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary text-sm shrink-0"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                router.replace("/login");
+              }}
+            >
+              <LogOut size={15} />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          </div>
+
+          <div className="flex gap-6 items-start">
+            <aside className="hidden lg:block w-60 shrink-0">
+              <nav className="card p-3 space-y-4 sticky top-4">
+                <SidebarSection title="">
+                  <SidebarLink icon={Users} active label="Employés" labelRu="Сотрудники" />
+                </SidebarSection>
+              </nav>
+            </aside>
+            <div className="flex-1 min-w-0">
+              <EmployeesView
+                supabase={supabase}
+                teams={teams}
+                onChanged={() => {}}
+                onToggleChef={() => {}}
+                readOnly
+                confidentialMode="rib_only"
+              />
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // commercial_rh: same Commercial section as 'commercial', plus the same
+  // restricted Employés view as comptable/rh_readonly — no Paie.
+  if (role === "commercial_rh") {
+    const commercialRhNavItems = (
+      <SidebarSection title="">
+        <SidebarLink
+          icon={Briefcase}
+          active={commercialRhView === "commercial"}
+          label="Commercial"
+          labelRu="Коммерция"
+          onClick={() => {
+            setCommercialRhView("commercial");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Users}
+          active={commercialRhView === "employees"}
+          label="Employés"
+          labelRu="Сотрудники"
+          onClick={() => {
+            setCommercialRhView("employees");
+            setMobileNavOpen(false);
+          }}
+        />
+      </SidebarSection>
+    );
+    return (
+      <main className="min-h-screen p-4 md:p-8">
+        <div className="mx-auto max-w-[1400px]">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 lg:hidden"
+                title="Menu / Меню"
+              >
+                <Menu size={18} />
+              </button>
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
+                <LogoMark size={24} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">Commercial</p>
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary text-sm shrink-0"
+              onClick={async () => {
+                await supabase.auth.signOut();
+                router.replace("/login");
+              }}
+            >
+              <LogOut size={15} />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          </div>
+
+          {mobileNavOpen && (
+            <div className="lg:hidden fixed inset-0 z-50 flex">
+              <div className="fixed inset-0 bg-black/40" onClick={() => setMobileNavOpen(false)} />
+              <nav className="card relative z-10 w-72 max-w-[85vw] h-full rounded-none p-4 space-y-4 overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-bold text-stone-900">
+                    <Bi fr="Menu" ru="Меню" />
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="p-1 text-stone-400 hover:text-stone-700"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                {commercialRhNavItems}
+              </nav>
+            </div>
+          )}
+
+          <div className="flex gap-6 items-start">
+            <aside className="hidden lg:block w-60 shrink-0">
+              <nav className="card p-3 space-y-4 sticky top-4">{commercialRhNavItems}</nav>
+            </aside>
+            <div className="flex-1 min-w-0">
+              {commercialRhView === "commercial" ? (
+                <CommercialSection supabase={supabase} />
               ) : (
                 <EmployeesView
                   supabase={supabase}
@@ -3687,6 +3856,7 @@ function EmployeeDetailPanel({
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoBroken, setPhotoBroken] = useState(false);
+  const [showPhotoLightbox, setShowPhotoLightbox] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -3779,12 +3949,19 @@ function EmployeeDetailPanel({
     <div>
       <div className="flex items-center gap-3 mb-5 pb-5 border-b border-stone-100">
         {photoUrl && !photoBroken ? (
-          <img
-            src={photoUrl}
-            alt={employeeName(employee)}
-            className="h-12 w-12 shrink-0 rounded-full object-cover"
-            onError={() => setPhotoBroken(true)}
-          />
+          <button
+            type="button"
+            onClick={() => setShowPhotoLightbox(true)}
+            title="Agrandir la photo / Увеличить фото"
+            className="shrink-0 rounded-full"
+          >
+            <img
+              src={photoUrl}
+              alt={employeeName(employee)}
+              className="h-12 w-12 shrink-0 rounded-full object-cover cursor-zoom-in"
+              onError={() => setPhotoBroken(true)}
+            />
+          </button>
         ) : (
           <div
             className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-sm font-extrabold ${avatarColorClass(
@@ -4054,6 +4231,16 @@ function EmployeeDetailPanel({
         </div>
       )}
       </fieldset>
+      {photoUrl && (
+        <Modal
+          open={showPhotoLightbox}
+          onClose={() => setShowPhotoLightbox(false)}
+          title={employeeName(employee)}
+          maxWidth="max-w-lg"
+        >
+          <img src={photoUrl} alt={employeeName(employee)} className="w-full rounded-lg object-contain" />
+        </Modal>
+      )}
     </div>
   );
 }
@@ -4953,7 +5140,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     <div className="text-sm space-y-0.5">
                       <p>
                         <span className="text-stone-400">Dernière: </span>
-                        {v.last_visit_date ?? "—"}
+                        {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
                         {needsNewAppointment(v) && (
                           <span
                             className="ml-1 inline-block align-text-bottom text-error-600"
@@ -4965,7 +5152,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </p>
                       <p className={isOverdue ? "text-error-600 font-semibold" : ""}>
                         <span className={isOverdue ? "" : "text-stone-400"}>Prochaine: </span>
-                        {v.next_visit_date ?? "—"}
+                        {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
                         {v.next_visit_date && v.next_visit_time && (
                           <span className="ml-1 font-normal text-stone-400">{v.next_visit_time.slice(0, 5)}</span>
                         )}
@@ -5097,7 +5284,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     ) : (
                       <>
                         <td className="py-2 pr-4">
-                          {v.last_visit_date ?? "—"}
+                          {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
                           {needsNewAppointment(v) && (
                             <span
                               className="ml-1 inline-block align-text-bottom text-error-600"
@@ -5112,7 +5299,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             isOverdue ? "text-error-600" : ""
                           }`}
                         >
-                          {v.next_visit_date ?? "—"}
+                          {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
                           {v.next_visit_date && v.next_visit_time && (
                             <span className="ml-1 font-normal text-stone-400">
                               {v.next_visit_time.slice(0, 5)}
@@ -14359,8 +14546,9 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                               return (
                                 <p key={v.id} className="text-xs text-stone-500 flex items-center gap-2 flex-wrap">
                                   <span>
-                                    {v.visit_subtype ?? "Visite"} — dernière : {v.last_visit_date ?? "—"} · prochaine :{" "}
-                                    {v.next_visit_date ?? "—"}
+                                    {v.visit_subtype ?? "Visite"} — dernière :{" "}
+                                    {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"} · prochaine :{" "}
+                                    {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
                                     {v.next_visit_date && v.next_visit_time && ` ${v.next_visit_time.slice(0, 5)}`}
                                   </span>
                                   {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}

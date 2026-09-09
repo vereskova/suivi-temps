@@ -52,7 +52,16 @@ export async function fetchPrevalyEmails(days: number): Promise<PrevalyEmail[]> 
         continue; // mailbox doesn't exist under this name on this account
       }
       try {
-        const uids = await client.search({ since });
+        // Ask the IMAP server to pre-filter by sender/recipient domain —
+        // fetching the full source of every message in the window (then
+        // discarding most of them) was slow enough to blow Vercel's function
+        // timeout, even though it ran fine against a plain local script.
+        const domainFilter = { or: [{ from: "prevaly.fr" }, { from: "padoa.fr" }] };
+        const recipientFilter = { or: [{ to: "prevaly.fr" }, { to: "padoa.fr" }] };
+        const uids = await client.search({
+          since,
+          or: [domainFilter, recipientFilter],
+        });
         for (const uid of uids || []) {
           const msg = await client.fetchOne(uid, { envelope: true, source: true });
           if (!msg || !msg.envelope) continue;
