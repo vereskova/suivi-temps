@@ -83,8 +83,13 @@ function renderBlock(block: Block, index: number) {
         </Text>
       );
     case "heading":
+      // minPresenceAhead: don't place this heading unless at least this
+      // much of what follows also fits on the same page — otherwise it
+      // gets pushed to the next page as a unit with its body text, instead
+      // of landing alone at the bottom/top of a page with an empty gap
+      // under it (the article's paragraphs came right after on their own).
       return (
-        <Text key={index} style={styles.heading}>
+        <Text key={index} style={styles.heading} minPresenceAhead={70}>
           {block.text}
         </Text>
       );
