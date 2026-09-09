@@ -575,9 +575,13 @@ export default function AdminPage() {
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = usePersistedView<ViewKey>("admin_view", "jour", VALID_VIEW_KEYS);
   const [comptableView, setComptableView] = usePersistedView<"paie" | "employees">("admin_comptable_view", "paie");
-  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees">(
+  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme">(
     "admin_commercial_rh_view",
     "commercial"
+  );
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "organigramme">(
+    "admin_rh_readonly_view",
+    "employees"
   );
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -746,9 +750,10 @@ export default function AdminPage() {
         setView("effectif");
       }
 
-      // Comptable also gets a read-only "Employés" tab alongside Paie — needs
-      // team names for the filter/labels, same as rh_admin/rh above.
-      if (roleRow?.role === "comptable") {
+      // Comptable, rh_readonly and commercial_rh all get a read-only
+      // "Employés" tab — needs team names for the filter/labels/colors/chef
+      // crowns, same as rh_admin/rh above.
+      if (roleRow?.role === "comptable" || roleRow?.role === "rh_readonly" || roleRow?.role === "commercial_rh") {
         const { data: teamRows } = await supabase
           .from("teams")
           .select("id, name, chef_employee_id")
@@ -913,11 +918,43 @@ export default function AdminPage() {
   // as comptable's Employés tab — for accounts that need to look someone up
   // without full rh-level edit/confidential access.
   if (role === "rh_readonly") {
+    const rhReadonlyNavItems = (
+      <SidebarSection title="">
+        <SidebarLink
+          icon={Users}
+          active={rhReadonlyView === "employees"}
+          label="Employés"
+          labelRu="Сотрудники"
+          onClick={() => {
+            setRhReadonlyView("employees");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Network}
+          active={rhReadonlyView === "organigramme"}
+          label="Organigramme"
+          labelRu="Структура"
+          onClick={() => {
+            setRhReadonlyView("organigramme");
+            setMobileNavOpen(false);
+          }}
+        />
+      </SidebarSection>
+    );
     return (
       <main className="min-h-screen p-4 md:p-8">
         <div className="mx-auto max-w-[1400px]">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => setMobileNavOpen(true)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 lg:hidden"
+                title="Menu / Меню"
+              >
+                <Menu size={18} />
+              </button>
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
                 <LogoMark size={24} />
               </div>
@@ -938,23 +975,44 @@ export default function AdminPage() {
             </button>
           </div>
 
+          {mobileNavOpen && (
+            <div className="lg:hidden fixed inset-0 z-50 flex">
+              <div className="fixed inset-0 bg-black/40" onClick={() => setMobileNavOpen(false)} />
+              <nav className="card relative z-10 w-72 max-w-[85vw] h-full rounded-none p-4 space-y-4 overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-bold text-stone-900">
+                    <Bi fr="Menu" ru="Меню" />
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(false)}
+                    className="p-1 text-stone-400 hover:text-stone-700"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                {rhReadonlyNavItems}
+              </nav>
+            </div>
+          )}
+
           <div className="flex gap-6 items-start">
             <aside className="hidden lg:block w-60 shrink-0">
-              <nav className="card p-3 space-y-4 sticky top-4">
-                <SidebarSection title="">
-                  <SidebarLink icon={Users} active label="Employés" labelRu="Сотрудники" />
-                </SidebarSection>
-              </nav>
+              <nav className="card p-3 space-y-4 sticky top-4">{rhReadonlyNavItems}</nav>
             </aside>
             <div className="flex-1 min-w-0">
-              <EmployeesView
-                supabase={supabase}
-                teams={teams}
-                onChanged={() => {}}
-                onToggleChef={() => {}}
-                readOnly
-                confidentialMode="rib_only"
-              />
+              {rhReadonlyView === "employees" ? (
+                <EmployeesView
+                  supabase={supabase}
+                  teams={teams}
+                  onChanged={() => {}}
+                  onToggleChef={() => {}}
+                  readOnly
+                  confidentialMode="rib_only"
+                />
+              ) : (
+                <OrganigrammeView supabase={supabase} readOnly />
+              )}
             </div>
           </div>
         </div>
@@ -984,6 +1042,16 @@ export default function AdminPage() {
           labelRu="Сотрудники"
           onClick={() => {
             setCommercialRhView("employees");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Network}
+          active={commercialRhView === "organigramme"}
+          label="Organigramme"
+          labelRu="Структура"
+          onClick={() => {
+            setCommercialRhView("organigramme");
             setMobileNavOpen(false);
           }}
         />
@@ -1050,7 +1118,7 @@ export default function AdminPage() {
             <div className="flex-1 min-w-0">
               {commercialRhView === "commercial" ? (
                 <CommercialSection supabase={supabase} />
-              ) : (
+              ) : commercialRhView === "employees" ? (
                 <EmployeesView
                   supabase={supabase}
                   teams={teams}
@@ -1059,6 +1127,8 @@ export default function AdminPage() {
                   readOnly
                   confidentialMode="rib_only"
                 />
+              ) : (
+                <OrganigrammeView supabase={supabase} readOnly />
               )}
             </div>
           </div>
@@ -11670,7 +11740,13 @@ function buildOrgGrid(
   return { byColumn, rows, maxRows };
 }
 
-function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+function OrganigrammeView({
+  supabase,
+  readOnly = false,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  readOnly?: boolean;
+}) {
   const [employees, setEmployees] = useState<OrgEmployee[]>([]);
   const [teams, setTeams] = useState<OrgTeam[]>([]);
   const [loading, setLoading] = useState(true);
@@ -11836,8 +11912,8 @@ function OrganigrammeView({ supabase }: { supabase: ReturnType<typeof createClie
               headerRu={teamLabelRu(c.label)}
               employees={teamGrid.byColumn.get(c.key) ?? []}
               chefId={teamChefMap.get(c.key)}
-              onReorder={handleReorderTeam}
-              onToggleChef={(employeeId) => handleToggleChef(c.key, employeeId)}
+              onReorder={readOnly ? undefined : handleReorderTeam}
+              onToggleChef={readOnly ? undefined : (employeeId) => handleToggleChef(c.key, employeeId)}
             />
           ))}
         </div>
