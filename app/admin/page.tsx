@@ -4884,7 +4884,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       }
 
       let status: EmployeeMedicalStatus;
-      if (visit?.next_visit_date) {
+      if (visit?.next_visit_date && visit.next_visit_date >= todayIso) {
         status = "visite_prevue";
       } else if (!visit?.last_visit_date) {
         status = "jamais_visite";
