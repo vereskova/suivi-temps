@@ -4566,6 +4566,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [teamFilter, setTeamFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<EmployeeMedicalStatus | "all">("all");
   const [search, setSearch] = useState("");
+  const [nextVisitFrom, setNextVisitFrom] = useState("");
+  const [nextVisitTo, setNextVisitTo] = useState("");
   const [showPrevalyModal, setShowPrevalyModal] = useState(false);
   const [importingPrevaly, setImportingPrevaly] = useState(false);
   const [prevalyResult, setPrevalyResult] = useState<{
@@ -4817,8 +4819,20 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     roster.forEach((e) => {
       if (e.team_id && e.teams?.name) map.set(e.team_id, e.teams.name);
     });
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }));
   }, [roster]);
+
+  // Same stable name -> color mapping as the Employés view, so a given team
+  // reads as the same color everywhere in the app.
+  const teamColorByName = useMemo(() => {
+    const names = teamOptions.map(([, name]) => name);
+    return new Map(names.map((name, i) => [name, PAIE_TEAM_COLOR_PALETTE[i % PAIE_TEAM_COLOR_PALETTE.length]]));
+  }, [teamOptions]);
+
+  function rowColorClass(row: EmployeeMedicalRow): string {
+    const teamName = row.employee.teams?.name;
+    return (teamName && teamColorByName.get(teamName)) || "";
+  }
 
 
   function startEdit(v: MedicalVisit) {
@@ -4916,6 +4930,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         if (teamFilter !== "all" && r.employee.team_id !== teamFilter) return false;
         if (statusFilter !== "all" && r.status !== statusFilter) return false;
         if (q && !employeeName(r.employee).toLowerCase().includes(q)) return false;
+        if (nextVisitFrom || nextVisitTo) {
+          const d = r.visit?.next_visit_date;
+          if (!d) return false;
+          if (nextVisitFrom && d < nextVisitFrom) return false;
+          if (nextVisitTo && d > nextVisitTo) return false;
+        }
         return true;
       })
       .sort(
@@ -4923,7 +4943,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           MEDICAL_STATUS_ORDER.indexOf(a.status) - MEDICAL_STATUS_ORDER.indexOf(b.status) ||
           employeeName(a.employee).localeCompare(employeeName(b.employee))
       );
-  }, [employeeRows, teamFilter, statusFilter, search]);
+  }, [employeeRows, teamFilter, statusFilter, search, nextVisitFrom, nextVisitTo]);
 
   async function startEditForEmployee(row: EmployeeMedicalRow) {
     if (row.visit) {
@@ -4957,7 +4977,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               title="Médical"
               text={
                 "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет — пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
-                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу.\n\n" +
+                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
+                "Фильтр «Следующий визит: с / по» показывает только тех, у кого запланированная дата попадает в этот диапазон.\n\n" +
                 "Кнопка «Importer Prevaly» загружает выгрузку из системы Prevaly и подставляет даты визитов автоматически, сопоставляя по имени и фамилии."
               }
             />
@@ -5018,6 +5039,39 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Prochaine visite : de" ru="Следующий визит: с" />
+            </label>
+            <input
+              type="date"
+              className="input"
+              value={nextVisitFrom}
+              onChange={(e) => setNextVisitFrom(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="à" ru="по" />
+            </label>
+            <input
+              type="date"
+              className="input"
+              value={nextVisitTo}
+              onChange={(e) => setNextVisitTo(e.target.value)}
+            />
+          </div>
+          {(nextVisitFrom || nextVisitTo) && (
+            <button
+              className="text-xs text-stone-400 underline self-center mb-2"
+              onClick={() => {
+                setNextVisitFrom("");
+                setNextVisitTo("");
+              }}
+            >
+              <Bi fr="Réinitialiser les dates" ru="Сбросить даты" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -5209,7 +5263,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             const isEditing = !!v && editingId === v.id;
             const statusInfo = MEDICAL_STATUS_LABELS[row.status];
             return (
-              <div key={row.employee.id} className="card">
+              <div key={row.employee.id} className={`card ${rowColorClass(row)}`}>
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{employeeName(row.employee)}</p>
@@ -5332,7 +5386,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 const isEditing = !!v && editingId === v.id;
                 const statusInfo = MEDICAL_STATUS_LABELS[row.status];
                 return (
-                  <tr key={row.employee.id} className="border-t border-stone-100">
+                  <tr key={row.employee.id} className={`border-t border-stone-100 ${rowColorClass(row)}`}>
                     <td className="py-2 pr-4 font-semibold">{employeeName(row.employee)}</td>
                     {isEditing && editForm ? (
                       <>
