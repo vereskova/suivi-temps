@@ -4549,6 +4549,43 @@ type EmployeeMedicalRow = {
 
 const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = ["jamais_visite", "a_renouveler", "visite_prevue", "a_jour"];
 
+type MedicalSortKey = "name" | "team" | "last" | "next" | "status";
+
+function SortableMedicalTh({
+  label,
+  sortKey,
+  active,
+  dir,
+  onClick,
+}: {
+  label: React.ReactNode;
+  sortKey: MedicalSortKey;
+  active: MedicalSortKey;
+  dir: "asc" | "desc";
+  onClick: (key: MedicalSortKey) => void;
+}) {
+  const isActive = active === sortKey;
+  return (
+    <th className="pb-2 pr-4">
+      <button
+        type="button"
+        onClick={() => onClick(sortKey)}
+        className={`flex items-center gap-1 font-bold hover:text-stone-700 ${
+          isActive ? "text-stone-700" : "text-stone-400"
+        }`}
+      >
+        {label}
+        {isActive &&
+          (dir === "asc" ? (
+            <ChevronUp size={13} className="shrink-0" />
+          ) : (
+            <ChevronDown size={13} className="shrink-0" />
+          ))}
+      </button>
+    </th>
+  );
+}
+
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [visits, setVisits] = useState<MedicalVisit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -4568,6 +4605,17 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [search, setSearch] = useState("");
   const [nextVisitFrom, setNextVisitFrom] = useState("");
   const [nextVisitTo, setNextVisitTo] = useState("");
+  const [sortKey, setSortKey] = useState<MedicalSortKey>("status");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  function toggleSort(key: MedicalSortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  }
   const [showPrevalyModal, setShowPrevalyModal] = useState(false);
   const [importingPrevaly, setImportingPrevaly] = useState(false);
   const [prevalyResult, setPrevalyResult] = useState<{
@@ -4938,12 +4986,31 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         }
         return true;
       })
-      .sort(
-        (a, b) =>
-          MEDICAL_STATUS_ORDER.indexOf(a.status) - MEDICAL_STATUS_ORDER.indexOf(b.status) ||
-          employeeName(a.employee).localeCompare(employeeName(b.employee))
-      );
-  }, [employeeRows, teamFilter, statusFilter, search, nextVisitFrom, nextVisitTo]);
+      .sort((a, b) => {
+        let cmp = 0;
+        switch (sortKey) {
+          case "name":
+            cmp = employeeName(a.employee).localeCompare(employeeName(b.employee));
+            break;
+          case "team":
+            cmp = (a.employee.teams?.name ?? "").localeCompare(b.employee.teams?.name ?? "", undefined, {
+              numeric: true,
+            });
+            break;
+          case "last":
+            cmp = (a.visit?.last_visit_date ?? "").localeCompare(b.visit?.last_visit_date ?? "");
+            break;
+          case "next":
+            cmp = (a.visit?.next_visit_date ?? "").localeCompare(b.visit?.next_visit_date ?? "");
+            break;
+          case "status":
+            cmp = MEDICAL_STATUS_ORDER.indexOf(a.status) - MEDICAL_STATUS_ORDER.indexOf(b.status);
+            break;
+        }
+        if (sortDir === "desc") cmp = -cmp;
+        return cmp || employeeName(a.employee).localeCompare(employeeName(b.employee));
+      });
+  }, [employeeRows, teamFilter, statusFilter, search, nextVisitFrom, nextVisitTo, sortKey, sortDir]);
 
   async function startEditForEmployee(row: EmployeeMedicalRow) {
     if (row.visit) {
@@ -5372,11 +5439,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Dernière visite" ru="Последний визит" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Prochaine visite" ru="Следующий визит" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Statut" ru="Статус" /></th>
+                <SortableMedicalTh label={<Bi fr="Nom" ru="Фамилия" />} sortKey="name" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableMedicalTh label={<Bi fr="Équipe" ru="Бригада" />} sortKey="team" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableMedicalTh label={<Bi fr="Dernière visite" ru="Последний визит" />} sortKey="last" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableMedicalTh label={<Bi fr="Prochaine visite" ru="Следующий визит" />} sortKey="next" active={sortKey} dir={sortDir} onClick={toggleSort} />
+                <SortableMedicalTh label={<Bi fr="Statut" ru="Статус" />} sortKey="status" active={sortKey} dir={sortDir} onClick={toggleSort} />
                 <th className="pb-2" />
               </tr>
             </thead>
