@@ -2,6 +2,9 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 
 export type PrevalyEmail = {
+  // Only unique within one mailbox of one account — use array index (or
+  // uid+account) as the React key, never uid alone, once more than one
+  // account/mailbox is merged.
   uid: number;
   date: string | null;
   from: string;
@@ -18,33 +21,48 @@ function looksLikePrevaly(address: string | undefined): boolean {
   return PREVALY_DOMAINS.some((d) => lower.includes(d));
 }
 
-/**
- * Reads the OVH mailbox (credentials in .env.local, never hardcoded) and
- * returns every message to/from Prevaly/Padoa within the last `days` days —
- * both sides of the correspondence, so a reply she sent shows up too.
- */
-export async function fetchPrevalyEmails(days: number): Promise<PrevalyEmail[]> {
-  const host = process.env.OVH_IMAP_HOST;
-  const user = process.env.OVH_EMAIL_ADDRESS;
-  const pass = process.env.OVH_EMAIL_PASSWORD;
-  if (!host || !user || !pass) {
-    throw new Error("OVH_IMAP_HOST / OVH_EMAIL_ADDRESS / OVH_EMAIL_PASSWORD manquants dans .env.local");
-  }
+type MailAccount = { host: string; user: string; pass: string };
 
+/** assistant@vladis.fr holds the back-and-forth correspondence; the
+ *  convocation e-mails themselves land in contact@vladis.fr — a second,
+ *  separate OVH mailbox (its own IMAP login AND its own mail cluster
+ *  hostname, not an alias), so both are read when configured. Only the
+ *  first account is required. */
+function getAccounts(): MailAccount[] {
+  const accounts: MailAccount[] = [];
+  if (process.env.OVH_IMAP_HOST && process.env.OVH_EMAIL_ADDRESS && process.env.OVH_EMAIL_PASSWORD) {
+    accounts.push({
+      host: process.env.OVH_IMAP_HOST,
+      user: process.env.OVH_EMAIL_ADDRESS,
+      pass: process.env.OVH_EMAIL_PASSWORD,
+    });
+  }
+  if (
+    process.env.OVH_CONTACT_IMAP_HOST &&
+    process.env.OVH_CONTACT_EMAIL_ADDRESS &&
+    process.env.OVH_CONTACT_EMAIL_PASSWORD
+  ) {
+    accounts.push({
+      host: process.env.OVH_CONTACT_IMAP_HOST,
+      user: process.env.OVH_CONTACT_EMAIL_ADDRESS,
+      pass: process.env.OVH_CONTACT_EMAIL_PASSWORD,
+    });
+  }
+  return accounts;
+}
+
+async function fetchFromAccount(account: MailAccount, since: Date): Promise<PrevalyEmail[]> {
   const client = new ImapFlow({
-    host,
+    host: account.host,
     port: 993,
     secure: true,
-    auth: { user, pass },
+    auth: { user: account.user, pass: account.pass },
     logger: false,
   });
 
   const results: PrevalyEmail[] = [];
   await client.connect();
   try {
-    const since = new Date();
-    since.setDate(since.getDate() - days);
-
     for (const mailbox of ["INBOX", "INBOX.Sent Messages"]) {
       let lock;
       try {
@@ -92,6 +110,25 @@ export async function fetchPrevalyEmails(days: number): Promise<PrevalyEmail[]> 
   } finally {
     await client.logout().catch(() => client.close());
   }
+  return results;
+}
+
+/**
+ * Reads the OVH mailbox(es) (credentials in .env.local, never hardcoded) and
+ * returns every message to/from Prevaly/Padoa within the last `days` days —
+ * both sides of the correspondence, so a reply she sent shows up too.
+ */
+export async function fetchPrevalyEmails(days: number): Promise<PrevalyEmail[]> {
+  const accounts = getAccounts();
+  if (accounts.length === 0) {
+    throw new Error("OVH_IMAP_HOST / OVH_EMAIL_ADDRESS / OVH_EMAIL_PASSWORD manquants dans .env.local");
+  }
+
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const perAccount = await Promise.all(accounts.map((account) => fetchFromAccount(account, since)));
+  const results = perAccount.flat();
 
   results.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
   return results;
@@ -115,41 +152,47 @@ const FR_MONTHS: Record<string, number> = {
   decembre: 12,
 };
 
-export type ParsedConvocation = {
+export type ConvocationEvent = {
+  type: "convocation" | "annulation";
   nameLine: string;
-  dateIso: string;
-  time: string;
+  dateIso: string | null;
+  time: string | null;
 };
 
 /**
- * Prevaly's "Convocation pour une visite de santé au travail" e-mails always
- * use the same fixed layout (unlike the rest of the correspondence, which is
- * free text and never auto-applied): a "Convocation" heading, the employee's
- * name, "(né(e) le ...)", then "Le <jour> <D> <mois> <YYYY> à <HH:MM>". Only
- * that one message type is parsed automatically.
+ * Prevaly sends three kinds of "... convocation santé au travail : NAME avec
+ * DOCTOR" e-mails — a first convocation, a "RAPPEL" reminder (same layout),
+ * and an "ANNULATION" cancellation (a different, simpler layout, no date
+ * needed since the appointment no longer stands) — always with that exact
+ * subject shape, which is far more reliable to parse than the body: the
+ * HTML body's line breaks collapse unpredictably depending on which mail
+ * client rendered it, but the subject line never does.
+ *
+ * The body is only used for the appointment date/time, using "Le ..." for a
+ * (re)convocation or "Du ..." for a cancellation notice.
  */
-export function parseConvocation(text: string): ParsedConvocation | null {
-  const nameMatch = text.match(/Convocation\s*\n+\s*([^\n(]+?)\s*\n+\s*\(n[ée]\(e\)\s*le/i);
+export function parseConvocationEmail(subject: string, text: string): ConvocationEvent | null {
+  const nameMatch = subject.match(/convocation\s+sant[ée]\s+au\s+travail\s*:\s*(.+?)\s+avec\s+/i);
   if (!nameMatch) return null;
   const nameLine = nameMatch[1].trim();
   if (!nameLine) return null;
 
-  const dateMatch = text.match(
-    /Le\s+\S+\s+(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})\s+à\s+(\d{1,2})[:h](\d{2})/i
-  );
-  if (!dateMatch) return null;
+  const isAnnulation = /annulation/i.test(subject);
+  if (isAnnulation) {
+    return { type: "annulation", nameLine, dateIso: null, time: null };
+  }
+
+  const dateMatch = text.match(/Le\s+\S+\s+(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})\s+à\s+(\d{1,2})[:h](\d{2})/i);
+  if (!dateMatch) return { type: "convocation", nameLine, dateIso: null, time: null };
   const [, dayStr, monthName, yearStr, hourStr, minuteStr] = dateMatch;
   const month = FR_MONTHS[monthName.toLowerCase()];
-  if (!month) return null;
-
-  const day = dayStr.padStart(2, "0");
-  const monthStr = String(month).padStart(2, "0");
-  const hour = hourStr.padStart(2, "0");
+  if (!month) return { type: "convocation", nameLine, dateIso: null, time: null };
 
   return {
+    type: "convocation",
     nameLine,
-    dateIso: `${yearStr}-${monthStr}-${day}`,
-    time: `${hour}:${minuteStr}`,
+    dateIso: `${yearStr}-${String(month).padStart(2, "0")}-${dayStr.padStart(2, "0")}`,
+    time: `${hourStr.padStart(2, "0")}:${minuteStr}`,
   };
 }
 

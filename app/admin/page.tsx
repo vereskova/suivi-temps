@@ -4688,20 +4688,32 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         return;
       }
       setPrevalyEmails(json.emails);
-      const { applied, unmatched } = json.convocations ?? { applied: [], unmatched: [] };
-      if (applied.length > 0 || unmatched.length > 0) {
+      const { applied, unmatched, unparsedDates } = json.convocations ?? {
+        applied: [],
+        unmatched: [],
+        unparsedDates: [],
+      };
+      if (applied.length > 0 || unmatched.length > 0 || unparsedDates.length > 0) {
         setRefreshKey((k) => k + 1);
       }
-      if (applied.length > 0) {
+      const set = applied.filter((a: { cancelled: boolean }) => !a.cancelled);
+      const cancelled = applied.filter((a: { cancelled: boolean }) => a.cancelled);
+      if (set.length > 0) {
         toast.success(
-          `${applied.length} convocation(s) appliquée(s) : ` +
-            applied.map((a: { employeeName: string }) => a.employeeName).join(", ")
+          `${set.length} rendez-vous mis à jour : ` + set.map((a: { employeeName: string }) => a.employeeName).join(", ")
+        );
+      }
+      if (cancelled.length > 0) {
+        toast.error(
+          `${cancelled.length} visite(s) annulée(s) chez Prevaly : ` +
+            cancelled.map((a: { employeeName: string }) => a.employeeName).join(", ")
         );
       }
       if (unmatched.length > 0) {
-        toast.error(
-          `Convocation(s) non reconnue(s), à vérifier : ${unmatched.join(", ")}`
-        );
+        toast.error(`Salarié(s) non reconnu(s), à vérifier : ${unmatched.join(", ")}`);
+      }
+      if (unparsedDates.length > 0) {
+        toast.error(`Date non reconnue dans l'e-mail pour : ${unparsedDates.join(", ")}`);
       }
     } catch (err) {
       setEmailsError(err instanceof Error ? err.message : "Erreur de connexion");
@@ -5137,7 +5149,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
                 "Заголовки таблицы (Nom, Équipe, даты, Statut) кликабельны — сортируют список по этому столбцу.\n\n" +
                 "Наведите курсор на дату «Prochaine visite», чтобы увидеть, введена ли она вручную или найдена автоматически в письме-конвокасьене от Prevaly; в этом случае можно кликнуть, чтобы прочитать переписку по этому сотруднику.\n\n" +
-                "Кнопка «Vérifier les e-mails» подтягивает конвокасьены с почты и подставляет даты сама; кнопка «Importer Prevaly» загружает CSV-выгрузку из системы Prevaly."
+                "Кнопка «Vérifier les e-mails» подтягивает конвокасьены (и их отмены — ANNULATION) с почты (assistant@vladis.fr и contact@vladis.fr) и сама обновляет даты; если визит отменили, дата очищается. Кнопка «Importer Prevaly» загружает CSV-выгрузку из системы Prevaly."
               }
             />
           </div>
@@ -5214,8 +5226,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               </p>
             ) : (
               <div className="space-y-1.5 max-h-80 overflow-y-auto">
-                {prevalyEmails.map((m) => (
-                  <div key={m.uid} className="rounded-lg bg-white px-3 py-1.5">
+                {prevalyEmails.map((m, i) => (
+                  <div key={`${m.uid}-${i}`} className="rounded-lg bg-white px-3 py-1.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-semibold text-sm truncate">{m.subject}</p>
                       <p className="text-xs text-stone-400 whitespace-nowrap shrink-0">
@@ -5689,8 +5701,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         )}
         {historyEmails && historyEmails.length > 0 && (
           <div className="space-y-1.5 max-h-96 overflow-y-auto">
-            {historyEmails.map((m) => (
-              <div key={m.uid} className="rounded-lg bg-stone-50 px-3 py-1.5">
+            {historyEmails.map((m, i) => (
+              <div key={`${m.uid}-${i}`} className="rounded-lg bg-stone-50 px-3 py-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold text-sm truncate">{m.subject}</p>
                   <p className="text-xs text-stone-400 whitespace-nowrap shrink-0">
