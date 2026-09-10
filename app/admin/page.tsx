@@ -4452,6 +4452,9 @@ type MedicalVisit = {
   next_visit_date: string | null;
   next_visit_time: string | null;
   visit_subtype: string | null;
+  next_visit_source: "manual" | "email";
+  next_visit_source_at: string | null;
+  next_visit_source_subject: string | null;
   employees: {
     first_name: string;
     last_name: string;
@@ -4551,6 +4554,49 @@ const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = ["jamais_visite", "a_renou
 
 type MedicalSortKey = "name" | "team" | "last" | "next" | "status";
 
+/** Renders the "Prochaine visite" value with a hover tooltip explaining
+ *  whether it was typed in by hand or picked up from a Prevaly convocation
+ *  e-mail; e-mail-sourced dates are clickable to open that employee's
+ *  correspondence history. */
+function NextVisitCell({
+  visit,
+  onOpenHistory,
+}: {
+  visit: MedicalVisit | null;
+  onOpenHistory: () => void;
+}) {
+  if (!visit?.next_visit_date) return <>—</>;
+  const dateText = formatDateShortDMY(visit.next_visit_date);
+  const timeText = visit.next_visit_time ? visit.next_visit_time.slice(0, 5) : "";
+  const isEmail = visit.next_visit_source === "email";
+  const title = isEmail
+    ? `Détecté automatiquement dans un e-mail du ${
+        visit.next_visit_source_at ? formatDateShortDMY(visit.next_visit_source_at.slice(0, 10)) : "?"
+      }${
+        visit.next_visit_source_subject ? ` : « ${visit.next_visit_source_subject} »` : ""
+      } — cliquer pour voir la correspondance / Определено автоматически из письма — нажмите, чтобы посмотреть переписку`
+    : "Saisi à la main / Введено вручную";
+  const content = (
+    <>
+      {dateText}
+      {timeText && <span className="ml-1 font-normal text-stone-400">{timeText}</span>}
+    </>
+  );
+  if (!isEmail) {
+    return <span title={title}>{content}</span>;
+  }
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onOpenHistory}
+      className="underline decoration-dotted underline-offset-2 hover:text-primary-700"
+    >
+      {content}
+    </button>
+  );
+}
+
 function SortableMedicalTh({
   label,
   sortKey,
@@ -4603,8 +4649,6 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [teamFilter, setTeamFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<EmployeeMedicalStatus | "all">("all");
   const [search, setSearch] = useState("");
-  const [nextVisitFrom, setNextVisitFrom] = useState("");
-  const [nextVisitTo, setNextVisitTo] = useState("");
   const [sortKey, setSortKey] = useState<MedicalSortKey>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -4644,10 +4688,52 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         return;
       }
       setPrevalyEmails(json.emails);
+      const { applied, unmatched } = json.convocations ?? { applied: [], unmatched: [] };
+      if (applied.length > 0 || unmatched.length > 0) {
+        setRefreshKey((k) => k + 1);
+      }
+      if (applied.length > 0) {
+        toast.success(
+          `${applied.length} convocation(s) appliquée(s) : ` +
+            applied.map((a: { employeeName: string }) => a.employeeName).join(", ")
+        );
+      }
+      if (unmatched.length > 0) {
+        toast.error(
+          `Convocation(s) non reconnue(s), à vérifier : ${unmatched.join(", ")}`
+        );
+      }
     } catch (err) {
       setEmailsError(err instanceof Error ? err.message : "Erreur de connexion");
     } finally {
       setCheckingEmails(false);
+    }
+  }
+
+  const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
+  const [historyEmails, setHistoryEmails] = useState<
+    { uid: number; date: string | null; from: string; subject: string; snippet: string }[] | null
+  >(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  async function openHistory(employeeId: string, employeeName: string) {
+    setHistoryFor({ id: employeeId, name: employeeName });
+    setHistoryEmails(null);
+    setHistoryError(null);
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/medical/prevaly-emails/history?employeeId=${employeeId}`);
+      const json = await res.json();
+      if (!res.ok) {
+        setHistoryError(json.error ?? "Erreur inconnue");
+        return;
+      }
+      setHistoryEmails(json.emails);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Erreur de connexion");
+    } finally {
+      setHistoryLoading(false);
     }
   }
   const [newRequest, setNewRequest] = useState({
@@ -4725,7 +4811,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       const { data } = await supabase
         .from("medical_visits")
         .select(
-          "id, employee_id, last_visit_date, next_visit_date, next_visit_time, visit_subtype, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
+          "id, employee_id, last_visit_date, next_visit_date, next_visit_time, visit_subtype, next_visit_source, next_visit_source_at, next_visit_source_subject, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
         )
         .order("next_visit_date", { ascending: true, nullsFirst: false });
       setVisits((data as unknown as MedicalVisit[]) ?? []);
@@ -4840,6 +4926,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               last_visit_date: u.last_visit_date,
               next_visit_date: u.next_visit_date,
               visit_subtype: u.visit_subtype,
+              // A bulk CSV import is a deliberate human action, same as a
+              // hand edit — must not keep a stale "from this e-mail" label.
+              next_visit_source: "manual",
+              next_visit_source_at: null,
+              next_visit_source_subject: null,
             })
             .eq("id", u.id)
         ),
@@ -4903,6 +4994,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         next_visit_date: editForm.next || null,
         next_visit_time: editForm.nextTime || null,
         visit_subtype: editForm.subtype || null,
+        // Hand edit overrides whatever a convocation e-mail set before —
+        // future e-mail syncs must not clobber it back.
+        next_visit_source: "manual",
+        next_visit_source_at: null,
+        next_visit_source_subject: null,
       })
       .eq("id", v.id);
     setSaving(false);
@@ -4978,12 +5074,6 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         if (teamFilter !== "all" && r.employee.team_id !== teamFilter) return false;
         if (statusFilter !== "all" && r.status !== statusFilter) return false;
         if (q && !employeeName(r.employee).toLowerCase().includes(q)) return false;
-        if (nextVisitFrom || nextVisitTo) {
-          const d = r.visit?.next_visit_date;
-          if (!d) return false;
-          if (nextVisitFrom && d < nextVisitFrom) return false;
-          if (nextVisitTo && d > nextVisitTo) return false;
-        }
         return true;
       })
       .sort((a, b) => {
@@ -5010,7 +5100,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         if (sortDir === "desc") cmp = -cmp;
         return cmp || employeeName(a.employee).localeCompare(employeeName(b.employee));
       });
-  }, [employeeRows, teamFilter, statusFilter, search, nextVisitFrom, nextVisitTo, sortKey, sortDir]);
+  }, [employeeRows, teamFilter, statusFilter, search, sortKey, sortDir]);
 
   async function startEditForEmployee(row: EmployeeMedicalRow) {
     if (row.visit) {
@@ -5045,8 +5135,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               text={
                 "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет — пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
                 "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
-                "Фильтр «Следующий визит: с / по» показывает только тех, у кого запланированная дата попадает в этот диапазон.\n\n" +
-                "Кнопка «Importer Prevaly» загружает выгрузку из системы Prevaly и подставляет даты визитов автоматически, сопоставляя по имени и фамилии."
+                "Заголовки таблицы (Nom, Équipe, даты, Statut) кликабельны — сортируют список по этому столбцу.\n\n" +
+                "Наведите курсор на дату «Prochaine visite», чтобы увидеть, введена ли она вручную или найдена автоматически в письме-конвокасьене от Prevaly; в этом случае можно кликнуть, чтобы прочитать переписку по этому сотруднику.\n\n" +
+                "Кнопка «Vérifier les e-mails» подтягивает конвокасьены с почты и подставляет даты сама; кнопка «Importer Prevaly» загружает CSV-выгрузку из системы Prevaly."
               }
             />
           </div>
@@ -5076,69 +5167,6 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               </button>
             );
           })}
-        </div>
-        <div className="flex flex-wrap items-end gap-3 mt-3">
-          <div>
-            <label className="block text-xs font-bold text-stone-400">
-              <Bi fr="Recherche" ru="Поиск" />
-            </label>
-            <input
-              className="input"
-              placeholder="Nom, prénom…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-stone-400">
-              <Bi fr="Équipe" ru="Бригада" />
-            </label>
-            <select
-              className="input"
-              value={teamFilter}
-              onChange={(e) => setTeamFilter(e.target.value)}
-            >
-              <option value="all">Toutes</option>
-              {teamOptions.map(([id, name]) => (
-                <option key={id} value={id}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-stone-400">
-              <Bi fr="Prochaine visite : de" ru="Следующий визит: с" />
-            </label>
-            <input
-              type="date"
-              className="input"
-              value={nextVisitFrom}
-              onChange={(e) => setNextVisitFrom(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-stone-400">
-              <Bi fr="à" ru="по" />
-            </label>
-            <input
-              type="date"
-              className="input"
-              value={nextVisitTo}
-              onChange={(e) => setNextVisitTo(e.target.value)}
-            />
-          </div>
-          {(nextVisitFrom || nextVisitTo) && (
-            <button
-              className="text-xs text-stone-400 underline self-center mb-2"
-              onClick={() => {
-                setNextVisitFrom("");
-                setNextVisitTo("");
-              }}
-            >
-              <Bi fr="Réinitialiser les dates" ru="Сбросить даты" />
-            </button>
-          )}
         </div>
       </div>
 
@@ -5313,6 +5341,39 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         )}
       </div>
 
+      <div className="card mb-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Recherche" ru="Поиск" />
+            </label>
+            <input
+              className="input"
+              placeholder="Nom, prénom…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Équipe" ru="Бригада" />
+            </label>
+            <select
+              className="input"
+              value={teamFilter}
+              onChange={(e) => setTeamFilter(e.target.value)}
+            >
+              <option value="all">Toutes</option>
+              {teamOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {loading ? (
         <div className="card">
           <SkeletonRows rows={5} cols={5} />
@@ -5417,10 +5478,10 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     </p>
                     <p>
                       <span className="text-stone-400">Prochaine: </span>
-                      {v?.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
-                      {v?.next_visit_date && v.next_visit_time && (
-                        <span className="ml-1 font-normal text-stone-400">{v.next_visit_time.slice(0, 5)}</span>
-                      )}
+                      <NextVisitCell
+                        visit={v}
+                        onOpenHistory={() => openHistory(row.employee.id, employeeName(row.employee))}
+                      />
                     </p>
                     {v?.visit_subtype && (
                       <p className="text-stone-500">
@@ -5522,12 +5583,10 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
                         </td>
                         <td className="py-2 pr-4">
-                          {v?.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
-                          {v?.next_visit_date && v.next_visit_time && (
-                            <span className="ml-1 font-normal text-stone-400">
-                              {v.next_visit_time.slice(0, 5)}
-                            </span>
-                          )}
+                          <NextVisitCell
+                            visit={v}
+                            onOpenHistory={() => openHistory(row.employee.id, employeeName(row.employee))}
+                          />
                         </td>
                         <td className="py-2 pr-4">
                           <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 ${statusInfo.className}`}>
@@ -5604,6 +5663,48 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         )}
         <div className="flex gap-3 mt-4">
           <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setShowPrevalyModal(false)}>
+            <Bi fr="Fermer" ru="Закрыть" />
+          </button>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!historyFor}
+        onClose={() => setHistoryFor(null)}
+        title={historyFor ? `Correspondance Prevaly — ${historyFor.name}` : "Correspondance Prevaly"}
+        maxWidth="max-w-lg"
+      >
+        <p className="text-xs text-stone-400 mb-3">
+          <Bi
+            fr="E-mails Prevaly des 120 derniers jours mentionnant ce salarié (recherche approximative)."
+            ru="Письма Prevaly за 120 дней, упоминающие этого сотрудника (приблизительный поиск)."
+          />
+        </p>
+        {historyLoading && <SkeletonRows rows={3} cols={1} />}
+        {historyError && <p className="text-sm text-error-600">{historyError}</p>}
+        {historyEmails && historyEmails.length === 0 && !historyLoading && (
+          <p className="text-sm text-stone-400">
+            <Bi fr="Aucun e-mail trouvé pour ce salarié." ru="Писем по этому сотруднику не найдено." />
+          </p>
+        )}
+        {historyEmails && historyEmails.length > 0 && (
+          <div className="space-y-1.5 max-h-96 overflow-y-auto">
+            {historyEmails.map((m) => (
+              <div key={m.uid} className="rounded-lg bg-stone-50 px-3 py-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold text-sm truncate">{m.subject}</p>
+                  <p className="text-xs text-stone-400 whitespace-nowrap shrink-0">
+                    {m.date ? formatDateShortDMY(m.date.slice(0, 10)) : "—"}
+                  </p>
+                </div>
+                <p className="text-xs text-stone-400 truncate">{m.from}</p>
+                {m.snippet && <p className="text-xs text-stone-500 mt-0.5 truncate">{m.snippet}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-3 mt-4">
+          <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setHistoryFor(null)}>
             <Bi fr="Fermer" ru="Закрыть" />
           </button>
         </div>
