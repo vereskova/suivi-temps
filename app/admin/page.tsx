@@ -5005,6 +5005,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
   const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set());
+  const [showEmailTable, setShowEmailTable] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -5769,40 +5770,49 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
             <div className="mt-4 pt-4 border-t border-stone-200">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-bold text-stone-400 uppercase">
+                <label className="flex items-center gap-2 text-xs font-bold text-stone-400 uppercase cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showEmailTable}
+                    onChange={(e) => setShowEmailTable(e.target.checked)}
+                  />
                   <Bi fr="Tableau pour Prevaly" ru="Таблица для письма" />
-                </p>
-                <button
-                  type="button"
-                  onClick={() => copySuggestionsForEmail(suggestions)}
-                  className="text-xs font-bold rounded-full px-3 py-1 bg-primary-100 text-primary-700 hover:bg-primary-200 flex items-center gap-1"
-                >
-                  <Copy size={13} />
-                  <Bi fr="Copier pour l'e-mail" ru="Скопировать для письма" />
-                </button>
+                </label>
+                {showEmailTable && (
+                  <button
+                    type="button"
+                    onClick={() => copySuggestionsForEmail(suggestions)}
+                    className="text-xs font-bold rounded-full px-3 py-1 bg-primary-100 text-primary-700 hover:bg-primary-200 flex items-center gap-1"
+                  >
+                    <Copy size={13} />
+                    <Bi fr="Copier pour l'e-mail" ru="Скопировать для письма" />
+                  </button>
+                )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm border-collapse">
-                  <thead>
-                    <tr className="text-left text-stone-400">
-                      <th className="pb-1 pr-3 font-normal">Nom</th>
-                      <th className="pb-1 pr-3 font-normal">Prénom</th>
-                      <th className="pb-1 font-normal">Période disponible</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {suggestions.map((s, i) => (
-                      <tr key={i} className="border-t border-stone-100">
-                        <td className="py-1 pr-3 font-semibold whitespace-nowrap">{s.lastName}</td>
-                        <td className="py-1 pr-3 whitespace-nowrap">{s.firstName}</td>
-                        <td className="py-1 whitespace-nowrap">
-                          {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
-                        </td>
+              {showEmailTable && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="text-left text-stone-400">
+                        <th className="pb-1 pr-3 font-normal">Nom</th>
+                        <th className="pb-1 pr-3 font-normal">Prénom</th>
+                        <th className="pb-1 font-normal">Période disponible</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {suggestions.map((s, i) => (
+                        <tr key={i} className="border-t border-stone-100">
+                          <td className="py-1 pr-3 font-semibold whitespace-nowrap">{s.lastName}</td>
+                          <td className="py-1 pr-3 whitespace-nowrap">{s.firstName}</td>
+                          <td className="py-1 whitespace-nowrap">
+                            {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         )}
