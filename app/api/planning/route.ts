@@ -32,7 +32,10 @@ export async function GET() {
   }
 
   const [{ data: employees }, { data: visits }] = await Promise.all([
-    supabase.from("employees").select("id, first_name, last_name, status").eq("status", "active"),
+    supabase
+      .from("employees")
+      .select("id, first_name, last_name, status, medical_visit_exempt")
+      .eq("status", "active"),
     supabase.from("medical_visits").select("employee_id, last_visit_date, next_visit_date"),
   ]);
 
@@ -43,7 +46,7 @@ export async function GET() {
   // is done by whole-word containment rather than exact equality. A first
   // name shared by more than one active employee (e.g. two "Nicolai") is
   // left unmatched rather than guessed.
-  const byFirstName = new Map<string, { id: string; first_name: string; last_name: string }[]>();
+  const byFirstName = new Map<string, { id: string; first_name: string; last_name: string; medical_visit_exempt: boolean }[]>();
   for (const e of employees ?? []) {
     const fn = normalizeName(e.first_name);
     (byFirstName.get(fn) ?? byFirstName.set(fn, []).get(fn)!).push(e);
@@ -55,7 +58,7 @@ export async function GET() {
   function resolveWorker(worker: string | null): { id: string | null; status: EmployeeMedicalStatus | null } {
     if (!worker) return { id: null, status: null };
     const words = new Set(normalizeName(worker).split(/[^a-z]+/).filter(Boolean));
-    let match: { id: string; first_name: string; last_name: string } | null = null;
+    let match: { id: string; first_name: string; last_name: string; medical_visit_exempt: boolean } | null = null;
     for (const [firstName, candidates] of byFirstName) {
       if (!words.has(firstName)) continue;
       // Prefer a candidate whose last name also appears in the text; fall
@@ -68,7 +71,9 @@ export async function GET() {
       if (candidates.length === 1) match = candidates[0];
     }
     if (!match) return { id: null, status: null };
-    const status = computeMedicalStatus(visitByEmployeeId.get(match.id) ?? null, todayIso);
+    const status = match.medical_visit_exempt
+      ? "exempte"
+      : computeMedicalStatus(visitByEmployeeId.get(match.id) ?? null, todayIso);
     return { id: match.id, status };
   }
 

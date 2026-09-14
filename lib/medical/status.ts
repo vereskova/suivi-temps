@@ -1,4 +1,4 @@
-export type EmployeeMedicalStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour";
+export type EmployeeMedicalStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour" | "exempte";
 
 type VisitLike = {
   last_visit_date: string | null;

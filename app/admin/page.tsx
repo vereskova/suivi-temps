@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   Baby,
   BadgeCheck,
+  Ban,
   BarChart3,
   Banknote,
   Bell,
@@ -3918,6 +3919,8 @@ type EmployeeProfileFields = {
   badge_emoji: string | null;
   badge_label: string | null;
   can_substitute: boolean;
+  medical_visit_exempt: boolean;
+  medical_visit_exempt_reason: string | null;
 };
 
 type ConfidentialFields = {
@@ -4021,7 +4024,7 @@ function EmployeeDetailPanel({
       const empPromise = supabase
         .from("employees")
         .select(
-          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, birthday_month, birthday_day, phone, phone_pro, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute"
+          "sex, qualification, contract_type, job_title, device_label, hire_date, date_of_birth, birthday_month, birthday_day, phone, phone_pro, email, address, birth_place, classification, classe, weekly_hours, badge_emoji, badge_label, can_substitute, medical_visit_exempt, medical_visit_exempt_reason"
         )
         .eq("id", employeeId)
         .single();
@@ -4168,6 +4171,31 @@ function EmployeeDetailPanel({
           />
           <Bi fr="Peut remplacer sur chantier" ru="Может подменять на объекте" />
         </label>
+      </DetailSection>
+
+      <DetailSection title="Médical" titleRu="Медицина">
+        <label className="flex items-center gap-2 text-sm font-bold md:col-span-2">
+          <input
+            type="checkbox"
+            checked={profile.medical_visit_exempt}
+            onChange={(ev) =>
+              setProfile({
+                ...profile,
+                medical_visit_exempt: ev.target.checked,
+                medical_visit_exempt_reason: ev.target.checked ? profile.medical_visit_exempt_reason : null,
+              })
+            }
+          />
+          <Bi fr="Visite médicale non applicable" ru="Медосмотр не касается" />
+        </label>
+        {profile.medical_visit_exempt && (
+          <DetailField
+            label="Motif (facultatif)"
+            labelRu="Причина (необязательно)"
+            value={profile.medical_visit_exempt_reason}
+            onChange={(v) => setProfile({ ...profile, medical_visit_exempt_reason: v })}
+          />
+        )}
       </DetailSection>
 
       <DetailSection title="Identité" titleRu="Личные данные">
@@ -4519,7 +4547,7 @@ type MedicalVisit = {
   } | null;
 };
 
-type PlanningStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour" | null;
+type PlanningStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour" | "exempte" | null;
 
 type PlanningJobRow = {
   month: string;
@@ -4543,6 +4571,7 @@ const PLANNING_STATUS_DOT: Record<Exclude<PlanningStatus, null>, string> = {
   a_renouveler: "bg-warning-500",
   visite_prevue: "bg-primary-500",
   a_jour: "bg-success-500",
+  exempte: "bg-stone-400",
 };
 
 /** Pulls in the field team's own weekly planning (a hand-maintained Google
@@ -4738,6 +4767,8 @@ type MedicalRosterRow = {
   last_name: string;
   team_id: string | null;
   teams: { name: string } | null;
+  medical_visit_exempt: boolean;
+  medical_visit_exempt_reason: string | null;
 };
 
 type RequestVia = "prevaly" | "email" | "telephone";
@@ -4773,13 +4804,14 @@ const REQUEST_STATUS_LABELS: Record<RequestStatus, { fr: string; ru: string; cla
 // separate 90-day "urgent" grouping) with a single plain-language pill —
 // agreed with the user as the whole point of this table: filterable by
 // status, no icon-only signal to decode.
-type EmployeeMedicalStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour";
+type EmployeeMedicalStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour" | "exempte";
 
 const MEDICAL_STATUS_LABELS: Record<EmployeeMedicalStatus, { fr: string; ru: string; className: string }> = {
   jamais_visite: { fr: "Jamais visité", ru: "Не был на осмотре", className: "bg-error-100 text-error-700" },
   a_renouveler: { fr: "À renouveler", ru: "Пора обновить", className: "bg-warning-100 text-warning-700" },
   visite_prevue: { fr: "Visite prévue", ru: "Визит назначен", className: "bg-primary-100 text-primary-700" },
   a_jour: { fr: "À jour", ru: "Всё в порядке", className: "bg-success-100 text-success-700" },
+  exempte: { fr: "Non applicable", ru: "Не касается", className: "bg-stone-200 text-stone-600" },
 };
 
 type EmployeeMedicalRow = {
@@ -4788,7 +4820,13 @@ type EmployeeMedicalRow = {
   status: EmployeeMedicalStatus;
 };
 
-const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = ["jamais_visite", "a_renouveler", "visite_prevue", "a_jour"];
+const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = [
+  "jamais_visite",
+  "a_renouveler",
+  "visite_prevue",
+  "a_jour",
+  "exempte",
+];
 
 type MedicalSortKey = "name" | "team" | "last" | "next" | "status";
 
@@ -5087,7 +5125,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     async function load() {
       const { data } = await supabase
         .from("employees")
-        .select("id, first_name, last_name, team_id, teams!employees_team_id_fkey(name)")
+        .select(
+          "id, first_name, last_name, team_id, teams!employees_team_id_fkey(name), medical_visit_exempt, medical_visit_exempt_reason"
+        )
         .eq("status", "active")
         .order("last_name");
       setRoster((data as unknown as MedicalRosterRow[]) ?? []);
@@ -5307,7 +5347,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       const alreadyDone =
         !!visit?.last_visit_date && !!visit?.next_visit_date && visit.last_visit_date >= visit.next_visit_date;
       let status: EmployeeMedicalStatus;
-      if (visit?.next_visit_date && visit.next_visit_date >= todayIso && !alreadyDone) {
+      if (employee.medical_visit_exempt) {
+        status = "exempte";
+      } else if (visit?.next_visit_date && visit.next_visit_date >= todayIso && !alreadyDone) {
         status = "visite_prevue";
       } else if (!visit?.last_visit_date) {
         status = "jamais_visite";
@@ -5327,6 +5369,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       a_renouveler: 0,
       visite_prevue: 0,
       a_jour: 0,
+      exempte: 0,
     };
     employeeRows.forEach((r) => counts[r.status]++);
     return counts;
@@ -5393,6 +5436,22 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     startEdit({ ...data, employees: null } as MedicalVisit);
   }
 
+  async function toggleExempt(row: EmployeeMedicalRow) {
+    const next = !row.employee.medical_visit_exempt;
+    if (next && !confirm(`Marquer ${employeeName(row.employee)} comme non concerné(e) par la visite médicale ?`)) {
+      return;
+    }
+    const { error } = await supabase
+      .from("employees")
+      .update({ medical_visit_exempt: next, medical_visit_exempt_reason: next ? row.employee.medical_visit_exempt_reason : null })
+      .eq("id", row.employee.id);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setRefreshKey((k) => k + 1);
+  }
+
   return (
     <div>
       <div className="card mb-4">
@@ -5404,6 +5463,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               text={
                 "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет — пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
                 "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Кнопка «Sans visite valide» показывает сразу «Jamais visité» + «À renouveler» — то есть всех, у кого сейчас нет действующего медосмотра. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
+                "Значок «⊘» на строке — «Медосмотр не касается» (статус «Non applicable»): для тех, к кому это требование не относится. Отмечается там же или в карточке сотрудника (раздел «Médical»); туда же можно вписать причину.\n\n" +
                 "Заголовки таблицы (Nom, Équipe, даты, Statut) кликабельны — сортируют список по этому столбцу.\n\n" +
                 "Наведите курсор на дату «Prochaine visite», чтобы увидеть, введена ли она вручную или найдена автоматически в письме-конвокасьене от Prevaly; в этом случае можно кликнуть, чтобы прочитать переписку по этому сотруднику.\n\n" +
                 "Кнопка «Vérifier les e-mails» подтягивает конвокасьены (и их отмены — ANNULATION) с почты (assistant@vladis.fr и contact@vladis.fr) и сама обновляет даты; если визит отменили, дата очищается.\n\n" +
@@ -5739,12 +5799,21 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     <p className="text-xs text-stone-400 truncate">{row.employee.teams?.name ?? "—"}</p>
                   </div>
                   {!isEditing && (
-                    <RowAction
-                      icon={Pencil}
-                      title="Modifier"
-                      titleRu="Изменить"
-                      onClick={() => startEditForEmployee(row)}
-                    />
+                    <div className="flex items-center gap-1 shrink-0">
+                      <RowAction
+                        icon={Ban}
+                        title={row.status === "exempte" ? "Concerné(e) par la visite médicale" : "Non concerné(e) par la visite médicale"}
+                        titleRu={row.status === "exempte" ? "Медосмотр снова касается" : "Медосмотр не касается"}
+                        active={row.status === "exempte"}
+                        onClick={() => toggleExempt(row)}
+                      />
+                      <RowAction
+                        icon={Pencil}
+                        title="Modifier"
+                        titleRu="Изменить"
+                        onClick={() => startEditForEmployee(row)}
+                      />
+                    </div>
                   )}
                 </div>
                 {isEditing && editForm ? (
@@ -5935,12 +6004,21 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           </span>
                         </td>
                         <td className="py-2">
-                          <RowAction
-                            icon={addingVisitFor === row.employee.id ? RefreshCw : Pencil}
-                            title="Modifier"
-                            titleRu="Изменить"
-                            onClick={() => startEditForEmployee(row)}
-                          />
+                          <div className="flex items-center gap-1">
+                            <RowAction
+                              icon={Ban}
+                              title={row.status === "exempte" ? "Concerné(e) par la visite médicale" : "Non concerné(e) par la visite médicale"}
+                              titleRu={row.status === "exempte" ? "Медосмотр снова касается" : "Медосмотр не касается"}
+                              active={row.status === "exempte"}
+                              onClick={() => toggleExempt(row)}
+                            />
+                            <RowAction
+                              icon={addingVisitFor === row.employee.id ? RefreshCw : Pencil}
+                              title="Modifier"
+                              titleRu="Изменить"
+                              onClick={() => startEditForEmployee(row)}
+                            />
+                          </div>
                         </td>
                       </>
                     )}
@@ -10523,7 +10601,7 @@ async function fetchNotificationRows(
     supabase
       .from("medical_visits")
       .select(
-        "employee_id, last_visit_date, next_visit_date, next_visit_time, employees(first_name, last_name, status)"
+        "employee_id, last_visit_date, next_visit_date, next_visit_time, employees(first_name, last_name, status, medical_visit_exempt)"
       ),
     supabase
       .from("employees")
@@ -10548,7 +10626,7 @@ async function fetchNotificationRows(
     last_visit_date: string | null;
     next_visit_date: string | null;
     next_visit_time: string | null;
-    employees: { first_name: string; last_name: string; status: string } | null;
+    employees: { first_name: string; last_name: string; status: string; medical_visit_exempt: boolean } | null;
   };
   type BirthdayRow = {
     id: string;
@@ -10583,7 +10661,7 @@ async function fetchNotificationRows(
   });
 
   ((visits as unknown as VisitRow[]) ?? []).forEach((v) => {
-    if (!v.employees || v.employees.status === "terminated") return;
+    if (!v.employees || v.employees.status === "terminated" || v.employees.medical_visit_exempt) return;
 
     // A next_visit_date already covered by a confirmed last_visit_date (the
     // visit happened — e.g. Prevaly's "aptitude" e-mail set it) is stale and
