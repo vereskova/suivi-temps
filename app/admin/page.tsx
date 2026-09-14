@@ -5346,15 +5346,19 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       // e-mail) is stale and must not still read as "scheduled".
       const alreadyDone =
         !!visit?.last_visit_date && !!visit?.next_visit_date && visit.last_visit_date >= visit.next_visit_date;
+      // The 2-year legal deadline always wins over a stored next_visit_date
+      // — Prevaly's "estimated next visit" can land years out (a longer
+      // interval for a lower-risk category), but if the last real visit is
+      // already more than 2 years old, that estimate doesn't excuse it.
       let status: EmployeeMedicalStatus;
       if (employee.medical_visit_exempt) {
         status = "exempte";
+      } else if (visit && needsNewAppointment(visit)) {
+        status = "a_renouveler";
       } else if (visit?.next_visit_date && visit.next_visit_date >= todayIso && !alreadyDone) {
         status = "visite_prevue";
       } else if (!visit?.last_visit_date) {
         status = "jamais_visite";
-      } else if (needsNewAppointment(visit)) {
-        status = "a_renouveler";
       } else {
         status = "a_jour";
       }

@@ -21,12 +21,16 @@ export function needsNewAppointment(visit: VisitLike, todayIso: string): boolean
 }
 
 export function computeMedicalStatus(visit: VisitLike | null, todayIso: string): EmployeeMedicalStatus {
+  // The 2-year legal deadline always wins over a stored next_visit_date —
+  // Prevaly's "estimated next visit" can land years out (a longer interval
+  // for a lower-risk category), but if the last real visit is already more
+  // than 2 years old, that estimate doesn't excuse it.
+  if (visit && needsNewAppointment(visit, todayIso)) return "a_renouveler";
   // A next_visit_date already covered by a confirmed last_visit_date (the
   // visit happened — e.g. a Prevaly "aptitude" confirmation e-mail) is
   // stale and must not still read as "scheduled".
   const alreadyDone = !!visit?.last_visit_date && !!visit?.next_visit_date && visit.last_visit_date >= visit.next_visit_date;
   if (visit?.next_visit_date && visit.next_visit_date >= todayIso && !alreadyDone) return "visite_prevue";
   if (!visit?.last_visit_date) return "jamais_visite";
-  if (needsNewAppointment(visit, todayIso)) return "a_renouveler";
   return "a_jour";
 }
