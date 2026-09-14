@@ -69,7 +69,11 @@ export async function GET() {
   const horizonIso = twoMonthsOut.toISOString().split("T")[0];
 
   const suggestions: MedicalPlanningSuggestion[] = [];
-  const seen = new Set<string>(); // employeeId|week|month — one suggestion per person per week
+  // Keyed by real ISO dates, not by week/month label: adjacent month sheets
+  // both include a shared spillover week at their boundary (e.g. the same
+  // real week appears as the tail of "Septembre" and the head of "Octobre"),
+  // so the same job would otherwise be counted twice.
+  const seen = new Set<string>();
 
   for (const job of jobs) {
     // Only a job whose week overlaps [today, today + 2 months] — a past
@@ -92,7 +96,7 @@ export async function GET() {
       const status = computeMedicalStatus(visitByEmployeeId.get(member.id) ?? null, todayIso);
       if (status !== "jamais_visite" && status !== "a_renouveler") continue;
 
-      const key = `${member.id}|${job.week}|${job.month}`;
+      const key = `${member.id}|${job.dateFromIso}|${job.dateToIso}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
