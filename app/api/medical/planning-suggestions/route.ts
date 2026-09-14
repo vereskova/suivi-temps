@@ -44,6 +44,8 @@ function mergeConsecutiveWeeks(rows: MedicalPlanningSuggestion[]): MedicalPlanni
 
 export type MedicalPlanningSuggestion = {
   employeeName: string;
+  firstName: string;
+  lastName: string;
   employeeId: string;
   status: EmployeeMedicalStatus;
   team: string;
@@ -138,6 +140,8 @@ export async function GET() {
 
       suggestions.push({
         employeeName: `${member.last_name} ${member.first_name}`,
+        firstName: member.first_name,
+        lastName: member.last_name,
         employeeId: member.id,
         status,
         team: job.team,

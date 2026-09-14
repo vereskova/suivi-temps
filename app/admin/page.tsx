@@ -28,6 +28,7 @@ import {
   ChevronUp,
   CircleAlert,
   ClipboardCheck,
+  Copy,
   CreditCard,
   Crown,
   Download,
@@ -4832,6 +4833,8 @@ type MedicalSortKey = "name" | "team" | "last" | "next" | "status";
 
 type MedicalPlanningSuggestion = {
   employeeName: string;
+  firstName: string;
+  lastName: string;
   employeeId: string;
   status: EmployeeMedicalStatus;
   team: string;
@@ -4842,6 +4845,53 @@ type MedicalPlanningSuggestion = {
   site: string | null;
   estimatedMinutesFromLabege: number;
 };
+
+/** Builds the Prevaly appointment-request e-mail (asking for Monday morning
+ *  slots at the earliest date within the suggested window) and copies it to
+ *  the clipboard as both rich HTML (so a table pastes cleanly into Gmail/
+ *  Outlook) and plain text as a fallback. */
+async function copySuggestionsForEmail(suggestions: MedicalPlanningSuggestion[]) {
+  const intro =
+    "Pourriez-vous nous proposer des rendez-vous de médecine du travail pour les salariés suivants, de préférence le lundi matin et à la date la plus proche possible dans la période indiquée :";
+  const outro = "Merci par avance pour votre retour.";
+  const rowsHtml = suggestions
+    .map(
+      (s) =>
+        `<tr><td style="padding:4px 8px;border:1px solid #ccc">${s.lastName}</td>` +
+        `<td style="padding:4px 8px;border:1px solid #ccc">${s.firstName}</td>` +
+        `<td style="padding:4px 8px;border:1px solid #ccc">${formatDateShortDMY(s.dateFrom)}–${formatDateShortDMY(s.dateTo)}</td></tr>`
+    )
+    .join("");
+  const html =
+    `<p>Bonjour,</p><p>${intro}</p>` +
+    `<table style="border-collapse:collapse"><tr>` +
+    `<th style="padding:4px 8px;border:1px solid #ccc;text-align:left">Nom</th>` +
+    `<th style="padding:4px 8px;border:1px solid #ccc;text-align:left">Prénom</th>` +
+    `<th style="padding:4px 8px;border:1px solid #ccc;text-align:left">Période disponible</th></tr>${rowsHtml}</table>` +
+    `<p>${outro}</p><p>Cordialement,</p>`;
+  const text =
+    `Bonjour,\n\n${intro}\n\n` +
+    suggestions
+      .map((s) => `${s.lastName}\t${s.firstName}\t${formatDateShortDMY(s.dateFrom)}–${formatDateShortDMY(s.dateTo)}`)
+      .join("\n") +
+    `\n\n${outro}\n\nCordialement,`;
+
+  try {
+    if (typeof ClipboardItem !== "undefined") {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+    toast.success("Copié — collez directement dans votre e-mail / Скопировано — вставьте прямо в письмо");
+  } catch {
+    toast.error("Impossible de copier automatiquement.");
+  }
+}
 
 /** Renders the "Prochaine visite" value with a hover tooltip explaining
  *  whether it was typed in by hand or picked up from a Prevaly convocation
@@ -4936,7 +4986,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<EmployeeMedicalStatus | "all" | "no_valid">("all");
+  // Empty set = no status filter (show everyone) — several status badges can
+  // be active at once instead of only one at a time.
+  const [activeStatuses, setActiveStatuses] = useState<Set<EmployeeMedicalStatus>>(new Set());
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<MedicalSortKey>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -5421,11 +5473,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     return employeeRows
       .filter((r) => {
         if (teamFilter !== "all" && r.employee.team_id !== teamFilter) return false;
-        if (statusFilter === "no_valid") {
-          if (r.status !== "jamais_visite" && r.status !== "a_renouveler") return false;
-        } else if (statusFilter !== "all" && r.status !== statusFilter) {
-          return false;
-        }
+        if (activeStatuses.size > 0 && !activeStatuses.has(r.status)) return false;
         if (q && !employeeName(r.employee).toLowerCase().includes(q)) return false;
         return true;
       })
@@ -5453,7 +5501,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         if (sortDir === "desc") cmp = -cmp;
         return cmp || employeeName(a.employee).localeCompare(employeeName(b.employee));
       });
-  }, [employeeRows, teamFilter, statusFilter, search, sortKey, sortDir]);
+  }, [employeeRows, teamFilter, activeStatuses, search, sortKey, sortDir]);
 
   async function startEditForEmployee(row: EmployeeMedicalRow) {
     if (row.visit) {
@@ -5558,11 +5606,18 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         <div className="flex flex-wrap gap-2 mt-3">
           {MEDICAL_STATUS_ORDER.map((s) => {
             const info = MEDICAL_STATUS_LABELS[s];
-            const active = statusFilter === s;
+            const active = activeStatuses.has(s);
             return (
               <button
                 key={s}
-                onClick={() => setStatusFilter(active ? "all" : s)}
+                onClick={() =>
+                  setActiveStatuses((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(s)) next.delete(s);
+                    else next.add(s);
+                    return next;
+                  })
+                }
                 className={`text-xs font-bold rounded-full px-3 py-1 ${info.className} ${
                   active ? "ring-2 ring-offset-1 ring-stone-400" : ""
                 }`}
@@ -5572,14 +5627,37 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             );
           })}
           <button
-            onClick={() => setStatusFilter(statusFilter === "no_valid" ? "all" : "no_valid")}
+            onClick={() =>
+              setActiveStatuses((prev) => {
+                const noValidActive = prev.has("jamais_visite") && prev.has("a_renouveler");
+                const next = new Set(prev);
+                if (noValidActive) {
+                  next.delete("jamais_visite");
+                  next.delete("a_renouveler");
+                } else {
+                  next.add("jamais_visite");
+                  next.add("a_renouveler");
+                }
+                return next;
+              })
+            }
             className={`text-xs font-bold rounded-full px-3 py-1 bg-stone-200 text-stone-700 ${
-              statusFilter === "no_valid" ? "ring-2 ring-offset-1 ring-stone-400" : ""
+              activeStatuses.has("jamais_visite") && activeStatuses.has("a_renouveler")
+                ? "ring-2 ring-offset-1 ring-stone-400"
+                : ""
             }`}
           >
             <Bi fr="Sans visite valide" ru="Без действующего осмотра" /> ·{" "}
             {statusCounts.jamais_visite + statusCounts.a_renouveler}
           </button>
+          {activeStatuses.size > 0 && (
+            <button
+              onClick={() => setActiveStatuses(new Set())}
+              className="text-xs font-bold rounded-full px-3 py-1 text-stone-400 hover:text-stone-600 underline"
+            >
+              <Bi fr="Réinitialiser" ru="Сбросить" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -5608,29 +5686,69 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             />
           </p>
         ) : (
-          <div className="mt-3 space-y-1.5">
-            {suggestions.map((s, i) => {
-              const statusInfo = MEDICAL_STATUS_LABELS[s.status];
-              return (
-                <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
-                  <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 shrink-0 ${statusInfo.className}`}>
-                    <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
-                  </span>
-                  <p className="font-semibold text-sm min-w-[160px]">{s.employeeName}</p>
-                  <span className="text-xs font-bold text-stone-400 shrink-0">
-                    <Bi fr="Éq." ru="Ком." /> {s.team}
-                  </span>
-                  <p className="text-xs text-stone-400 whitespace-nowrap">
-                    {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
-                  </p>
-                  <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "—"}</p>
-                  <span className="text-xs font-bold text-primary-700 whitespace-nowrap shrink-0">
-                    ~{s.estimatedMinutesFromLabege} min <Bi fr="de Labège" ru="от Лябежа" />
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+          <>
+            <div className="mt-3 space-y-1.5">
+              {suggestions.map((s, i) => {
+                const statusInfo = MEDICAL_STATUS_LABELS[s.status];
+                return (
+                  <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
+                    <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 shrink-0 ${statusInfo.className}`}>
+                      <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
+                    </span>
+                    <p className="font-semibold text-sm min-w-[160px]">{s.employeeName}</p>
+                    <span className="text-xs font-bold text-stone-400 shrink-0">
+                      <Bi fr="Éq." ru="Ком." /> {s.team}
+                    </span>
+                    <p className="text-xs text-stone-400 whitespace-nowrap">
+                      {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                    </p>
+                    <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "—"}</p>
+                    <span className="text-xs font-bold text-primary-700 whitespace-nowrap shrink-0">
+                      ~{s.estimatedMinutesFromLabege} min <Bi fr="de Labège" ru="от Лябежа" />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-stone-200">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold text-stone-400 uppercase">
+                  <Bi fr="Tableau pour Prevaly" ru="Таблица для письма" />
+                </p>
+                <button
+                  type="button"
+                  onClick={() => copySuggestionsForEmail(suggestions)}
+                  className="text-xs font-bold rounded-full px-3 py-1 bg-primary-100 text-primary-700 hover:bg-primary-200 flex items-center gap-1"
+                >
+                  <Copy size={13} />
+                  <Bi fr="Copier pour l'e-mail" ru="Скопировать для письма" />
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="text-left text-stone-400">
+                      <th className="pb-1 pr-3 font-normal">Nom</th>
+                      <th className="pb-1 pr-3 font-normal">Prénom</th>
+                      <th className="pb-1 font-normal">Période disponible</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {suggestions.map((s, i) => (
+                      <tr key={i} className="border-t border-stone-100">
+                        <td className="py-1 pr-3 font-semibold whitespace-nowrap">{s.lastName}</td>
+                        <td className="py-1 pr-3 whitespace-nowrap">{s.firstName}</td>
+                        <td className="py-1 whitespace-nowrap">
+                          {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
