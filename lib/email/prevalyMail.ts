@@ -182,6 +182,15 @@ export function parseConvocationEmail(subject: string, text: string): Convocatio
     return { type: "annulation", nameLine, dateIso: null, time: null };
   }
 
+  // A reply/forward ("RE:", "TR:", "Fwd:") in a convocation thread often just
+  // confirms something in a short message while quoting the ORIGINAL
+  // convocation body underneath — e.g. Prevaly confirming a slot was
+  // reassigned to a different employee, with the old convocation (old date)
+  // quoted below. Parsing that quoted date as fresh would silently revive an
+  // already-cancelled appointment. Only a freshly-issued Convocation/RAPPEL
+  // (never a reply) is trusted to set a date.
+  if (/^\s*(re|tr|fwd|rv)\s*:/i.test(subject)) return null;
+
   const dateMatch = text.match(/Le\s+\S+\s+(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})\s+à\s+(\d{1,2})[:h](\d{2})/i);
   if (!dateMatch) return { type: "convocation", nameLine, dateIso: null, time: null };
   const [, dayStr, monthName, yearStr, hourStr, minuteStr] = dateMatch;
@@ -193,6 +202,37 @@ export function parseConvocationEmail(subject: string, text: string): Convocatio
     nameLine,
     dateIso: `${yearStr}-${String(month).padStart(2, "0")}-${dayStr.padStart(2, "0")}`,
     time: `${hourStr.padStart(2, "0")}:${minuteStr}`,
+  };
+}
+
+export type AptitudeEvent = {
+  nameLine: string;
+  visitDateIso: string;
+  documentUrl: string;
+};
+
+/**
+ * "Santé au travail : aptitude pour un travailleur de VLADIS [...]" — sent
+ * once a visit is over, confirming it actually happened and linking to the
+ * resulting "avis d'aptitude" (fitness certificate) on Prevaly's employer
+ * portal. That portal link needs a real login (never done automatically —
+ * same rule as everywhere else), so this only extracts the date/name to
+ * confirm the visit happened; the document itself has to be fetched once
+ * someone is logged in there.
+ */
+export function parseAptitudeEmail(subject: string, text: string): AptitudeEvent | null {
+  if (!/aptitude pour un travailleur/i.test(subject)) return null;
+  const match = text.match(
+    /La visite du\s+(\d{2})\/(\d{2})\/(\d{4})\s+de\s+(.+?)\s*\[[^\]]*\]\s*,\s*travaillant chez/i
+  );
+  if (!match) return null;
+  const [, day, month, year, nameLine] = match;
+  const urlMatch = text.match(/https:\/\/prevaly\.padoa\.fr\/employer\/\S+/i);
+  if (!urlMatch) return null;
+  return {
+    nameLine: nameLine.trim(),
+    visitDateIso: `${year}-${month}-${day}`,
+    documentUrl: urlMatch[0].replace(/[).,]+$/, ""),
   };
 }
 
