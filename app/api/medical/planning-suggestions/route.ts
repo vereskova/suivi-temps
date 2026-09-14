@@ -12,35 +12,12 @@ function addDaysIso(iso: string, days: number): string {
   return d.toISOString().split("T")[0];
 }
 
-/** The sheet gives one row per week, so the same real multi-week assignment
- *  comes out as several back-to-back suggestions for the same person and
- *  site — merge those into a single row spanning the full range instead of
- *  repeating the same site line every week. */
-function mergeConsecutiveWeeks(rows: MedicalPlanningSuggestion[]): MedicalPlanningSuggestion[] {
-  const sorted = [...rows].sort(
-    (a, b) =>
-      a.employeeId.localeCompare(b.employeeId) ||
-      a.team.localeCompare(b.team) ||
-      (a.site ?? "").localeCompare(b.site ?? "") ||
-      a.dateFrom.localeCompare(b.dateFrom)
-  );
-  const merged: MedicalPlanningSuggestion[] = [];
-  for (const row of sorted) {
-    const last = merged[merged.length - 1];
-    if (
-      last &&
-      last.employeeId === row.employeeId &&
-      last.team === row.team &&
-      last.site === row.site &&
-      addDaysIso(last.dateTo, 1) === row.dateFrom
-    ) {
-      last.dateTo = row.dateTo;
-    } else {
-      merged.push({ ...row });
-    }
-  }
-  return merged;
-}
+export type MedicalPlanningWeekDetail = {
+  dateFrom: string;
+  dateTo: string;
+  site: string | null;
+  estimatedMinutesFromLabege: number;
+};
 
 export type MedicalPlanningSuggestion = {
   employeeName: string;
@@ -54,8 +31,52 @@ export type MedicalPlanningSuggestion = {
   dateFrom: string;
   dateTo: string;
   site: string | null;
+  /** Shortest estimated drive-time seen across the merged range. */
   estimatedMinutesFromLabege: number;
+  /** Longest estimated drive-time seen across the merged range — equal to
+   *  estimatedMinutesFromLabege when the row wasn't merged from several
+   *  weeks with differing estimates. */
+  estimatedMinutesFromLabegeMax: number;
+  /** The individual weeks folded into this row (one entry when not merged),
+   *  for a per-week breakdown of dates/site/distance on demand. */
+  details: MedicalPlanningWeekDetail[];
 };
+
+/** The sheet gives one row per week, so the same real multi-week assignment
+ *  comes out as several back-to-back suggestions for the same person — merge
+ *  any run of weeks with no gap between them into a single row spanning the
+ *  full range, regardless of site text or estimated distance (both can vary
+ *  week to week — a multi-week job's site name is often scattered/
+ *  inconsistent across the sheet, and the estimated distance shifts with the
+ *  exact coordinates entered — but they're still one continuous unavailable
+ *  stretch for that person). The individual weeks stay available in
+ *  `details` for anyone who wants to check exactly which site/date a given
+ *  estimate came from. */
+function mergeConsecutiveWeeks(rows: MedicalPlanningSuggestion[]): MedicalPlanningSuggestion[] {
+  const sorted = [...rows].sort(
+    (a, b) => a.employeeId.localeCompare(b.employeeId) || a.team.localeCompare(b.team) || a.dateFrom.localeCompare(b.dateFrom)
+  );
+  const merged: MedicalPlanningSuggestion[] = [];
+  for (const row of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && last.employeeId === row.employeeId && last.team === row.team && addDaysIso(last.dateTo, 1) === row.dateFrom) {
+      last.dateTo = row.dateTo;
+      last.estimatedMinutesFromLabege = Math.min(last.estimatedMinutesFromLabege, row.estimatedMinutesFromLabege);
+      last.estimatedMinutesFromLabegeMax = Math.max(last.estimatedMinutesFromLabegeMax, row.estimatedMinutesFromLabege);
+      last.details.push(...row.details);
+    } else {
+      merged.push({ ...row, estimatedMinutesFromLabegeMax: row.estimatedMinutesFromLabege, details: [...row.details] });
+    }
+  }
+  // Recompute each row's summary site from its own details' unique, non-null
+  // site texts (rather than accumulating string-by-string during the merge
+  // above), so a site repeated across weeks isn't listed twice.
+  for (const row of merged) {
+    const uniqueSites = Array.from(new Set(row.details.map((d) => d.site).filter((s): s is string => !!s)));
+    row.site = uniqueSites.length > 0 ? uniqueSites.join(" / ") : null;
+  }
+  return merged;
+}
 
 export async function GET() {
   const check = await requireRole(["rh_admin", "rh"]);
@@ -151,6 +172,8 @@ export async function GET() {
         dateTo: job.dateToIso,
         site: job.site,
         estimatedMinutesFromLabege: minutes,
+        estimatedMinutesFromLabegeMax: minutes,
+        details: [{ dateFrom: job.dateFromIso, dateTo: job.dateToIso, site: job.site, estimatedMinutesFromLabege: minutes }],
       });
     }
   }

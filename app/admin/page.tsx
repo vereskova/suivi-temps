@@ -4831,6 +4831,13 @@ const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = [
 
 type MedicalSortKey = "name" | "team" | "last" | "next" | "status";
 
+type MedicalPlanningWeekDetail = {
+  dateFrom: string;
+  dateTo: string;
+  site: string | null;
+  estimatedMinutesFromLabege: number;
+};
+
 type MedicalPlanningSuggestion = {
   employeeName: string;
   firstName: string;
@@ -4844,6 +4851,8 @@ type MedicalPlanningSuggestion = {
   dateTo: string;
   site: string | null;
   estimatedMinutesFromLabege: number;
+  estimatedMinutesFromLabegeMax: number;
+  details: MedicalPlanningWeekDetail[];
 };
 
 /** Builds the Prevaly appointment-request e-mail (asking for Monday morning
@@ -4995,6 +5004,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [suggestions, setSuggestions] = useState<MedicalPlanningSuggestion[]>([]);
   const [suggestionsLoading, setSuggestionsLoading] = useState(true);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+  const [expandedSuggestions, setExpandedSuggestions] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     async function load() {
@@ -5690,22 +5700,68 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             <div className="mt-3 space-y-1.5">
               {suggestions.map((s, i) => {
                 const statusInfo = MEDICAL_STATUS_LABELS[s.status];
+                const expandable = s.details.length > 1;
+                const expanded = expandedSuggestions.has(i);
+                const distanceLabel =
+                  s.estimatedMinutesFromLabege === s.estimatedMinutesFromLabegeMax
+                    ? `~${s.estimatedMinutesFromLabege} min`
+                    : `~${s.estimatedMinutesFromLabege}–${s.estimatedMinutesFromLabegeMax} min`;
                 return (
-                  <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
-                    <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 shrink-0 ${statusInfo.className}`}>
-                      <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
-                    </span>
-                    <p className="font-semibold text-sm min-w-[160px]">{s.employeeName}</p>
-                    <span className="text-xs font-bold text-stone-400 shrink-0">
-                      <Bi fr="Éq." ru="Ком." /> {s.team}
-                    </span>
-                    <p className="text-xs text-stone-400 whitespace-nowrap">
-                      {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
-                    </p>
-                    <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "—"}</p>
-                    <span className="text-xs font-bold text-primary-700 whitespace-nowrap shrink-0">
-                      ~{s.estimatedMinutesFromLabege} min <Bi fr="de Labège" ru="от Лябежа" />
-                    </span>
+                  <div key={i} className="rounded-lg bg-stone-50">
+                    <div
+                      role={expandable ? "button" : undefined}
+                      onClick={
+                        expandable
+                          ? () =>
+                              setExpandedSuggestions((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i);
+                                else next.add(i);
+                                return next;
+                              })
+                          : undefined
+                      }
+                      className={`flex flex-wrap items-center gap-2 px-3 py-2 ${expandable ? "cursor-pointer" : ""}`}
+                    >
+                      {expandable ? (
+                        expanded ? (
+                          <ChevronDown size={14} className="text-stone-400 shrink-0" />
+                        ) : (
+                          <ChevronRight size={14} className="text-stone-400 shrink-0" />
+                        )
+                      ) : (
+                        <span className="w-[14px] shrink-0" />
+                      )}
+                      <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 shrink-0 ${statusInfo.className}`}>
+                        <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
+                      </span>
+                      <p className="font-semibold text-sm min-w-[160px]">{s.employeeName}</p>
+                      <span className="text-xs font-bold text-stone-400 shrink-0">
+                        <Bi fr="Éq." ru="Ком." /> {s.team}
+                      </span>
+                      <p className="text-xs text-stone-400 whitespace-nowrap">
+                        {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                      </p>
+                      <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "—"}</p>
+                      <span className="text-xs font-bold text-primary-700 whitespace-nowrap shrink-0">
+                        {distanceLabel} <Bi fr="de Labège" ru="от Лябежа" />
+                      </span>
+                    </div>
+                    {expandable && expanded && (
+                      <div className="pl-9 pb-2 pr-3 space-y-1">
+                        {s.details.map((d, di) => (
+                          <div key={di} className="flex flex-wrap items-center gap-2 text-xs text-stone-500 border-t border-stone-200 pt-1">
+                            <span className="whitespace-nowrap">
+                              {formatDateShortDMY(d.dateFrom)}–{formatDateShortDMY(d.dateTo)}
+                            </span>
+                            <span className="truncate flex-1 min-w-[120px]">{d.site ?? "—"}</span>
+                            <span className="font-bold text-primary-700 whitespace-nowrap">
+                              ~{d.estimatedMinutesFromLabege} min
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
