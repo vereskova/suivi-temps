@@ -6,6 +6,42 @@ import { LABEGE_COORDS, estimateDrivingMinutes, parseCoords } from "@/lib/planni
 
 const MAX_MINUTES = 90;
 
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(iso + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+/** The sheet gives one row per week, so the same real multi-week assignment
+ *  comes out as several back-to-back suggestions for the same person and
+ *  site — merge those into a single row spanning the full range instead of
+ *  repeating the same site line every week. */
+function mergeConsecutiveWeeks(rows: MedicalPlanningSuggestion[]): MedicalPlanningSuggestion[] {
+  const sorted = [...rows].sort(
+    (a, b) =>
+      a.employeeId.localeCompare(b.employeeId) ||
+      a.team.localeCompare(b.team) ||
+      (a.site ?? "").localeCompare(b.site ?? "") ||
+      a.dateFrom.localeCompare(b.dateFrom)
+  );
+  const merged: MedicalPlanningSuggestion[] = [];
+  for (const row of sorted) {
+    const last = merged[merged.length - 1];
+    if (
+      last &&
+      last.employeeId === row.employeeId &&
+      last.team === row.team &&
+      last.site === row.site &&
+      addDaysIso(last.dateTo, 1) === row.dateFrom
+    ) {
+      last.dateTo = row.dateTo;
+    } else {
+      merged.push({ ...row });
+    }
+  }
+  return merged;
+}
+
 export type MedicalPlanningSuggestion = {
   employeeName: string;
   employeeId: string;
@@ -115,7 +151,8 @@ export async function GET() {
     }
   }
 
-  suggestions.sort((a, b) => a.dateFrom.localeCompare(b.dateFrom) || a.estimatedMinutesFromLabege - b.estimatedMinutesFromLabege);
+  const merged = mergeConsecutiveWeeks(suggestions);
+  merged.sort((a, b) => a.dateFrom.localeCompare(b.dateFrom) || a.estimatedMinutesFromLabege - b.estimatedMinutesFromLabege);
 
-  return NextResponse.json({ suggestions });
+  return NextResponse.json({ suggestions: merged });
 }
