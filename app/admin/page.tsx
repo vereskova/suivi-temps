@@ -4853,7 +4853,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<EmployeeMedicalStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<EmployeeMedicalStatus | "all" | "no_valid">("all");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<MedicalSortKey>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -5305,7 +5305,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     return employeeRows
       .filter((r) => {
         if (teamFilter !== "all" && r.employee.team_id !== teamFilter) return false;
-        if (statusFilter !== "all" && r.status !== statusFilter) return false;
+        if (statusFilter === "no_valid") {
+          if (r.status !== "jamais_visite" && r.status !== "a_renouveler") return false;
+        } else if (statusFilter !== "all" && r.status !== statusFilter) {
+          return false;
+        }
         if (q && !employeeName(r.employee).toLowerCase().includes(q)) return false;
         return true;
       })
@@ -5367,7 +5371,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               title="Médical"
               text={
                 "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет — пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
-                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
+                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Кнопка «Sans visite valide» показывает сразу «Jamais visité» + «À renouveler» — то есть всех, у кого сейчас нет действующего медосмотра. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
                 "Заголовки таблицы (Nom, Équipe, даты, Statut) кликабельны — сортируют список по этому столбцу.\n\n" +
                 "Наведите курсор на дату «Prochaine visite», чтобы увидеть, введена ли она вручную или найдена автоматически в письме-конвокасьене от Prevaly; в этом случае можно кликнуть, чтобы прочитать переписку по этому сотруднику.\n\n" +
                 "Кнопка «Vérifier les e-mails» подтягивает конвокасьены (и их отмены — ANNULATION) с почты (assistant@vladis.fr и contact@vladis.fr) и сама обновляет даты; если визит отменили, дата очищается.\n\n" +
@@ -5434,6 +5438,15 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               </button>
             );
           })}
+          <button
+            onClick={() => setStatusFilter(statusFilter === "no_valid" ? "all" : "no_valid")}
+            className={`text-xs font-bold rounded-full px-3 py-1 bg-stone-200 text-stone-700 ${
+              statusFilter === "no_valid" ? "ring-2 ring-offset-1 ring-stone-400" : ""
+            }`}
+          >
+            <Bi fr="Sans visite valide" ru="Без действующего осмотра" /> ·{" "}
+            {statusCounts.jamais_visite + statusCounts.a_renouveler}
+          </button>
         </div>
       </div>
 
