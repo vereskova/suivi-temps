@@ -64,13 +64,19 @@ export async function GET() {
 
   const visitByEmployeeId = new Map((visits ?? []).map((v) => [v.employee_id, v]));
   const todayIso = new Date().toISOString().split("T")[0];
+  const twoMonthsOut = new Date();
+  twoMonthsOut.setUTCMonth(twoMonthsOut.getUTCMonth() + 2);
+  const horizonIso = twoMonthsOut.toISOString().split("T")[0];
 
   const suggestions: MedicalPlanningSuggestion[] = [];
   const seen = new Set<string>(); // employeeId|week|month — one suggestion per person per week
 
   for (const job of jobs) {
-    // Only forward-looking weeks — a past assignment can't be proposed as a slot.
-    if (job.dateTo && job.dateTo < todayIso) continue;
+    // Only a job whose week overlaps [today, today + 2 months] — a past
+    // assignment can't be proposed as a slot, and anything further out isn't
+    // actionable yet.
+    if (!job.dateFromIso || !job.dateToIso) continue;
+    if (job.dateToIso < todayIso || job.dateFromIso > horizonIso) continue;
     // Only a plain team number ("1".."10") maps to "Equipe N" — the "F"/"C"
     // bands and anything else are skipped rather than guessed.
     if (!/^\d+$/.test(job.team)) continue;
@@ -97,8 +103,8 @@ export async function GET() {
         team: job.team,
         month: job.month,
         week: job.week,
-        dateFrom: job.dateFrom,
-        dateTo: job.dateTo,
+        dateFrom: job.dateFromIso,
+        dateTo: job.dateToIso,
         site: job.site,
         estimatedMinutesFromLabege: minutes,
       });

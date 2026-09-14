@@ -17,8 +17,15 @@ export type PlanningJob = {
   month: string;
   team: string;
   week: string;
+  /** Raw "D/M" text as written in the sheet's date row — no year, meant for
+   *  display right under a month heading that already gives the year. */
   dateFrom: string;
   dateTo: string;
+  /** Same dates resolved to real ISO (YYYY-MM-DD), for anything that needs
+   *  to actually compare or filter by date. Null when the cell text couldn't
+   *  be parsed. */
+  dateFromIso: string | null;
+  dateToIso: string | null;
   /** First text fragment found in the block — usually the worker's name. */
   worker: string | null;
   /** Second text fragment — usually the site/chantier name. */
@@ -41,6 +48,60 @@ function classifyCell(raw: string): { kind: "code" | "coords" | "power" | "tag" 
   if (TAG_VOCAB.has(v.toUpperCase())) return { kind: "tag", value: v };
   if (/^(true|false)$/i.test(v)) return { kind: "bool", value: v };
   return { kind: "text", value: v };
+}
+
+const MONTH_PREFIXES: [RegExp, number][] = [
+  [/^janv/, 1],
+  [/^f[ée]vr/, 2],
+  [/^mars/, 3],
+  [/^avr/, 4],
+  [/^mai/, 5],
+  [/^juin/, 6],
+  [/^juil/, 7],
+  [/^ao[uù]t/, 8],
+  [/^sept/, 9],
+  [/^oct/, 10],
+  [/^nov/, 11],
+  [/^d[ée]c/, 12],
+];
+
+/** Sheet names are like "Janvier 2026", "Fevrier 26", "Aoùt 26 - Tableau 1"
+ *  — a month name (accent/typo-tolerant) plus a 2- or 4-digit year. */
+function parseMonthLabel(label: string): { month: number; year: number } | null {
+  const normalized = label
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+  const month = MONTH_PREFIXES.find(([re]) => re.test(normalized))?.[1];
+  const yearMatch = normalized.match(/(\d{2,4})/);
+  if (!month || !yearMatch) return null;
+  const yearDigits = yearMatch[1];
+  const year = yearDigits.length <= 2 ? 2000 + Number(yearDigits) : Number(yearDigits);
+  return { month, year };
+}
+
+/** Resolves a raw "D/M" cell (no year) against the sheet's own month/year.
+ *  Each month sheet's date row spills a few days into the adjacent months
+ *  (the last/first partial week), so a cell's month is always the sheet's
+ *  own month, or exactly one month before/after it — which also pins down
+ *  the year across a December/January boundary. */
+function resolveIsoDate(base: { month: number; year: number }, raw: string): string | null {
+  const match = raw.trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const cellMonth = Number(match[2]);
+  let year = base.year;
+  if (cellMonth === base.month) {
+    year = base.year;
+  } else if (cellMonth === (base.month === 1 ? 12 : base.month - 1)) {
+    year = base.month === 1 ? base.year - 1 : base.year;
+  } else if (cellMonth === (base.month === 12 ? 1 : base.month + 1)) {
+    year = base.month === 12 ? base.year + 1 : base.year;
+  } else {
+    return null;
+  }
+  return `${year}-${String(cellMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function findTeamBands(colA: string[]): { label: string; startRow: number; endRow: number }[] {
@@ -75,6 +136,7 @@ export function parseMonthSheet(sheet: XLSX.WorkSheet, monthLabel: string): Plan
   const colA = data.map((r) => r[0] ?? "");
   const bands = findTeamBands(colA);
   const weeks = findWeekColumns(weekRow);
+  const base = parseMonthLabel(monthLabel);
 
   const jobs: PlanningJob[] = [];
   for (const band of bands) {
@@ -97,12 +159,16 @@ export function parseMonthSheet(sheet: XLSX.WorkSheet, monthLabel: string): Plan
         }
       }
       if (texts.length === 0 && tags.length === 0 && !power && !coords) continue;
+      const dateFrom = dateRow[wk.startCol] ?? "";
+      const dateTo = dateRow[wk.endCol] ?? "";
       jobs.push({
         month: monthLabel,
         team: band.label,
         week: wk.week,
-        dateFrom: dateRow[wk.startCol] ?? "",
-        dateTo: dateRow[wk.endCol] ?? "",
+        dateFrom,
+        dateTo,
+        dateFromIso: base ? resolveIsoDate(base, dateFrom) : null,
+        dateToIso: base ? resolveIsoDate(base, dateTo) : null,
         worker: texts[0] ?? null,
         site: texts[1] ?? null,
         notes: texts.slice(2),
