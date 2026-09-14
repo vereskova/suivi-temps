@@ -4830,6 +4830,19 @@ const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = [
 
 type MedicalSortKey = "name" | "team" | "last" | "next" | "status";
 
+type MedicalPlanningSuggestion = {
+  employeeName: string;
+  employeeId: string;
+  status: EmployeeMedicalStatus;
+  team: string;
+  month: string;
+  week: string;
+  dateFrom: string;
+  dateTo: string;
+  site: string | null;
+  estimatedMinutesFromLabege: number;
+};
+
 /** Renders the "Prochaine visite" value with a hover tooltip explaining
  *  whether it was typed in by hand or picked up from a Prevaly convocation
  *  e-mail; e-mail-sourced dates are clickable to open that employee's
@@ -4927,6 +4940,30 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<MedicalSortKey>("status");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [suggestions, setSuggestions] = useState<MedicalPlanningSuggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(true);
+  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setSuggestionsLoading(true);
+      setSuggestionsError(null);
+      try {
+        const res = await fetch("/api/medical/planning-suggestions");
+        const json = await res.json();
+        if (!res.ok) {
+          setSuggestionsError(json.error ?? "Erreur inconnue");
+          return;
+        }
+        setSuggestions(json.suggestions ?? []);
+      } catch (err) {
+        setSuggestionsError(err instanceof Error ? err.message : "Erreur de connexion");
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   function toggleSort(key: MedicalSortKey) {
     if (key === sortKey) {
@@ -5544,6 +5581,57 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             {statusCounts.jamais_visite + statusCounts.a_renouveler}
           </button>
         </div>
+      </div>
+
+      <div className="card mb-4">
+        <div className="font-bold flex items-center">
+          <Bi fr="Suggestions de rendez-vous" ru="Предложения по записи" />
+          <InfoNote
+            title="Suggestions de rendez-vous"
+            text={
+              "Здесь показаны сотрудники без действующего медосмотра («Jamais visité» / «À renouveler»), у которых по плану (Planning chantiers) на ближайшую неделю есть объект в пределах ~1,5 часа езды от Prevaly Labège.\n\n" +
+              "Время в пути — грубая оценка по прямой (координаты объекта из таблицы плана, ×1,3 на извилистость дорог, средняя скорость 70 км/ч), а не настоящий маршрут — перепроверяйте перед тем как писать письмо в Prevaly или переставлять человека.\n\n" +
+              "Дальше действуете сами: пишете Prevaly и/или переставляете сотрудников по датам в самой таблице планирования."
+            }
+          />
+        </div>
+        {suggestionsError && <p className="text-sm text-error-600 mt-2">{suggestionsError}</p>}
+        {suggestionsLoading ? (
+          <div className="mt-3">
+            <SkeletonRows rows={3} cols={4} />
+          </div>
+        ) : suggestions.length === 0 ? (
+          <p className="text-sm text-stone-400 mt-3">
+            <Bi
+              fr="Aucune coïncidence pour le moment."
+              ru="Пока нет подходящих совпадений."
+            />
+          </p>
+        ) : (
+          <div className="mt-3 space-y-1.5">
+            {suggestions.map((s, i) => {
+              const statusInfo = MEDICAL_STATUS_LABELS[s.status];
+              return (
+                <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
+                  <span className={`text-xs font-bold rounded-full px-2.5 py-0.5 shrink-0 ${statusInfo.className}`}>
+                    <Bi fr={statusInfo.fr} ru={statusInfo.ru} />
+                  </span>
+                  <p className="font-semibold text-sm min-w-[160px]">{s.employeeName}</p>
+                  <span className="text-xs font-bold text-stone-400 shrink-0">
+                    <Bi fr="Éq." ru="Ком." /> {s.team}
+                  </span>
+                  <p className="text-xs text-stone-400 whitespace-nowrap">
+                    {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                  </p>
+                  <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "—"}</p>
+                  <span className="text-xs font-bold text-primary-700 whitespace-nowrap shrink-0">
+                    ~{s.estimatedMinutesFromLabege} min <Bi fr="de Labège" ru="от Лябежа" />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="card mb-4">
