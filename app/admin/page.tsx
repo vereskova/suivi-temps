@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
   AlertTriangle,
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Baby,
   BadgeCheck,
@@ -29,6 +31,7 @@ import {
   Crown,
   Download,
   Eye,
+  EyeOff,
   ExternalLink,
   FileSignature,
   FileSpreadsheet,
@@ -626,6 +629,7 @@ export default function AdminPage() {
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [seenNotificationKeys, setSeenNotificationKeys] = useState<Set<string>>(new Set());
   const [manualUnreadKeys, setManualUnreadKeys] = useState<Set<string>>(new Set());
+  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(new Set());
   const [notificationFlagsLoaded, setNotificationFlagsLoaded] = useState(false);
 
   async function loadNotifications() {
@@ -636,8 +640,31 @@ export default function AdminPage() {
   }
 
   const hasUnreadNotifications = notifications.some(
-    (r) => !seenNotificationKeys.has(notificationKey(r)) || manualUnreadKeys.has(notificationKey(r))
+    (r) =>
+      !dismissedKeys.has(notificationKey(r)) &&
+      (!seenNotificationKeys.has(notificationKey(r)) || manualUnreadKeys.has(notificationKey(r)))
   );
+
+  // A dismissed notification stops showing at all (until the underlying
+  // date changes, which gives it a new key) — the real "archive" RH asked
+  // for, distinct from the read/unread highlight below.
+  async function toggleNotificationDismissed(r: NotificationRow) {
+    const key = notificationKey(r);
+    const nowDismissed = !dismissedKeys.has(key);
+    setDismissedKeys((prev) => {
+      const next = new Set(prev);
+      if (nowDismissed) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+    const { error } = await supabase
+      .from("notification_flags")
+      .upsert(
+        { notification_key: key, dismissed: nowDismissed, updated_at: new Date().toISOString() },
+        { onConflict: "notification_key" }
+      );
+    if (error) toast.error("Erreur lors de l'archivage de la notification.");
+  }
 
   // Clicking the "Notifications" nav link itself re-flags every currently
   // listed notification as unread — a manual "remind me again" reset,
@@ -694,10 +721,13 @@ export default function AdminPage() {
 
   useEffect(() => {
     async function load() {
-      const { data, error } = await supabase.from("notification_flags").select("notification_key, seen, manual_unread");
+      const { data, error } = await supabase
+        .from("notification_flags")
+        .select("notification_key, seen, manual_unread, dismissed");
       if (!error && data) {
         setSeenNotificationKeys(new Set(data.filter((r) => r.seen).map((r) => r.notification_key)));
         setManualUnreadKeys(new Set(data.filter((r) => r.manual_unread).map((r) => r.notification_key)));
+        setDismissedKeys(new Set(data.filter((r) => r.dismissed).map((r) => r.notification_key)));
       }
       setNotificationFlagsLoaded(true);
     }
@@ -1389,6 +1419,8 @@ export default function AdminPage() {
                 loading={notificationsLoading}
                 manualUnreadKeys={manualUnreadKeys}
                 onToggleUnread={toggleNotificationUnread}
+                dismissedKeys={dismissedKeys}
+                onToggleDismissed={toggleNotificationDismissed}
               />
             )}
             {view === "registre" && <RegistreView supabase={supabase} />}
@@ -10629,27 +10661,42 @@ function NotificationsView({
   loading,
   manualUnreadKeys,
   onToggleUnread,
+  dismissedKeys,
+  onToggleDismissed,
 }: {
   notifications: NotificationRow[];
   loading: boolean;
   manualUnreadKeys: Set<string>;
   onToggleUnread: (r: NotificationRow) => void;
+  dismissedKeys: Set<string>;
+  onToggleDismissed: (r: NotificationRow) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+
+  const active = useMemo(
+    () => notifications.filter((r) => !dismissedKeys.has(notificationKey(r))),
+    [notifications, dismissedKeys]
+  );
+  const archived = useMemo(
+    () => notifications.filter((r) => dismissedKeys.has(notificationKey(r))),
+    [notifications, dismissedKeys]
+  );
 
   const filtered = useMemo(() => {
+    const source = showArchived ? archived : active;
     const q = search.trim().toLowerCase();
-    if (!q) return notifications;
-    return notifications.filter(
+    if (!q) return source;
+    return source.filter(
       (r) => r.employeeName.toLowerCase().includes(q) || r.type.toLowerCase().includes(q)
     );
-  }, [notifications, search]);
+  }, [active, archived, showArchived, search]);
 
   const counts = useMemo(() => {
     const c: Record<NotificationTier, number> = { day: 0, week: 0, month: 0 };
-    notifications.forEach((r) => c[r.tier]++);
+    active.forEach((r) => c[r.tier]++);
     return c;
-  }, [notifications]);
+  }, [active]);
 
   return (
     <div>
@@ -10665,8 +10712,8 @@ function NotificationsView({
                   "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 2 года (по закону) — и дни рождения сотрудников.\n\n" +
                   "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
                   "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу.\n\n" +
-                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке).\n\n" +
-                  "Чтобы отметить прочитанным/непрочитанным только одно конкретное уведомление — кликните по нему правой кнопкой мыши."
+                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке). Кнопка-глаз на каждой строке отмечает прочитанным/непрочитанным только её одну.\n\n" +
+                  "Кнопка-архив на строке убирает уведомление из списка насовсем (даже если дата/причина ещё актуальна) — например, если вы уже в курсе и разбираетесь с этим. Посмотреть и вернуть архивные можно кнопкой «Archivées» выше таблицы."
                 }
               />
             }
@@ -10694,15 +10741,26 @@ function NotificationsView({
             <Bi fr="ce mois-ci" ru="в этом месяце" />
           </span>
         </div>
-        <label className="block text-xs font-bold text-stone-400">
-          <Bi fr="Recherche" ru="Поиск" />
-        </label>
-        <input
-          className="input mt-1 max-w-sm"
-          placeholder="Nom, prénom, type de document…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-bold text-stone-400">
+              <Bi fr="Recherche" ru="Поиск" />
+            </label>
+            <input
+              className="input mt-1 max-w-sm"
+              placeholder="Nom, prénom, type de document…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+          <button
+            className={`btn text-sm ${showArchived ? "btn-primary" : "btn-secondary"}`}
+            onClick={() => setShowArchived((s) => !s)}
+          >
+            <Archive size={15} />
+            <Bi fr={`Archivées (${archived.length})`} ru={`Архивные (${archived.length})`} />
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -10738,11 +10796,6 @@ function NotificationsView({
                   </p>
                 )}
                 <div
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    onToggleUnread(r);
-                  }}
-                  title="Клик правой кнопкой — отметить прочитанным/непрочитанным"
                   className={`rounded-xl border p-3 ${unread ? "border-primary-200 bg-primary-50/40" : "border-stone-100"}`}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -10750,9 +10803,21 @@ function NotificationsView({
                       {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
                       <p className="font-semibold">{r.employeeName}</p>
                     </span>
-                    {urgency ? (
-                      <span className={`badge badge-${urgency.tone} shrink-0`}>{urgency.label}</span>
-                    ) : null}
+                    <span className="flex items-center gap-1 shrink-0">
+                      {urgency ? <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span> : null}
+                      <RowAction
+                        icon={unread ? Eye : EyeOff}
+                        title={unread ? "Marquer comme lu" : "Marquer comme non lu"}
+                        titleRu={unread ? "Отметить прочитанным" : "Отметить непрочитанным"}
+                        onClick={() => onToggleUnread(r)}
+                      />
+                      <RowAction
+                        icon={showArchived ? ArchiveRestore : Archive}
+                        title={showArchived ? "Désarchiver" : "Archiver"}
+                        titleRu={showArchived ? "Вернуть из архива" : "Архивировать"}
+                        onClick={() => onToggleDismissed(r)}
+                      />
+                    </span>
                   </div>
                   <p className="text-sm text-stone-500 mt-0.5">{r.type}</p>
                   <p className="text-sm text-stone-500">
@@ -10786,21 +10851,14 @@ function NotificationsView({
                   <Fragment key={`${r.employeeId}-${r.type}-${r.date}-${i}`}>
                     {showTierHeader && (
                       <tr>
-                        <td colSpan={4} className={i === 0 ? "p-0" : "pt-4 p-0"}>
+                        <td colSpan={5} className={i === 0 ? "p-0" : "pt-4 p-0"}>
                           <p className={`px-4 py-2 text-xs font-bold uppercase tracking-wide ${tierInfo.barClass}`}>
                             <Bi fr={tierInfo.fr} ru={tierInfo.ru} />
                           </p>
                         </td>
                       </tr>
                     )}
-                    <tr
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        onToggleUnread(r);
-                      }}
-                      title="Клик правой кнопкой — отметить прочитанным/непрочитанным"
-                      className={`border-t border-stone-100 ${unread ? "bg-primary-50/40" : ""}`}
-                    >
+                    <tr className={`border-t border-stone-100 ${unread ? "bg-primary-50/40" : ""}`}>
                       <td className="py-2 pr-4 font-semibold">
                         <span className="inline-flex items-center gap-1.5">
                           {unread && <span className="h-2 w-2 rounded-full bg-primary-600 shrink-0" />}
@@ -10812,12 +10870,28 @@ function NotificationsView({
                         {formatDateShortDMY(r.date)}
                         {r.time && <span className="ml-1 text-stone-400">{r.time.slice(0, 5)}</span>}
                       </td>
-                      <td className="py-2">
+                      <td className="py-2 pr-4">
                         {urgency ? (
                           <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
                         ) : (
                           "—"
                         )}
+                      </td>
+                      <td className="py-2">
+                        <div className="flex items-center gap-1">
+                          <RowAction
+                            icon={unread ? Eye : EyeOff}
+                            title={unread ? "Marquer comme lu" : "Marquer comme non lu"}
+                            titleRu={unread ? "Отметить прочитанным" : "Отметить непрочитанным"}
+                            onClick={() => onToggleUnread(r)}
+                          />
+                          <RowAction
+                            icon={showArchived ? ArchiveRestore : Archive}
+                            title={showArchived ? "Désarchiver" : "Archiver"}
+                            titleRu={showArchived ? "Вернуть из архива" : "Архивировать"}
+                            onClick={() => onToggleDismissed(r)}
+                          />
+                        </div>
                       </td>
                     </tr>
                   </Fragment>
@@ -15383,12 +15457,21 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 <Bi fr="Non signé" ru="Не подписан" />
               </button>
             </div>
-            <p className="text-xs text-stone-400 mt-3">
-              Date d&apos;embauche <span className="opacity-70">/ Дата приёма</span> :{" "}
-              <span className="font-semibold text-stone-600">
-                {contractModal.hireDate ? formatDateShortDMY(contractModal.hireDate) : "—"}
-              </span>
-            </p>
+            <label className="block text-xs font-bold text-stone-400 mt-3">
+              Date d&apos;embauche <span className="opacity-70">/ Дата приёма</span>
+              {!contractModal.hireDate && (
+                <span className="text-error-600 font-normal">
+                  {" "}
+                  — {"non renseignée dans le Registre du personnel"}
+                </span>
+              )}
+              <input
+                type="date"
+                className="input text-sm mt-1"
+                value={contractModal.hireDate ?? ""}
+                onChange={(e) => setContractModal({ ...contractModal, hireDate: e.target.value || null })}
+              />
+            </label>
             <div className="flex gap-3 mt-4">
               <button
                 className="btn btn-green text-sm px-3 py-2"
