@@ -49,7 +49,7 @@ export async function GET() {
       supabase.from("employees").select("id, first_name, last_name"),
       supabase
         .from("medical_visits")
-        .select("id, employee_id, last_visit_date, next_visit_source, next_visit_source_at"),
+        .select("id, employee_id, last_visit_date, next_visit_date, next_visit_source, next_visit_source_at"),
     ]);
 
     const employeeById = new Map((employees ?? []).map((e) => [e.id, e]));
@@ -100,8 +100,11 @@ export async function GET() {
       const existing = visitByEmployeeId.get(employeeId);
       // A hand-entered date is never silently overwritten by a later e-mail
       // — but a cancellation is a fact, not a date guess, so it always wins
-      // even over a manual entry (the visit didn't happen either way).
-      if (existing && existing.next_visit_source === "manual" && event.type !== "annulation") continue;
+      // even over a manual entry (the visit didn't happen either way). A
+      // blank row (created via "add visit" but never actually filled in,
+      // e.g. next_visit_date still null) has nothing real to protect, so a
+      // fresh convocation must still be allowed to populate it.
+      if (existing && existing.next_visit_source === "manual" && existing.next_visit_date && event.type !== "annulation") continue;
       const emailIsNewer = !existing?.next_visit_source_at || (email.date ?? "") > existing.next_visit_source_at;
       if (existing && !emailIsNewer) continue; // already applied this (or a more recent) event
 
