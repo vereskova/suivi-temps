@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 // sheet per month, each a hand-maintained team × week grid. "TS" and
 // "PAS FINI" are unrelated tracking lists (devis/backlog), not the planning
 // grid, and are skipped.
-const PLANNING_SHEET_ID = "1PcyKlR5UlLwEV88MWKCKqwom2FGrihba";
+export const PLANNING_SHEET_ID = "1PcyKlR5UlLwEV88MWKCKqwom2FGrihba";
 const PLANNING_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/export?format=xlsx`;
 const SKIPPED_SHEETS = new Set(["TS", "PAS FINI"]);
 

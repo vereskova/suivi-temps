@@ -121,6 +121,7 @@ import {
   weekdayLabelFr,
 } from "@/lib/payroll/frenchHolidays";
 import { isForeignNationality } from "@/lib/nationality";
+import { PLANNING_SHEET_ID } from "@/lib/planning/parsePlanning";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
 import { toast } from "@/components/Toast";
@@ -4583,12 +4584,14 @@ const PLANNING_STATUS_DOT: Record<Exclude<PlanningStatus, null>, string> = {
  *  several weeks can come out mixed up in the week that falls mid-span —
  *  an accepted limitation rather than data to fully trust blindly. */
 function PlanningView() {
+  const [viewMode, setViewMode] = useState<"sheet" | "app">("sheet");
   const [jobs, setJobs] = useState<PlanningJobRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    if (viewMode !== "app") return;
     async function load() {
       setLoading(true);
       setError(null);
@@ -4607,7 +4610,7 @@ function PlanningView() {
       }
     }
     load();
-  }, [refreshKey]);
+  }, [refreshKey, viewMode]);
 
   const byMonth = useMemo(() => {
     const map = new Map<string, PlanningJobRow[]>();
@@ -4620,30 +4623,58 @@ function PlanningView() {
   return (
     <div>
       <div className="card mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="font-bold flex items-center">
             <Bi fr="Planning chantiers" ru="План по объектам" />
             <InfoNote
               title="Planning"
               text={
-                "Данные подтягиваются напрямую из Google Sheets («PLANNING») каждый раз, когда вы открываете эту страницу — изменить их здесь нельзя, править нужно в самой таблице.\n\n" +
-                "У каждого работника — цветная точка со статусом медосмотра (как в разделе «Médical»): красный — не был, оранжевый — пора обновить, синий — визит назначен, зелёный — всё в порядке. Точки нет, если имя не удалось однозначно сопоставить с сотрудником (например, совпадающее имя у двоих).\n\n" +
+                "«Google Sheets» — сама таблица (PLANNING), прямо здесь, с полным доступом на редактирование, как в самом Google. «Avec statuts médicaux» — версия попроще, но с цветной точкой у каждого работника: красный — не был на осмотре, оранжевый — пора обновить, синий — визит назначен, зелёный — всё в порядке (точки нет, если имя не удалось однозначно сопоставить с сотрудником). Этот режим подтягивает данные из таблицы заново при каждом открытии, изменить их можно только в самой таблице.\n\n" +
                 "Таблица в Google Sheets ведётся вручную для удобства чтения, а не как строгая база данных: если работа растягивается на несколько недель, текст может «расползтись» между ячейками не совсем аккуратно — в редких случаях неделя может показать смешанные данные."
               }
             />
           </div>
-          <button className="btn btn-secondary text-sm" disabled={loading} onClick={() => setRefreshKey((k) => k + 1)}>
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            <Bi fr="Actualiser" ru="Обновить" />
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-stone-200 overflow-hidden text-sm">
+              <button
+                className={`px-3 py-1.5 ${viewMode === "sheet" ? "bg-stone-900 text-white" : "bg-white text-stone-500 hover:bg-stone-50"}`}
+                onClick={() => setViewMode("sheet")}
+              >
+                Google Sheets
+              </button>
+              <button
+                className={`px-3 py-1.5 ${viewMode === "app" ? "bg-stone-900 text-white" : "bg-white text-stone-500 hover:bg-stone-50"}`}
+                onClick={() => setViewMode("app")}
+              >
+                <Bi fr="Avec statuts médicaux" ru="Со статусами медосмотра" />
+              </button>
+            </div>
+            {viewMode === "app" && (
+              <button className="btn btn-secondary text-sm" disabled={loading} onClick={() => setRefreshKey((k) => k + 1)}>
+                <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+                <Bi fr="Actualiser" ru="Обновить" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {error && (
-        <div className="card mb-4">
-          <p className="text-sm text-error-600">{error}</p>
+      {viewMode === "sheet" ? (
+        <div className="card overflow-hidden p-0">
+          <iframe
+            src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit?rm=minimal`}
+            className="w-full border-0"
+            style={{ height: "80vh" }}
+            title="Planning chantiers — Google Sheets"
+          />
         </div>
-      )}
+      ) : (
+        <>
+          {error && (
+            <div className="card mb-4">
+              <p className="text-sm text-error-600">{error}</p>
+            </div>
+          )}
 
       {loading ? (
         <div className="card">
@@ -4726,6 +4757,8 @@ function PlanningView() {
             </div>
           );
         })
+      )}
+        </>
       )}
     </div>
   );
