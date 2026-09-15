@@ -4819,6 +4819,7 @@ type EmployeeMedicalRow = {
   employee: MedicalRosterRow;
   visit: MedicalVisit | null;
   status: EmployeeMedicalStatus;
+  alreadyDone: boolean;
 };
 
 const MEDICAL_STATUS_ORDER: EmployeeMedicalStatus[] = [
@@ -4908,12 +4909,17 @@ async function copySuggestionsForEmail(suggestions: MedicalPlanningSuggestion[])
  *  correspondence history. */
 function NextVisitCell({
   visit,
+  alreadyDone,
   onOpenHistory,
 }: {
   visit: MedicalVisit | null;
+  alreadyDone: boolean;
   onOpenHistory: () => void;
 }) {
-  if (!visit?.next_visit_date) return <>—</>;
+  // The date is already covered by a confirmed last_visit_date (the visit
+  // happened) — showing it as "next" would read as a still-pending
+  // appointment, especially once the date itself has passed.
+  if (!visit?.next_visit_date || alreadyDone) return <>—</>;
   const dateText = formatDateShortDMY(visit.next_visit_date);
   const timeText = visit.next_visit_time ? visit.next_visit_time.slice(0, 5) : "";
   const isEmail = visit.next_visit_source === "email";
@@ -5462,7 +5468,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       } else {
         status = "a_jour";
       }
-      return { employee, visit, status };
+      return { employee, visit, status, alreadyDone };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roster, visits, todayIso]);
@@ -6166,6 +6172,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       <span className="text-stone-400">Prochaine: </span>
                       <NextVisitCell
                         visit={v}
+                        alreadyDone={row.alreadyDone}
                         onOpenHistory={() => openHistory(row.employee.id, employeeName(row.employee))}
                       />
                     </p>
@@ -6271,6 +6278,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         <td className="py-2 pr-4">
                           <NextVisitCell
                             visit={v}
+                            alreadyDone={row.alreadyDone}
                             onOpenHistory={() => openHistory(row.employee.id, employeeName(row.employee))}
                           />
                         </td>
