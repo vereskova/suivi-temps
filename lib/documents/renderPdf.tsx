@@ -1,6 +1,6 @@
 import path from "path";
 import React from "react";
-import { Document, Font, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
+import { Document, Font, Image, Page, StyleSheet, Text, View, pdf } from "@react-pdf/renderer";
 import { Align, Block, DocContent } from "./types";
 
 /**
@@ -53,6 +53,9 @@ const styles = StyleSheet.create({
   signatureCol: { width: "48%", marginRight: "4%" },
   signatureLabel: { fontSize: 12, fontWeight: 700, marginBottom: 8 },
   signatureLine: { fontSize: 12, marginBottom: 4 },
+  imageLeft: { alignItems: "flex-start" },
+  imageCenter: { alignItems: "center" },
+  imageRight: { alignItems: "flex-end" },
 });
 
 function alignStyleFor(align: Align | undefined) {
@@ -117,6 +120,20 @@ function renderBlock(block: Block, index: number) {
           ))}
         </Text>
       );
+    case "image": {
+      const alignStyle =
+        block.align === "right" ? styles.imageRight : block.align === "center" ? styles.imageCenter : styles.imageLeft;
+      return (
+        <View key={index} style={alignStyle}>
+          {/* react-pdf's Image, not an HTML <img> — jsx-a11y's alt-text rule doesn't apply here. */}
+          {/* eslint-disable-next-line jsx-a11y/alt-text */}
+          <Image
+            src={path.join(process.cwd(), "public", block.src)}
+            style={{ width: block.width, height: block.height }}
+          />
+        </View>
+      );
+    }
     case "closing":
       return (
         <View key={index} wrap={false}>

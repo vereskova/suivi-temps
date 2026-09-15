@@ -13,7 +13,9 @@ export type Block =
   | { type: "spacer" }
   | { type: "rule" }
   | { type: "list"; items: string[] }
-  | { type: "closing"; text: string; left: SignatureParty; right: SignatureParty };
+  | { type: "closing"; text: string; left: SignatureParty; right: SignatureParty }
+  /** src is a path relative to the project's public/ directory, e.g. "signatures/foo.png". */
+  | { type: "image"; src: string; width: number; height: number; align?: Align };
 
 export type DocContent = {
   /** Used as the download filename base (sanitized) and as a fallback title. */

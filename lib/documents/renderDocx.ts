@@ -1,7 +1,10 @@
+import fs from "fs";
+import path from "path";
 import {
   AlignmentType,
   BorderStyle,
   Document,
+  ImageRun,
   Packer,
   Paragraph,
   Table,
@@ -117,6 +120,21 @@ function blockToNodes(block: Block): (Paragraph | Table)[] {
           ),
         }),
       ];
+    case "image": {
+      const buffer = fs.readFileSync(path.join(process.cwd(), "public", block.src));
+      return [
+        new Paragraph({
+          alignment: alignmentFor(block.align),
+          children: [
+            new ImageRun({
+              type: "png",
+              data: buffer,
+              transformation: { width: block.width, height: block.height },
+            }),
+          ],
+        }),
+      ];
+    }
     case "closing":
       return [
         new Paragraph({

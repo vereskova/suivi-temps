@@ -4,6 +4,7 @@ import { contratChantier } from "./templates/contratChantier";
 import { contratBureau } from "./templates/contratBureau";
 import { nda } from "./templates/nda";
 import { attestationConges } from "./templates/attestationConges";
+import { attestationHebergement } from "./templates/attestationHebergement";
 import { demandeCongesSansSolde } from "./templates/demandeCongesSansSolde";
 import { lettreDemission } from "./templates/lettreDemission";
 
@@ -28,7 +29,7 @@ export type FieldSchema = {
   options?: { value: string; label: string; labelRu?: string }[];
 };
 
-export type DocumentCategory = "contrat" | "confidentialite" | "conges" | "rupture";
+export type DocumentCategory = "contrat" | "confidentialite" | "conges" | "rupture" | "administratif";
 
 export type DocumentTypeDefinition = {
   code: string;
@@ -388,6 +389,35 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       },
     ],
     generate: attestationConges,
+  },
+  {
+    code: "attestation_hebergement",
+    label: "Attestation d'hébergement",
+    labelRu: "Справка о проживании (хозяин жилья)",
+    descriptionRu:
+      "Подтверждение того, что сотрудник проживает по адресу, предоставленному компанией (нужно, например, для оформления вида на жительство). Хозяин жилья и адрес всегда одни и те же — меняются только данные сотрудника и дата.",
+    category: "administratif",
+    legalRisk: false,
+    fields: [
+      employeeField("dateOfBirth", "Date de naissance", "date", undefined, undefined, "Дата рождения"),
+      employeeField("birthPlace", "Lieu de naissance", "text", undefined, undefined, "Место рождения"),
+      {
+        key: "hostingStartDate",
+        label: "Hébergé depuis le",
+        labelRu: "Проживает с",
+        type: "date",
+        required: true,
+      },
+      {
+        key: "issueDate",
+        label: "Date de délivrance",
+        labelRu: "Дата выдачи",
+        type: "date",
+        required: true,
+        defaultValue: () => todayIso(),
+      },
+    ],
+    generate: attestationHebergement,
   },
   {
     code: "demande_conges_sans_solde",
