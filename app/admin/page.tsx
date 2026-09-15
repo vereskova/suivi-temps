@@ -4662,7 +4662,7 @@ function PlanningView() {
       {viewMode === "sheet" ? (
         <div className="card overflow-hidden p-0">
           <iframe
-            src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit?rm=minimal`}
+            src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit`}
             className="w-full border-0"
             style={{ height: "80vh" }}
             title="Planning chantiers — Google Sheets"
