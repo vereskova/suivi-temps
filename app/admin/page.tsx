@@ -112,7 +112,7 @@ import {
   mapEmployeeRow,
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
-import { computePayrollLine, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
+import { computePayrollLine, computeNightPremium, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
 import {
   countWeekdaysBetween,
   countWorkingDaysInMonth,
@@ -13212,6 +13212,7 @@ type PaieEmployee = {
   hire_date: string | null;
   end_date: string | null;
   salaire_base_net: number | null;
+  classification: string | null;
 };
 
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
@@ -13418,9 +13419,10 @@ type PaieLineInput = {
   netSouhaite: string;
   majJoursFeries: string;
   joursTravailles: string;
+  heuresNuit: string;
 };
 
-const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursTravailles: "" };
+const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursTravailles: "", heuresNuit: "" };
 
 /** Bureau core staff aren't tracked day-by-day the way chantier crews are —
  *  always 0. For chantier employees, default to the weekdays they were
@@ -13487,7 +13489,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         supabase
           .from("employees")
           .select(
-            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net"
+            "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net, classification"
           )
           // Someone terminated mid-month, or on leave since mid-month, still
           // worked part of it and needs a partial-month line — excluding them
@@ -13542,7 +13544,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
-          .select("employee_id, net_souhaite, maj_jours_feries, jours_travailles")
+          .select("employee_id, net_souhaite, maj_jours_feries, jours_travailles, heures_nuit")
           .eq("run_id", run.id);
         const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
         const map: Record<string, PaieLineInput> = {};
@@ -13556,6 +13558,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           map[e.id] = {
             netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
+            heuresNuit: l?.heures_nuit ? String(l.heures_nuit) : "",
             // Office core staff never worked chantier days — enforced even
             // over an old saved value, since it's a hard rule, not just a
             // suggested default. Otherwise: no saved line yet this month →
@@ -13847,6 +13850,19 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
     return map;
   }, [employees, inputs, params]);
 
+  const nightComputed = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computeNightPremium>> = {};
+    employees.forEach((e) => {
+      if (isFopContractor(e)) {
+        map[e.id] = { group: "A", hourlyRateSmh: 0, hourlyPremium: 0, heuresNuit: 0, amount: 0 };
+        return;
+      }
+      const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
+      map[e.id] = computeNightPremium(Number(line.heuresNuit) || 0, e.classification);
+    });
+    return map;
+  }, [employees, inputs]);
+
   const totals = useMemo(() => {
     return employees
       .filter((e) => !isFopContractor(e))
@@ -13854,6 +13870,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         (acc, e) => {
           const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
           const c = computed[e.id];
+          const n = nightComputed[e.id];
           acc.netSouhaite += Number(line.netSouhaite) || 0;
           acc.majJoursFeries += Number(line.majJoursFeries) || 0;
           acc.joursTravailles += Number(line.joursTravailles) || 0;
@@ -13862,6 +13879,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           acc.hs25Heures += c?.hs25Heures ?? 0;
           acc.hs50Heures += c?.hs50Heures ?? 0;
           acc.primeExceptionnelle += c?.primeExceptionnelle ?? 0;
+          acc.heuresNuit += n?.heuresNuit ?? 0;
+          acc.primeNuit += n?.amount ?? 0;
           return acc;
         },
         {
@@ -13873,9 +13892,11 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           hs25Heures: 0,
           hs50Heures: 0,
           primeExceptionnelle: 0,
+          heuresNuit: 0,
+          primeNuit: 0,
         }
       );
-  }, [employees, inputs, computed]);
+  }, [employees, inputs, computed, nightComputed]);
 
   async function save() {
     if (!runId) return;
@@ -13893,6 +13914,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         hs25_heures: c?.hs25Heures ?? 0,
         hs50_heures: c?.hs50Heures ?? 0,
         prime_exceptionnelle: c?.primeExceptionnelle ?? 0,
+        heures_nuit: Number(line.heuresNuit) || 0,
       };
     });
     const { error } = await supabase
@@ -13916,6 +13938,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       const e = row.employee;
       const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
       const c = computed[e.id];
+      const n = nightComputed[e.id];
       const aPayer = Number(line.netSouhaite) || 0;
       totalAPayer += aPayer;
       return {
@@ -13929,6 +13952,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
         "HS+25% h": c?.hs25Heures ?? 0,
         "HS+50% h": c?.hs50Heures ?? 0,
         "Prime except. €": c?.primeExceptionnelle ?? 0,
+        "Heures de nuit": n?.heuresNuit ?? 0,
+        "Prime nuit €": n?.amount ?? 0,
         "À payer €": Math.round(aPayer * 100) / 100,
       };
     });
@@ -13943,6 +13968,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       "HS+25% h": totals.hs25Heures,
       "HS+50% h": totals.hs50Heures,
       "Prime except. €": Math.round(totals.primeExceptionnelle * 100) / 100,
+      "Heures de nuit": totals.heuresNuit,
+      "Prime nuit €": Math.round(totals.primeNuit * 100) / 100,
       "À payer €": Math.round(totalAPayer * 100) / 100,
     });
     const sheet = XLSX.utils.json_to_sheet(exportRows);
@@ -14346,6 +14373,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             const e = row.employee;
             const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
             const c = computed[e.id];
+            const n = nightComputed[e.id];
             const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
             return (
               <Fragment key={e.id}>
@@ -14424,6 +14452,28 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                           ))}
                         </select>
                       </label>
+                      <label className="block">
+                        <span className="text-xs font-bold text-warning-700">
+                          <Bi fr="Heures de nuit" ru="Ночные часы" />
+                        </span>
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60 mt-1"
+                          style={{ width: "6rem" }}
+                          value={line.heuresNuit}
+                          onChange={(ev) => updateInput(e.id, "heuresNuit", ev.target.value)}
+                        />
+                      </label>
+                      <p
+                        className="text-primary-700 font-semibold underline decoration-dotted underline-offset-2"
+                        title={
+                          n
+                            ? `15% du SMH conventionnel du groupe ${n.group} (${n.hourlyRateSmh.toFixed(2)} €/h) = ${n.hourlyPremium.toFixed(2)} €/h de nuit × ${n.heuresNuit}h = ${n.amount.toFixed(2)} €.\nConvention Collective Métallurgie (IDCC 3248) : majoration travail de nuit (21h-6h), en plus de la paie normale de ces heures.\n\n15% от справочной минималки (SMH) группы ${n.group} (${n.hourlyRateSmh.toFixed(2)}€/ч) = ${n.hourlyPremium.toFixed(2)}€/ч за ночной час × ${n.heuresNuit}ч = ${n.amount.toFixed(2)}€. По конвенции металлургии — доплата сверху обычной оплаты этих часов.`
+                            : undefined
+                        }
+                      >
+                        <Bi fr="Prime nuit" ru="Ночная надбавка" />: {(n?.amount ?? 0).toFixed(2)} €
+                      </p>
                       <p className="text-primary-700 font-semibold">
                         <Bi fr="Jours repas" ru="Дней питания" />: {c?.joursRepas ?? 0}
                       </p>
@@ -14459,6 +14509,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 <span>HS+25%: {totals.hs25Heures} h</span>
                 <span>HS+50%: {totals.hs50Heures} h</span>
                 <span>Prime: {totals.primeExceptionnelle.toFixed(2)} €</span>
+                <span>Heures de nuit: {totals.heuresNuit} h</span>
+                <span>Prime nuit: {totals.primeNuit.toFixed(2)} €</span>
               </div>
             </div>
           )}
@@ -14478,6 +14530,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+25% h" ru="СЧ+25% ч" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="HS+50% h" ru="СЧ+50% ч" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="Prime except. €" ru="Премия €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Heures de nuit" ru="Ночные часы" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Prime nuit €" ru="Ночная надбавка €" /></th>
               </tr>
             </thead>
             <tbody>
@@ -14485,13 +14539,14 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 const e = row.employee;
                 const line = inputs[e.id] ?? EMPTY_PAIE_LINE;
                 const c = computed[e.id];
+                const n = nightComputed[e.id];
                 const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
                 return (
                   <Fragment key={e.id}>
                     {showGroupHeader && (
                       <tr>
                         <td
-                          colSpan={10}
+                          colSpan={12}
                           className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400"
                         >
                           {row.groupLabel}
@@ -14570,6 +14625,25 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     <td className="py-2 pr-4 font-semibold text-primary-700">
                       {(c?.primeExceptionnelle ?? 0).toFixed(2)} €
                     </td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="number"
+                        className="input bg-warning-50/60"
+                        style={{ width: "6rem" }}
+                        value={line.heuresNuit}
+                        onChange={(ev) => updateInput(e.id, "heuresNuit", ev.target.value)}
+                      />
+                    </td>
+                    <td
+                      className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                      title={
+                        n
+                          ? `15% du SMH conventionnel du groupe ${n.group} (${n.hourlyRateSmh.toFixed(2)} €/h) = ${n.hourlyPremium.toFixed(2)} €/h de nuit × ${n.heuresNuit}h = ${n.amount.toFixed(2)} €.\nConvention Collective Métallurgie (IDCC 3248) : majoration travail de nuit (21h-6h), en plus de la paie normale de ces heures.\n\n15% от справочной минималки (SMH) группы ${n.group} (${n.hourlyRateSmh.toFixed(2)}€/ч) = ${n.hourlyPremium.toFixed(2)}€/ч за ночной час × ${n.heuresNuit}ч = ${n.amount.toFixed(2)}€. По конвенции металлургии — доплата сверху обычной оплаты этих часов.`
+                          : undefined
+                      }
+                    >
+                      {(n?.amount ?? 0).toFixed(2)} €
+                    </td>
                     </tr>
                     )}
                   </Fragment>
@@ -14577,7 +14651,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-6 text-center text-stone-400">
+                  <td colSpan={12} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
@@ -14598,6 +14672,8 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                   <td className="py-2 pr-4">{totals.hs25Heures} h</td>
                   <td className="py-2 pr-4">{totals.hs50Heures} h</td>
                   <td className="py-2 pr-4">{totals.primeExceptionnelle.toFixed(2)} €</td>
+                  <td className="py-2 pr-4">{totals.heuresNuit} h</td>
+                  <td className="py-2 pr-4">{totals.primeNuit.toFixed(2)} €</td>
                 </tr>
               </tfoot>
             )}

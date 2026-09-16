@@ -121,3 +121,60 @@ export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
   maxHs25Heures: 32,
   maxHs50Heures: 8,
 };
+
+/**
+ * Nuit — Convention Collective Nationale de la Métallurgie (IDCC 3248),
+ * avenant SMH au 1er janvier 2026. Travail de nuit (21h-6h) : +15% du SMH
+ * (salaire minimum hiérarchique du groupe), pas du salaire personnel — payé
+ * en plus des heures normales, cumulable avec les HS.
+ *
+ * Chaque lettre de groupe couvre en réalité 2 classes (SMH annuel/mensuel/
+ * horaire à 151,67h) ; `employees.classification` ne stocke que la lettre,
+ * donc on prend la classe la BASSE des deux (plancher, jamais un montant
+ * inventé) :
+ *   A 1-2: SMIC (1 867,02 €/mois, le SMH conventionnel du groupe A étant
+ *          sous le SMIC) → 12,31 €/h · B3: 22 710 €/an → 12,48 €/h
+ *   C5: 24 510 €/an → 13,46 €/h · D7: 26 680 €/an → 14,66 €/h
+ *   E9: 30 760 €/an → 16,91 €/h · F11: 35 200 €/an → 19,34 €/h
+ *   G13: 40 350 €/an → 22,17 €/h · H15: 47 380 €/an → 26,04 €/h
+ *   I17: 59 720 €/an → 32,81 €/h
+ * Seul le groupe A a été confirmé avec l'utilisatrice pour l'usage réel
+ * actuel (postes chantier) — les autres sont là pour ne pas planter si le
+ * champ contient une autre lettre, à re-vérifier avant tout usage réel.
+ *
+ * Sources : ressources.convention.fr/ressources-juridiques/
+ * temps-de-travail-convention-metallurgie ; skello.io/blog/
+ * convention-collective-metallurgie — à reconfirmer avec le comptable
+ * avant tout usage contentieux, ce ne sont pas des sources officielles
+ * (Légifrance/Bulletin officiel de la convention).
+ */
+export const NIGHT_PREMIUM_RATE = 0.15;
+
+export const SMH_HOURLY_BY_GROUP: Record<string, number> = {
+  A: 12.31,
+  B: 12.48,
+  C: 13.46,
+  D: 14.66,
+  E: 16.91,
+  F: 19.34,
+  G: 22.17,
+  H: 26.04,
+  I: 32.81,
+};
+
+export type NightPremiumResult = {
+  group: string;
+  hourlyRateSmh: number;
+  hourlyPremium: number;
+  heuresNuit: number;
+  amount: number;
+};
+
+/** heuresNuit × 15% du SMH horaire du groupe conventionnel de l'employé — voir la note ci-dessus. */
+export function computeNightPremium(heuresNuit: number, classification: string | null): NightPremiumResult {
+  const group = (classification ?? "A").trim().toUpperCase().charAt(0) || "A";
+  const hourlyRateSmh = SMH_HOURLY_BY_GROUP[group] ?? SMH_HOURLY_BY_GROUP.A;
+  const hourlyPremium = Math.round(hourlyRateSmh * NIGHT_PREMIUM_RATE * 100) / 100;
+  const amount = Math.round(hourlyPremium * heuresNuit * 100) / 100;
+  return { group, hourlyRateSmh, hourlyPremium, heuresNuit, amount };
+}
