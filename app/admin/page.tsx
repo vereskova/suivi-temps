@@ -14837,20 +14837,16 @@ const EXTRAS_COLOR_PENALTY_HEADER = "#FF0000"; // Штраф
 const EXTRAS_COLOR_BANK_HEADER = "#EDFF00"; // БАНК качества
 const EXTRAS_COLOR_BANK2_HEADER = "#FC847A"; // Бонус qualité
 const EXTRAS_COLOR_MONDAY_TUESDAY = "#FFFF0B"; // colonnes Lundi/Mardi — inexpliqué mais présent chaque semaine dans l'original
-// La bande grise alternée mesurée dans le fichier d'origine est très sombre
-// (proche de #414141) — illisible avec du texte noir par-dessus, donc
-// remplacée ici par un gris clair qui garde l'effet "lignes alternées" sans
-// perdre la lisibilité.
-const EXTRAS_COLOR_ROW_BAND = "#F5F5F4";
+const EXTRAS_COLOR_WEEKEND = "#DCEBFC"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil
+const EXTRAS_COLOR_HORS_EMPLOI = "#E7E5E4"; // jour hors période d'emploi (avant l'embauche / après la sortie)
 
 /** Port de "часы работы.numbers" — même grille visuelle (jours du mois en
  *  colonnes, mêmes couleurs mesurées dans le fichier d'origine) mais avec
- *  Jours/présence lus depuis le vrai pointage (jamais retapés), un БАНК
- *  qualité qui se reporte tout seul d'un mois sur l'autre, et les mêmes
- *  règles chaque mois au lieu d'une formule géante qui changeait de forme
- *  chaque mois. Les cases de présence sont en lecture seule ici — on les
- *  modifie dans "Par jour", pas ici, pour ne pas avoir deux façons de
- *  changer la même donnée. Alimente Jours dans Paie. */
+ *  un БАНК qualité qui se reporte tout seul d'un mois sur l'autre, et les
+ *  mêmes règles chaque mois au lieu d'une formule géante qui changeait de
+ *  forme chaque mois. Les cases de présence se cliquent directement ici —
+ *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
+ *  jour", pas une copie). Alimente Jours dans Paie. */
 function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -14862,8 +14858,8 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
   const [joursByEmployee, setJoursByEmployee] = useState<Record<string, number>>({});
   const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
-  // Présence par jour — lecture seule ici (source réelle : "Par jour"),
-  // juste pour recréer visuellement la grille jour-par-jour de l'original.
+  // Présence par jour — même table que "Par jour" (pointage_entries),
+  // modifiable directement ici en cliquant une case.
   const [attendanceByEmployee, setAttendanceByEmployee] = useState<Record<string, Record<string, boolean>>>({});
   const [dayColumns, setDayColumns] = useState<string[]>([]);
 
@@ -15028,6 +15024,44 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
     toast.success("Primes & Bonus enregistré — Jours mis à jour dans Paie");
   }
 
+  /** Coche/décoche un jour directement dans cette grille — écrit dans
+   *  pointage_entries tout de suite (pas besoin du bouton "Enregistrer",
+   *  qui ne concerne que les primes/bonus), sans toucher aux horaires
+   *  précis si "Par jour" en a déjà saisi pour ce jour. */
+  async function toggleAttendance(employee: PaieEmployee, dateIso: string) {
+    if (!employee.team_id) return;
+    const currentlyWorked = attendanceByEmployee[employee.id]?.[dateIso] ?? false;
+    const nextWorked = !currentlyWorked;
+    setAttendanceByEmployee((prev) => ({
+      ...prev,
+      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: nextWorked },
+    }));
+    setJoursByEmployee((prev) => {
+      const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
+      if (day === 0 || day === 6) return prev;
+      return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (nextWorked ? 1 : -1) };
+    });
+    const { error } = await supabase
+      .from("pointage_entries")
+      .upsert(
+        { work_date: dateIso, team_id: employee.team_id, employee_id: employee.id, is_absent: !nextWorked },
+        { onConflict: "work_date,employee_id" }
+      );
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      // Revert on failure.
+      setAttendanceByEmployee((prev) => ({
+        ...prev,
+        [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: currentlyWorked },
+      }));
+      setJoursByEmployee((prev) => {
+        const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
+        if (day === 0 || day === 6) return prev;
+        return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (nextWorked ? -1 : 1) };
+      });
+    }
+  }
+
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
     month: "long",
     year: "numeric",
@@ -15080,41 +15114,41 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="text-sm w-full border-separate" style={{ borderSpacing: 0, minWidth: `${1400 + dayColumns.length * 32}px` }}>
+          <table className="text-sm w-full border-separate" style={{ borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th colSpan={2} />
                 <th
                   colSpan={dayColumns.length}
-                  className="text-center font-bold py-1"
+                  className="text-center font-bold py-1 sticky top-0"
                   style={{ backgroundColor: EXTRAS_COLOR_MONTH_HEADER }}
                 >
                   {monthLabel}
                 </th>
-                <th colSpan={17} />
-              </tr>
-              <tr>
-                <th colSpan={2} />
-                {dayColumns.map((d) => (
-                  <th key={d} className="text-center text-xs font-normal py-1 px-1">
-                    {Number(d.slice(8, 10))}
-                  </th>
-                ))}
-                <th colSpan={17} />
+                <th colSpan={16} />
               </tr>
               <tr className="text-left text-stone-400 whitespace-nowrap">
-                <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="py-2 pr-4 sticky left-0 bg-white"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pr-2 text-stone-500"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
+                  const dow = new Date(d + "T00:00:00Z").getUTCDay();
+                  const isWeekend = dow === 0 || dow === 6;
+                  const isMonday = dow === 1;
                   const weekday = weekdayLabelFr(d);
                   const isMondayTuesday = weekday === "Lundi" || weekday === "Mardi";
+                  const bg = isMondayTuesday ? EXTRAS_COLOR_MONDAY_TUESDAY : isWeekend ? EXTRAS_COLOR_WEEKEND : undefined;
                   return (
                     <th
                       key={d}
-                      className="text-center text-xs font-normal px-1 whitespace-nowrap"
-                      style={isMondayTuesday ? { backgroundColor: EXTRAS_COLOR_MONDAY_TUESDAY } : undefined}
+                      title={weekday}
+                      className="text-center text-[10px] font-normal"
+                      style={{
+                        width: "1.4rem",
+                        backgroundColor: bg,
+                        borderLeft: isMonday ? "2px solid #a8a29e" : undefined,
+                      }}
                     >
-                      {weekday.slice(0, 3)}
+                      {Number(d.slice(8, 10))}
                     </th>
                   );
                 })}
@@ -15124,7 +15158,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 <th className="py-2 pr-4 font-bold" style={{ backgroundColor: EXTRAS_COLOR_PENALTY_HEADER, color: "#fff" }}>
                   <Bi fr="Штраф €" ru="Штраф €" />
                 </th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Raison" ru="Причина" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="Congés payés €" ru="Отпускные €" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
@@ -15155,24 +15188,43 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                   <Fragment key={e.id}>
                     {showGroupHeader && (
                       <tr>
-                        <td colSpan={19 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                        <td colSpan={18 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
                           {row.groupLabel}
                         </td>
                       </tr>
                     )}
-                    <tr
-                      className="border-t border-stone-100"
-                      style={idx % 2 === 1 ? { backgroundColor: EXTRAS_COLOR_ROW_BAND } : undefined}
-                    >
-                      <td className="py-2 pr-4 font-semibold whitespace-nowrap">
+                    <tr className={`border-t border-stone-100 ${row.colorClass}`}>
+                      <td className="py-2 pr-4 font-semibold whitespace-nowrap sticky left-0" style={{ backgroundColor: "inherit" }}>
                         <PaieEmployeeName employee={e} />
                       </td>
                       <td className="py-2 pr-2 text-stone-500">{jours}</td>
                       {dayColumns.map((d) => {
-                        const worked = attendanceByEmployee[e.id]?.[d];
+                        const outsideEmployment = (e.hire_date && d < e.hire_date) || (e.end_date && d > e.end_date);
+                        if (outsideEmployment) {
+                          return (
+                            <td
+                              key={d}
+                              className="text-center text-[10px]"
+                              style={{ backgroundColor: EXTRAS_COLOR_HORS_EMPLOI, color: "#a8a29e" }}
+                              title="Hors période d'emploi / Вне периода работы"
+                            >
+                              0
+                            </td>
+                          );
+                        }
+                        const worked = attendanceByEmployee[e.id]?.[d] ?? false;
                         return (
-                          <td key={d} className="text-center text-xs text-stone-500 px-1">
-                            {worked === undefined ? "" : worked ? "1" : "0"}
+                          <td key={d} className="text-center p-0">
+                            <button
+                              type="button"
+                              onClick={() => toggleAttendance(e, d)}
+                              title={worked ? "Présent — cliquer pour marquer absent" : "Absent — cliquer pour marquer présent"}
+                              className={`w-full text-[10px] py-2 ${
+                                worked ? "font-bold text-success-700 hover:bg-success-50" : "text-stone-300 hover:bg-stone-100"
+                              }`}
+                            >
+                              {worked ? "1" : "0"}
+                            </button>
                           </td>
                         );
                       })}
@@ -15206,22 +15258,34 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         />
                       </td>
                       <td className="py-2 pr-4">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "6rem" }}
-                          value={line.penaliteMontant}
-                          onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
-                        />
-                      </td>
-                      <td className="py-2 pr-4">
-                        <input
-                          type="text"
-                          className="input bg-warning-50/60"
-                          style={{ width: "10rem" }}
-                          value={line.penaliteRaison}
-                          onChange={(ev) => updateInput(e.id, "penaliteRaison", ev.target.value)}
-                        />
+                        <div className="relative" style={{ width: "6rem" }}>
+                          <input
+                            type="number"
+                            className="input bg-warning-50/60 w-full"
+                            value={line.penaliteMontant}
+                            onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const raison = window.prompt(
+                                "Raison du Штраф / Причина штрафа :",
+                                line.penaliteRaison
+                              );
+                              if (raison !== null) updateInput(e.id, "penaliteRaison", raison);
+                            }}
+                            title={
+                              line.penaliteRaison
+                                ? `Причина: ${line.penaliteRaison}`
+                                : "Ajouter une raison / Добавить причину"
+                            }
+                            className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${
+                              line.penaliteRaison ? "bg-warning-500 text-white" : "bg-stone-200 text-stone-500"
+                            }`}
+                          >
+                            <MessageSquare size={10} />
+                          </button>
+                        </div>
                       </td>
                       <td
                         className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
@@ -15339,7 +15403,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={19 + dayColumns.length} className="py-6 text-center text-stone-400">
+                  <td colSpan={18 + dayColumns.length} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
