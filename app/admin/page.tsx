@@ -4549,217 +4549,33 @@ type MedicalVisit = {
   } | null;
 };
 
-type PlanningStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour" | "exempte" | null;
-
-type PlanningJobRow = {
-  month: string;
-  team: string;
-  week: string;
-  dateFrom: string;
-  dateTo: string;
-  worker: string | null;
-  site: string | null;
-  notes: string[];
-  tags: string[];
-  power: string | null;
-  coords: string | null;
-  code: string | null;
-  workerEmployeeId: string | null;
-  workerMedicalStatus: PlanningStatus;
-};
-
-const PLANNING_STATUS_DOT: Record<Exclude<PlanningStatus, null>, string> = {
-  jamais_visite: "bg-error-500",
-  a_renouveler: "bg-warning-500",
-  visite_prevue: "bg-primary-500",
-  a_jour: "bg-success-500",
-  exempte: "bg-stone-400",
-};
-
-/** Pulls in the field team's own weekly planning (a hand-maintained Google
- *  Sheet — équipe × semaine, one site per team per week) so RH can see, next
- *  to who's where, whether that person's medical visit is up to date,
- *  without duplicating that into the sheet by hand. The sheet is loosely/
- *  manually formatted (not built for machine parsing), so a job spanning
- *  several weeks can come out mixed up in the week that falls mid-span —
- *  an accepted limitation rather than data to fully trust blindly. */
+/** Embeds the field team's own weekly planning — a hand-maintained Google
+ *  Sheet (équipe × semaine, one site per team per week) — directly, with
+ *  full edit access, instead of mirroring it into a read-only table. */
 function PlanningView() {
-  const [viewMode, setViewMode] = useState<"sheet" | "app">("sheet");
-  const [jobs, setJobs] = useState<PlanningJobRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  useEffect(() => {
-    if (viewMode !== "app") return;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch("/api/planning");
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error ?? "Erreur inconnue");
-          return;
-        }
-        setJobs(json.jobs ?? []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erreur de connexion");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, [refreshKey, viewMode]);
-
-  const byMonth = useMemo(() => {
-    const map = new Map<string, PlanningJobRow[]>();
-    for (const j of jobs) {
-      (map.get(j.month) ?? map.set(j.month, []).get(j.month)!).push(j);
-    }
-    return map;
-  }, [jobs]);
-
   return (
     <div>
       <div className="card mb-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="font-bold flex items-center">
-            <Bi fr="Planning chantiers" ru="План по объектам" />
-            <InfoNote
-              title="Planning"
-              text={
-                "«Google Sheets» — сама таблица (PLANNING), прямо здесь, с полным доступом на редактирование, как в самом Google. «Avec statuts médicaux» — версия попроще, но с цветной точкой у каждого работника: красный — не был на осмотре, оранжевый — пора обновить, синий — визит назначен, зелёный — всё в порядке (точки нет, если имя не удалось однозначно сопоставить с сотрудником). Этот режим подтягивает данные из таблицы заново при каждом открытии, изменить их можно только в самой таблице.\n\n" +
-                "Таблица в Google Sheets ведётся вручную для удобства чтения, а не как строгая база данных: если работа растягивается на несколько недель, текст может «расползтись» между ячейками не совсем аккуратно — в редких случаях неделя может показать смешанные данные."
-              }
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-lg border border-stone-200 overflow-hidden text-sm">
-              <button
-                className={`px-3 py-1.5 ${viewMode === "sheet" ? "bg-stone-900 text-white" : "bg-white text-stone-500 hover:bg-stone-50"}`}
-                onClick={() => setViewMode("sheet")}
-              >
-                Google Sheets
-              </button>
-              <button
-                className={`px-3 py-1.5 ${viewMode === "app" ? "bg-stone-900 text-white" : "bg-white text-stone-500 hover:bg-stone-50"}`}
-                onClick={() => setViewMode("app")}
-              >
-                <Bi fr="Avec statuts médicaux" ru="Со статусами медосмотра" />
-              </button>
-            </div>
-            {viewMode === "app" && (
-              <button className="btn btn-secondary text-sm" disabled={loading} onClick={() => setRefreshKey((k) => k + 1)}>
-                <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-                <Bi fr="Actualiser" ru="Обновить" />
-              </button>
-            )}
-          </div>
+        <div className="font-bold flex items-center">
+          <Bi fr="Planning chantiers" ru="План по объектам" />
+          <InfoNote
+            title="Planning"
+            text={
+              "Сама таблица (PLANNING) из Google Sheets, прямо здесь, с полным доступом на редактирование, как в самом Google.\n\n" +
+              "Таблица ведётся вручную для удобства чтения, а не как строгая база данных."
+            }
+          />
         </div>
       </div>
 
-      {viewMode === "sheet" ? (
-        <div className="card overflow-hidden p-0" style={{ overscrollBehavior: "contain" }}>
-          <iframe
-            src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit`}
-            className="w-full border-0"
-            style={{ height: "80vh", overscrollBehavior: "contain" }}
-            title="Planning chantiers — Google Sheets"
-          />
-        </div>
-      ) : (
-        <>
-          {error && (
-            <div className="card mb-4">
-              <p className="text-sm text-error-600">{error}</p>
-            </div>
-          )}
-
-      {loading ? (
-        <div className="card">
-          <SkeletonRows rows={6} cols={4} />
-        </div>
-      ) : byMonth.size === 0 ? (
-        <div className="card">
-          <EmptyState titleRu="Нет данных" description="Impossible de lire le planning." />
-        </div>
-      ) : (
-        Array.from(byMonth.entries()).map(([month, monthJobs]) => {
-          const weeks = Array.from(new Set(monthJobs.map((j) => j.week))).sort((a, b) => Number(a) - Number(b));
-          const teams = Array.from(new Set(monthJobs.map((j) => j.team))).sort((a, b) =>
-            a.localeCompare(b, undefined, { numeric: true })
-          );
-          const byTeamWeek = new Map<string, PlanningJobRow>();
-          monthJobs.forEach((j) => byTeamWeek.set(`${j.team}|${j.week}`, j));
-          return (
-            <div key={month} className="card mb-4 overflow-x-auto">
-              <p className="font-bold mb-3">{month}</p>
-              <table className="text-sm border-separate" style={{ borderSpacing: "6px" }}>
-                <thead>
-                  <tr>
-                    <th className="text-left text-stone-400 px-1">
-                      <Bi fr="Équipe" ru="Бригада" />
-                    </th>
-                    {weeks.map((w) => {
-                      const sample = monthJobs.find((j) => j.week === w);
-                      return (
-                        <th key={w} className="text-left text-stone-400 px-1 whitespace-nowrap">
-                          S{w}
-                          {sample && (
-                            <span className="block text-[10px] font-normal">
-                              {sample.dateFrom}–{sample.dateTo}
-                            </span>
-                          )}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {teams.map((team) => (
-                    <tr key={team}>
-                      <td className="font-bold align-top px-1 py-1">{team}</td>
-                      {weeks.map((w) => {
-                        const j = byTeamWeek.get(`${team}|${w}`);
-                        if (!j || (!j.worker && !j.site)) {
-                          return <td key={w} className="align-top px-1 py-1 text-stone-300">—</td>;
-                        }
-                        return (
-                          <td key={w} className="align-top px-1 py-1 rounded-lg bg-stone-50 min-w-[140px]">
-                            {j.worker && (
-                              <p className="font-semibold flex items-center gap-1.5">
-                                {j.workerMedicalStatus && (
-                                  <span
-                                    className={`inline-block h-2 w-2 rounded-full shrink-0 ${PLANNING_STATUS_DOT[j.workerMedicalStatus]}`}
-                                    title={MEDICAL_STATUS_LABELS[j.workerMedicalStatus].fr}
-                                  />
-                                )}
-                                {j.worker}
-                              </p>
-                            )}
-                            {j.site && <p className="text-stone-500 truncate">{j.site}</p>}
-                            {j.tags.length > 0 && (
-                              <p className="text-[10px] text-stone-400 truncate">{j.tags.join(" · ")}</p>
-                            )}
-                            {j.notes.length > 0 && (
-                              <p className="text-[10px] text-stone-400 italic truncate" title={j.notes.join(" / ")}>
-                                {j.notes.join(" / ")}
-                              </p>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        })
-      )}
-        </>
-      )}
+      <div className="card overflow-hidden p-0" style={{ overscrollBehavior: "contain" }}>
+        <iframe
+          src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit`}
+          className="w-full border-0"
+          style={{ height: "80vh", overscrollBehavior: "contain" }}
+          title="Planning chantiers — Google Sheets"
+        />
+      </div>
     </div>
   );
 }
