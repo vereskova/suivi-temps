@@ -914,7 +914,7 @@ export default function AdminPage() {
     );
     return (
       <main className="min-h-screen p-4 md:p-8">
-        <div className="mx-auto max-w-[1400px]">
+        <div className="mx-auto max-w-none">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
@@ -1020,7 +1020,7 @@ export default function AdminPage() {
     );
     return (
       <main className="min-h-screen p-4 md:p-8">
-        <div className="mx-auto max-w-[1400px]">
+        <div className="mx-auto max-w-none">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
@@ -1135,7 +1135,7 @@ export default function AdminPage() {
     );
     return (
       <main className="min-h-screen p-4 md:p-8">
-        <div className="mx-auto max-w-[1400px]">
+        <div className="mx-auto max-w-none">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
@@ -1218,7 +1218,7 @@ export default function AdminPage() {
   if (role === "commercial") {
     return (
       <main className="min-h-screen p-4 md:p-8">
-        <div className="mx-auto max-w-[1400px]">
+        <div className="mx-auto max-w-none">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-[var(--shadow-pop)]">
@@ -1283,7 +1283,7 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen p-4 md:p-8">
-      <div className="mx-auto max-w-[1400px]">
+      <div className="mx-auto max-w-none">
         <div className="flex items-center justify-between mb-6 md:mb-8">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
