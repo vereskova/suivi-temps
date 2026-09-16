@@ -178,3 +178,83 @@ export function computeNightPremium(heuresNuit: number, classification: string |
   const amount = Math.round(hourlyPremium * heuresNuit * 100) / 100;
   return { group, hourlyRateSmh, hourlyPremium, heuresNuit, amount };
 }
+
+/**
+ * Port de "часы работы.numbers" — logique confirmée avec l'utilisatrice sur
+ * le mois d'août 2026 (le mois de référence considéré fiable) :
+ *
+ *   Ставка за дни = Jours × Ставка + Штраф        (Штраф est un montant
+ *     signé — positif = ajustement, négatif = pénalité, comme dans la
+ *     feuille d'origine ; jamais une pénalité "positive" implicite)
+ *   Congés payés  = Jours × 9,9 %
+ *   Vacance pay   = jours de vacances × 55 €
+ *   Km cost       = km × 0,30 € + péage
+ *   Штрафы от контроля = Контроль 1 + 2 + 3
+ *   БАНК qualité (fin de mois) = MAX(0, БАНК qualité début − Штрафы от контроля)
+ *     — le "début" reprend automatiquement la fin du mois précédent pour ce
+ *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
+ *   Bonus qualité = БАНК qualité (fin) × 80 %
+ *   À payer (cette table) = Ставка_за_дни + BONUS équipe + Congés payés +
+ *     Vacance pay + Km cost + Bonus qualité
+ *
+ * Le BONUS d'équipe lui-même est calculé ailleurs (plusieurs facteurs, pas
+ * une formule de cette feuille) — saisi ici tel quel, jamais recalculé.
+ */
+export const CONGES_PAYES_RATE = 0.099;
+export const VACANCE_JOUR_RATE = 55;
+export const KM_RATE = 0.3;
+export const BANQUE_QUALITE_RATE = 0.8;
+
+export type PayrollExtrasInput = {
+  jours: number;
+  tauxJournalier: number;
+  bonusEquipe: number;
+  penaliteMontant: number;
+  vacanceJours: number;
+  km: number;
+  peage: number;
+  controle1: number;
+  controle2: number;
+  controle3: number;
+  /** Fin de БАНК qualité du mois précédent pour ce même employé, ou null s'il n'y en a pas (premier mois). */
+  banqueQualitePrecedente: number | null;
+  /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ — sinon laisser null. */
+  banqueAjustementManuel: number | null;
+};
+
+export type PayrollExtrasResult = {
+  salaireJours: number;
+  congesPayes: number;
+  vacancePay: number;
+  kmCost: number;
+  penalitesControle: number;
+  banqueQualiteDebut: number;
+  banqueQualiteFin: number;
+  bonusQualite: number;
+  aPayer: number;
+};
+
+export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasResult {
+  const salaireJours = input.jours * input.tauxJournalier + input.penaliteMontant;
+  const congesPayes = Math.round(input.jours * CONGES_PAYES_RATE * 100) / 100;
+  const vacancePay = Math.round(input.vacanceJours * VACANCE_JOUR_RATE * 100) / 100;
+  const kmCost = Math.round((input.km * KM_RATE + input.peage) * 100) / 100;
+  const penalitesControle = input.controle1 + input.controle2 + input.controle3;
+  const banqueQualiteDebut = input.banqueAjustementManuel ?? input.banqueQualitePrecedente ?? 0;
+  const banqueQualiteFin = Math.max(0, banqueQualiteDebut - penalitesControle);
+  const bonusQualite = Math.round(banqueQualiteFin * BANQUE_QUALITE_RATE * 100) / 100;
+  const aPayer =
+    Math.round((salaireJours + input.bonusEquipe + congesPayes + vacancePay + kmCost + bonusQualite) * 100) / 100;
+
+  return {
+    salaireJours: Math.round(salaireJours * 100) / 100,
+    congesPayes,
+    vacancePay,
+    kmCost,
+    penalitesControle,
+    banqueQualiteDebut,
+    banqueQualiteFin,
+    bonusQualite,
+    aPayer,
+  };
+}

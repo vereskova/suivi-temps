@@ -112,7 +112,14 @@ import {
   mapEmployeeRow,
 } from "@/lib/documents/mappers";
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
-import { computePayrollLine, computeNightPremium, DEFAULT_PAYROLL_PARAMS, PayrollParams } from "@/lib/payroll/compute";
+import {
+  computePayrollLine,
+  computeNightPremium,
+  computePayrollExtras,
+  DEFAULT_PAYROLL_PARAMS,
+  PayrollParams,
+  PayrollExtrasInput,
+} from "@/lib/payroll/compute";
 import {
   countWeekdaysBetween,
   countWorkingDaysInMonth,
@@ -415,6 +422,7 @@ type ViewKey =
   | "francais"
   | "dossier"
   | "paie"
+  | "paie_extras"
   | "dashboards"
   | "commercial"
   | "autoparc"
@@ -465,6 +473,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
       { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
+      { key: "paie_extras", label: "Primes & Bonus", labelRu: "Премии и бонусы", icon: Banknote },
       { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", icon: History },
     ],
   },
@@ -1263,6 +1272,7 @@ export default function AdminPage() {
             items: g.items.filter(
               (item) =>
                 item.key !== "paie" &&
+                item.key !== "paie_extras" &&
                 item.key !== "commercial" &&
                 item.key !== "autoparc" &&
                 item.key !== "audit"
@@ -1431,6 +1441,7 @@ export default function AdminPage() {
             {view === "francais" && <FrancaisView supabase={supabase} />}
             {view === "dossier" && <DossierView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
+            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
@@ -13467,6 +13478,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [showParams, setShowParams] = useState(false);
   const [holidayCountSelection, setHolidayCountSelection] = useState("0");
   const [joursTravaillesSelection, setJoursTravaillesSelection] = useState("0");
+  // Real attendance (pointage_entries), same computation as Primes & Bonus —
+  // used as the default for "Jours travaillés" instead of a calendar
+  // estimate, so it's not retyped from scratch here too.
+  const [joursReelsByEmployee, setJoursReelsByEmployee] = useState<Record<string, number>>({});
   const [salaireBaseNetBulkValue, setSalaireBaseNetBulkValue] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -13508,6 +13523,20 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       ]);
       setEmployees((emp as unknown as PaieEmployee[]) ?? []);
 
+      const { data: pointageForJours } = await supabase
+        .from("pointage_entries")
+        .select("employee_id, work_date, is_absent")
+        .gte("work_date", monthStart)
+        .lte("work_date", monthEnd);
+      const joursReels: Record<string, number> = {};
+      (pointageForJours ?? []).forEach((p) => {
+        if (p.is_absent) return;
+        const day = new Date(p.work_date + "T00:00:00Z").getUTCDay();
+        if (day === 0 || day === 6) return;
+        joursReels[p.employee_id] = (joursReels[p.employee_id] ?? 0) + 1;
+      });
+      setJoursReelsByEmployee(joursReels);
+
       if (paramRow) {
         setParamsRowId(paramRow.id);
         setParams({
@@ -13541,6 +13570,13 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       }
       setRunId(run?.id ?? null);
 
+      // Real pointage takes priority when it exists — only a genuinely
+      // unpointed employee falls back to the calendar estimate.
+      function defaultJours(employee: PaieEmployee): string {
+        const real = joursReels[employee.id];
+        return real !== undefined ? String(real) : defaultJoursTravaillesFor(employee, monthStart, monthEnd);
+      }
+
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
@@ -13563,11 +13599,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
             // over an old saved value, since it's a hard rule, not just a
             // suggested default. Otherwise: no saved line yet this month →
             // suggest a prorated day count instead of leaving it blank.
-            joursTravailles: isOfficeCore(employee)
-              ? "0"
-              : l
-                ? String(l.jours_travailles ?? 0)
-                : defaultJoursTravaillesFor(employee, monthStart, monthEnd),
+            joursTravailles: isOfficeCore(employee) ? "0" : l ? String(l.jours_travailles ?? 0) : defaultJours(employee),
           };
         });
         setInputs(map);
@@ -13577,9 +13609,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
           const employee = e as unknown as PaieEmployee;
           map[e.id] = {
             ...EMPTY_PAIE_LINE,
-            joursTravailles: isFopContractor(employee)
-              ? ""
-              : defaultJoursTravaillesFor(employee, monthStart, monthEnd),
+            joursTravailles: isFopContractor(employee) ? "" : defaultJours(employee),
           };
         });
         setInputs(map);
@@ -13604,9 +13634,10 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
       const next = { ...prev };
       employees.forEach((e) => {
         if (isFopContractor(e)) return;
+        const real = joursReelsByEmployee[e.id];
         next[e.id] = {
           ...(next[e.id] ?? EMPTY_PAIE_LINE),
-          joursTravailles: defaultJoursTravaillesFor(e, currentMonthStart, currentMonthEnd),
+          joursTravailles: real !== undefined ? String(real) : defaultJoursTravaillesFor(e, currentMonthStart, currentMonthEnd),
         };
       });
       return next;
@@ -14764,6 +14795,488 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   );
 }
 
+type ExtrasLineInput = {
+  tauxJournalier: string;
+  bonusEquipe: string;
+  penaliteMontant: string;
+  penaliteRaison: string;
+  vacanceJours: string;
+  km: string;
+  peage: string;
+  controle1: string;
+  controle2: string;
+  controle3: string;
+  banqueAjustementManuel: string;
+};
+
+const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
+  tauxJournalier: "",
+  bonusEquipe: "",
+  penaliteMontant: "",
+  penaliteRaison: "",
+  vacanceJours: "",
+  km: "",
+  peage: "",
+  controle1: "",
+  controle2: "",
+  controle3: "",
+  banqueAjustementManuel: "",
+};
+
+/** Explique en une phrase (FR + RU) le calcul d'un montant, avec les vrais
+ *  nombres de la ligne — affiché en title au survol, même esprit que la
+ *  prime de nuit dans Paie. */
+function extrasTooltip(label: string, formula: string, labelRu: string, formulaRu: string): string {
+  return `${label} : ${formula}\n\n${labelRu}: ${formulaRu}`;
+}
+
+/** Port de "часы работы.numbers" — remplace la grille de présence à plat
+ *  (0/1 par jour, formule différente chaque mois) par : Jours calculé depuis
+ *  le vrai pointage (jamais retapé), un БАНК qualité qui se reporte tout
+ *  seul d'un mois sur l'autre, et les mêmes règles chaque mois au lieu d'une
+ *  formule géante qui change de forme d'un mois à l'autre. Alimente Jours
+ *  dans Paie — un seul endroit où le saisir. */
+function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [employees, setEmployees] = useState<PaieEmployee[]>([]);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
+  const [joursByEmployee, setJoursByEmployee] = useState<Record<string, number>>({});
+  const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
+      const { start: monthStart, end: monthEnd } = monthRange(year, month);
+
+      const { data: emp } = await supabase
+        .from("employees")
+        .select(
+          "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net, classification"
+        )
+        .or(
+          `status.eq.active,` +
+            `and(status.eq.on_leave,end_date.gte.${monthIso}),` +
+            `and(status.eq.on_leave,end_date.is.null),` +
+            `and(status.eq.terminated,end_date.gte.${monthIso})`
+        )
+        .order("last_name");
+      setEmployees((emp as unknown as PaieEmployee[]) ?? []);
+
+      // Jours = vrai pointage, pas une case à cocher — jours ouvrés (lun-ven) non absents.
+      const { data: pointage } = await supabase
+        .from("pointage_entries")
+        .select("employee_id, work_date, is_absent")
+        .gte("work_date", monthStart)
+        .lte("work_date", monthEnd);
+      const jours: Record<string, number> = {};
+      (pointage ?? []).forEach((p) => {
+        if (p.is_absent) return;
+        const day = new Date(p.work_date + "T00:00:00Z").getUTCDay();
+        if (day === 0 || day === 6) return;
+        jours[p.employee_id] = (jours[p.employee_id] ?? 0) + 1;
+      });
+      setJoursByEmployee(jours);
+
+      let { data: run } = await supabase.from("payroll_runs").select("id").eq("month", monthIso).maybeSingle();
+      if (!run) {
+        const { data: created } = await supabase.from("payroll_runs").insert({ month: monthIso }).select("id").single();
+        run = created;
+      }
+      setRunId(run?.id ?? null);
+
+      // Mois précédent — reprend automatiquement le БАНК qualité de fin, et
+      // propose le même taux journalier par défaut (rarement changé).
+      const prevDate = new Date(Date.UTC(year, month - 2, 1));
+      const prevMonthIso = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}-01`;
+      const { data: prevRun } = await supabase.from("payroll_runs").select("id").eq("month", prevMonthIso).maybeSingle();
+      const prevByEmployee = new Map<string, { banque_qualite_fin: number; taux_journalier: number }>();
+      if (prevRun?.id) {
+        const { data: prevLines } = await supabase
+          .from("payroll_extras")
+          .select("employee_id, banque_qualite_fin, taux_journalier")
+          .eq("run_id", prevRun.id);
+        (prevLines ?? []).forEach((l) =>
+          prevByEmployee.set(l.employee_id, {
+            banque_qualite_fin: Number(l.banque_qualite_fin) || 0,
+            taux_journalier: Number(l.taux_journalier) || 0,
+          })
+        );
+      }
+      setBanquePrecedenteByEmployee(
+        Object.fromEntries(Array.from(prevByEmployee.entries()).map(([id, v]) => [id, v.banque_qualite_fin]))
+      );
+
+      if (run?.id) {
+        const { data: lines } = await supabase.from("payroll_extras").select("*").eq("run_id", run.id);
+        const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
+        const map: Record<string, ExtrasLineInput> = {};
+        (emp ?? []).forEach((e) => {
+          const l = savedByEmployee.get(e.id);
+          const prev = prevByEmployee.get(e.id);
+          map[e.id] = {
+            tauxJournalier: l ? String(l.taux_journalier ?? "") : prev?.taux_journalier ? String(prev.taux_journalier) : "",
+            bonusEquipe: l?.bonus_equipe ? String(l.bonus_equipe) : "",
+            penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
+            penaliteRaison: l?.penalite_raison ?? "",
+            vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
+            km: l?.km ? String(l.km) : "",
+            peage: l?.peage ? String(l.peage) : "",
+            controle1: l?.controle_1 ? String(l.controle_1) : "",
+            controle2: l?.controle_2 ? String(l.controle_2) : "",
+            controle3: l?.controle_3 ? String(l.controle_3) : "",
+            banqueAjustementManuel: l?.banque_ajustement_manuel != null ? String(l.banque_ajustement_manuel) : "",
+          };
+        });
+        setInputs(map);
+      }
+      setLoading(false);
+    }
+    load();
+  }, [supabase, year, month]);
+
+  function updateInput(employeeId: string, field: keyof ExtrasLineInput, value: string) {
+    setInputs((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_EXTRAS_LINE), [field]: value } }));
+  }
+
+  const computed = useMemo(() => {
+    const map: Record<string, ReturnType<typeof computePayrollExtras>> = {};
+    employees.forEach((e) => {
+      if (isFopContractor(e)) return;
+      const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+      const extrasInput: PayrollExtrasInput = {
+        jours: joursByEmployee[e.id] ?? 0,
+        tauxJournalier: Number(line.tauxJournalier) || 0,
+        bonusEquipe: Number(line.bonusEquipe) || 0,
+        penaliteMontant: Number(line.penaliteMontant) || 0,
+        vacanceJours: Number(line.vacanceJours) || 0,
+        km: Number(line.km) || 0,
+        peage: Number(line.peage) || 0,
+        controle1: Number(line.controle1) || 0,
+        controle2: Number(line.controle2) || 0,
+        controle3: Number(line.controle3) || 0,
+        banqueQualitePrecedente: banquePrecedenteByEmployee[e.id] ?? null,
+        banqueAjustementManuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
+      };
+      map[e.id] = computePayrollExtras(extrasInput);
+    });
+    return map;
+  }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee]);
+
+  const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
+
+  async function save() {
+    if (!runId) return;
+    setSaving(true);
+    const rows = employees
+      .filter((e) => !isFopContractor(e))
+      .map((e) => {
+        const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+        const c = computed[e.id];
+        return {
+          run_id: runId,
+          employee_id: e.id,
+          taux_journalier: Number(line.tauxJournalier) || 0,
+          bonus_equipe: Number(line.bonusEquipe) || 0,
+          penalite_montant: Number(line.penaliteMontant) || 0,
+          penalite_raison: line.penaliteRaison || null,
+          vacance_jours: Number(line.vacanceJours) || 0,
+          km: Number(line.km) || 0,
+          peage: Number(line.peage) || 0,
+          controle_1: Number(line.controle1) || 0,
+          controle_2: Number(line.controle2) || 0,
+          controle_3: Number(line.controle3) || 0,
+          banque_ajustement_manuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
+          banque_qualite_fin: c?.banqueQualiteFin ?? 0,
+        };
+      });
+    const { error } = await supabase.from("payroll_extras").upsert(rows, { onConflict: "run_id,employee_id" });
+    setSaving(false);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    toast.success("Primes & Bonus enregistré — Jours mis à jour dans Paie");
+  }
+
+  const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="font-bold flex items-center">
+            <Bi fr="Primes & Bonus" ru="Премии и бонусы" />
+            <InfoNote
+              title="Primes & Bonus"
+              text={
+                "Перенос логики из старой таблицы «часы работы» — но с одной версией правил на все месяцы (в старой таблице формула менялась почти каждый месяц), а Jours берётся из реальных отметок присутствия (Par jour), а не вводится руками.\n\n" +
+                "Ставка за дни = Jours × Ставка + Штраф (Штраф — со знаком: минус для вычета, плюс для доплаты).\n" +
+                "Congés payés = Jours × 9,9%. Vacance pay = дни отпуска × 55€. Km cost = км × 0,30€ + дорожные расходы.\n" +
+                "Штрафы от контроля = сумма Контроль 1+2+3. БАНК качества = прошлый банк (переносится сам с прошлого месяца) минус эти штрафы, не ниже 0. Бонус за качество = БАНК качества × 80%.\n" +
+                "BONUS — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом.\n\n" +
+                "Итог (Jours) автоматически передаётся в раздел «Paie»."
+              }
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <select className="input" style={{ width: "auto" }} value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {new Date(Date.UTC(2000, m - 1, 1)).toLocaleDateString("fr-FR", { month: "long" })}
+                </option>
+              ))}
+            </select>
+            <select className="input" style={{ width: "auto" }} value={year} onChange={(e) => setYear(Number(e.target.value))}>
+              {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <button className="btn btn-primary text-sm" disabled={saving || loading} onClick={save}>
+              {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-stone-400 mt-2 capitalize">{monthLabel}</p>
+      </div>
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={4} />
+        </div>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="text-sm w-full" style={{ minWidth: "1400px" }}>
+            <thead>
+              <tr className="text-left text-stone-400 whitespace-nowrap">
+                <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="py-2 pr-4 text-stone-500"><Bi fr="Jours" ru="Дней" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Ставка €/j" ru="Ставка €/день" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Salaire jours €" ru="Оплата за дни €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="BONUS équipe €" ru="Бонус команды €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Штраф €" ru="Штраф €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Raison" ru="Причина" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Congés payés €" ru="Отпускные €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Km" ru="Км" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Péage €" ru="Дорога €" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Km cost €" ru="Стоимость км €" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Contrôle 1" ru="Контроль 1" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Contrôle 2" ru="Контроль 2" /></th>
+                <th className="py-2 pr-4 text-warning-700"><Bi fr="Contrôle 3" ru="Контроль 3" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="БАНК qualité €" ru="БАНК качества €" /></th>
+                <th className="py-2 pr-4 text-primary-600"><Bi fr="Bonus qualité €" ru="Бонус качества €" /></th>
+                <th className="py-2 pr-4 font-bold text-stone-700"><Bi fr="À payer €" ru="К оплате €" /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupedRows.map((row, idx) => {
+                const e = row.employee;
+                if (isFopContractor(e)) return null;
+                const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+                const c = computed[e.id];
+                const jours = joursByEmployee[e.id] ?? 0;
+                const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
+                return (
+                  <Fragment key={e.id}>
+                    {showGroupHeader && (
+                      <tr>
+                        <td colSpan={19} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                          {row.groupLabel}
+                        </td>
+                      </tr>
+                    )}
+                    <tr className={`border-t border-stone-100 ${row.colorClass}`}>
+                      <td className="py-2 pr-4 font-semibold whitespace-nowrap">
+                        <PaieEmployeeName employee={e} />
+                      </td>
+                      <td className="py-2 pr-4 text-stone-500">{jours}</td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "6rem" }}
+                          value={line.tauxJournalier}
+                          onChange={(ev) => updateInput(e.id, "tauxJournalier", ev.target.value)}
+                        />
+                      </td>
+                      <td
+                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        title={extrasTooltip(
+                          "Salaire jours",
+                          `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`,
+                          "Оплата за дни",
+                          `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.salaireJours ?? 0).toFixed(2)} €
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "6rem" }}
+                          value={line.bonusEquipe}
+                          onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "6rem" }}
+                          value={line.penaliteMontant}
+                          onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="text"
+                          className="input bg-warning-50/60"
+                          style={{ width: "10rem" }}
+                          value={line.penaliteRaison}
+                          onChange={(ev) => updateInput(e.id, "penaliteRaison", ev.target.value)}
+                        />
+                      </td>
+                      <td
+                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        title={extrasTooltip(
+                          "Congés payés",
+                          `${jours}j × 9,9% = ${(c?.congesPayes ?? 0).toFixed(2)}€`,
+                          "Отпускные",
+                          `${jours}дн × 9,9% = ${(c?.congesPayes ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.congesPayes ?? 0).toFixed(2)} €
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "5rem" }}
+                          value={line.vacanceJours}
+                          onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
+                        />
+                      </td>
+                      <td
+                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        title={extrasTooltip(
+                          "Vacance pay",
+                          `${Number(line.vacanceJours) || 0}j × 55€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`,
+                          "Оплата отпуска",
+                          `${Number(line.vacanceJours) || 0}дн × 55€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.vacancePay ?? 0).toFixed(2)} €
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "5rem" }}
+                          value={line.km}
+                          onChange={(ev) => updateInput(e.id, "km", ev.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "5rem" }}
+                          value={line.peage}
+                          onChange={(ev) => updateInput(e.id, "peage", ev.target.value)}
+                        />
+                      </td>
+                      <td
+                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        title={extrasTooltip(
+                          "Km cost",
+                          `${Number(line.km) || 0}km × 0,30€ + péage(${Number(line.peage) || 0}€) = ${(c?.kmCost ?? 0).toFixed(2)}€`,
+                          "Стоимость км",
+                          `${Number(line.km) || 0}км × 0,30€ + дорога(${Number(line.peage) || 0}€) = ${(c?.kmCost ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.kmCost ?? 0).toFixed(2)} €
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "5rem" }}
+                          value={line.controle1}
+                          onChange={(ev) => updateInput(e.id, "controle1", ev.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "5rem" }}
+                          value={line.controle2}
+                          onChange={(ev) => updateInput(e.id, "controle2", ev.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-4">
+                        <input
+                          type="number"
+                          className="input bg-warning-50/60"
+                          style={{ width: "5rem" }}
+                          value={line.controle3}
+                          onChange={(ev) => updateInput(e.id, "controle3", ev.target.value)}
+                        />
+                      </td>
+                      <td
+                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        title={extrasTooltip(
+                          "БАНК qualité",
+                          `max(0, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
+                          "БАНК качества",
+                          `макс(0, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.banqueQualiteFin ?? 0).toFixed(2)} €
+                      </td>
+                      <td
+                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        title={extrasTooltip(
+                          "Bonus qualité",
+                          `БАНК качества(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
+                          "Бонус качества",
+                          `БАНК качества(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.bonusQualite ?? 0).toFixed(2)} €
+                      </td>
+                      <td className="py-2 pr-4 font-bold text-stone-700">{(c?.aPayer ?? 0).toFixed(2)} €</td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+              {employees.length === 0 && (
+                <tr>
+                  <td colSpan={19} className="py-6 text-center text-stone-400">
+                    Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Vue "Dossier salarié" — documents par type, avec péremption et périodes d'embauche ──
 type DossierEmployee = {
