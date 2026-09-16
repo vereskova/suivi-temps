@@ -8624,9 +8624,10 @@ function isSinaoStub(quoteId: string | null): boolean {
   return Boolean(quoteId?.startsWith("STUB-"));
 }
 
+/** Juste le nombre — la colonne "Délai prévu" précise elle-même que c'est en jours. */
 function formatJoursLabel(jours: number): string {
   const rounded = Math.round(jours * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} j`;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}`;
 }
 
 /** Une checklist qui contient "Pose SI" et/ou "Pose PPV" EST ce qui fait
@@ -10147,19 +10148,34 @@ function CommercialView({
             </div>
 
             <div className="hidden md:block overflow-x-auto -mx-1">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
+                <colgroup>
+                  <col style={{ width: "40px" }} />
+                  <col />
+                  <col style={{ width: "130px" }} />
+                  <col style={{ width: "110px" }} />
+                  <col style={{ width: "80px" }} />
+                  <col style={{ width: "110px" }} />
+                  <col style={{ width: "110px" }} />
+                  <col style={{ width: "90px" }} />
+                  <col style={{ width: "120px" }} />
+                  <col style={{ width: "40px" }} />
+                </colgroup>
                 <thead>
                   <tr className="text-left text-stone-400 whitespace-nowrap text-xs">
-                    <th className="py-2 pl-1 pr-2 w-8"></th>
+                    <th className="py-2 pl-1 pr-2"></th>
                     <th className="py-2 pr-3">Tâche</th>
-                    <th className="py-2 pr-3">Délai prévu</th>
+                    <th className="py-2 pr-3">
+                      Délai prévu
+                      <span className="block font-normal normal-case text-stone-300">en jours</span>
+                    </th>
                     <th className="py-2 pr-3">Unité</th>
                     <th className="py-2 pr-3 text-right">Qté</th>
                     <th className="py-2 pr-3 text-right">P.U. HT €</th>
                     <th className="py-2 pr-3 text-right">Total HT €</th>
                     <th className="py-2 pr-3">TVA</th>
                     <th className="py-2 pr-3 text-right">Total TTC €</th>
-                    <th className="py-2 pr-1 w-8"></th>
+                    <th className="py-2 pr-1"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -10224,7 +10240,7 @@ function CommercialView({
                                 <td className={`py-1.5 pr-3 rounded-lg ${missingDelai ? "bg-warning-50" : ""}`}>
                                   <input
                                     type="text"
-                                    className="input input-ghost text-xs py-0.5 px-1 w-[9rem]"
+                                    className="input input-ghost text-xs py-0.5 px-1 w-full"
                                     placeholder="ex. 3 j / 4 h"
                                     defaultValue={item.delai_prevu ?? ""}
                                     key={`delai-${item.id}-${item.delai_prevu ?? ""}`}
@@ -10233,7 +10249,7 @@ function CommercialView({
                                 </td>
                                 <td className="py-1.5 pr-3">
                                   <select
-                                    className="input input-ghost text-xs py-0.5 px-1 w-24"
+                                    className="input input-ghost text-xs py-0.5 px-1 w-full"
                                     defaultValue={item.unite ?? ""}
                                     key={`unite-${item.id}-${item.unite ?? ""}`}
                                     onChange={(e) => updateItemUnite(item.id, e.target.value)}
@@ -10250,7 +10266,7 @@ function CommercialView({
                                   <input
                                     type="number"
                                     step="0.01"
-                                    className="input input-ghost text-sm py-1.5 px-2 w-16 text-right"
+                                    className="input input-ghost text-sm py-1.5 px-2 w-full text-right"
                                     defaultValue={item.quantite}
                                     key={`qte-${item.id}-${item.quantite}`}
                                     onBlur={(e) => updateItemQuantite(item, e.target.value)}
@@ -10260,7 +10276,7 @@ function CommercialView({
                                   <input
                                     type="number"
                                     step="0.01"
-                                    className="input input-ghost text-sm font-semibold py-1.5 px-2 w-28 text-right"
+                                    className="input input-ghost text-sm font-semibold py-1.5 px-2 w-full text-right"
                                     placeholder="0.00"
                                     defaultValue={item.price_ht ?? ""}
                                     key={`ht-${item.id}-${item.price_ht ?? ""}`}
@@ -10281,7 +10297,7 @@ function CommercialView({
                                 </td>
                                 <td className="py-1.5 pr-3">
                                   <select
-                                    className="input input-ghost text-xs py-0.5 px-1 w-16"
+                                    className="input input-ghost text-xs py-0.5 px-1 w-full"
                                     defaultValue={item.vat_rate}
                                     key={`vat-${item.id}-${item.vat_rate}`}
                                     onChange={(e) => updateItemVatRate(item, e.target.value)}
