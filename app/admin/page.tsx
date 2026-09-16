@@ -15181,26 +15181,26 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="text-sm border-separate" style={{ borderSpacing: 0, tableLayout: "fixed", width: `${1320 + dayColumns.length * 20}px` }}>
+          <table className="text-sm border-separate" style={{ borderSpacing: 0, tableLayout: "fixed", width: `${1366 + dayColumns.length * 20}px` }}>
             <colgroup>
               <col style={{ width: "140px" }} />
               <col style={{ width: "45px" }} />
               {dayColumns.map((d) => (
                 <col key={d} style={{ width: "20px" }} />
               ))}
+              <col style={{ width: "74px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "84px" }} />
+              <col style={{ width: "84px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "62px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "62px" }} />
               <col style={{ width: "70px" }} />
               <col style={{ width: "80px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "55px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "55px" }} />
-              <col style={{ width: "65px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "55px" }} />
-              <col style={{ width: "55px" }} />
-              <col style={{ width: "55px" }} />
+              <col style={{ width: "60px" }} />
+              <col style={{ width: "60px" }} />
+              <col style={{ width: "60px" }} />
               <col style={{ width: "80px" }} />
               <col style={{ width: "80px" }} />
               <col style={{ width: "85px" }} />
@@ -15280,7 +15280,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       </tr>
                     )}
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
-                      <td className="py-2 pr-4 font-semibold whitespace-nowrap sticky left-0" style={{ backgroundColor: "inherit" }}>
+                      <td className="py-2 pr-4 font-semibold truncate">
                         <PaieEmployeeName employee={e} />
                       </td>
                       <td className="py-2 pr-2 text-stone-500">{jours}</td>
@@ -15346,11 +15346,10 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           </td>
                         );
                       })}
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "6rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.tauxJournalier}
                           onChange={(ev) => updateInput(e.id, "tauxJournalier", ev.target.value)}
                         />
@@ -15366,20 +15365,19 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       >
                         {(c?.salaireJours ?? 0).toFixed(2)} €
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "6rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.bonusEquipe}
                           onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
                         />
                       </td>
-                      <td className="py-2 pr-4">
-                        <div className="relative" style={{ width: "6rem" }}>
+                      <td className="py-2 pr-2">
+                        <div className="relative">
                           <input
                             type="number"
-                            className="input bg-warning-50/60 w-full"
+                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                             value={line.penaliteMontant}
                             onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
                           />
@@ -15416,11 +15414,10 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       >
                         {(c?.congesPayes ?? 0).toFixed(2)} €
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "5rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.vacanceJours}
                           onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
                         />
@@ -15436,20 +15433,18 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       >
                         {(c?.vacancePay ?? 0).toFixed(2)} €
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "5rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.km}
                           onChange={(ev) => updateInput(e.id, "km", ev.target.value)}
                         />
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "5rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.peage}
                           onChange={(ev) => updateInput(e.id, "peage", ev.target.value)}
                         />
@@ -15465,29 +15460,26 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       >
                         {(c?.kmCost ?? 0).toFixed(2)} €
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "5rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.controle1}
                           onChange={(ev) => updateInput(e.id, "controle1", ev.target.value)}
                         />
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "5rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.controle2}
                           onChange={(ev) => updateInput(e.id, "controle2", ev.target.value)}
                         />
                       </td>
-                      <td className="py-2 pr-4">
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
-                          className="input bg-warning-50/60"
-                          style={{ width: "5rem" }}
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.controle3}
                           onChange={(ev) => updateInput(e.id, "controle3", ev.target.value)}
                         />
