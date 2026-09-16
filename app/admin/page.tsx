@@ -2488,6 +2488,21 @@ function MoisView({
     );
   }, [rows]);
 
+  // Une couleur par équipe (même palette que Paie/Primes & Bonus), pour
+  // repérer les brigades d'un coup d'œil dans une liste triée par nom
+  // plutôt que groupée par équipe.
+  const teamColorByName = useMemo(() => {
+    const names = new Set<string>();
+    sorted.forEach((e) => {
+      if (e.teams?.name) names.add(e.teams.name);
+    });
+    terminatedRows.forEach((r) => {
+      if (r.teamName && r.teamName !== "—") names.add(r.teamName);
+    });
+    const sortedNames = Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return new Map(sortedNames.map((name, i) => [name, PAIE_TEAM_COLOR_PALETTE[i % PAIE_TEAM_COLOR_PALETTE.length]]));
+  }, [sorted, terminatedRows]);
+
   return (
     <div>
       <div className="mb-3 font-bold">
@@ -2542,8 +2557,12 @@ function MoisView({
         <div className="md:hidden space-y-1.5">
           {sorted.map((e) => {
             const total = totalsByEmployee.get(e.id);
+            const colorClass = e.teams?.name ? teamColorByName.get(e.teams.name) ?? "" : "";
             return (
-              <div key={e.id} className="rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2">
+              <div
+                key={e.id}
+                className={`rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2 ${colorClass}`}
+              >
                 <div className="min-w-0">
                   <p className="font-semibold truncate">{employeeName(e)}</p>
                   <p className="text-xs text-stone-400 truncate">{e.teams?.name ?? "—"}</p>
@@ -2572,8 +2591,9 @@ function MoisView({
             <tbody>
               {sorted.map((e) => {
                 const total = totalsByEmployee.get(e.id);
+                const colorClass = e.teams?.name ? teamColorByName.get(e.teams.name) ?? "" : "";
                 return (
-                  <tr key={e.id} className="border-t border-stone-100">
+                  <tr key={e.id} className={`border-t border-stone-100 ${colorClass}`}>
                     <td className="py-2 pr-4 font-semibold">
                       {employeeName(e)}
                     </td>
@@ -2616,7 +2636,7 @@ function MoisView({
               {terminatedRows.map((r, i) => (
                 <div
                   key={i}
-                  className="rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2"
+                  className={`rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2 ${teamColorByName.get(r.teamName) ?? ""}`}
                 >
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{employeeName(r)}</p>
@@ -2646,7 +2666,7 @@ function MoisView({
                 </thead>
                 <tbody>
                   {terminatedRows.map((r, i) => (
-                    <tr key={i} className="border-t border-stone-100">
+                    <tr key={i} className={`border-t border-stone-100 ${teamColorByName.get(r.teamName) ?? ""}`}>
                       <td className="py-2 pr-4 font-semibold">{employeeName(r)}</td>
                       <td className="py-2 pr-4 text-stone-500">{r.teamName}</td>
                       <td className="py-2 pr-4 text-stone-500">
@@ -8690,6 +8710,32 @@ function computeDelaiFills(
   return fills;
 }
 
+/** Unité de facturation par défaut pour les lignes de checklist connues —
+ *  reprend telles quelles les unités de la feuille "Normes de travail"
+ *  (Checklists_Modeles_Clients_VLADIS.numbers) : m² pour bac acier/fibro-
+ *  ciment/sécurité collective/filet sous bac, pièce pour le démontage
+ *  panneau, kWc pour Pose SI/PPV et la main-d'œuvre ombrière, jour pour la
+ *  main-d'œuvre standard, ml pour Tirage AC (norme en mètres). Fournis
+ *  ENGIN/BAC Acier n'ont pas de norme dédiée dans cette feuille — forfait,
+ *  comme une fourniture livrée en une fois. Une ligne qui ne correspond à
+ *  aucun de ces libellés connus (venue d'"Autres", ou personnalisée) reste
+ *  null — jamais devinée. */
+function defaultUniteForLabel(label: string, ombriere: boolean): string | null {
+  const l = label.toLowerCase().trim();
+  if (/main.?d.?(œuvre|oeuvre)/.test(l)) return ombriere ? "kWc" : "jour";
+  if (/tirage/.test(l)) return "ml";
+  if (/pose\s*si\b/.test(l)) return "kWc";
+  if (/pose\s*ppv\b/.test(l)) return "kWc";
+  if (/^d[ée]pose\s+bac\s+acier/.test(l)) return "m²";
+  if (/^pose\s+bac\s+acier/.test(l)) return "m²";
+  if (/fibrociment/.test(l)) return "m²";
+  if (/d[ée]monte?r?\s*panneau/.test(l)) return "pièce";
+  if (/s[ée]curit[ée]\s+colle?ctive/.test(l)) return "m²";
+  if (/^pose\b.*fille\s+sur\s+face/.test(l)) return "m²";
+  if (/^fournis\b/.test(l)) return "forfait";
+  return null;
+}
+
 type DurationNormRow = {
   id: string;
   code: string;
@@ -9210,6 +9256,7 @@ function CommercialView({
               label: t.label,
               origin: "template",
               status: "active",
+              unite: defaultUniteForLabel(t.label, ombriere),
             }))
           )
           .select("id, label");
@@ -9433,6 +9480,26 @@ function CommercialView({
         fills.map((f) => supabase.from("commercial_case_items").update({ delai_prevu: f.delai_prevu }).eq("id", f.id))
       );
     }
+
+    // Complète aussi "Unité" pour les lignes connues qui n'en ont pas encore
+    // — jamais une ligne déjà renseignée à la main (choix délibéré, on ne
+    // l'écrase pas comme le délai ci-dessus).
+    const uniteFills = items
+      .filter((i) => !i.unite)
+      .map((i) => ({ id: i.id, unite: defaultUniteForLabel(i.label, ombriere) }))
+      .filter((f): f is { id: string; unite: string } => f.unite != null);
+    if (uniteFills.length > 0) {
+      setItems((prev) =>
+        prev.map((i) => {
+          const f = uniteFills.find((x) => x.id === i.id);
+          return f ? { ...i, unite: f.unite } : i;
+        })
+      );
+      await Promise.all(
+        uniteFills.map((f) => supabase.from("commercial_case_items").update({ unite: f.unite }).eq("id", f.id))
+      );
+    }
+
     toast.success(
       fills.length > 0
         ? `Délais appliqués au dossier et à ${fills.length} ligne(s) de la checklist.`
@@ -10355,10 +10422,11 @@ function CommercialView({
                 {items.length > 0 && (
                   <tfoot>
                     <tr className="border-t-2 border-stone-200 font-bold">
-                      <td colSpan={3} className="pt-6 pb-3 pr-3 text-base">
+                      <td colSpan={6} className="pt-6 pb-3 pr-3 text-base">
                         TOTAL <span className="font-normal opacity-60">(actifs)</span>
                       </td>
                       <td className="pt-6 pb-3 pr-3 text-right text-2xl">{activeTotals.ht.toFixed(2)} €</td>
+                      <td></td>
                       <td className="pt-6 pb-3 pr-3 text-right text-2xl">{activeTotals.ttc.toFixed(2)} €</td>
                       <td></td>
                     </tr>
