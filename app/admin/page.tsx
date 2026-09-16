@@ -14836,9 +14836,28 @@ const EXTRAS_COLOR_MONTH_HEADER = "#F9CAA5"; // en-tête du mois
 const EXTRAS_COLOR_PENALTY_HEADER = "#FF0000"; // Штраф
 const EXTRAS_COLOR_BANK_HEADER = "#EDFF00"; // БАНК качества
 const EXTRAS_COLOR_BANK2_HEADER = "#FC847A"; // Бонус qualité
-const EXTRAS_COLOR_MONDAY_TUESDAY = "#FFFF0B"; // colonnes Lundi/Mardi — inexpliqué mais présent chaque semaine dans l'original
-const EXTRAS_COLOR_WEEKEND = "#DCEBFC"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil
+const EXTRAS_COLOR_WEEKEND = "#FFFF0B"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil, sur toute la hauteur de la colonne
 const EXTRAS_COLOR_HORS_EMPLOI = "#E7E5E4"; // jour hors période d'emploi (avant l'embauche / après la sortie)
+
+/** Codes courts affichés dans la case (20px de large) — le libellé complet reste dans le title au survol. */
+function absenceShortCode(code: string): string {
+  switch (code) {
+    case "maladie":
+      return "M";
+    case "cp":
+      return "CP";
+    case "rtt":
+      return "RTT";
+    case "sans_solde":
+      return "SS";
+    case "ferie":
+      return "F";
+    case "autre":
+      return "A";
+    default:
+      return code.slice(0, 2).toUpperCase();
+  }
+}
 
 /** Port de "часы работы.numbers" — même grille visuelle (jours du mois en
  *  colonnes, mêmes couleurs mesurées dans le fichier d'origine) mais avec
@@ -14859,9 +14878,13 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   const [joursByEmployee, setJoursByEmployee] = useState<Record<string, number>>({});
   const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
   // Présence par jour — même table que "Par jour" (pointage_entries),
-  // modifiable directement ici en cliquant une case.
-  const [attendanceByEmployee, setAttendanceByEmployee] = useState<Record<string, Record<string, boolean>>>({});
+  // modifiable directement ici (choix dans chaque case : présent, absent,
+  // ou un type précis — maladie, congé payé, etc.).
+  const [attendanceByEmployee, setAttendanceByEmployee] = useState<
+    Record<string, Record<string, { worked: boolean; absenceCode: string | null }>>
+  >({});
   const [dayColumns, setDayColumns] = useState<string[]>([]);
+  const [absenceTypes, setAbsenceTypes] = useState<{ id: string; code: string; label: string }[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -14885,16 +14908,23 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         .order("last_name");
       setEmployees((emp as unknown as PaieEmployee[]) ?? []);
 
+      const { data: absTypes } = await supabase.from("absence_types").select("id, code, label").order("label");
+      setAbsenceTypes(absTypes ?? []);
+      const absenceCodeById = new Map((absTypes ?? []).map((t) => [t.id, t.code]));
+
       // Jours = vrai pointage, pas une case à cocher — jours ouvrés (lun-ven) non absents.
       const { data: pointage } = await supabase
         .from("pointage_entries")
-        .select("employee_id, work_date, is_absent")
+        .select("employee_id, work_date, is_absent, absence_type_id")
         .gte("work_date", monthStart)
         .lte("work_date", monthEnd);
       const jours: Record<string, number> = {};
-      const attendance: Record<string, Record<string, boolean>> = {};
+      const attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null }>> = {};
       (pointage ?? []).forEach((p) => {
-        (attendance[p.employee_id] ?? (attendance[p.employee_id] = {}))[p.work_date] = !p.is_absent;
+        (attendance[p.employee_id] ?? (attendance[p.employee_id] = {}))[p.work_date] = {
+          worked: !p.is_absent,
+          absenceCode: p.is_absent ? (absenceCodeById.get(p.absence_type_id ?? "") ?? null) : null,
+        };
         if (p.is_absent) return;
         const day = new Date(p.work_date + "T00:00:00Z").getUTCDay();
         if (day === 0 || day === 6) return;
@@ -14989,6 +15019,8 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee]);
 
   const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
+  const absenceTypeIdByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.id])), [absenceTypes]);
+  const absenceTypeLabelByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.label])), [absenceTypes]);
 
   async function save() {
     if (!runId) return;
@@ -15024,27 +15056,62 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
     toast.success("Primes & Bonus enregistré — Jours mis à jour dans Paie");
   }
 
-  /** Coche/décoche un jour directement dans cette grille — écrit dans
-   *  pointage_entries tout de suite (pas besoin du bouton "Enregistrer",
-   *  qui ne concerne que les primes/bonus), sans toucher aux horaires
-   *  précis si "Par jour" en a déjà saisi pour ce jour. */
-  async function toggleAttendance(employee: PaieEmployee, dateIso: string) {
+  /** Change le statut d'un jour directement dans cette grille — écrit dans
+   *  pointage_entries tout de suite (pas besoin du bouton "Enregistrer", qui
+   *  ne concerne que les primes/bonus), sans toucher aux horaires précis si
+   *  "Par jour" en a déjà saisi pour ce jour. `value` vient du <select> de la
+   *  case : "present", "absent", "abs:<code>" (type d'absence précis) ou
+   *  "depart" (fin de contrat à partir de ce jour — met à jour employees
+   *  directement plutôt que pointage_entries, ce qui grise automatiquement
+   *  ce jour et tous les suivants via `outsideEmployment`). */
+  async function setDayStatus(employee: PaieEmployee, dateIso: string, value: string) {
+    if (value === "depart") {
+      const ok = window.confirm(
+        `Marquer ${employee.first_name} ${employee.last_name} comme sorti(e) à partir du ${dateIso} ?\n` +
+          `Отметить как уволенного с этой даты?`
+      );
+      if (!ok) return;
+      const { error } = await supabase
+        .from("employees")
+        .update({ end_date: dateIso, status: "terminated" })
+        .eq("id", employee.id);
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setEmployees((prev) =>
+        prev.map((emp) => (emp.id === employee.id ? { ...emp, end_date: dateIso, status: "terminated" } : emp))
+      );
+      toast.success("Date de sortie enregistrée / Дата увольнения сохранена");
+      return;
+    }
+
     if (!employee.team_id) return;
-    const currentlyWorked = attendanceByEmployee[employee.id]?.[dateIso] ?? false;
-    const nextWorked = !currentlyWorked;
+    const worked = value === "present";
+    const absenceCode = value.startsWith("abs:") ? value.slice(4) : null;
+    const absenceTypeId = absenceCode ? absenceTypeIdByCode.get(absenceCode) ?? null : null;
+    const previous = attendanceByEmployee[employee.id]?.[dateIso] ?? { worked: false, absenceCode: null };
+
     setAttendanceByEmployee((prev) => ({
       ...prev,
-      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: nextWorked },
+      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { worked, absenceCode } },
     }));
     setJoursByEmployee((prev) => {
       const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
-      if (day === 0 || day === 6) return prev;
-      return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (nextWorked ? 1 : -1) };
+      if (day === 0 || day === 6 || previous.worked === worked) return prev;
+      return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (worked ? 1 : -1) };
     });
+
     const { error } = await supabase
       .from("pointage_entries")
       .upsert(
-        { work_date: dateIso, team_id: employee.team_id, employee_id: employee.id, is_absent: !nextWorked },
+        {
+          work_date: dateIso,
+          team_id: employee.team_id,
+          employee_id: employee.id,
+          is_absent: !worked,
+          absence_type_id: absenceTypeId,
+        },
         { onConflict: "work_date,employee_id" }
       );
     if (error) {
@@ -15052,12 +15119,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
       // Revert on failure.
       setAttendanceByEmployee((prev) => ({
         ...prev,
-        [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: currentlyWorked },
+        [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: previous },
       }));
       setJoursByEmployee((prev) => {
         const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
-        if (day === 0 || day === 6) return prev;
-        return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (nextWorked ? -1 : 1) };
+        if (day === 0 || day === 6 || previous.worked === worked) return prev;
+        return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (worked ? -1 : 1) };
       });
     }
   }
@@ -15114,13 +15181,36 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="text-sm w-full border-separate" style={{ borderSpacing: 0 }}>
+          <table className="text-sm border-separate" style={{ borderSpacing: 0, tableLayout: "fixed", width: `${1320 + dayColumns.length * 20}px` }}>
+            <colgroup>
+              <col style={{ width: "140px" }} />
+              <col style={{ width: "45px" }} />
+              {dayColumns.map((d) => (
+                <col key={d} style={{ width: "20px" }} />
+              ))}
+              <col style={{ width: "70px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "55px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "55px" }} />
+              <col style={{ width: "65px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "55px" }} />
+              <col style={{ width: "55px" }} />
+              <col style={{ width: "55px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "85px" }} />
+            </colgroup>
             <thead>
               <tr>
                 <th colSpan={2} />
                 <th
                   colSpan={dayColumns.length}
-                  className="text-center font-bold py-1 sticky top-0"
+                  className="text-center font-bold py-1"
                   style={{ backgroundColor: EXTRAS_COLOR_MONTH_HEADER }}
                 >
                   {monthLabel}
@@ -15128,46 +15218,42 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 <th colSpan={16} />
               </tr>
               <tr className="text-left text-stone-400 whitespace-nowrap">
-                <th className="py-2 pr-4 sticky left-0 bg-white"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="py-2 pr-4 truncate"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pr-2 text-stone-500"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
                   const isWeekend = dow === 0 || dow === 6;
                   const isMonday = dow === 1;
-                  const weekday = weekdayLabelFr(d);
-                  const isMondayTuesday = weekday === "Lundi" || weekday === "Mardi";
-                  const bg = isMondayTuesday ? EXTRAS_COLOR_MONDAY_TUESDAY : isWeekend ? EXTRAS_COLOR_WEEKEND : undefined;
                   return (
                     <th
                       key={d}
-                      title={weekday}
+                      title={weekdayLabelFr(d)}
                       className="text-center text-[10px] font-normal"
                       style={{
-                        width: "1.4rem",
-                        backgroundColor: bg,
-                        borderLeft: isMonday ? "2px solid #a8a29e" : undefined,
+                        backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
+                        boxShadow: isMonday ? "inset 2px 0 0 0 #a8a29e" : undefined,
                       }}
                     >
                       {Number(d.slice(8, 10))}
                     </th>
                   );
                 })}
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Ставка €/j" ru="Ставка €/день" /></th>
-                <th className="py-2 pr-4 text-primary-600"><Bi fr="Salaire jours €" ru="Оплата за дни €" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="BONUS équipe €" ru="Бонус команды €" /></th>
-                <th className="py-2 pr-4 font-bold" style={{ backgroundColor: EXTRAS_COLOR_PENALTY_HEADER, color: "#fff" }}>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Ставка €/j" ru="Ставка €/день" /></th>
+                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Salaire jours €" ru="Оплата за дни €" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="BONUS équipe €" ru="Бонус команды €" /></th>
+                <th className="py-2 pr-2 font-bold truncate" style={{ backgroundColor: EXTRAS_COLOR_PENALTY_HEADER, color: "#fff" }}>
                   <Bi fr="Штраф €" ru="Штраф €" />
                 </th>
-                <th className="py-2 pr-4 text-primary-600"><Bi fr="Congés payés €" ru="Отпускные €" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
-                <th className="py-2 pr-4 text-primary-600"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Km" ru="Км" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Péage €" ru="Дорога €" /></th>
-                <th className="py-2 pr-4 text-primary-600"><Bi fr="Km cost €" ru="Стоимость км €" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Contrôle 1" ru="Контроль 1" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Contrôle 2" ru="Контроль 2" /></th>
-                <th className="py-2 pr-4 text-warning-700"><Bi fr="Contrôle 3" ru="Контроль 3" /></th>
-                <th className="py-2 pr-4 font-bold" style={{ backgroundColor: EXTRAS_COLOR_BANK_HEADER }}>
+                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Congés payés €" ru="Отпускные €" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
+                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Km" ru="Км" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Péage €" ru="Дорога €" /></th>
+                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Km cost €" ru="Стоимость км €" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Contrôle 1" ru="Контроль 1" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Contrôle 2" ru="Контроль 2" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Contrôle 3" ru="Контроль 3" /></th>
+                <th className="py-2 pr-2 font-bold truncate" style={{ backgroundColor: EXTRAS_COLOR_BANK_HEADER }}>
                   <Bi fr="БАНК qualité €" ru="БАНК качества €" />
                 </th>
                 <th className="py-2 pr-4 font-bold" style={{ backgroundColor: EXTRAS_COLOR_BANK2_HEADER }}>
@@ -15212,19 +15298,51 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                             </td>
                           );
                         }
-                        const worked = attendanceByEmployee[e.id]?.[d] ?? false;
+                        const cell = attendanceByEmployee[e.id]?.[d];
+                        const worked = cell?.worked ?? false;
+                        const absenceCode = cell?.absenceCode ?? null;
+                        const selectValue = worked ? "present" : absenceCode ? `abs:${absenceCode}` : "absent";
+                        const dow = new Date(d + "T00:00:00Z").getUTCDay();
+                        const isWeekend = dow === 0 || dow === 6;
+                        const isMonday = dow === 1;
                         return (
-                          <td key={d} className="text-center p-0">
-                            <button
-                              type="button"
-                              onClick={() => toggleAttendance(e, d)}
-                              title={worked ? "Présent — cliquer pour marquer absent" : "Absent — cliquer pour marquer présent"}
-                              className={`w-full text-[10px] py-2 ${
-                                worked ? "font-bold text-success-700 hover:bg-success-50" : "text-stone-300 hover:bg-stone-100"
+                          <td
+                            key={d}
+                            className="text-center p-0"
+                            style={{
+                              backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
+                              boxShadow: isMonday ? "inset 2px 0 0 0 #a8a29e" : undefined,
+                            }}
+                          >
+                            <select
+                              value={selectValue}
+                              onChange={(ev) => setDayStatus(e, d, ev.target.value)}
+                              title={
+                                worked
+                                  ? "Présent"
+                                  : absenceCode
+                                    ? (absenceTypeLabelByCode.get(absenceCode) ?? absenceCode)
+                                    : "Absent"
+                              }
+                              className={`w-full appearance-none border-0 bg-transparent py-2 text-center text-[10px] cursor-pointer ${
+                                worked
+                                  ? "font-bold text-success-700"
+                                  : absenceCode
+                                    ? "font-bold text-warning-700"
+                                    : "text-stone-300"
                               }`}
                             >
-                              {worked ? "1" : "0"}
-                            </button>
+                              <option value="present">1</option>
+                              <option value="absent">0</option>
+                              {absenceTypes.map((t) => (
+                                <option key={t.id} value={`abs:${t.code}`} title={t.label}>
+                                  {absenceShortCode(t.code)}
+                                </option>
+                              ))}
+                              <option value="depart" title="Fin de contrat ce jour / Увольнение с этого дня">
+                                ✕
+                              </option>
+                            </select>
                           </td>
                         );
                       })}
