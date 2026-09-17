@@ -53,6 +53,13 @@ export function addMonthsIso(iso: string, months: number): string {
   return d.toISOString().split("T")[0];
 }
 
+/** Whole calendar days between two ISO dates (to - from). */
+export function daysBetweenIso(fromIso: string, toIso: string): number {
+  const from = new Date(fromIso + "T00:00:00Z").getTime();
+  const to = new Date(toIso + "T00:00:00Z").getTime();
+  return Math.round((to - from) / (24 * 3600 * 1000));
+}
+
 export function todayIso(): string {
   return new Date().toISOString().split("T")[0];
 }

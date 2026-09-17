@@ -12,6 +12,8 @@
  * returned `note`.
  */
 
+import { addDaysIso, addMonthsIso as addMonthsIsoHelper } from "./helpers";
+
 export type PreavisType = "demission" | "licenciement";
 
 export type PreavisResult = {
@@ -78,4 +80,30 @@ export function computePreavis(
     weeks: null,
     note: "Classification (groupe d'emploi) manquante — durée par défaut, à vérifier avant envoi.",
   };
+}
+
+/**
+ * Délai de prévenance for an EMPLOYER-initiated rupture during the période d'essai —
+ * Code du travail art. L1221-25. Unlike démission/licenciement préavis above, this
+ * depends only on the employee's tenure (jours de présence), never on classification.
+ * Confirmed against Légifrance (art. L1221-25) and Convention Collective Nationale de
+ * la Métallurgie (IDCC 3248) reference sources — the convention doesn't shorten it.
+ */
+export type DelaiPrevenanceEssai = {
+  label: string; // "24 heures" | "48 heures" | "2 semaines" | "1 mois"
+  /** Computes the resulting end-of-contract date from the letter's ISO date. */
+  endDateFromIso: (letterDateIso: string) => string;
+};
+
+export function computeDelaiPrevenanceEssai(joursPresence: number): DelaiPrevenanceEssai {
+  if (joursPresence < 8) {
+    return { label: "24 heures", endDateFromIso: (iso) => addDaysIso(iso, 1) };
+  }
+  if (joursPresence < 30) {
+    return { label: "48 heures", endDateFromIso: (iso) => addDaysIso(iso, 2) };
+  }
+  if (joursPresence < 90) {
+    return { label: "2 semaines", endDateFromIso: (iso) => addDaysIso(iso, 14) };
+  }
+  return { label: "1 mois", endDateFromIso: (iso) => addMonthsIsoHelper(iso, 1) };
 }

@@ -7,6 +7,7 @@ import { attestationConges } from "./templates/attestationConges";
 import { attestationHebergement } from "./templates/attestationHebergement";
 import { demandeCongesSansSolde } from "./templates/demandeCongesSansSolde";
 import { lettreDemission } from "./templates/lettreDemission";
+import { ruptureEssaiEmployeur } from "./templates/ruptureEssaiEmployeur";
 
 export type FieldType = "date" | "text" | "textarea" | "number" | "boolean" | "select";
 
@@ -509,6 +510,57 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       employeeField("address", "Adresse du salarié", "text", undefined, undefined, "Адрес сотрудника"),
     ],
     generate: lettreDemission,
+  },
+  {
+    code: "rupture_essai_employeur",
+    label: "Rupture de la période d'essai (employeur)",
+    labelRu: "Расторжение на испытательном сроке (по инициативе работодателя)",
+    descriptionRu:
+      "Письмо о прекращении испытательного срока по инициативе работодателя. Срок уведомления (délai de prévenance) рассчитывается автоматически по стажу сотрудника — 24 часа / 48 часов / 2 недели / 1 месяц, согласно ст. L1221-25 Трудового кодекса.",
+    category: "rupture",
+    legalRisk: true,
+    fields: [
+      {
+        key: "letterDate",
+        label: "Date de la lettre",
+        labelRu: "Дата письма",
+        type: "date",
+        required: true,
+        defaultValue: () => todayIso(),
+        help: "Le délai de prévenance et la date de fin de contrat sont calculés à partir de cette date.",
+        helpRu: "Срок уведомления и дата окончания договора рассчитываются от этой даты.",
+      },
+      {
+        key: "deliveryMethod",
+        label: "Mode de remise",
+        labelRu: "Способ вручения",
+        type: "select",
+        required: true,
+        defaultValue: () => "recommande",
+        options: [
+          { value: "recommande", label: "Lettre recommandée avec AR", labelRu: "Заказное письмо с уведомлением" },
+          { value: "main_propre", label: "Remise en main propre", labelRu: "Вручение лично под расписку" },
+        ],
+      },
+      {
+        key: "recommandeNumber",
+        label: "N° de recommandé (optionnel)",
+        labelRu: "Номер заказного письма (необязательно)",
+        type: "text",
+      },
+      {
+        key: "signingCity",
+        label: "Ville de signature",
+        labelRu: "Город подписания",
+        type: "text",
+        required: true,
+        defaultValue: (_e, c) => c.signingCity,
+      },
+      SEX_FIELD,
+      employeeField("hireDate", "Date d'embauche", "date", undefined, undefined, "Дата приёма на работу"),
+      employeeField("address", "Adresse du salarié", "text", undefined, undefined, "Адрес сотрудника"),
+    ],
+    generate: ruptureEssaiEmployeur,
   },
 ];
 
