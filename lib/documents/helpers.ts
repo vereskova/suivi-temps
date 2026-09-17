@@ -60,6 +60,13 @@ export function daysBetweenIso(fromIso: string, toIso: string): number {
   return Math.round((to - from) / (24 * 3600 * 1000));
 }
 
+/** Today's date in the browser's own local timezone — NOT `new Date().toISOString()`,
+ *  which converts to UTC and silently rolls back to "yesterday" for anyone in a
+ *  timezone ahead of UTC (e.g. Europe/Paris) during the first hour(s) of the day. */
 export function todayIso(): string {
-  return new Date().toISOString().split("T")[0];
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
