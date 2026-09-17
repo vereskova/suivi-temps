@@ -540,6 +540,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         options: [
           { value: "recommande", label: "Lettre recommandée avec AR", labelRu: "Заказное письмо с уведомлением" },
           { value: "main_propre", label: "Remise en main propre", labelRu: "Вручение лично под расписку" },
+          { value: "email", label: "Envoi par email", labelRu: "Отправка по электронной почте" },
         ],
       },
       {

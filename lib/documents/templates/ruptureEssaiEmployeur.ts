@@ -5,7 +5,7 @@ import { civility, salarieLabel } from "../gender";
 
 export type RuptureEssaiEmployeurParams = {
   letterDate: string; // ISO — date of the letter / remise
-  deliveryMethod: "recommande" | "main_propre";
+  deliveryMethod: "recommande" | "main_propre" | "email";
   recommandeNumber?: string;
   signingCity: string;
 };
@@ -28,6 +28,8 @@ export function ruptureEssaiEmployeur(
   const deliveryLine =
     params.deliveryMethod === "main_propre"
       ? "Courrier remis en main propre contre décharge"
+      : params.deliveryMethod === "email"
+      ? "Envoi par courrier électronique"
       : `Lettre recommandée avec accusé de réception${
           params.recommandeNumber ? ` n° ${params.recommandeNumber}` : ""
         }`;
