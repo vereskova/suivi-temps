@@ -2159,6 +2159,13 @@ function EditTime({
 }
 
 // ── Vue "Par employé" — remplace l'onglet RAPPORT ───────────────────────────
+const EMPLOYE_VIEW_SELECT =
+  "employee_id, work_date, team_id, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label), employees!pointage_entries_employee_id_fkey(first_name, last_name, teams!employees_team_id_fkey(name))";
+
+type EmployeViewRow = PointageRow & {
+  employees: { first_name: string; last_name: string; teams: { name: string } | null } | null;
+};
+
 function EmployeView({
   supabase,
   employees,
@@ -2170,7 +2177,7 @@ function EmployeView({
   const [employeeId, setEmployeeId] = useState("");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [rows, setRows] = useState<PointageRow[]>([]);
+  const [rows, setRows] = useState<EmployeViewRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -2179,18 +2186,18 @@ function EmployeView({
       const { start, end } = monthRange(year, month);
       const { data } = await supabase
         .from("pointage_entries")
-        .select(POINTAGE_SELECT)
+        .select(EMPLOYE_VIEW_SELECT)
         .gte("work_date", start)
         .lte("work_date", end)
         .order("work_date");
-      setRows((data as unknown as PointageRow[]) ?? []);
+      setRows((data as unknown as EmployeViewRow[]) ?? []);
       setLoading(false);
     }
     load();
   }, [year, month, supabase]);
 
   const rowsByEmployee = useMemo(() => {
-    const map = new Map<string, PointageRow[]>();
+    const map = new Map<string, EmployeViewRow[]>();
     rows.forEach((r) => {
       const arr = map.get(r.employee_id);
       if (arr) arr.push(r);
@@ -2198,6 +2205,32 @@ function EmployeView({
     });
     return map;
   }, [rows]);
+
+  // Employees fetched for the sidebar/team pickers only cover active
+  // chantier staff — anyone who left mid-month (or since) still needs to
+  // show up here if they have pointage data, so fold in their identity
+  // straight from the joined pointage rows.
+  const employeeDirectory = useMemo(() => {
+    const map = new Map<string, Employee>();
+    employees.forEach((e) => map.set(e.id, e));
+    rows.forEach((r) => {
+      if (map.has(r.employee_id) || !r.employees) return;
+      map.set(r.employee_id, {
+        id: r.employee_id,
+        first_name: r.employees.first_name,
+        last_name: r.employees.last_name,
+        team_id: r.team_id,
+        teams: r.employees.teams,
+      });
+    });
+    return map;
+  }, [employees, rows]);
+
+  const employeeOptions = useMemo(() => {
+    return Array.from(employeeDirectory.values()).sort((a, b) =>
+      employeeName(a).localeCompare(employeeName(b))
+    );
+  }, [employeeDirectory]);
 
   const { daysInMonth, start } = monthRange(year, month);
   const days = Array.from({ length: daysInMonth }, (_, i) => {
@@ -2208,10 +2241,10 @@ function EmployeView({
 
   const employeesToShow = useMemo(() => {
     if (employeeId) {
-      const emp = employees.find((e) => e.id === employeeId);
+      const emp = employeeDirectory.get(employeeId);
       return emp ? [emp] : [];
     }
-    return employees
+    return Array.from(employeeDirectory.values())
       .filter((e) => rowsByEmployee.has(e.id))
       .sort((a, b) => {
         const teamA = a.teams?.name ?? "";
@@ -2219,7 +2252,7 @@ function EmployeView({
         if (teamA !== teamB) return teamA.localeCompare(teamB);
         return employeeName(a).localeCompare(employeeName(b));
       });
-  }, [employeeId, employees, rowsByEmployee]);
+  }, [employeeId, employeeDirectory, rowsByEmployee]);
 
   return (
     <div>
@@ -2247,7 +2280,7 @@ function EmployeView({
             onChange={(e) => setEmployeeId(e.target.value)}
           >
             <option value="">Sélectionner…</option>
-            {employees.map((e) => (
+            {employeeOptions.map((e) => (
               <option key={e.id} value={e.id}>
                 {employeeName(e)} — {e.teams?.name ?? ""}
               </option>
