@@ -2174,14 +2174,12 @@ function EmployeView({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!employeeId) return;
     async function load() {
       setLoading(true);
       const { start, end } = monthRange(year, month);
       const { data } = await supabase
         .from("pointage_entries")
         .select(POINTAGE_SELECT)
-        .eq("employee_id", employeeId)
         .gte("work_date", start)
         .lte("work_date", end)
         .order("work_date");
@@ -2189,11 +2187,15 @@ function EmployeView({
       setLoading(false);
     }
     load();
-  }, [employeeId, year, month, supabase]);
+  }, [year, month, supabase]);
 
-  const byDate = useMemo(() => {
-    const map = new Map<string, PointageRow>();
-    rows.forEach((r) => map.set(r.work_date, r));
+  const rowsByEmployee = useMemo(() => {
+    const map = new Map<string, PointageRow[]>();
+    rows.forEach((r) => {
+      const arr = map.get(r.employee_id);
+      if (arr) arr.push(r);
+      else map.set(r.employee_id, [r]);
+    });
     return map;
   }, [rows]);
 
@@ -2204,7 +2206,20 @@ function EmployeView({
     return d;
   });
 
-  const totalMinutes = rows.reduce((sum, r) => sum + (r.total_minutes ?? 0), 0);
+  const employeesToShow = useMemo(() => {
+    if (employeeId) {
+      const emp = employees.find((e) => e.id === employeeId);
+      return emp ? [emp] : [];
+    }
+    return employees
+      .filter((e) => rowsByEmployee.has(e.id))
+      .sort((a, b) => {
+        const teamA = a.teams?.name ?? "";
+        const teamB = b.teams?.name ?? "";
+        if (teamA !== teamB) return teamA.localeCompare(teamB);
+        return employeeName(a).localeCompare(employeeName(b));
+      });
+  }, [employeeId, employees, rowsByEmployee]);
 
   return (
     <div>
@@ -2216,8 +2231,8 @@ function EmployeView({
             <InfoNote
               title="Par employé"
               text={
-                "Помесячный отчёт по одному сотруднику: выберите его, месяц и год — увидите все дни целиком (часы, переработки, отсутствия) и итог за месяц.\n\n" +
-                "Удобно, чтобы свериться по одному человеку, не листая общий список «Par jour» по дням."
+                "Помесячный отчёт по дням: выберите месяц и год — без выбора сотрудника увидите таблицы по всем, кто отмечался в этом месяце; выбрав одного — только его.\n\n" +
+                "Удобно, чтобы свериться по одному человеку или сразу по всем, не листая общий список «Par jour» по дням."
               }
             />
           }
@@ -2266,138 +2281,175 @@ function EmployeView({
         </label>
       </div>
 
-      {!employeeId ? (
-        <div className="card">
-          <EmptyState title="Sélectionnez un employé" titleRu="Выберите сотрудника" />
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="card">
           <SkeletonRows rows={5} cols={4} />
         </div>
+      ) : employeesToShow.length === 0 ? (
+        <div className="card">
+          <EmptyState
+            title={employeeId ? "Aucune donnée" : "Aucun employé n'a pointé ce mois-ci"}
+            titleRu={employeeId ? "Нет данных" : "В этом месяце никто не отмечался"}
+          />
+        </div>
       ) : (
-        <>
-        {/* Mobile: one card per day instead of a 7-column table. */}
-        <div className="md:hidden space-y-1.5">
-          {days.map((d) => {
-            const iso = d.toISOString().split("T")[0];
-            const r = byDate.get(iso);
-            const weekday = WEEKDAYS_FR[d.getUTCDay()];
-            const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+        <div className="space-y-6">
+          {employeesToShow.map((emp) => {
+            const empRows = rowsByEmployee.get(emp.id) ?? [];
+            const byDate = new Map<string, PointageRow>();
+            empRows.forEach((r) => byDate.set(r.work_date, r));
+            const totalMinutes = empRows.reduce((sum, r) => sum + (r.total_minutes ?? 0), 0);
             return (
-              <div
-                key={iso}
-                className={`rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2 ${
-                  isWeekend ? "bg-stone-50" : ""
-                }`}
-              >
-                <p className="text-sm">
-                  <span className="font-semibold">{d.getUTCDate()}</span>{" "}
-                  <span className="capitalize text-stone-500">{weekday}</span>
-                </p>
-                {!r ? (
-                  <p className="text-stone-300 italic text-sm">—</p>
-                ) : r.is_absent ? (
-                  <p className="text-error-600 font-semibold text-sm text-right">
-                    Absent <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
-                    {r.absence_types ? ` — ${r.absence_types.label}` : ""}
-                  </p>
-                ) : (
-                  <p className="text-sm text-right">
-                    {(r.start_time ?? "—").slice(0, 5)}–{(r.end_time ?? "—").slice(0, 5)}
-                    {r.pause_minutes ? (
-                      <span className="text-stone-400"> · pause {fmtMinutes(r.pause_minutes)}</span>
-                    ) : null}
-                    {r.overtime_minutes ? (
-                      <span className="text-stone-400"> · HS {fmtMinutes(r.overtime_minutes)}</span>
-                    ) : null}
-                    {" "}
-                    <span className="font-bold">{fmtMinutes(r.total_minutes)}</span>
+              <div key={emp.id}>
+                {!employeeId && (
+                  <p className="mb-2 font-bold text-sm">
+                    {employeeName(emp)}{" "}
+                    <span className="font-normal text-stone-400">
+                      — {emp.teams?.name ?? ""}
+                    </span>
                   </p>
                 )}
+                <EmployeeMonthGrid days={days} byDate={byDate} totalMinutes={totalMinutes} />
               </div>
             );
           })}
-          <div className="flex items-center justify-between px-3 pt-2 font-bold text-sm">
-            <p>
-              Total du mois <span className="text-xs font-medium opacity-60">/ Итого за месяц</span>
-            </p>
-            <p className="font-black">{fmtMinutes(totalMinutes)}</p>
-          </div>
         </div>
-
-        <div className="hidden md:block card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4"><Bi fr="Jour" ru="День" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Date" ru="Дата" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Début" ru="Начало" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Fin" ru="Конец" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Pause" ru="Перерыв" /></th>
-                <th className="pb-2 pr-4"><Bi fr="H. Supp" ru="Сверхур." /></th>
-                <th className="pb-2"><Bi fr="Total" ru="Итого" /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {days.map((d) => {
-                const iso = d.toISOString().split("T")[0];
-                const r = byDate.get(iso);
-                const weekday = WEEKDAYS_FR[d.getUTCDay()];
-                const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
-                return (
-                  <tr
-                    key={iso}
-                    className={`border-t border-stone-100 ${
-                      isWeekend ? "bg-stone-50" : ""
-                    }`}
-                  >
-                    <td className="py-1.5 pr-4 capitalize text-stone-500">
-                      {weekday}
-                    </td>
-                    <td className="py-1.5 pr-4">{d.getUTCDate()}</td>
-                    {!r ? (
-                      <td colSpan={4} className="py-1.5 text-stone-300 italic">
-                        —
-                      </td>
-                    ) : r.is_absent ? (
-                      <td colSpan={4} className="py-1.5 text-error-600 font-semibold">
-                        Absent{" "}
-                        <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
-                        {r.absence_types ? ` — ${r.absence_types.label}` : ""}
-                      </td>
-                    ) : (
-                      <>
-                        <td className="py-1.5 pr-4">{(r.start_time ?? "—").slice(0, 5)}</td>
-                        <td className="py-1.5 pr-4">{(r.end_time ?? "—").slice(0, 5)}</td>
-                        <td className="py-1.5 pr-4">
-                          {fmtMinutes(r.pause_minutes)}
-                        </td>
-                        <td className="py-1.5 pr-4">
-                          {fmtMinutes(r.overtime_minutes)}
-                        </td>
-                        <td className="py-1.5 font-bold">
-                          {fmtMinutes(r.total_minutes)}
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-stone-200">
-                <td colSpan={6} className="pt-3 text-right font-bold">
-                  Total du mois{" "}
-                  <span className="text-xs font-medium opacity-60">/ Итого за месяц</span>
-                </td>
-                <td className="pt-3 font-black">{fmtMinutes(totalMinutes)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        </>
       )}
     </div>
+  );
+}
+
+function EmployeeMonthGrid({
+  days,
+  byDate,
+  totalMinutes,
+}: {
+  days: Date[];
+  byDate: Map<string, PointageRow>;
+  totalMinutes: number;
+}) {
+  return (
+    <>
+      {/* Mobile: one card per day instead of a 7-column table. */}
+      <div className="md:hidden space-y-1.5">
+        {days.map((d) => {
+          const iso = d.toISOString().split("T")[0];
+          const r = byDate.get(iso);
+          const weekday = WEEKDAYS_FR[d.getUTCDay()];
+          const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+          return (
+            <div
+              key={iso}
+              className={`rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2 ${
+                isWeekend ? "bg-stone-50" : ""
+              }`}
+            >
+              <p className="text-sm">
+                <span className="font-semibold">{d.getUTCDate()}</span>{" "}
+                <span className="capitalize text-stone-500">{weekday}</span>
+              </p>
+              {!r ? (
+                <p className="text-stone-300 italic text-sm">—</p>
+              ) : r.is_absent ? (
+                <p className="text-error-600 font-semibold text-sm text-right">
+                  Absent <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
+                  {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                </p>
+              ) : (
+                <p className="text-sm text-right">
+                  {(r.start_time ?? "—").slice(0, 5)}–{(r.end_time ?? "—").slice(0, 5)}
+                  {r.pause_minutes ? (
+                    <span className="text-stone-400"> · pause {fmtMinutes(r.pause_minutes)}</span>
+                  ) : null}
+                  {r.overtime_minutes ? (
+                    <span className="text-stone-400"> · HS {fmtMinutes(r.overtime_minutes)}</span>
+                  ) : null}
+                  {" "}
+                  <span className="font-bold">{fmtMinutes(r.total_minutes)}</span>
+                </p>
+              )}
+            </div>
+          );
+        })}
+        <div className="flex items-center justify-between px-3 pt-2 font-bold text-sm">
+          <p>
+            Total du mois <span className="text-xs font-medium opacity-60">/ Итого за месяц</span>
+          </p>
+          <p className="font-black">{fmtMinutes(totalMinutes)}</p>
+        </div>
+      </div>
+
+      <div className="hidden md:block card overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-stone-400">
+              <th className="pb-2 pr-4"><Bi fr="Jour" ru="День" /></th>
+              <th className="pb-2 pr-4"><Bi fr="Date" ru="Дата" /></th>
+              <th className="pb-2 pr-4"><Bi fr="Début" ru="Начало" /></th>
+              <th className="pb-2 pr-4"><Bi fr="Fin" ru="Конец" /></th>
+              <th className="pb-2 pr-4"><Bi fr="Pause" ru="Перерыв" /></th>
+              <th className="pb-2 pr-4"><Bi fr="H. Supp" ru="Сверхур." /></th>
+              <th className="pb-2"><Bi fr="Total" ru="Итого" /></th>
+            </tr>
+          </thead>
+          <tbody>
+            {days.map((d) => {
+              const iso = d.toISOString().split("T")[0];
+              const r = byDate.get(iso);
+              const weekday = WEEKDAYS_FR[d.getUTCDay()];
+              const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+              return (
+                <tr
+                  key={iso}
+                  className={`border-t border-stone-100 ${
+                    isWeekend ? "bg-stone-50" : ""
+                  }`}
+                >
+                  <td className="py-1.5 pr-4 capitalize text-stone-500">
+                    {weekday}
+                  </td>
+                  <td className="py-1.5 pr-4">{d.getUTCDate()}</td>
+                  {!r ? (
+                    <td colSpan={4} className="py-1.5 text-stone-300 italic">
+                      —
+                    </td>
+                  ) : r.is_absent ? (
+                    <td colSpan={4} className="py-1.5 text-error-600 font-semibold">
+                      Absent{" "}
+                      <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
+                      {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                    </td>
+                  ) : (
+                    <>
+                      <td className="py-1.5 pr-4">{(r.start_time ?? "—").slice(0, 5)}</td>
+                      <td className="py-1.5 pr-4">{(r.end_time ?? "—").slice(0, 5)}</td>
+                      <td className="py-1.5 pr-4">
+                        {fmtMinutes(r.pause_minutes)}
+                      </td>
+                      <td className="py-1.5 pr-4">
+                        {fmtMinutes(r.overtime_minutes)}
+                      </td>
+                      <td className="py-1.5 font-bold">
+                        {fmtMinutes(r.total_minutes)}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-stone-200">
+              <td colSpan={6} className="pt-3 text-right font-bold">
+                Total du mois{" "}
+                <span className="text-xs font-medium opacity-60">/ Итого за месяц</span>
+              </td>
+              <td className="pt-3 font-black">{fmtMinutes(totalMinutes)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </>
   );
 }
 
