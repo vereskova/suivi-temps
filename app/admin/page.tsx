@@ -3977,7 +3977,7 @@ const TSHIRT_SIZE_OPTIONS = ["S", "M", "L", "XL", "XXL", "XXXL"].map((v) => ({
   label: v,
 }));
 
-const NATIONALITY_SUGGESTIONS = [
+const NATIONALITY_OPTIONS = [
   "France",
   "Roumanie",
   "Ukraine",
@@ -3986,17 +3986,25 @@ const NATIONALITY_SUGGESTIONS = [
   "Biélorussie",
   "Lituanie",
   "Kazakhstan",
-];
+  "Pologne",
+  "Portugal",
+  "Maroc",
+  "Algérie",
+  "Tunisie",
+  "Géorgie",
+  "Arménie",
+  "Azerbaïdjan",
+].map((v) => ({ value: v, label: v }));
 
-const RESIDENCE_PERMIT_TYPE_SUGGESTIONS = [
-  "Carte de séjour temporaire",
-  "Carte de séjour pluriannuelle",
+const RESIDENCE_PERMIT_TYPE_OPTIONS = [
+  "APS",
+  "Titre de séjour",
+  "VLS-TS salarié",
   "Carte de résident",
-  "Autorisation provisoire de séjour (APS)",
-  "Récépissé de demande de titre de séjour",
-  "VLS-TS valant titre de séjour",
+  "Carte de séjour pluriannuelle",
   "Passeport talent",
-];
+  "Récépissé de demande de titre de séjour",
+].map((v) => ({ value: v, label: v }));
 
 const QUALIFICATION_SUGGESTIONS = ["Salarié", "Intérimaire", "Stagiaire", "Apprenti"];
 
@@ -4355,12 +4363,12 @@ function EmployeeDetailPanel({
           value={profile.birth_place}
           onChange={(v) => setProfile({ ...profile, birth_place: v })}
         />
-        <DetailField
+        <DetailSelectField
           label="Nationalité"
           labelRu="Гражданство"
           value={confidential.nationality}
           onChange={(v) => setConfidential({ ...confidential, nationality: v })}
-          suggestions={NATIONALITY_SUGGESTIONS}
+          options={NATIONALITY_OPTIONS}
         />
       </DetailSection>
 
@@ -4485,14 +4493,14 @@ function EmployeeDetailPanel({
             value={confidential.mutuelle}
             onChange={(v) => setConfidential({ ...confidential, mutuelle: v })}
           />
-          <DetailField
+          <DetailSelectField
             label="Type de titre de séjour"
             labelRu="Тип вида на жительство"
             value={confidential.residence_permit_type}
             onChange={(v) =>
               setConfidential({ ...confidential, residence_permit_type: v })
             }
-            suggestions={RESIDENCE_PERMIT_TYPE_SUGGESTIONS}
+            options={RESIDENCE_PERMIT_TYPE_OPTIONS}
           />
           <DetailField
             label="N° du titre"
@@ -12323,37 +12331,27 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  const nationaliteSelectOptions = useMemo(() => {
-    const set = new Set(CURATED_NATIONALITE_OPTIONS);
-    rows.forEach((r) => r.nationalite && set.add(r.nationalite));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-
-  const typeTitreSelectOptions = useMemo(() => {
-    const set = new Set(CURATED_TYPE_TITRE_OPTIONS);
-    rows.forEach((r) => r.type_titre && set.add(r.type_titre));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-
-  const typeContratSelectOptions = useMemo(() => {
-    const set = new Set(CURATED_TYPE_CONTRAT_OPTIONS);
-    rows.forEach((r) => r.type_contrat && set.add(r.type_contrat));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
-
+  // Curated lists only — a row's own pre-existing value is appended if it
+  // isn't already covered, so opening the edit modal on old (messy) data
+  // never silently blanks it out. We deliberately don't merge in every
+  // distinct value ever saved to this column: that's what let spelling
+  // variants ("MOLDAVE" vs "MOLDAVIE" vs "MOLDOVIA") keep compounding.
   function registreSelectOptions(key: keyof RegistreEditForm): string[] {
-    switch (key) {
-      case "sexe":
-        return SEXE_SELECT_OPTIONS;
-      case "nationalite":
-        return nationaliteSelectOptions;
-      case "type_titre":
-        return typeTitreSelectOptions;
-      case "type_contrat":
-        return typeContratSelectOptions;
-      default:
-        return [];
+    const curated =
+      key === "sexe"
+        ? SEXE_SELECT_OPTIONS
+        : key === "nationalite"
+        ? CURATED_NATIONALITE_OPTIONS
+        : key === "type_titre"
+        ? CURATED_TYPE_TITRE_OPTIONS
+        : key === "type_contrat"
+        ? CURATED_TYPE_CONTRAT_OPTIONS
+        : [];
+    const current = editForm?.[key];
+    if (current && !curated.includes(current)) {
+      return [...curated, current].sort((a, b) => a.localeCompare(b));
     }
+    return curated;
   }
 
   const filtered = useMemo(() => {
