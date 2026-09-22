@@ -12370,7 +12370,8 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
   const counts = useMemo(() => {
     const sorti = rows.filter((r) => r.date_sortie).length;
     const foreigners = rows.filter((r) => isForeignNationality(r.nationalite)).length;
-    return { total: rows.length, present: rows.length - sorti, sorti, foreigners };
+    const foreignersPresent = rows.filter((r) => !r.date_sortie && isForeignNationality(r.nationalite)).length;
+    return { total: rows.length, present: rows.length - sorti, sorti, foreigners, foreignersPresent };
   }, [rows]);
 
   function startEdit(r: RegistreRow) {
@@ -12510,6 +12511,20 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
             }`}
           >
             {counts.foreigners} étrangers <span className="opacity-70">/ иностранцы</span>
+          </button>
+          <button
+            onClick={() => {
+              setStatusFilter("present");
+              setForeignersOnly(true);
+            }}
+            className={`rounded-full px-3 py-1 text-xs font-bold ${
+              statusFilter === "present" && foreignersOnly
+                ? "bg-warning-600 text-white"
+                : "bg-warning-50 text-warning-700 ring-1 ring-warning-300"
+            }`}
+          >
+            👉 {counts.foreignersPresent} étrangers en poste actuellement{" "}
+            <span className="opacity-70">/ иностранцы, работающие сейчас</span>
           </button>
         </div>
 
