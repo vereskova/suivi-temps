@@ -49,7 +49,9 @@ export async function GET() {
       supabase.from("employees").select("id, first_name, last_name"),
       supabase
         .from("medical_visits")
-        .select("id, employee_id, last_visit_date, next_visit_date, next_visit_source, next_visit_source_at"),
+        .select(
+          "id, employee_id, last_visit_date, next_visit_date, next_visit_time, next_visit_source, next_visit_source_at"
+        ),
     ]);
 
     const employeeById = new Map((employees ?? []).map((e) => [e.id, e]));
@@ -98,15 +100,16 @@ export async function GET() {
       }
 
       const existing = visitByEmployeeId.get(employeeId);
-      // A hand-entered date is never silently overwritten by a later e-mail
-      // — but a cancellation is a fact, not a date guess, so it always wins
-      // even over a manual entry (the visit didn't happen either way). A
-      // blank row (created via "add visit" but never actually filled in,
-      // e.g. next_visit_date still null) has nothing real to protect, so a
-      // fresh convocation must still be allowed to populate it.
-      if (existing && existing.next_visit_source === "manual" && existing.next_visit_date && event.type !== "annulation") continue;
+      // A fresh e-mail now overwrites a hand-entered date too (it used to be
+      // protected) — but the manual value is kept on the row as
+      // next_visit_replaced_manual_date/_time so RH sees a flag instead of a
+      // silent change. Only overwrite what was genuinely still there from a
+      // manual entry — an already e-mail-sourced row keeps its own
+      // replaced-manual memory untouched (it isn't "replacing a manual entry"
+      // again, just updating from a newer e-mail).
+      const wasManual = !!(existing && existing.next_visit_source === "manual" && existing.next_visit_date);
       const emailIsNewer = !existing?.next_visit_source_at || (email.date ?? "") > existing.next_visit_source_at;
-      if (existing && !emailIsNewer) continue; // already applied this (or a more recent) event
+      if (existing && !wasManual && !emailIsNewer) continue; // already applied this (or a more recent) event
 
       const payload = {
         next_visit_date: event.type === "annulation" ? null : event.dateIso,
@@ -114,6 +117,20 @@ export async function GET() {
         next_visit_source: "email" as const,
         next_visit_source_at: email.date,
         next_visit_source_subject: email.subject,
+        // An annulation removes the appointment outright — no "replaced
+        // manual value" flag to show for a row that's now empty, and any
+        // leftover flag from an earlier convocation is cleared too. A
+        // convocation that replaces a still-manual entry sets the flag; one
+        // that replaces an already e-mail-sourced entry leaves whatever flag
+        // was already there untouched.
+        ...(event.type === "annulation"
+          ? { next_visit_replaced_manual_date: null, next_visit_replaced_manual_time: null }
+          : wasManual
+            ? {
+                next_visit_replaced_manual_date: existing!.next_visit_date,
+                next_visit_replaced_manual_time: existing!.next_visit_time,
+              }
+            : {}),
       };
 
       const { error } = existing

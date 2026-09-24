@@ -4665,6 +4665,8 @@ type MedicalVisit = {
   next_visit_source: "manual" | "email";
   next_visit_source_at: string | null;
   next_visit_source_subject: string | null;
+  next_visit_replaced_manual_date: string | null;
+  next_visit_replaced_manual_time: string | null;
   employees: {
     first_name: string;
     last_name: string;
@@ -4896,17 +4898,28 @@ function NextVisitCell({
   const dateText = formatDateShortDMY(visit.next_visit_date);
   const timeText = visit.next_visit_time ? visit.next_visit_time.slice(0, 5) : "";
   const isEmail = visit.next_visit_source === "email";
+  const replacedManual = isEmail && !!visit.next_visit_replaced_manual_date;
+  const replacedManualText = replacedManual
+    ? `${formatDateShortDMY(visit.next_visit_replaced_manual_date!)}${
+        visit.next_visit_replaced_manual_time ? ` ${visit.next_visit_replaced_manual_time.slice(0, 5)}` : ""
+      }`
+    : "";
   const title = isEmail
     ? `Détecté automatiquement dans un e-mail du ${
         visit.next_visit_source_at ? formatDateShortDMY(visit.next_visit_source_at.slice(0, 10)) : "?"
       }${
         visit.next_visit_source_subject ? ` : « ${visit.next_visit_source_subject} »` : ""
-      } — cliquer pour voir la correspondance / Определено автоматически из письма — нажмите, чтобы посмотреть переписку`
+      }${
+        replacedManual ? ` — remplace une date saisie à la main (${replacedManualText})` : ""
+      } — cliquer pour voir la correspondance / Определено автоматически из письма${
+        replacedManual ? `, заменена ручная дата (${replacedManualText})` : ""
+      } — нажмите, чтобы посмотреть переписку`
     : "Saisi à la main / Введено вручную";
   const content = (
     <>
       {dateText}
       {timeText && <span className="ml-1 font-normal text-stone-400">{timeText}</span>}
+      {replacedManual && <span className="ml-1 text-amber-500">✎</span>}
     </>
   );
   if (!isEmail) {
@@ -5188,7 +5201,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       const { data } = await supabase
         .from("medical_visits")
         .select(
-          "id, employee_id, last_visit_date, next_visit_date, next_visit_time, visit_subtype, next_visit_source, next_visit_source_at, next_visit_source_subject, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
+          "id, employee_id, last_visit_date, next_visit_date, next_visit_time, visit_subtype, next_visit_source, next_visit_source_at, next_visit_source_subject, next_visit_replaced_manual_date, next_visit_replaced_manual_time, employees(first_name, last_name, team_id, teams!employees_team_id_fkey(name))"
         )
         .order("next_visit_date", { ascending: true, nullsFirst: false });
       setVisits((data as unknown as MedicalVisit[]) ?? []);
