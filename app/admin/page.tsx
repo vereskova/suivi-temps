@@ -11742,13 +11742,38 @@ function DashboardsView({
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
-        .from("employees")
-        .select(
-          "id, first_name, last_name, category, contract_type, status, hire_date, end_date, date_of_birth, teams!employees_team_id_fkey(name, chef_employee_id)"
-        )
-        .is("archived_at", null);
-      setEmployees((data as unknown as DashEmployee[]) ?? []);
+      const [{ data }, { data: registre }] = await Promise.all([
+        supabase
+          .from("employees")
+          .select(
+            "id, first_name, last_name, category, contract_type, status, hire_date, end_date, date_of_birth, teams!employees_team_id_fkey(name, chef_employee_id)"
+          )
+          .is("archived_at", null),
+        supabase.from("registre_unique_personnel").select("employee_id, date_entree, date_sortie"),
+      ]);
+
+      const episodesByEmployee = new Map<string, { date_entree: string | null; date_sortie: string | null }[]>();
+      for (const r of registre ?? []) {
+        if (!episodesByEmployee.has(r.employee_id)) episodesByEmployee.set(r.employee_id, []);
+        episodesByEmployee.get(r.employee_id)!.push(r);
+      }
+
+      // The registre is the authoritative source (0048/0056 keep it in sync
+      // on hire/terminate) — employees.status can still lag behind a rehire
+      // in older records (see e.g. HRYTSENKO this session), which would
+      // otherwise make the dashboard double-count a comeback as a real
+      // departure. An open episode (no date_sortie) overrides a stale
+      // "terminated" status for dashboard purposes only — it never writes
+      // back to the employees row itself.
+      const withEpisodes = ((data as unknown as DashEmployee[]) ?? []).map((e) => {
+        const episodes = episodesByEmployee.get(e.id) ?? [];
+        const hasOpenEpisode = episodes.some((ep) => !ep.date_sortie);
+        if (e.status === "terminated" && hasOpenEpisode) {
+          return { ...e, status: "active" as const, end_date: null, episodeCount: episodes.length };
+        }
+        return { ...e, episodeCount: episodes.length };
+      });
+      setEmployees(withEpisodes);
       setLoading(false);
     }
     load();
@@ -11760,7 +11785,7 @@ function DashboardsView({
   const groupRows = useMemo(
     () =>
       HR_GROUPS.map((g) => {
-        const members = employees.filter(g.predicate);
+        const members = employees.filter((e) => g.predicate(e, todayIso));
         return { def: g, members, stats: computeGroupStats(g, members, todayIso) };
       }),
     [employees, todayIso]
@@ -11768,8 +11793,8 @@ function DashboardsView({
 
   const filteredEmployees = useMemo(() => {
     const group = HR_GROUPS.find((g) => g.key === filterKey);
-    return group ? employees.filter(group.predicate) : employees;
-  }, [employees, filterKey]);
+    return group ? employees.filter((e) => group.predicate(e, todayIso)) : employees;
+  }, [employees, filterKey, todayIso]);
 
   const filteredStats = useMemo(() => {
     const group = HR_GROUPS.find((g) => g.key === filterKey) ?? HR_GROUPS[0];
@@ -17079,30 +17104,54 @@ function DossierCategoryCard({
   );
 }
 
+type Movement = { key: string; employee: DossierEmployee; entry: RegistreEntry; type: "embauche" | "depart" };
+type MovementItem = { code: string; label: string; done: boolean };
+
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${pct === 100 ? "bg-success-500" : "bg-primary-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[11px] font-semibold text-stone-400 shrink-0 tabular-nums">
+        {done}/{total}
+      </span>
+    </div>
+  );
+}
+
 function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [employees, setEmployees] = useState<DossierEmployee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [search, setSearch] = useState("");
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [hideComplete, setHideComplete] = useState(false);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
-  const [registreEntries, setRegistreEntries] = useState<RegistreEntry[]>([]);
-  const [documents, setDocuments] = useState<EmployeeDocumentRow[]>([]);
-  const [notApplicable, setNotApplicable] = useState<NotApplicableRow[]>([]);
-  const [confidential, setConfidential] = useState<DossierConfidential | null>(null);
-  const [checklistItems, setChecklistItems] = useState<ChecklistItemRow[]>([]);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [allRegistreEntries, setAllRegistreEntries] = useState<RegistreEntry[]>([]);
+  const [allDocuments, setAllDocuments] = useState<EmployeeDocumentRow[]>([]);
+  const [allNotApplicable, setAllNotApplicable] = useState<NotApplicableRow[]>([]);
+  const [allConfidential, setAllConfidential] = useState<(DossierConfidential & { employee_id: string })[]>([]);
+  const [allChecklistItems, setAllChecklistItems] = useState<ChecklistItemRow[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
+  const [expiryModal, setExpiryModal] = useState<{ employeeId: string; categoryCode: string; file: File } | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
   const [issueDate, setIssueDate] = useState("");
   const [noIssueDate, setNoIssueDate] = useState(false);
   const [noExpiryDate, setNoExpiryDate] = useState(false);
-  const [contractModal, setContractModal] = useState<{ file: File; registreEntryId: string; hireDate: string | null } | null>(
-    null
-  );
+  const [contractModal, setContractModal] = useState<{
+    employeeId: string;
+    file: File;
+    registreEntryId: string;
+    hireDate: string | null;
+  } | null>(null);
   const [contractSigned, setContractSigned] = useState(true);
 
   const [showAddForm, setShowAddForm] = useState(false);
@@ -17110,21 +17159,41 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newLastName, setNewLastName] = useState("");
   const [adding, setAdding] = useState(false);
 
-  async function reloadEmployees() {
+  async function reloadAll() {
     setLoadingEmployees(true);
-    const { data: emp } = await supabase
-      .from("employees")
-      .select("id, first_name, last_name, status, hire_date")
-      .order("last_name");
+    setLoadingData(true);
+    const [{ data: emp }, { data: cats }, { data: registre }, { data: docs }, { data: na }, { data: conf }, { data: items }] =
+      await Promise.all([
+        supabase.from("employees").select("id, first_name, last_name, status, hire_date").order("last_name"),
+        supabase.from("document_categories").select("*").order("sort_order"),
+        supabase.from("registre_unique_personnel").select("id, employee_id, date_entree, date_sortie, nationalite"),
+        supabase
+          .from("employee_documents")
+          .select(
+            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
+          ),
+        supabase.from("employee_document_not_applicable").select("id, employee_id, category_code, registre_entry_id"),
+        supabase
+          .from("employee_confidential")
+          .select(
+            "employee_id, nationality, rib, securite_sociale, status_ameli, carte_vitale, residence_permit_type, residence_permit_number"
+          ),
+        supabase.from("employee_checklist_items").select("id, employee_id, registre_entry_id, checklist_type, item_code"),
+      ]);
     setEmployees((emp as DossierEmployee[]) ?? []);
+    setCategories((cats as DocumentCategory[]) ?? []);
+    setAllRegistreEntries((registre as unknown as (RegistreEntry & { employee_id: string })[]) ?? []);
+    setAllDocuments((docs as EmployeeDocumentRow[]) ?? []);
+    setAllNotApplicable((na as unknown as (NotApplicableRow & { employee_id: string })[]) ?? []);
+    setAllConfidential((conf as (DossierConfidential & { employee_id: string })[]) ?? []);
+    setAllChecklistItems((items as unknown as (ChecklistItemRow & { employee_id: string })[]) ?? []);
     setLoadingEmployees(false);
+    setLoadingData(false);
   }
 
   useEffect(() => {
     async function load() {
-      await reloadEmployees();
-      const { data: cats } = await supabase.from("document_categories").select("*").order("sort_order");
-      setCategories((cats as DocumentCategory[]) ?? []);
+      await reloadAll();
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -17153,11 +17222,9 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     }
 
     setAdding(true);
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("employees")
-      .insert({ first_name: newFirstName.trim(), last_name: newLastName.trim(), category: "chantier", status: "active" })
-      .select("id")
-      .single();
+      .insert({ first_name: newFirstName.trim(), last_name: newLastName.trim(), category: "chantier", status: "active" });
     setAdding(false);
 
     if (error) {
@@ -17168,72 +17235,107 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     setNewFirstName("");
     setNewLastName("");
     setShowAddForm(false);
-    await reloadEmployees();
-    setSelectedEmployeeId(data.id);
+    await reloadAll();
     toast.success("Employé ajouté");
   }
 
-  async function reloadDocuments() {
-    if (!selectedEmployeeId) return;
-    const { data } = await supabase
-      .from("employee_documents")
-      .select(
-        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
-      )
-      .eq("employee_id", selectedEmployeeId);
-    setDocuments((data as EmployeeDocumentRow[]) ?? []);
+  const registreByEmployee = useMemo(() => {
+    const m = new Map<string, (RegistreEntry & { employee_id: string })[]>();
+    for (const r of allRegistreEntries as (RegistreEntry & { employee_id: string })[]) {
+      if (!m.has(r.employee_id)) m.set(r.employee_id, []);
+      m.get(r.employee_id)!.push(r);
+    }
+    for (const list of m.values()) list.sort((a, b) => (b.date_entree ?? "").localeCompare(a.date_entree ?? ""));
+    return m;
+  }, [allRegistreEntries]);
+
+  const docsByEmployee = useMemo(() => {
+    const m = new Map<string, EmployeeDocumentRow[]>();
+    for (const d of allDocuments) {
+      if (!m.has(d.employee_id)) m.set(d.employee_id, []);
+      m.get(d.employee_id)!.push(d);
+    }
+    return m;
+  }, [allDocuments]);
+
+  const naByEmployee = useMemo(() => {
+    const m = new Map<string, (NotApplicableRow & { employee_id: string })[]>();
+    for (const n of allNotApplicable as (NotApplicableRow & { employee_id: string })[]) {
+      if (!m.has(n.employee_id)) m.set(n.employee_id, []);
+      m.get(n.employee_id)!.push(n);
+    }
+    return m;
+  }, [allNotApplicable]);
+
+  const confByEmployee = useMemo(() => {
+    const m = new Map<string, DossierConfidential>();
+    for (const c of allConfidential) m.set(c.employee_id, c);
+    return m;
+  }, [allConfidential]);
+
+  const checklistItemsByEmployee = useMemo(() => {
+    const m = new Map<string, (ChecklistItemRow & { employee_id: string })[]>();
+    for (const i of allChecklistItems as (ChecklistItemRow & { employee_id: string })[]) {
+      if (!m.has(i.employee_id)) m.set(i.employee_id, []);
+      m.get(i.employee_id)!.push(i);
+    }
+    return m;
+  }, [allChecklistItems]);
+
+  function categoryStage(cat: DocumentCategory): 1 | 3 | 4 | null {
+    if (STAGE_1_CODES.includes(cat.code)) return 1;
+    if (STAGE_3_CODES.includes(cat.code)) return 3;
+    if (STAGE_4_CODES.includes(cat.code)) return 4;
+    return null;
   }
 
-  useEffect(() => {
-    async function loadDetail() {
-      if (!selectedEmployeeId) {
-        setRegistreEntries([]);
-        setDocuments([]);
-        setNotApplicable([]);
-        setConfidential(null);
-        setChecklistItems([]);
-        return;
-      }
-      setLoadingDetail(true);
-      const [{ data: registre }, { data: docs }, { data: na }, { data: conf }, { data: items }] = await Promise.all([
-        supabase
-          .from("registre_unique_personnel")
-          .select("id, date_entree, date_sortie, nationalite")
-          .eq("employee_id", selectedEmployeeId)
-          .order("date_entree", { ascending: false }),
-        supabase
-          .from("employee_documents")
-          .select(
-            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
-          )
-          .eq("employee_id", selectedEmployeeId),
-        supabase
-          .from("employee_document_not_applicable")
-          .select("id, category_code, registre_entry_id")
-          .eq("employee_id", selectedEmployeeId),
-        supabase
-          .from("employee_confidential")
-          .select(
-            "nationality, rib, securite_sociale, status_ameli, carte_vitale, residence_permit_type, residence_permit_number"
-          )
-          .eq("employee_id", selectedEmployeeId)
-          .maybeSingle(),
-        supabase
-          .from("employee_checklist_items")
-          .select("id, registre_entry_id, checklist_type, item_code")
-          .eq("employee_id", selectedEmployeeId),
-      ]);
-      setRegistreEntries((registre as RegistreEntry[]) ?? []);
-      setDocuments((docs as EmployeeDocumentRow[]) ?? []);
-      setNotApplicable((na as NotApplicableRow[]) ?? []);
-      setConfidential((conf as DossierConfidential) ?? null);
-      setChecklistItems((items as ChecklistItemRow[]) ?? []);
-      setLoadingDetail(false);
-    }
-    loadDetail();
-  }, [supabase, selectedEmployeeId]);
+  function visibleCategoriesFor(employeeId: string, entry: RegistreEntry) {
+    const conf = confByEmployee.get(employeeId);
+    const isForeign = isForeignNationality(conf?.nationality ?? entry.nationalite ?? null);
+    return categories.filter((c) => !c.foreigners_only || isForeign);
+  }
 
-  const filtered = useMemo(() => {
+  function movementItems(employeeId: string, entry: RegistreEntry, type: "embauche" | "depart"): MovementItem[] {
+    const docs = docsByEmployee.get(employeeId) ?? [];
+    const na = naByEmployee.get(employeeId) ?? [];
+    const items = checklistItemsByEmployee.get(employeeId) ?? [];
+    const resolved = (categoryCode: string, registreEntryId: string | null) =>
+      docs.some((d) => d.category_code === categoryCode && d.registre_entry_id === registreEntryId) ||
+      na.some((n) => n.category_code === categoryCode && n.registre_entry_id === registreEntryId);
+
+    if (type === "embauche") {
+      const result: MovementItem[] = [];
+      for (const cat of visibleCategoriesFor(employeeId, entry)) {
+        const stage = categoryStage(cat);
+        if (stage) result.push({ code: cat.code, label: cat.label, done: resolved(cat.code, null) });
+      }
+      for (const code of ["contrat", "dpae"]) {
+        const cat = categories.find((c) => c.code === code);
+        if (cat) result.push({ code, label: cat.label, done: resolved(code, entry.id) });
+      }
+      for (const step of EMBAUCHE_MANUAL_STEPS) {
+        result.push({
+          code: step.code,
+          label: step.label,
+          done: items.some((i) => i.registre_entry_id === entry.id && i.checklist_type === "embauche" && i.item_code === step.code),
+        });
+      }
+      return result;
+    }
+    const result: MovementItem[] = [];
+    const ruptureCat = categories.find((c) => c.code === "rupture");
+    if (ruptureCat) result.push({ code: "rupture", label: ruptureCat.label, done: resolved("rupture", entry.id) });
+    for (const step of DEPART_MANUAL_STEPS) {
+      result.push({
+        code: step.code,
+        label: step.label,
+        done: items.some((i) => i.registre_entry_id === entry.id && i.checklist_type === "depart" && i.item_code === step.code),
+      });
+    }
+    return result;
+  }
+
+  const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
     return employees.filter((e) => {
       if (statusFilter !== "all" && e.status !== statusFilter) return false;
@@ -17242,22 +17344,36 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     });
   }, [employees, statusFilter, search]);
 
-  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
-  const isForeign = isForeignNationality(confidential?.nationality ?? registreEntries[0]?.nationalite ?? null);
-  const visibleCategories = useMemo(
-    () => categories.filter((c) => !c.foreigners_only || isForeign),
-    [categories, isForeign]
-  );
+  const movements = useMemo(() => {
+    const result: Movement[] = [];
+    for (const emp of filteredEmployees) {
+      for (const entry of registreByEmployee.get(emp.id) ?? []) {
+        result.push({ key: `${emp.id}:${entry.id}:embauche`, employee: emp, entry, type: "embauche" });
+        if (entry.date_sortie) result.push({ key: `${emp.id}:${entry.id}:depart`, employee: emp, entry, type: "depart" });
+      }
+    }
+    return result;
+  }, [filteredEmployees, registreByEmployee]);
+
+  async function reloadDocuments(employeeId: string) {
+    const { data } = await supabase
+      .from("employee_documents")
+      .select(
+        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
+      );
+    setAllDocuments((data as EmployeeDocumentRow[]) ?? []);
+    void employeeId;
+  }
 
   async function uploadFile(
+    employeeId: string,
     categoryCode: string,
     file: File,
     opts?: { validUntil?: string; registreEntryId?: string; documentDateIso?: string | null; fileNameOverride?: string }
   ) {
-    if (!selectedEmployeeId) return;
     const key = `${categoryCode}:${opts?.registreEntryId ?? ""}`;
     setUploadingKey(key);
-    const path = `${selectedEmployeeId}/${categoryCode}/${uniqueFileToken()}_${sanitizeStorageFileName(file.name)}`;
+    const path = `${employeeId}/${categoryCode}/${uniqueFileToken()}_${sanitizeStorageFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from(DOSSIER_BUCKET).upload(path, file);
     if (uploadError) {
       setUploadingKey(null);
@@ -17266,7 +17382,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     }
     const categoryLabel = categories.find((c) => c.code === categoryCode)?.label ?? categoryCode;
     const { error: insertError } = await supabase.from("employee_documents").insert({
-      employee_id: selectedEmployeeId,
+      employee_id: employeeId,
       category_code: categoryCode,
       file_name:
         opts?.fileNameOverride ?? standardFileName(categoryLabel, file.name, opts?.documentDateIso ?? opts?.validUntil ?? null),
@@ -17281,55 +17397,56 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
       toast.error("Erreur : " + insertError.message);
       return;
     }
-    const staleFlag = notApplicable.find(
+    const staleFlag = (naByEmployee.get(employeeId) ?? []).find(
       (n) => n.category_code === categoryCode && n.registre_entry_id === (opts?.registreEntryId ?? null)
     );
     if (staleFlag) {
       await supabase.from("employee_document_not_applicable").delete().eq("id", staleFlag.id);
-      setNotApplicable((prev) => prev.filter((n) => n.id !== staleFlag.id));
+      setAllNotApplicable((prev) => prev.filter((n) => n.id !== staleFlag.id));
     }
-    await reloadDocuments();
+    await reloadDocuments(employeeId);
     toast.success("Document ajouté");
   }
 
-  function handleFileForCategory(cat: DocumentCategory, file: File) {
+  function handleFileForCategory(employeeId: string, cat: DocumentCategory, file: File) {
     if (cat.requires_expiry || cat.requires_issue_date) {
-      setExpiryModal({ categoryCode: cat.code, file });
+      setExpiryModal({ employeeId, categoryCode: cat.code, file });
       setExpiryDate("");
       setIssueDate("");
       setNoIssueDate(false);
       setNoExpiryDate(false);
     } else {
-      uploadFile(cat.code, file);
+      uploadFile(employeeId, cat.code, file);
     }
   }
 
-  function findNotApplicable(categoryCode: string, registreEntryId: string | null) {
-    return notApplicable.find((n) => n.category_code === categoryCode && n.registre_entry_id === (registreEntryId ?? null));
+  function findNotApplicable(employeeId: string, categoryCode: string, registreEntryId: string | null) {
+    return (naByEmployee.get(employeeId) ?? []).find(
+      (n) => n.category_code === categoryCode && n.registre_entry_id === (registreEntryId ?? null)
+    );
   }
 
-  async function toggleNotApplicable(categoryCode: string, registreEntryId: string | null, checked: boolean) {
-    if (!selectedEmployeeId) return;
+  async function toggleNotApplicable(employeeId: string, categoryCode: string, registreEntryId: string | null, checked: boolean) {
     if (checked) {
       const { data, error } = await supabase
         .from("employee_document_not_applicable")
-        .insert({ employee_id: selectedEmployeeId, category_code: categoryCode, registre_entry_id: registreEntryId })
-        .select("id, category_code, registre_entry_id")
+        .insert({ employee_id: employeeId, category_code: categoryCode, registre_entry_id: registreEntryId })
+        .select("id, employee_id, category_code, registre_entry_id")
         .single();
       if (error) {
         toast.error("Erreur : " + error.message);
         return;
       }
-      setNotApplicable((prev) => [...prev, data as NotApplicableRow]);
+      setAllNotApplicable((prev) => [...prev, data as NotApplicableRow & { employee_id: string }]);
     } else {
-      const existing = findNotApplicable(categoryCode, registreEntryId);
+      const existing = findNotApplicable(employeeId, categoryCode, registreEntryId);
       if (!existing) return;
       const { error } = await supabase.from("employee_document_not_applicable").delete().eq("id", existing.id);
       if (error) {
         toast.error("Erreur : " + error.message);
         return;
       }
-      setNotApplicable((prev) => prev.filter((n) => n.id !== existing.id));
+      setAllNotApplicable((prev) => prev.filter((n) => n.id !== existing.id));
     }
   }
 
@@ -17368,30 +17485,30 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
       toast.error("Erreur : " + dbError.message);
       return;
     }
-    await reloadDocuments();
+    await reloadDocuments(doc.employee_id);
     toast.success("Document supprimé");
   }
 
-  async function toggleManualStep(registreEntryId: string, checklistType: "embauche" | "depart", itemCode: string, next: boolean) {
-    if (!selectedEmployeeId) return;
+  async function toggleManualStep(
+    employeeId: string,
+    registreEntryId: string,
+    checklistType: "embauche" | "depart",
+    itemCode: string,
+    next: boolean
+  ) {
     if (next) {
       const { data, error } = await supabase
         .from("employee_checklist_items")
-        .insert({
-          employee_id: selectedEmployeeId,
-          registre_entry_id: registreEntryId,
-          checklist_type: checklistType,
-          item_code: itemCode,
-        })
-        .select("id, registre_entry_id, checklist_type, item_code")
+        .insert({ employee_id: employeeId, registre_entry_id: registreEntryId, checklist_type: checklistType, item_code: itemCode })
+        .select("id, employee_id, registre_entry_id, checklist_type, item_code")
         .single();
       if (error) {
         toast.error("Erreur : " + error.message);
         return;
       }
-      setChecklistItems((prev) => [...prev, data as ChecklistItemRow]);
+      setAllChecklistItems((prev) => [...prev, data as ChecklistItemRow & { employee_id: string }]);
     } else {
-      const existing = checklistItems.find(
+      const existing = (checklistItemsByEmployee.get(employeeId) ?? []).find(
         (i) => i.registre_entry_id === registreEntryId && i.checklist_type === checklistType && i.item_code === itemCode
       );
       if (!existing) return;
@@ -17400,19 +17517,13 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
         toast.error("Erreur : " + error.message);
         return;
       }
-      setChecklistItems((prev) => prev.filter((i) => i.id !== existing.id));
+      setAllChecklistItems((prev) => prev.filter((i) => i.id !== existing.id));
     }
   }
 
-  function categoryStage(cat: DocumentCategory): 1 | 3 | 4 | null {
-    if (STAGE_1_CODES.includes(cat.code)) return 1;
-    if (STAGE_3_CODES.includes(cat.code)) return 3;
-    if (STAGE_4_CODES.includes(cat.code)) return 4;
-    return null;
-  }
-
-  function stageCategoryCards(stage: 1 | 3 | 4) {
-    return visibleCategories
+  function stageCategoryCards(employeeId: string, stage: 1 | 3 | 4, entry: RegistreEntry) {
+    const docs = docsByEmployee.get(employeeId) ?? [];
+    return visibleCategoriesFor(employeeId, entry)
       .filter((c) => categoryStage(c) === stage)
       .map((cat) => {
         const Icon = DOSSIER_CATEGORY_ICONS[cat.code] ?? FileText;
@@ -17421,11 +17532,11 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             key={cat.code}
             cat={cat}
             icon={Icon}
-            docs={documents.filter((d) => d.category_code === cat.code)}
-            naFlag={findNotApplicable(cat.code, null)}
+            docs={docs.filter((d) => d.category_code === cat.code)}
+            naFlag={findNotApplicable(employeeId, cat.code, null)}
             uploadingKey={uploadingKey}
-            onFileSelected={(file) => handleFileForCategory(cat, file)}
-            onToggleNotApplicable={(checked) => toggleNotApplicable(cat.code, null, checked)}
+            onFileSelected={(file) => handleFileForCategory(employeeId, cat, file)}
+            onToggleNotApplicable={(checked) => toggleNotApplicable(employeeId, cat.code, null, checked)}
             onPreview={previewFile}
             onDownload={downloadFile}
             onDelete={deleteFile}
@@ -17435,20 +17546,20 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
-      <div className="card w-full lg:w-72 shrink-0">
-        <div className="flex items-center justify-between mb-3">
+    <div className="space-y-4">
+      <div className="card">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="font-bold">
             <Bi
-              fr="Employés"
-              ru="Сотрудники"
+              fr="Checklists RH"
+              ru="Чек-листы"
               after={
                 <InfoNote
                   title="Checklists RH"
                   text={
-                    "Чек-лист приёма и увольнения по каждому периоду трудоустройства сотрудника.\n\n" +
-                    "Пункты с пометкой «auto» определяются сами по уже загруженным данным (документ в личном деле, дата увольнения в регистре) — их нельзя снять вручную, нужно исправить сам источник. Остальные пункты отмечаются вручную.\n\n" +
-                    "«+ Nouvel employé» — добавить совершенно нового сотрудника (достаточно имени и фамилии). Строка в регистре персонала и чек-лист приёма создадутся сразу же, дату приёма и остальные данные можно дозаполнить позже."
+                    "Одна карточка на каждое «движение» (приём или увольнение по конкретному периоду трудоустройства). Прогресс-бар — сколько пунктов уже закрыто.\n\n" +
+                    "«Изменить» открывает карточку целиком: там можно загружать документы (тем же способом, что и в Dossier salarié) или отметить пункт как неприменимый.\n\n" +
+                    "«+ Nouvel employé» — добавить совершенно нового сотрудника (достаточно имени и фамилии); карточка «Embauche» появится сразу."
                   }
                 />
               }
@@ -17459,7 +17570,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
           </button>
         </div>
         {showAddForm && (
-          <div className="rounded-lg border border-stone-100 p-2.5 mb-3 space-y-2">
+          <div className="rounded-lg border border-stone-100 p-2.5 mb-3 flex flex-wrap items-end gap-2">
             <input
               className="input"
               placeholder="Prénom / Имя"
@@ -17472,218 +17583,227 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
               value={newLastName}
               onChange={(e) => setNewLastName(e.target.value)}
             />
-            <div className="flex gap-2">
-              <button
-                className="btn btn-green text-xs px-2.5 py-1.5 flex-1"
-                disabled={adding || !newFirstName.trim() || !newLastName.trim()}
-                onClick={addEmployee}
-              >
-                {adding ? "…" : <Bi fr="Ajouter" ru="Добавить" />}
-              </button>
-              <button className="btn btn-secondary text-xs px-2.5 py-1.5" onClick={() => setShowAddForm(false)}>
-                <Bi fr="Annuler" ru="Отмена" />
-              </button>
-            </div>
+            <button
+              className="btn btn-green text-xs px-2.5 py-1.5"
+              disabled={adding || !newFirstName.trim() || !newLastName.trim()}
+              onClick={addEmployee}
+            >
+              {adding ? "…" : <Bi fr="Ajouter" ru="Добавить" />}
+            </button>
+            <button className="btn btn-secondary text-xs px-2.5 py-1.5" onClick={() => setShowAddForm(false)}>
+              <Bi fr="Annuler" ru="Отмена" />
+            </button>
           </div>
         )}
-        <input
-          className="input mb-2"
-          placeholder="Rechercher un nom…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          className="input mb-3"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
-        >
-          <option value="active">Actifs / Активны</option>
-          <option value="on_leave">En congé / В отпуске</option>
-          <option value="terminated">Sortis / Уволены</option>
-          <option value="unclear">Inactif / Неактивен</option>
-          <option value="all">Tous / Все</option>
-        </select>
-        {loadingEmployees ? (
-          <SkeletonRows rows={4} cols={1} />
-        ) : (
-          <div className="max-h-[32rem] overflow-y-auto -mx-1">
-            {filtered.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => setSelectedEmployeeId(e.id)}
-                className={`w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
-                  selectedEmployeeId === e.id ? "bg-primary-50 text-primary-700" : "text-stone-600 hover:bg-stone-50"
-                }`}
-              >
-                <span className="truncate">{employeeName(e)}</span>
-              </button>
-            ))}
-            {filtered.length === 0 && <EmptyState title="Aucun employé" titleRu="Нет сотрудников" />}
-          </div>
-        )}
+        <div className="flex flex-wrap items-end gap-3">
+          <input
+            className="input"
+            placeholder="Rechercher un nom…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}>
+            <option value="active">Actifs / Активны</option>
+            <option value="on_leave">En congé / В отпуске</option>
+            <option value="terminated">Sortis / Уволены</option>
+            <option value="unclear">Inactif / Неактивен</option>
+            <option value="all">Tous / Все</option>
+          </select>
+          <label className="flex items-center gap-1.5 text-sm text-stone-600">
+            <input type="checkbox" checked={hideComplete} onChange={(e) => setHideComplete(e.target.checked)} />
+            <Bi fr="Masquer les checklists terminées" ru="Скрыть завершённые" />
+          </label>
+        </div>
       </div>
 
-      <div className="flex-1 min-w-0">
-        {!selectedEmployee ? (
-          <div className="card">
-            <EmptyState
-              title="Sélectionnez un employé"
-              titleRu="Выберите сотрудника"
-              description="Choisissez un employé dans la liste pour voir ses checklists d'embauche et de départ."
-            />
-          </div>
-        ) : (
-          <div className="card">
-            <p className="font-bold mb-4">Checklists — {employeeName(selectedEmployee)}</p>
-            {loadingDetail ? (
-              <SkeletonRows rows={4} cols={1} />
-            ) : registreEntries.length === 0 ? (
-              <EmptyState
-                title="Aucune période trouvée"
-                titleRu="Период не найден"
-                description="Aucune entrée dans le Registre du personnel pour cet employé."
-              />
-            ) : (
-              <div className="space-y-8">
-                {registreEntries.map((entry) => {
-                  const checkedForEntry = new Set(
-                    checklistItems.filter((i) => i.registre_entry_id === entry.id).map((i) => `${i.checklist_type}:${i.item_code}`)
-                  );
-                  const checkedEmbauche = new Set(
-                    [...checkedForEntry].filter((k) => k.startsWith("embauche:")).map((k) => k.slice("embauche:".length))
-                  );
-                  const checkedDepart = new Set(
-                    [...checkedForEntry].filter((k) => k.startsWith("depart:")).map((k) => k.slice("depart:".length))
-                  );
-                  const contratCat = categories.find((c) => c.code === "contrat");
-                  const dpaeCat = categories.find((c) => c.code === "dpae");
-                  const ruptureCat = categories.find((c) => c.code === "rupture");
-                  return (
-                    <div key={entry.id} className="space-y-4">
-                      <p className="text-sm font-bold text-stone-700 border-b border-stone-100 pb-2">
-                        {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
-                        {entry.date_sortie ? formatDateShortDMY(entry.date_sortie) : "en cours"}
-                      </p>
+      {loadingEmployees || loadingData ? (
+        <SkeletonRows rows={4} cols={1} />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {movements.map((m) => {
+            const items = movementItems(m.employee.id, m.entry, m.type);
+            const done = items.filter((i) => i.done).length;
+            const total = items.length;
+            if (hideComplete && total > 0 && done === total) return null;
+            const isExpanded = expandedKey === m.key;
+            const contratCat = categories.find((c) => c.code === "contrat");
+            const dpaeCat = categories.find((c) => c.code === "dpae");
+            const ruptureCat = categories.find((c) => c.code === "rupture");
+            const checkedManual = new Set(
+              (checklistItemsByEmployee.get(m.employee.id) ?? [])
+                .filter((i) => i.registre_entry_id === m.entry.id && i.checklist_type === m.type)
+                .map((i) => i.item_code)
+            );
+            return (
+              <div
+                key={m.key}
+                className={`card ${isExpanded ? "md:col-span-2 xl:col-span-3" : ""}`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0">
+                    <p className="font-bold truncate">{employeeName(m.employee)}</p>
+                    <p className="text-xs text-stone-400">
+                      <Bi fr={m.type === "embauche" ? "Embauche" : "Départ"} ru={m.type === "embauche" ? "Приём" : "Увольнение"} />
+                      {" · "}
+                      {m.entry.date_entree ? formatDateShortDMY(m.entry.date_entree) : "—"} →{" "}
+                      {m.entry.date_sortie ? formatDateShortDMY(m.entry.date_sortie) : "en cours"}
+                    </p>
+                  </div>
+                  <button
+                    className="btn btn-secondary text-xs px-2.5 py-1.5 shrink-0"
+                    onClick={() => setExpandedKey(isExpanded ? null : m.key)}
+                  >
+                    {isExpanded ? <Bi fr="Réduire" ru="Свернуть" /> : <Bi fr="Modifier" ru="Изменить" />}
+                  </button>
+                </div>
+                <div className="mb-3">
+                  <ProgressBar done={done} total={total} />
+                </div>
 
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                          <Bi fr="Étape 1 — Documents personnels" ru="Этап 1 — Личные документы" />
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stageCategoryCards(1)}</div>
-                      </div>
-
-                      {(contratCat || dpaeCat) && (
+                {!isExpanded ? (
+                  <ul className="space-y-1">
+                    {items.map((item) => (
+                      <li key={item.code} className="flex items-center gap-2 text-sm">
+                        {item.done ? (
+                          <Check size={14} className="text-success-600 shrink-0" />
+                        ) : (
+                          <Square size={14} className="text-stone-300 shrink-0" />
+                        )}
+                        <span className={`truncate ${item.done ? "text-stone-600" : "text-stone-400"}`}>{item.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="space-y-4">
+                    {m.type === "embauche" ? (
+                      <>
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                            <Bi fr="Étape 2 — Contrat & déclaration" ru="Этап 2 — Договор и декларация" />
+                            <Bi fr="Étape 1 — Documents personnels" ru="Этап 1 — Личные документы" />
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {contratCat && (
-                              <DossierPeriodCategory
-                                category={contratCat}
-                                icon={DOSSIER_CATEGORY_ICONS[contratCat.code] ?? FileText}
-                                entries={[entry]}
-                                documents={documents}
-                                notApplicable={notApplicable}
-                                uploadingKey={uploadingKey}
-                                onUpload={(_code, file, registreEntryId) =>
-                                  setContractModal({ file, registreEntryId, hireDate: entry.date_entree })
-                                }
-                                onToggleNotApplicable={(code, registreEntryId, checked) =>
-                                  toggleNotApplicable(code, registreEntryId, checked)
-                                }
-                                onPreview={previewFile}
-                                onDownload={downloadFile}
-                                onDelete={deleteFile}
-                              />
-                            )}
-                            {dpaeCat && (
-                              <DossierPeriodCategory
-                                category={dpaeCat}
-                                icon={DOSSIER_CATEGORY_ICONS[dpaeCat.code] ?? FileText}
-                                entries={[entry]}
-                                documents={documents}
-                                notApplicable={notApplicable}
-                                uploadingKey={uploadingKey}
-                                onUpload={(code, file, registreEntryId) =>
-                                  uploadFile(code, file, { registreEntryId, documentDateIso: entry.date_entree })
-                                }
-                                onToggleNotApplicable={(code, registreEntryId, checked) =>
-                                  toggleNotApplicable(code, registreEntryId, checked)
-                                }
-                                onPreview={previewFile}
-                                onDownload={downloadFile}
-                                onDelete={deleteFile}
-                              />
-                            )}
+                            {stageCategoryCards(m.employee.id, 1, m.entry)}
                           </div>
                         </div>
-                      )}
 
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                          <Bi fr="Étape 3 — Habilitations & statut" ru="Этап 3 — Допуски и статус" />
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {stageCategoryCards(3)}
-                          <ManualStepList
-                            title={<Bi fr="Autres étapes" ru="Другие шаги" />}
-                            steps={EMBAUCHE_MANUAL_STEPS}
-                            checked={checkedEmbauche}
-                            onToggle={(code, next) => toggleManualStep(entry.id, "embauche", code, next)}
-                          />
-                        </div>
-                      </div>
+                        {(contratCat || dpaeCat) && (
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                              <Bi fr="Étape 2 — Contrat & déclaration" ru="Этап 2 — Договор и декларация" />
+                            </p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {contratCat && (
+                                <DossierPeriodCategory
+                                  category={contratCat}
+                                  icon={DOSSIER_CATEGORY_ICONS[contratCat.code] ?? FileText}
+                                  entries={[m.entry]}
+                                  documents={docsByEmployee.get(m.employee.id) ?? []}
+                                  notApplicable={naByEmployee.get(m.employee.id) ?? []}
+                                  uploadingKey={uploadingKey}
+                                  onUpload={(_code, file, registreEntryId) =>
+                                    setContractModal({
+                                      employeeId: m.employee.id,
+                                      file,
+                                      registreEntryId,
+                                      hireDate: m.entry.date_entree,
+                                    })
+                                  }
+                                  onToggleNotApplicable={(code, registreEntryId, checked) =>
+                                    toggleNotApplicable(m.employee.id, code, registreEntryId, checked)
+                                  }
+                                  onPreview={previewFile}
+                                  onDownload={downloadFile}
+                                  onDelete={deleteFile}
+                                />
+                              )}
+                              {dpaeCat && (
+                                <DossierPeriodCategory
+                                  category={dpaeCat}
+                                  icon={DOSSIER_CATEGORY_ICONS[dpaeCat.code] ?? FileText}
+                                  entries={[m.entry]}
+                                  documents={docsByEmployee.get(m.employee.id) ?? []}
+                                  notApplicable={naByEmployee.get(m.employee.id) ?? []}
+                                  uploadingKey={uploadingKey}
+                                  onUpload={(code, file, registreEntryId) =>
+                                    uploadFile(m.employee.id, code, file, { registreEntryId, documentDateIso: m.entry.date_entree })
+                                  }
+                                  onToggleNotApplicable={(code, registreEntryId, checked) =>
+                                    toggleNotApplicable(m.employee.id, code, registreEntryId, checked)
+                                  }
+                                  onPreview={previewFile}
+                                  onDownload={downloadFile}
+                                  onDelete={deleteFile}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        )}
 
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                          <Bi fr="Étape 4 — Complémentaire" ru="Этап 4 — Дополнительно" />
-                        </p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stageCategoryCards(4)}</div>
-                      </div>
-
-                      {entry.date_sortie && (
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                            <Bi fr="Départ" ru="Увольнение" />
+                            <Bi fr="Étape 3 — Habilitations & statut" ru="Этап 3 — Допуски и статус" />
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {ruptureCat && (
-                              <DossierPeriodCategory
-                                category={ruptureCat}
-                                icon={DOSSIER_CATEGORY_ICONS[ruptureCat.code] ?? FileText}
-                                entries={[entry]}
-                                documents={documents}
-                                notApplicable={notApplicable}
-                                uploadingKey={uploadingKey}
-                                onUpload={(code, file, registreEntryId) =>
-                                  uploadFile(code, file, { registreEntryId, documentDateIso: entry.date_sortie })
-                                }
-                                onToggleNotApplicable={(code, registreEntryId, checked) =>
-                                  toggleNotApplicable(code, registreEntryId, checked)
-                                }
-                                onPreview={previewFile}
-                                onDownload={downloadFile}
-                                onDelete={deleteFile}
-                              />
-                            )}
+                            {stageCategoryCards(m.employee.id, 3, m.entry)}
                             <ManualStepList
                               title={<Bi fr="Autres étapes" ru="Другие шаги" />}
-                              steps={DEPART_MANUAL_STEPS}
-                              checked={checkedDepart}
-                              onToggle={(code, next) => toggleManualStep(entry.id, "depart", code, next)}
+                              steps={EMBAUCHE_MANUAL_STEPS}
+                              checked={checkedManual}
+                              onToggle={(code, next) => toggleManualStep(m.employee.id, m.entry.id, "embauche", code, next)}
                             />
                           </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                            <Bi fr="Étape 4 — Complémentaire" ru="Этап 4 — Дополнительно" />
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {stageCategoryCards(m.employee.id, 4, m.entry)}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {ruptureCat && (
+                          <DossierPeriodCategory
+                            category={ruptureCat}
+                            icon={DOSSIER_CATEGORY_ICONS[ruptureCat.code] ?? FileText}
+                            entries={[m.entry]}
+                            documents={docsByEmployee.get(m.employee.id) ?? []}
+                            notApplicable={naByEmployee.get(m.employee.id) ?? []}
+                            uploadingKey={uploadingKey}
+                            onUpload={(code, file, registreEntryId) =>
+                              uploadFile(m.employee.id, code, file, { registreEntryId, documentDateIso: m.entry.date_sortie })
+                            }
+                            onToggleNotApplicable={(code, registreEntryId, checked) =>
+                              toggleNotApplicable(m.employee.id, code, registreEntryId, checked)
+                            }
+                            onPreview={previewFile}
+                            onDownload={downloadFile}
+                            onDelete={deleteFile}
+                          />
+                        )}
+                        <ManualStepList
+                          title={<Bi fr="Autres étapes" ru="Другие шаги" />}
+                          steps={DEPART_MANUAL_STEPS}
+                          checked={checkedManual}
+                          onToggle={(code, next) => toggleManualStep(m.employee.id, m.entry.id, "depart", code, next)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            );
+          })}
+          {movements.length === 0 && (
+            <div className="card md:col-span-2 xl:col-span-3">
+              <EmptyState title="Aucune checklist" titleRu="Нет чек-листов" description="Aucun employé ne correspond au filtre." />
+            </div>
+          )}
+        </div>
+      )}
 
       <Modal open={!!expiryModal} onClose={() => setExpiryModal(null)} title="Dates du document" maxWidth="max-w-sm">
         {expiryModal &&
@@ -17754,7 +17874,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                     className="btn btn-primary text-sm px-3 py-2"
                     disabled={!canSubmit}
                     onClick={async () => {
-                      await uploadFile(expiryModal.categoryCode, expiryModal.file, {
+                      await uploadFile(expiryModal.employeeId, expiryModal.categoryCode, expiryModal.file, {
                         validUntil: needsExpiry && !noExpiryDate ? expiryDate : undefined,
                         documentDateIso: needsIssueDate && !noIssueDate ? issueDate : undefined,
                       });
@@ -17813,7 +17933,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                 className="btn btn-green text-sm px-3 py-2"
                 onClick={async () => {
                   const fileName = standardContractFileName(contractModal.file.name, contractSigned, contractModal.hireDate);
-                  await uploadFile("contrat", contractModal.file, {
+                  await uploadFile(contractModal.employeeId, "contrat", contractModal.file, {
                     registreEntryId: contractModal.registreEntryId,
                     fileNameOverride: fileName,
                   });

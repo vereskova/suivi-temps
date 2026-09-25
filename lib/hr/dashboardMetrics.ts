@@ -23,6 +23,11 @@ export type DashEmployee = {
     | { name: string; chef_employee_id: string | null }
     | { name: string; chef_employee_id: string | null }[]
     | null;
+  /** Number of registre_unique_personnel rows for this person — more than
+   *  one means a rehire (see dashIsRevenu). The caller joins this in
+   *  (dashboardMetrics itself has no DB access); 1 or omitted means "no
+   *  known rehire history". */
+  episodeCount?: number;
 };
 
 export function dashTeamOf(e: DashEmployee) {
@@ -36,6 +41,27 @@ export function dashIsChef(e: DashEmployee): boolean {
 
 export function dashIsFop(e: DashEmployee): boolean {
   return e.contract_type === "FOP";
+}
+
+/** More than one registre_unique_personnel row = this person left and came
+ *  back at least once. Counted as its own group instead of folded into
+ *  "Tous", since a rehire's headcount/tenure/turnover behave differently
+ *  from someone continuously employed — and their current episode's own
+ *  tenure is what's meaningful, not a total spanning the gap. */
+export function dashIsRevenu(e: DashEmployee): boolean {
+  return (e.episodeCount ?? 1) > 1;
+}
+
+/** "Stagiaire" here means within the first 2 calendar months of hire_date —
+ *  the actual période d'essai length used in VLADIS's own CDI contracts
+ *  (see e.g. contrat POGREBNOI: "période d'essai de 2 mois maximum"), not
+ *  the 30-day window isInTrialPeriod uses for the UI badge elsewhere. A
+ *  rehire within their first 2 months counts as both "stagiaire" and
+ *  "revenu" — the two groups overlap on purpose, same as e.g. "chef" and
+ *  "chantier" already do. */
+export function dashIsStagiaire(e: DashEmployee, todayIso: string): boolean {
+  if (dashIsFop(e) || e.status === "terminated" || !e.hire_date) return false;
+  return todayIso < addMonthsIso(e.hire_date, 2);
 }
 
 /** Whole completed months between two ISO dates — the unit every duration on the HR dashboard is built from. */
@@ -76,13 +102,13 @@ export function dashHeadcountAt(emps: DashEmployee[], dateIso: string): number {
   return emps.filter((e) => e.hire_date && e.hire_date <= dateIso && (!e.end_date || e.end_date > dateIso)).length;
 }
 
-export type HrGroupKey = "all" | "monteur" | "chef" | "chantier" | "bureau" | "fop";
+export type HrGroupKey = "all" | "monteur" | "chef" | "chantier" | "bureau" | "fop" | "stagiaire" | "revenu";
 
 export type HrGroupDef = {
   key: HrGroupKey;
   label: string;
   labelRu: string;
-  predicate: (e: DashEmployee) => boolean;
+  predicate: (e: DashEmployee, todayIso: string) => boolean;
 };
 
 /**
@@ -115,6 +141,8 @@ export const HR_GROUPS: HrGroupDef[] = [
   },
   { key: "bureau", label: "Bureau", labelRu: "Офис", predicate: (e) => !dashIsFop(e) && e.category === "bureau" },
   { key: "fop", label: "FOP (sous-traitants)", labelRu: "FOP (подрядчики)", predicate: dashIsFop },
+  { key: "stagiaire", label: "Stagiaires (< 2 mois)", labelRu: "Стажёры (< 2 мес)", predicate: dashIsStagiaire },
+  { key: "revenu", label: "Revenus (réembauchés)", labelRu: "Вернулись (повторный найм)", predicate: dashIsRevenu },
 ];
 
 export type TurnoverPeriod = "rolling12" | "calendarYear";
