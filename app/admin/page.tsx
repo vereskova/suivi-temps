@@ -15785,6 +15785,7 @@ type DossierMedicalVisit = {
   visit_subtype: string | null;
 };
 type RegistreEntry = { id: string; date_entree: string | null; date_sortie: string | null; nationalite: string | null };
+type NotApplicableRow = { id: string; category_code: string; registre_entry_id: string | null };
 
 const DOSSIER_BUCKET = "dossier-salarie";
 
@@ -15860,8 +15861,10 @@ function DossierPeriodCategory({
   icon: Icon,
   entries,
   documents,
+  notApplicable,
   uploadingKey,
   onUpload,
+  onToggleNotApplicable,
   onPreview,
   onDownload,
   onDelete,
@@ -15870,8 +15873,10 @@ function DossierPeriodCategory({
   icon: LucideIcon;
   entries: RegistreEntry[];
   documents: EmployeeDocumentRow[];
+  notApplicable: NotApplicableRow[];
   uploadingKey: string | null;
   onUpload: (categoryCode: string, file: File, registreEntryId: string) => void;
+  onToggleNotApplicable: (categoryCode: string, registreEntryId: string, checked: boolean) => void;
   onPreview: (doc: EmployeeDocumentRow) => void;
   onDownload: (doc: EmployeeDocumentRow) => void;
   onDelete: (doc: EmployeeDocumentRow) => void;
@@ -15904,11 +15909,18 @@ function DossierPeriodCategory({
             );
             const key = `${category.code}:${entry.id}`;
             const isDragOver = dragOverKey === key;
+            const naFlag = notApplicable.find(
+              (n) => n.category_code === category.code && n.registre_entry_id === entry.id
+            );
             return (
               <div
                 key={entry.id}
                 className={`rounded-lg p-2.5 transition-colors ${
-                  isDragOver ? "bg-primary-50 ring-2 ring-primary-400" : docs.length === 0 ? "bg-error-50" : "bg-stone-50"
+                  isDragOver
+                    ? "bg-primary-50 ring-2 ring-primary-400"
+                    : docs.length === 0 && !naFlag
+                      ? "bg-error-50"
+                      : "bg-stone-50"
                 }`}
                 onDragOver={(ev) => {
                   ev.preventDefault();
@@ -15948,9 +15960,27 @@ function DossierPeriodCategory({
                   </label>
                 </div>
                 {docs.length === 0 ? (
-                  <p className="text-xs font-semibold text-error-600">
-                    Aucun document. <span className="opacity-70">/ Нет документов.</span>
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={`text-xs font-semibold ${naFlag ? "text-stone-400" : "text-error-600"}`}>
+                      {naFlag ? (
+                        <>
+                          Non applicable. <span className="opacity-70">/ Неприменимо.</span>
+                        </>
+                      ) : (
+                        <>
+                          Aucun document. <span className="opacity-70">/ Нет документов.</span>
+                        </>
+                      )}
+                    </p>
+                    <label className="flex items-center gap-1.5 text-xs text-stone-500 cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={!!naFlag}
+                        onChange={(ev) => onToggleNotApplicable(category.code, entry.id, ev.target.checked)}
+                      />
+                      <Bi fr="Non applicable" ru="Неприменимо" />
+                    </label>
+                  </div>
                 ) : (
                   <ul className="space-y-1">
                     {docs.map((doc) => (
@@ -16013,6 +16043,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [confidential, setConfidential] = useState<DossierConfidential | null>(null);
   const [medicalVisits, setMedicalVisits] = useState<DossierMedicalVisit[]>([]);
   const [registreEntries, setRegistreEntries] = useState<RegistreEntry[]>([]);
+  const [notApplicable, setNotApplicable] = useState<NotApplicableRow[]>([]);
   const [actionLog, setActionLog] = useState<DocumentActionLogRow[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -16091,12 +16122,14 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
         setConfidential(null);
         setMedicalVisits([]);
         setRegistreEntries([]);
+        setNotApplicable([]);
         setActionLog([]);
         return;
       }
       setLoadingDetail(true);
-      const [{ data: docs }, { data: conf }, { data: visits }, { data: registre }, { data: log }] = await Promise.all([
-        supabase
+      const [{ data: docs }, { data: conf }, { data: visits }, { data: registre }, { data: na }, { data: log }] =
+        await Promise.all([
+          supabase
           .from("employee_documents")
           .select(
             "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
@@ -16121,6 +16154,10 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           .eq("employee_id", selectedEmployeeId)
           .order("date_entree", { ascending: false }),
         supabase
+          .from("employee_document_not_applicable")
+          .select("id, category_code, registre_entry_id")
+          .eq("employee_id", selectedEmployeeId),
+        supabase
           .from("document_action_log")
           .select("id, category_code, file_name, action, actor_email, created_at")
           .eq("employee_id", selectedEmployeeId)
@@ -16131,6 +16168,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       setConfidential((conf as DossierConfidential) ?? null);
       setMedicalVisits((visits as DossierMedicalVisit[]) ?? []);
       setRegistreEntries((registre as RegistreEntry[]) ?? []);
+      setNotApplicable((na as NotApplicableRow[]) ?? []);
       setActionLog((log as DocumentActionLogRow[]) ?? []);
       setLoadingDetail(false);
     }
@@ -16193,8 +16231,46 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       toast.error("Erreur : " + insertError.message);
       return;
     }
+    // A real document just landed — a leftover "non applicable" flag on the
+    // same category/period would now be a contradiction, so clear it.
+    const staleFlag = findNotApplicable(categoryCode, opts?.registreEntryId ?? null);
+    if (staleFlag) {
+      await supabase.from("employee_document_not_applicable").delete().eq("id", staleFlag.id);
+      setNotApplicable((prev) => prev.filter((n) => n.id !== staleFlag.id));
+    }
     await Promise.all([reloadDocuments(), reloadOverdueCounts(), reloadActionLog()]);
     toast.success("Document ajouté");
+  }
+
+  function findNotApplicable(categoryCode: string, registreEntryId: string | null) {
+    return notApplicable.find(
+      (n) => n.category_code === categoryCode && n.registre_entry_id === (registreEntryId ?? null)
+    );
+  }
+
+  async function toggleNotApplicable(categoryCode: string, registreEntryId: string | null, checked: boolean) {
+    if (!selectedEmployeeId) return;
+    if (checked) {
+      const { data, error } = await supabase
+        .from("employee_document_not_applicable")
+        .insert({ employee_id: selectedEmployeeId, category_code: categoryCode, registre_entry_id: registreEntryId })
+        .select("id, category_code, registre_entry_id")
+        .single();
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setNotApplicable((prev) => [...prev, data as NotApplicableRow]);
+    } else {
+      const existing = findNotApplicable(categoryCode, registreEntryId);
+      if (!existing) return;
+      const { error } = await supabase.from("employee_document_not_applicable").delete().eq("id", existing.id);
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setNotApplicable((prev) => prev.filter((n) => n.id !== existing.id));
+    }
   }
 
   /** Shared by the file-picker input and drag-and-drop for a non-period
@@ -16428,6 +16504,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         icon={Icon}
                         entries={entries}
                         documents={documents}
+                        notApplicable={notApplicable}
                         uploadingKey={uploadingKey}
                         onUpload={(code, file, registreEntryId) => {
                           if (code === "contrat") {
@@ -16440,6 +16517,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             uploadFile(code, file, { registreEntryId, documentDateIso });
                           }
                         }}
+                        onToggleNotApplicable={toggleNotApplicable}
                         onPreview={previewFile}
                         onDownload={downloadFile}
                         onDelete={deleteFile}
@@ -16450,6 +16528,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   const docs = documents.filter((d) => d.category_code === cat.code);
                   const key = `${cat.code}:`;
                   const isDragOver = dragOverKey === key;
+                  const naFlag = findNotApplicable(cat.code, null);
 
                   return (
                     <div
@@ -16457,7 +16536,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       className={`rounded-xl border p-3 transition-colors ${
                         isDragOver
                           ? "border-primary-400 bg-primary-50 ring-2 ring-primary-400"
-                          : docs.length === 0
+                          : docs.length === 0 && !naFlag
                             ? "border-error-200 bg-error-50/40"
                             : "border-stone-100"
                       }`}
@@ -16571,9 +16650,27 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         ))}
 
                       {docs.length === 0 ? (
-                        <p className="text-xs font-semibold text-error-600">
-                          Aucun document. <span className="opacity-70">/ Нет документов.</span>
-                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className={`text-xs font-semibold ${naFlag ? "text-stone-400" : "text-error-600"}`}>
+                            {naFlag ? (
+                              <>
+                                Non applicable. <span className="opacity-70">/ Неприменимо.</span>
+                              </>
+                            ) : (
+                              <>
+                                Aucun document. <span className="opacity-70">/ Нет документов.</span>
+                              </>
+                            )}
+                          </p>
+                          <label className="flex items-center gap-1.5 text-xs text-stone-500 cursor-pointer shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={!!naFlag}
+                              onChange={(ev) => toggleNotApplicable(cat.code, null, ev.target.checked)}
+                            />
+                            <Bi fr="Non applicable" ru="Неприменимо" />
+                          </label>
+                        </div>
                       ) : (
                         <ul className="space-y-1">
                           {docs.map((doc) => {
