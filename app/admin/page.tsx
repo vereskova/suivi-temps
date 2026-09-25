@@ -16931,15 +16931,37 @@ type DismissedRow = { id: string; employee_id: string; registre_entry_id: string
  *  employee_checklist_items, same table/pattern as before. */
 type ManualStepDef = { code: string; label: string; labelRu: string };
 
-const EMBAUCHE_MANUAL_STEPS: ManualStepDef[] = [
-  { code: "visite_medicale", label: "Visite médicale d'embauche programmée", labelRu: "Записан на медосмотр при приёме" },
-];
+// "Visite médicale" isn't a manual step here — it's rendered straight from
+// medical_visits (same data as the Médical section), so it's built directly
+// in movementItems() below instead of living in this list.
+const EMBAUCHE_MANUAL_STEPS: ManualStepDef[] = [];
 
 const DEPART_MANUAL_STEPS: ManualStepDef[] = [
   { code: "attestation_ft", label: "Attestation France Travail transmise", labelRu: "Отправлена attestation France Travail" },
   { code: "dernier_bulletin", label: "Dernier bulletin de paie émis", labelRu: "Выпущен последний расчётный листок" },
   { code: "materiel", label: "Matériel restitué (badge, EPI, véhicule…)", labelRu: "Возвращено оборудование (бейдж, СИЗ, авто…)" },
 ];
+
+/** Some checklist items are really a small process, not a single yes/no —
+ *  clicking the item pops up this sub-checklist instead of (or alongside)
+ *  its own top-level state. Stored in employee_checklist_items too, under a
+ *  "<itemCode>:<subCode>" item_code so no new table is needed. Keyed by the
+ *  parent item's code (e.g. "carte_btp"); items with no entry here just
+ *  behave as before. */
+const ITEM_SUBSTEPS: Record<string, ManualStepDef[]> = {
+  carte_btp: [
+    { code: "demandee", label: "Carte demandée", labelRu: "Карта оформлена" },
+    { code: "attestation", label: "Attestation BTP chargée", labelRu: "Атестасьон BTP загружен" },
+    { code: "recue", label: "Carte reçue physiquement", labelRu: "Карта пришла физически" },
+    {
+      code: "dossier_local",
+      label: "Classée dans le dossier « Permis et habilitations »",
+      labelRu: "Загружена в папку «Разрешения и допуски»",
+    },
+    { code: "dossier_app", label: "Chargée dans le Dossier salarié", labelRu: "Загружена в досье (в приложении)" },
+    { code: "remise", label: "Remise au salarié", labelRu: "Передана сотруднику" },
+  ],
+};
 
 /** Stage 1 in the process she described: gather what the employee provides,
  *  marking each as applicable or not. Stage 3/4: what VLADIS produces or
@@ -17105,10 +17127,10 @@ function DossierCategoryCard({
   );
 }
 
-type Movement = { key: string; employee: DossierEmployee; entry: RegistreEntry; type: "embauche" | "depart" };
+type Movement = { key: string; employee: ChecklistEmployee; entry: RegistreEntry; type: "embauche" | "depart" };
 type MovementItem = {
   code: string;
-  label: string;
+  label: React.ReactNode;
   state: "done" | "na" | "missing";
   kind: "doc" | "manual";
   registreEntryId: string | null;
@@ -17132,12 +17154,33 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
+type ChecklistEmployee = DossierEmployee & { team_name: string | null };
+
+/** Same palette and name→index assignment as Paie/Effectif's team colors
+ *  (PAIE_TEAM_COLOR_PALETTE) — a team keeps the same color across views.
+ *  Light for the collapsed card, dark for the expanded one; both literal so
+ *  Tailwind's build picks them up. */
+const CHECKLIST_TEAM_COLORS: { light: string; dark: string }[] = [
+  { light: "bg-blue-50", dark: "bg-blue-100" },
+  { light: "bg-amber-50", dark: "bg-amber-100" },
+  { light: "bg-purple-50", dark: "bg-purple-100" },
+  { light: "bg-rose-50", dark: "bg-rose-100" },
+  { light: "bg-cyan-50", dark: "bg-cyan-100" },
+  { light: "bg-orange-50", dark: "bg-orange-100" },
+  { light: "bg-lime-50", dark: "bg-lime-100" },
+  { light: "bg-fuchsia-50", dark: "bg-fuchsia-100" },
+  { light: "bg-teal-50", dark: "bg-teal-100" },
+  { light: "bg-indigo-50", dark: "bg-indigo-100" },
+];
+const CHECKLIST_NO_TEAM_COLOR = { light: "bg-stone-50", dark: "bg-stone-100" };
+
 function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [employees, setEmployees] = useState<DossierEmployee[]>([]);
+  const [employees, setEmployees] = useState<ChecklistEmployee[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [search, setSearch] = useState("");
   const [hideComplete, setHideComplete] = useState(false);
+  const [sortBy, setSortBy] = useState<"name" | "recent" | "team">("name");
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [dismissingKey, setDismissingKey] = useState<string | null>(null);
 
@@ -17148,6 +17191,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [allConfidential, setAllConfidential] = useState<(DossierConfidential & { employee_id: string })[]>([]);
   const [allChecklistItems, setAllChecklistItems] = useState<ChecklistItemRow[]>([]);
   const [allDismissed, setAllDismissed] = useState<DismissedRow[]>([]);
+  const [allMedicalVisits, setAllMedicalVisits] = useState<(DossierMedicalVisit & { employee_id: string })[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -17163,6 +17207,13 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     hireDate: string | null;
   } | null>(null);
   const [contractSigned, setContractSigned] = useState(true);
+  const [substepsModal, setSubstepsModal] = useState<{
+    employeeId: string;
+    registreEntryId: string;
+    checklistType: "embauche" | "depart";
+    itemCode: string;
+    label: string;
+  } | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newFirstName, setNewFirstName] = useState("");
@@ -17172,26 +17223,49 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   async function reloadAll() {
     setLoadingEmployees(true);
     setLoadingData(true);
-    const [{ data: emp }, { data: cats }, { data: registre }, { data: docs }, { data: na }, { data: conf }, { data: items }, { data: dismissed }] =
-      await Promise.all([
-        supabase.from("employees").select("id, first_name, last_name, status, hire_date").order("last_name"),
-        supabase.from("document_categories").select("*").order("sort_order"),
-        supabase.from("registre_unique_personnel").select("id, employee_id, date_entree, date_sortie, nationalite"),
-        supabase
-          .from("employee_documents")
-          .select(
-            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
-          ),
-        supabase.from("employee_document_not_applicable").select("id, employee_id, category_code, registre_entry_id"),
-        supabase
-          .from("employee_confidential")
-          .select(
-            "employee_id, nationality, rib, securite_sociale, status_ameli, carte_vitale, residence_permit_type, residence_permit_number"
-          ),
-        supabase.from("employee_checklist_items").select("id, employee_id, registre_entry_id, checklist_type, item_code"),
-        supabase.from("employee_checklist_dismissed").select("id, employee_id, registre_entry_id, checklist_type"),
-      ]);
-    setEmployees((emp as DossierEmployee[]) ?? []);
+    const [
+      { data: emp },
+      { data: cats },
+      { data: registre },
+      { data: docs },
+      { data: na },
+      { data: conf },
+      { data: items },
+      { data: dismissed },
+      { data: visits },
+    ] = await Promise.all([
+      supabase
+        .from("employees")
+        .select("id, first_name, last_name, status, hire_date, teams!employees_team_id_fkey(name)")
+        .order("last_name"),
+      supabase.from("document_categories").select("*").order("sort_order"),
+      supabase.from("registre_unique_personnel").select("id, employee_id, date_entree, date_sortie, nationalite"),
+      supabase
+        .from("employee_documents")
+        .select(
+          "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
+        ),
+      supabase.from("employee_document_not_applicable").select("id, employee_id, category_code, registre_entry_id"),
+      supabase
+        .from("employee_confidential")
+        .select(
+          "employee_id, nationality, rib, securite_sociale, status_ameli, carte_vitale, residence_permit_type, residence_permit_number"
+        ),
+      supabase.from("employee_checklist_items").select("id, employee_id, registre_entry_id, checklist_type, item_code"),
+      supabase.from("employee_checklist_dismissed").select("id, employee_id, registre_entry_id, checklist_type"),
+      supabase.from("medical_visits").select("id, employee_id, last_visit_date, next_visit_date, next_visit_time, visit_subtype"),
+    ]);
+    const empRows = (emp as unknown as { id: string; first_name: string; last_name: string; status: EmployeeStatus; hire_date: string | null; teams: { name: string } | { name: string }[] | null }[]) ?? [];
+    setEmployees(
+      empRows.map((e) => ({
+        id: e.id,
+        first_name: e.first_name,
+        last_name: e.last_name,
+        status: e.status,
+        hire_date: e.hire_date,
+        team_name: (Array.isArray(e.teams) ? e.teams[0]?.name : e.teams?.name) ?? null,
+      }))
+    );
     setCategories((cats as DocumentCategory[]) ?? []);
     setAllRegistreEntries((registre as unknown as (RegistreEntry & { employee_id: string })[]) ?? []);
     setAllDocuments((docs as EmployeeDocumentRow[]) ?? []);
@@ -17199,6 +17273,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     setAllConfidential((conf as (DossierConfidential & { employee_id: string })[]) ?? []);
     setAllChecklistItems((items as unknown as (ChecklistItemRow & { employee_id: string })[]) ?? []);
     setAllDismissed((dismissed as DismissedRow[]) ?? []);
+    setAllMedicalVisits((visits as (DossierMedicalVisit & { employee_id: string })[]) ?? []);
     setLoadingEmployees(false);
     setLoadingData(false);
   }
@@ -17299,6 +17374,12 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     [allDismissed]
   );
 
+  const medicalVisitByEmployee = useMemo(() => {
+    const m = new Map<string, DossierMedicalVisit & { employee_id: string }>();
+    for (const v of allMedicalVisits) m.set(v.employee_id, v);
+    return m;
+  }, [allMedicalVisits]);
+
   function categoryStage(cat: DocumentCategory): 1 | 3 | 4 | null {
     if (STAGE_1_CODES.includes(cat.code)) return 1;
     if (STAGE_3_CODES.includes(cat.code)) return 3;
@@ -17346,6 +17427,30 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             checklistType: "embauche",
           });
         }
+      }
+      {
+        const visit = medicalVisitByEmployee.get(employeeId);
+        const hasDate = !!(visit?.next_visit_date || visit?.last_visit_date);
+        const urgency = visit?.next_visit_date ? dateUrgency(visit.next_visit_date) : null;
+        result.push({
+          code: "visite_medicale",
+          label: hasDate ? (
+            <>
+              {visit?.visit_subtype ?? "Visite médicale"} — <Bi fr="dernière" ru="прошлая" /> :{" "}
+              {visit?.last_visit_date ? formatDateShortDMY(visit.last_visit_date) : "—"} ·{" "}
+              <Bi fr="prochaine" ru="следующая" /> :{" "}
+              {visit?.next_visit_date ? formatDateShortDMY(visit.next_visit_date) : "—"}
+              {visit?.next_visit_date && visit?.next_visit_time && ` ${visit.next_visit_time.slice(0, 5)}`}
+              {urgency && <span className={`badge badge-${urgency.tone} ml-1.5`}>{urgency.label}</span>}
+            </>
+          ) : (
+            <Bi fr="Visite médicale d'embauche programmée" ru="Записан на медосмотр при приёме" />
+          ),
+          state: hasDate ? "done" : "missing",
+          kind: "manual",
+          registreEntryId: entry.id,
+          checklistType: "embauche",
+        });
       }
       for (const step of EMBAUCHE_MANUAL_STEPS) {
         result.push({
@@ -17422,6 +17527,13 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     });
   }, [employees, statusFilter, search]);
 
+  const teamColorByName = useMemo(() => {
+    const names = Array.from(new Set(employees.map((e) => e.team_name).filter((n): n is string => !!n))).sort((a, b) =>
+      a.localeCompare(b, undefined, { numeric: true })
+    );
+    return new Map(names.map((name, i) => [name, CHECKLIST_TEAM_COLORS[i % CHECKLIST_TEAM_COLORS.length]]));
+  }, [employees]);
+
   // Only the most recent registre episode per employee gets cards — an
   // older, superseded episode (someone who left and came back) is settled
   // history at this point, not something still being worked on here.
@@ -17438,8 +17550,19 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
         result.push({ key: `${emp.id}:${entry.id}:depart`, employee: emp, entry, type: "depart" });
       }
     }
+    result.sort((a, b) => {
+      if (sortBy === "recent") return (b.entry.date_entree ?? "").localeCompare(a.entry.date_entree ?? "");
+      if (sortBy === "team") {
+        const teamCmp = (a.employee.team_name ?? "￿").localeCompare(b.employee.team_name ?? "￿", undefined, {
+          numeric: true,
+        });
+        if (teamCmp !== 0) return teamCmp;
+        return employeeName(a.employee).localeCompare(employeeName(b.employee));
+      }
+      return employeeName(a.employee).localeCompare(employeeName(b.employee));
+    });
     return result;
-  }, [filteredEmployees, registreByEmployee, dismissedKeys]);
+  }, [filteredEmployees, registreByEmployee, dismissedKeys, sortBy]);
 
   const visibleMovements = useMemo(() => {
     if (!hideComplete) return movements;
@@ -17705,6 +17828,11 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             <option value="unclear">Inactif / Неактивен</option>
             <option value="all">Tous / Все</option>
           </select>
+          <select className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value as "name" | "recent" | "team")}>
+            <option value="name">Trier : alphabétique / По алфавиту</option>
+            <option value="recent">Trier : embauche récente / По недавности приёма</option>
+            <option value="team">Trier : équipe / По команде</option>
+          </select>
           <label className="flex items-center gap-1.5 text-sm text-stone-600">
             <input type="checkbox" checked={hideComplete} onChange={(e) => setHideComplete(e.target.checked)} />
             <Bi fr="Masquer les checklists terminées" ru="Скрыть завершённые" />
@@ -17733,10 +17861,15 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                 .filter((i) => i.registre_entry_id === m.entry.id && i.checklist_type === m.type)
                 .map((i) => i.item_code)
             );
+            const teamColor = m.employee.team_name
+              ? teamColorByName.get(m.employee.team_name) ?? CHECKLIST_NO_TEAM_COLOR
+              : CHECKLIST_NO_TEAM_COLOR;
             return (
               <div
                 key={m.key}
-                className={`card ${isExpanded ? "md:col-span-2 xl:col-span-3" : ""}`}
+                className={`card ${isExpanded ? teamColor.dark : teamColor.light} ${
+                  isExpanded ? "md:col-span-2 xl:col-span-3" : ""
+                }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0">
@@ -17773,8 +17906,18 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
 
                 {!isExpanded ? (
                   <ul className="space-y-1">
-                    {items.map((item) => (
-                      <li key={item.code} className="flex items-center gap-2 text-sm">
+                    {items.map((item) => {
+                      const substeps = ITEM_SUBSTEPS[item.code];
+                      const substepsDone = substeps
+                        ? (checklistItemsByEmployee.get(m.employee.id) ?? []).filter(
+                            (i) =>
+                              i.registre_entry_id === m.entry.id &&
+                              i.checklist_type === m.type &&
+                              i.item_code.startsWith(`${item.code}:`)
+                          ).length
+                        : 0;
+                      return (
+                    <li key={item.code} className="flex items-center gap-2 text-sm">
                         {item.state === "done" ? (
                           <Check size={14} className="text-success-600 shrink-0" />
                         ) : item.state === "na" ? (
@@ -17782,17 +17925,46 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                         ) : (
                           <Square size={14} className="text-stone-300 shrink-0" />
                         )}
-                        <span className={`truncate ${item.state === "missing" ? "text-stone-400" : "text-stone-600"}`}>
-                          {item.label}
-                          {item.state === "na" && (
-                            <span className="text-stone-400">
-                              {" "}
-                              — <Bi fr="non applicable" ru="неприменимо" />
-                            </span>
-                          )}
-                        </span>
-                      </li>
-                    ))}
+                        {substeps ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSubstepsModal({
+                                employeeId: m.employee.id,
+                                registreEntryId: m.entry.id,
+                                checklistType: m.type,
+                                itemCode: item.code,
+                                label: typeof item.label === "string" ? item.label : item.code,
+                              })
+                            }
+                            className={`truncate flex-1 text-left underline decoration-dotted underline-offset-2 hover:text-primary-700 ${
+                              item.state === "missing" ? "text-stone-400" : "text-stone-600"
+                            }`}
+                          >
+                            {item.label} <span className="text-stone-400">({substepsDone}/{substeps.length})</span>
+                          </button>
+                        ) : (
+                          <span className={`truncate flex-1 ${item.state === "missing" ? "text-stone-400" : "text-stone-600"}`}>
+                            {item.label}
+                          </span>
+                        )}
+                        {item.kind === "doc" && (
+                          <button
+                            type="button"
+                            onClick={() => toggleNotApplicable(m.employee.id, item.code, item.registreEntryId, item.state !== "na")}
+                            title="Non applicable / Неприменимо"
+                            className={`shrink-0 rounded-full p-1 transition-colors ${
+                              item.state === "na"
+                                ? "bg-stone-200 text-stone-600"
+                                : "text-stone-300 hover:bg-stone-100 hover:text-stone-500"
+                            }`}
+                          >
+                            <Ban size={14} />
+                          </button>
+                        )}
+                    </li>
+                      );
+                    })}
                   </ul>
                 ) : (
                   <div className="space-y-4">
@@ -18069,6 +18241,54 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             </div>
           </>
         )}
+      </Modal>
+
+      <Modal
+        open={!!substepsModal}
+        onClose={() => setSubstepsModal(null)}
+        title={substepsModal?.label ?? ""}
+        maxWidth="max-w-sm"
+      >
+        {substepsModal &&
+          (() => {
+            const steps = ITEM_SUBSTEPS[substepsModal.itemCode] ?? [];
+            const checked = new Set(
+              (checklistItemsByEmployee.get(substepsModal.employeeId) ?? [])
+                .filter(
+                  (i) =>
+                    i.registre_entry_id === substepsModal.registreEntryId && i.checklist_type === substepsModal.checklistType
+                )
+                .map((i) => i.item_code)
+            );
+            return (
+              <ul className="space-y-2">
+                {steps.map((step) => {
+                  const code = `${substepsModal.itemCode}:${step.code}`;
+                  const isChecked = checked.has(code);
+                  return (
+                    <li key={step.code} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(ev) =>
+                          toggleManualStep(
+                            substepsModal.employeeId,
+                            substepsModal.registreEntryId,
+                            substepsModal.checklistType,
+                            code,
+                            ev.target.checked
+                          )
+                        }
+                      />
+                      <span className={isChecked ? "text-stone-700" : "text-stone-500"}>
+                        <Bi fr={step.label} ru={step.labelRu} />
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
       </Modal>
     </div>
   );
