@@ -16894,121 +16894,187 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   );
 }
 
-// ── Vue "Checklists RH" — checklist d'embauche / de départ, par période ─────
+// ── Vue "Checklists RH" — parcours d'embauche / de départ par étapes, ───────
+// avec upload de documents et marquage "non applicable" directement ici (les
+// mêmes catégories et le même stockage que Dossier salarié — juste organisés
+// par étape plutôt qu'en une seule longue liste).
 
 type ChecklistItemRow = { id: string; registre_entry_id: string; checklist_type: "embauche" | "depart"; item_code: string };
 
-type ChecklistItemDef = {
-  code: string;
-  label: string;
-  labelRu: string;
-  /** Absent = manual-only item, tracked in employee_checklist_items.
-   *  Present = derived live from data already in the app; never stored,
-   *  and the checkbox for it is read-only. */
-  auto?: (ctx: { entryDocs: EmployeeDocumentRow[]; employeeDocs: EmployeeDocumentRow[]; entry: RegistreEntry }) => boolean;
-};
+/** Manual-only steps with no document behind them — tracked in
+ *  employee_checklist_items, same table/pattern as before. */
+type ManualStepDef = { code: string; label: string; labelRu: string };
 
-const EMBAUCHE_CHECKLIST: ChecklistItemDef[] = [
-  {
-    code: "dpae",
-    label: "DPAE déposée",
-    labelRu: "Подана DPAE",
-    auto: ({ entryDocs }) => entryDocs.some((d) => d.category_code === "dpae"),
-  },
-  {
-    code: "contrat",
-    label: "Contrat de travail signé",
-    labelRu: "Подписан трудовой договор",
-    auto: ({ entryDocs }) => entryDocs.some((d) => d.category_code === "contrat"),
-  },
-  {
-    code: "identite",
-    label: "Pièce d'identité / passeport au dossier",
-    labelRu: "Удостоверение личности / паспорт в досье",
-    auto: ({ employeeDocs }) => employeeDocs.some((d) => ["passeport", "carte_identite"].includes(d.category_code)),
-  },
-  {
-    code: "carte_btp",
-    label: "Carte BTP au dossier",
-    labelRu: "Карта BTP в досье",
-    auto: ({ employeeDocs }) => employeeDocs.some((d) => d.category_code === "carte_btp"),
-  },
-  {
-    code: "rib",
-    label: "RIB au dossier",
-    labelRu: "RIB в досье",
-    auto: ({ employeeDocs }) => employeeDocs.some((d) => d.category_code === "rib"),
-  },
-  {
-    code: "mutuelle",
-    label: "Affiliation mutuelle faite",
-    labelRu: "Оформлена страховка mutuelle",
-    auto: ({ employeeDocs }) => employeeDocs.some((d) => d.category_code === "mutuelle"),
-  },
+const EMBAUCHE_MANUAL_STEPS: ManualStepDef[] = [
   { code: "visite_medicale", label: "Visite médicale d'embauche programmée", labelRu: "Записан на медосмотр при приёме" },
-  { code: "titre_sejour", label: "Titre de séjour / autorisation de travail vérifié", labelRu: "Проверен вид на жительство / разрешение на работу" },
 ];
 
-const DEPART_CHECKLIST: ChecklistItemDef[] = [
-  {
-    code: "rupture_doc",
-    label: "Lettre de rupture au dossier",
-    labelRu: "Документ об увольнении в досье",
-    auto: ({ entryDocs }) => entryDocs.some((d) => d.category_code === "rupture"),
-  },
-  {
-    code: "registre_sortie",
-    label: "Date de sortie renseignée au registre",
-    labelRu: "Дата выхода указана в регистре",
-    auto: ({ entry }) => !!entry.date_sortie,
-  },
-  { code: "solde_tout_compte", label: "Certificat de travail / solde de tout compte remis", labelRu: "Выдан certificat de travail / solde de tout compte" },
+const DEPART_MANUAL_STEPS: ManualStepDef[] = [
   { code: "attestation_ft", label: "Attestation France Travail transmise", labelRu: "Отправлена attestation France Travail" },
   { code: "dernier_bulletin", label: "Dernier bulletin de paie émis", labelRu: "Выпущен последний расчётный листок" },
   { code: "materiel", label: "Matériel restitué (badge, EPI, véhicule…)", labelRu: "Возвращено оборудование (бейдж, СИЗ, авто…)" },
 ];
 
-function ChecklistBlock({
+/** Stage 1 in the process she described: gather what the employee provides,
+ *  marking each as applicable or not. Stage 3/4: what VLADIS produces or
+ *  arranges once the basics are in — habilitations, cover, etc. Stage 2
+ *  (contrat/dpae) and "Départ" (rupture) are per_period, rendered separately
+ *  via DossierPeriodCategory. */
+const STAGE_1_CODES = ["passeport", "carte_identite", "acte_naissance", "permis_conduire", "photo", "rib"];
+const STAGE_3_CODES = ["titre_visa", "autorisation_travail", "validation_vls_ts", "carte_btp", "habilitation", "formation"];
+const STAGE_4_CODES = ["mutuelle", "assurance_maladie", "carte_vitale", "justificatif_domicile"];
+
+function ManualStepList({
   title,
-  items,
-  entry,
-  entryDocs,
-  employeeDocs,
+  steps,
   checked,
   onToggle,
 }: {
   title: React.ReactNode;
-  items: ChecklistItemDef[];
-  entry: RegistreEntry;
-  entryDocs: EmployeeDocumentRow[];
-  employeeDocs: EmployeeDocumentRow[];
+  steps: ManualStepDef[];
   checked: Set<string>;
-  onToggle: (itemCode: string, next: boolean) => void;
+  onToggle: (code: string, next: boolean) => void;
 }) {
+  if (steps.length === 0) return null;
   return (
     <div className="rounded-xl border border-stone-100 p-3">
       <p className="text-sm font-bold mb-2">{title}</p>
       <ul className="space-y-1.5">
-        {items.map((item) => {
-          const isAuto = !!item.auto;
-          const isChecked = isAuto ? item.auto!({ entryDocs, employeeDocs, entry }) : checked.has(item.code);
+        {steps.map((step) => {
+          const isChecked = checked.has(step.code);
           return (
-            <li key={item.code} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={isChecked}
-                disabled={isAuto}
-                onChange={(ev) => onToggle(item.code, ev.target.checked)}
-                title={isAuto ? "Détecté automatiquement / Определяется автоматически" : undefined}
-              />
+            <li key={step.code} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={isChecked} onChange={(ev) => onToggle(step.code, ev.target.checked)} />
               <span className={isChecked ? "text-stone-700" : "text-stone-400"}>
-                <Bi fr={item.label} ru={item.labelRu} />
+                <Bi fr={step.label} ru={step.labelRu} />
               </span>
-              {isAuto && <span className="text-[10px] text-stone-300 shrink-0">auto</span>}
             </li>
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** One non-period document category card — upload (click or drag-and-drop)
+ *  plus "non applicable". Mirrors DossierPeriodCategory's per_period sibling
+ *  in Dossier salarié, and the same category card there, just standalone so
+ *  it can be reused here grouped by stage instead of in one flat list. */
+function DossierCategoryCard({
+  cat,
+  icon: Icon,
+  docs,
+  naFlag,
+  uploadingKey,
+  onFileSelected,
+  onToggleNotApplicable,
+  onPreview,
+  onDownload,
+  onDelete,
+}: {
+  cat: DocumentCategory;
+  icon: LucideIcon;
+  docs: EmployeeDocumentRow[];
+  naFlag: NotApplicableRow | undefined;
+  uploadingKey: string | null;
+  onFileSelected: (file: File) => void;
+  onToggleNotApplicable: (checked: boolean) => void;
+  onPreview: (doc: EmployeeDocumentRow) => void;
+  onDownload: (doc: EmployeeDocumentRow) => void;
+  onDelete: (doc: EmployeeDocumentRow) => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const key = `${cat.code}:`;
+  const isUploading = uploadingKey === key;
+  return (
+    <div
+      className={`rounded-xl border p-3 transition-colors ${
+        dragOver
+          ? "border-primary-400 bg-primary-50 ring-2 ring-primary-400"
+          : docs.length === 0 && !naFlag
+            ? "border-error-200 bg-error-50/40"
+            : "border-stone-100"
+      }`}
+      onDragOver={(ev) => {
+        ev.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(ev) => {
+        ev.preventDefault();
+        setDragOver(false);
+        const file = ev.dataTransfer.files?.[0];
+        if (file && uploadingKey === null) onFileSelected(file);
+      }}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-bold flex items-center gap-2">
+          <Icon size={15} className="text-stone-400" />
+          {cat.label}
+          {cat.sensitive && (
+            <span className="badge badge-warning">
+              <Bi fr="confidentiel" ru="конфиденциально" />
+            </span>
+          )}
+        </p>
+        <label className="btn btn-secondary text-xs px-2.5 py-1 cursor-pointer">
+          {isUploading ? (
+            "Envoi…"
+          ) : (
+            <>
+              <Upload size={12} /> <Bi fr="Ajouter" ru="Добавить" />
+            </>
+          )}
+          <input
+            type="file"
+            className="hidden"
+            disabled={uploadingKey !== null}
+            onChange={(ev) => {
+              const file = ev.target.files?.[0];
+              ev.target.value = "";
+              if (file) onFileSelected(file);
+            }}
+          />
+        </label>
+      </div>
+      {docs.length === 0 ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className={`text-xs font-semibold ${naFlag ? "text-stone-400" : "text-error-600"}`}>
+            {naFlag ? (
+              <>
+                Non applicable. <span className="opacity-70">/ Неприменимо.</span>
+              </>
+            ) : (
+              <>
+                Aucun document. <span className="opacity-70">/ Нет документов.</span>
+              </>
+            )}
+          </p>
+          <label className="flex items-center gap-1.5 text-xs text-stone-500 cursor-pointer shrink-0">
+            <input type="checkbox" checked={!!naFlag} onChange={(ev) => onToggleNotApplicable(ev.target.checked)} />
+            <Bi fr="Non applicable" ru="Неприменимо" />
+          </label>
+        </div>
+      ) : (
+        <ul className="space-y-1">
+          {docs.map((doc) => (
+            <li key={doc.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-sm hover:bg-stone-50">
+              <span className="min-w-0 truncate">{doc.file_name}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                <button onClick={() => onPreview(doc)} className="text-stone-400 hover:text-primary-600" title="Aperçu / Просмотр">
+                  <Eye size={14} />
+                </button>
+                <button onClick={() => onDownload(doc)} className="text-stone-400 hover:text-primary-600" title="Télécharger / Скачать">
+                  <Download size={14} />
+                </button>
+                <button onClick={() => onDelete(doc)} className="text-stone-400 hover:text-error-600" title="Supprimer / Удалить">
+                  <Trash2 size={14} />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -17020,34 +17086,116 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [search, setSearch] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
+  const [categories, setCategories] = useState<DocumentCategory[]>([]);
   const [registreEntries, setRegistreEntries] = useState<RegistreEntry[]>([]);
   const [documents, setDocuments] = useState<EmployeeDocumentRow[]>([]);
+  const [notApplicable, setNotApplicable] = useState<NotApplicableRow[]>([]);
+  const [confidential, setConfidential] = useState<DossierConfidential | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItemRow[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
+  const [expiryDate, setExpiryDate] = useState("");
+  const [issueDate, setIssueDate] = useState("");
+  const [noIssueDate, setNoIssueDate] = useState(false);
+  const [noExpiryDate, setNoExpiryDate] = useState(false);
+  const [contractModal, setContractModal] = useState<{ file: File; registreEntryId: string; hireDate: string | null } | null>(
+    null
+  );
+  const [contractSigned, setContractSigned] = useState(true);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newFirstName, setNewFirstName] = useState("");
+  const [newLastName, setNewLastName] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  async function reloadEmployees() {
+    setLoadingEmployees(true);
+    const { data: emp } = await supabase
+      .from("employees")
+      .select("id, first_name, last_name, status, hire_date")
+      .order("last_name");
+    setEmployees((emp as DossierEmployee[]) ?? []);
+    setLoadingEmployees(false);
+  }
+
   useEffect(() => {
     async function load() {
-      setLoadingEmployees(true);
-      const { data: emp } = await supabase
-        .from("employees")
-        .select("id, first_name, last_name, status, hire_date")
-        .order("last_name");
-      setEmployees((emp as DossierEmployee[]) ?? []);
-      setLoadingEmployees(false);
+      await reloadEmployees();
+      const { data: cats } = await supabase.from("document_categories").select("*").order("sort_order");
+      setCategories((cats as DocumentCategory[]) ?? []);
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
+
+  // Un nouveau salarié (même sans date d'embauche) déclenche tout de suite
+  // une ligne dans le Registre du personnel côté serveur (0048) — donc dès
+  // qu'il est créé ici, sa checklist "Embauche" est déjà prête à cocher.
+  async function addEmployee() {
+    if (!newFirstName.trim() || !newLastName.trim()) return;
+
+    const { data: possibleDupes } = await supabase
+      .from("employees")
+      .select("first_name, last_name, status")
+      .ilike("first_name", newFirstName.trim())
+      .ilike("last_name", newLastName.trim());
+    if (possibleDupes && possibleDupes.length > 0) {
+      const existing = possibleDupes.map((d) => `${d.last_name} ${d.first_name} (${d.status})`).join(", ");
+      if (
+        !confirm(
+          `Un salarié du même nom existe déjà : ${existing}. Ajouter quand même un doublon ?\n\nСотрудник с таким именем уже есть: ${existing}. Всё равно добавить ещё одного?`
+        )
+      ) {
+        return;
+      }
+    }
+
+    setAdding(true);
+    const { data, error } = await supabase
+      .from("employees")
+      .insert({ first_name: newFirstName.trim(), last_name: newLastName.trim(), category: "chantier", status: "active" })
+      .select("id")
+      .single();
+    setAdding(false);
+
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+
+    setNewFirstName("");
+    setNewLastName("");
+    setShowAddForm(false);
+    await reloadEmployees();
+    setSelectedEmployeeId(data.id);
+    toast.success("Employé ajouté");
+  }
+
+  async function reloadDocuments() {
+    if (!selectedEmployeeId) return;
+    const { data } = await supabase
+      .from("employee_documents")
+      .select(
+        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
+      )
+      .eq("employee_id", selectedEmployeeId);
+    setDocuments((data as EmployeeDocumentRow[]) ?? []);
+  }
 
   useEffect(() => {
     async function loadDetail() {
       if (!selectedEmployeeId) {
         setRegistreEntries([]);
         setDocuments([]);
+        setNotApplicable([]);
+        setConfidential(null);
         setChecklistItems([]);
         return;
       }
       setLoadingDetail(true);
-      const [{ data: registre }, { data: docs }, { data: items }] = await Promise.all([
+      const [{ data: registre }, { data: docs }, { data: na }, { data: conf }, { data: items }] = await Promise.all([
         supabase
           .from("registre_unique_personnel")
           .select("id, date_entree, date_sortie, nationalite")
@@ -17060,12 +17208,25 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
           )
           .eq("employee_id", selectedEmployeeId),
         supabase
+          .from("employee_document_not_applicable")
+          .select("id, category_code, registre_entry_id")
+          .eq("employee_id", selectedEmployeeId),
+        supabase
+          .from("employee_confidential")
+          .select(
+            "nationality, rib, securite_sociale, status_ameli, carte_vitale, residence_permit_type, residence_permit_number"
+          )
+          .eq("employee_id", selectedEmployeeId)
+          .maybeSingle(),
+        supabase
           .from("employee_checklist_items")
           .select("id, registre_entry_id, checklist_type, item_code")
           .eq("employee_id", selectedEmployeeId),
       ]);
       setRegistreEntries((registre as RegistreEntry[]) ?? []);
       setDocuments((docs as EmployeeDocumentRow[]) ?? []);
+      setNotApplicable((na as NotApplicableRow[]) ?? []);
+      setConfidential((conf as DossierConfidential) ?? null);
       setChecklistItems((items as ChecklistItemRow[]) ?? []);
       setLoadingDetail(false);
     }
@@ -17082,8 +17243,136 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   }, [employees, statusFilter, search]);
 
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+  const isForeign = isForeignNationality(confidential?.nationality ?? registreEntries[0]?.nationalite ?? null);
+  const visibleCategories = useMemo(
+    () => categories.filter((c) => !c.foreigners_only || isForeign),
+    [categories, isForeign]
+  );
 
-  async function toggleItem(registreEntryId: string, checklistType: "embauche" | "depart", itemCode: string, next: boolean) {
+  async function uploadFile(
+    categoryCode: string,
+    file: File,
+    opts?: { validUntil?: string; registreEntryId?: string; documentDateIso?: string | null; fileNameOverride?: string }
+  ) {
+    if (!selectedEmployeeId) return;
+    const key = `${categoryCode}:${opts?.registreEntryId ?? ""}`;
+    setUploadingKey(key);
+    const path = `${selectedEmployeeId}/${categoryCode}/${uniqueFileToken()}_${sanitizeStorageFileName(file.name)}`;
+    const { error: uploadError } = await supabase.storage.from(DOSSIER_BUCKET).upload(path, file);
+    if (uploadError) {
+      setUploadingKey(null);
+      toast.error("Erreur d'envoi : " + uploadError.message);
+      return;
+    }
+    const categoryLabel = categories.find((c) => c.code === categoryCode)?.label ?? categoryCode;
+    const { error: insertError } = await supabase.from("employee_documents").insert({
+      employee_id: selectedEmployeeId,
+      category_code: categoryCode,
+      file_name:
+        opts?.fileNameOverride ?? standardFileName(categoryLabel, file.name, opts?.documentDateIso ?? opts?.validUntil ?? null),
+      storage_path: path,
+      file_size: file.size,
+      mime_type: file.type || null,
+      valid_until: opts?.validUntil || null,
+      registre_entry_id: opts?.registreEntryId || null,
+    });
+    setUploadingKey(null);
+    if (insertError) {
+      toast.error("Erreur : " + insertError.message);
+      return;
+    }
+    const staleFlag = notApplicable.find(
+      (n) => n.category_code === categoryCode && n.registre_entry_id === (opts?.registreEntryId ?? null)
+    );
+    if (staleFlag) {
+      await supabase.from("employee_document_not_applicable").delete().eq("id", staleFlag.id);
+      setNotApplicable((prev) => prev.filter((n) => n.id !== staleFlag.id));
+    }
+    await reloadDocuments();
+    toast.success("Document ajouté");
+  }
+
+  function handleFileForCategory(cat: DocumentCategory, file: File) {
+    if (cat.requires_expiry || cat.requires_issue_date) {
+      setExpiryModal({ categoryCode: cat.code, file });
+      setExpiryDate("");
+      setIssueDate("");
+      setNoIssueDate(false);
+      setNoExpiryDate(false);
+    } else {
+      uploadFile(cat.code, file);
+    }
+  }
+
+  function findNotApplicable(categoryCode: string, registreEntryId: string | null) {
+    return notApplicable.find((n) => n.category_code === categoryCode && n.registre_entry_id === (registreEntryId ?? null));
+  }
+
+  async function toggleNotApplicable(categoryCode: string, registreEntryId: string | null, checked: boolean) {
+    if (!selectedEmployeeId) return;
+    if (checked) {
+      const { data, error } = await supabase
+        .from("employee_document_not_applicable")
+        .insert({ employee_id: selectedEmployeeId, category_code: categoryCode, registre_entry_id: registreEntryId })
+        .select("id, category_code, registre_entry_id")
+        .single();
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setNotApplicable((prev) => [...prev, data as NotApplicableRow]);
+    } else {
+      const existing = findNotApplicable(categoryCode, registreEntryId);
+      if (!existing) return;
+      const { error } = await supabase.from("employee_document_not_applicable").delete().eq("id", existing.id);
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setNotApplicable((prev) => prev.filter((n) => n.id !== existing.id));
+    }
+  }
+
+  async function previewFile(doc: EmployeeDocumentRow) {
+    const { data, error } = await supabase.storage.from(DOSSIER_BUCKET).createSignedUrl(doc.storage_path, 60);
+    if (error || !data) {
+      toast.error("Erreur d'aperçu : " + (error?.message ?? "fichier introuvable"));
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function downloadFile(doc: EmployeeDocumentRow) {
+    const { data, error } = await supabase.storage.from(DOSSIER_BUCKET).download(doc.storage_path);
+    if (error || !data) {
+      toast.error("Erreur : " + (error?.message ?? "fichier introuvable"));
+      return;
+    }
+    const url = URL.createObjectURL(data);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.file_name;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function deleteFile(doc: EmployeeDocumentRow) {
+    if (!confirm(`Supprimer « ${doc.file_name} » ?`)) return;
+    const { error: storageError } = await supabase.storage.from(DOSSIER_BUCKET).remove([doc.storage_path]);
+    if (storageError) {
+      toast.error("Erreur : " + storageError.message);
+      return;
+    }
+    const { error: dbError } = await supabase.from("employee_documents").delete().eq("id", doc.id);
+    if (dbError) {
+      toast.error("Erreur : " + dbError.message);
+      return;
+    }
+    await reloadDocuments();
+    toast.success("Document supprimé");
+  }
+
+  async function toggleManualStep(registreEntryId: string, checklistType: "embauche" | "depart", itemCode: string, next: boolean) {
     if (!selectedEmployeeId) return;
     if (next) {
       const { data, error } = await supabase
@@ -17115,24 +17404,88 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     }
   }
 
+  function categoryStage(cat: DocumentCategory): 1 | 3 | 4 | null {
+    if (STAGE_1_CODES.includes(cat.code)) return 1;
+    if (STAGE_3_CODES.includes(cat.code)) return 3;
+    if (STAGE_4_CODES.includes(cat.code)) return 4;
+    return null;
+  }
+
+  function stageCategoryCards(stage: 1 | 3 | 4) {
+    return visibleCategories
+      .filter((c) => categoryStage(c) === stage)
+      .map((cat) => {
+        const Icon = DOSSIER_CATEGORY_ICONS[cat.code] ?? FileText;
+        return (
+          <DossierCategoryCard
+            key={cat.code}
+            cat={cat}
+            icon={Icon}
+            docs={documents.filter((d) => d.category_code === cat.code)}
+            naFlag={findNotApplicable(cat.code, null)}
+            uploadingKey={uploadingKey}
+            onFileSelected={(file) => handleFileForCategory(cat, file)}
+            onToggleNotApplicable={(checked) => toggleNotApplicable(cat.code, null, checked)}
+            onPreview={previewFile}
+            onDownload={downloadFile}
+            onDelete={deleteFile}
+          />
+        );
+      });
+  }
+
   return (
     <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
       <div className="card w-full lg:w-72 shrink-0">
-        <div className="font-bold mb-3">
-          <Bi
-            fr="Employés"
-            ru="Сотрудники"
-            after={
-              <InfoNote
-                title="Checklists RH"
-                text={
-                  "Чек-лист приёма и увольнения по каждому периоду трудоустройства сотрудника.\n\n" +
-                  "Пункты с пометкой «auto» определяются сами по уже загруженным данным (документ в личном деле, дата увольнения в регистре) — их нельзя снять вручную, нужно исправить сам источник. Остальные пункты отмечаются вручную."
-                }
-              />
-            }
-          />
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-bold">
+            <Bi
+              fr="Employés"
+              ru="Сотрудники"
+              after={
+                <InfoNote
+                  title="Checklists RH"
+                  text={
+                    "Чек-лист приёма и увольнения по каждому периоду трудоустройства сотрудника.\n\n" +
+                    "Пункты с пометкой «auto» определяются сами по уже загруженным данным (документ в личном деле, дата увольнения в регистре) — их нельзя снять вручную, нужно исправить сам источник. Остальные пункты отмечаются вручную.\n\n" +
+                    "«+ Nouvel employé» — добавить совершенно нового сотрудника (достаточно имени и фамилии). Строка в регистре персонала и чек-лист приёма создадутся сразу же, дату приёма и остальные данные можно дозаполнить позже."
+                  }
+                />
+              }
+            />
+          </div>
+          <button className="btn btn-primary text-xs px-2.5 py-1.5" onClick={() => setShowAddForm((v) => !v)}>
+            <Bi fr="+ Nouvel employé" ru="Новый сотрудник" />
+          </button>
         </div>
+        {showAddForm && (
+          <div className="rounded-lg border border-stone-100 p-2.5 mb-3 space-y-2">
+            <input
+              className="input"
+              placeholder="Prénom / Имя"
+              value={newFirstName}
+              onChange={(e) => setNewFirstName(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Nom / Фамилия"
+              value={newLastName}
+              onChange={(e) => setNewLastName(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <button
+                className="btn btn-green text-xs px-2.5 py-1.5 flex-1"
+                disabled={adding || !newFirstName.trim() || !newLastName.trim()}
+                onClick={addEmployee}
+              >
+                {adding ? "…" : <Bi fr="Ajouter" ru="Добавить" />}
+              </button>
+              <button className="btn btn-secondary text-xs px-2.5 py-1.5" onClick={() => setShowAddForm(false)}>
+                <Bi fr="Annuler" ru="Отмена" />
+              </button>
+            </div>
+          </div>
+        )}
         <input
           className="input mb-2"
           placeholder="Rechercher un nom…"
@@ -17191,9 +17544,8 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                 description="Aucune entrée dans le Registre du personnel pour cet employé."
               />
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-8">
                 {registreEntries.map((entry) => {
-                  const entryDocs = documents.filter((d) => d.registre_entry_id === entry.id);
                   const checkedForEntry = new Set(
                     checklistItems.filter((i) => i.registre_entry_id === entry.id).map((i) => `${i.checklist_type}:${i.item_code}`)
                   );
@@ -17203,34 +17555,127 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                   const checkedDepart = new Set(
                     [...checkedForEntry].filter((k) => k.startsWith("depart:")).map((k) => k.slice("depart:".length))
                   );
+                  const contratCat = categories.find((c) => c.code === "contrat");
+                  const dpaeCat = categories.find((c) => c.code === "dpae");
+                  const ruptureCat = categories.find((c) => c.code === "rupture");
                   return (
-                    <div key={entry.id}>
-                      <p className="text-xs font-semibold text-stone-500 mb-2">
+                    <div key={entry.id} className="space-y-4">
+                      <p className="text-sm font-bold text-stone-700 border-b border-stone-100 pb-2">
                         {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
                         {entry.date_sortie ? formatDateShortDMY(entry.date_sortie) : "en cours"}
                       </p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <ChecklistBlock
-                          title={<Bi fr="Embauche" ru="Приём на работу" />}
-                          items={EMBAUCHE_CHECKLIST}
-                          entry={entry}
-                          entryDocs={entryDocs}
-                          employeeDocs={documents}
-                          checked={checkedEmbauche}
-                          onToggle={(code, next) => toggleItem(entry.id, "embauche", code, next)}
-                        />
-                        {entry.date_sortie && (
-                          <ChecklistBlock
-                            title={<Bi fr="Départ" ru="Увольнение" />}
-                            items={DEPART_CHECKLIST}
-                            entry={entry}
-                            entryDocs={entryDocs}
-                            employeeDocs={documents}
-                            checked={checkedDepart}
-                            onToggle={(code, next) => toggleItem(entry.id, "depart", code, next)}
-                          />
-                        )}
+
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                          <Bi fr="Étape 1 — Documents personnels" ru="Этап 1 — Личные документы" />
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stageCategoryCards(1)}</div>
                       </div>
+
+                      {(contratCat || dpaeCat) && (
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                            <Bi fr="Étape 2 — Contrat & déclaration" ru="Этап 2 — Договор и декларация" />
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {contratCat && (
+                              <DossierPeriodCategory
+                                category={contratCat}
+                                icon={DOSSIER_CATEGORY_ICONS[contratCat.code] ?? FileText}
+                                entries={[entry]}
+                                documents={documents}
+                                notApplicable={notApplicable}
+                                uploadingKey={uploadingKey}
+                                onUpload={(_code, file, registreEntryId) =>
+                                  setContractModal({ file, registreEntryId, hireDate: entry.date_entree })
+                                }
+                                onToggleNotApplicable={(code, registreEntryId, checked) =>
+                                  toggleNotApplicable(code, registreEntryId, checked)
+                                }
+                                onPreview={previewFile}
+                                onDownload={downloadFile}
+                                onDelete={deleteFile}
+                              />
+                            )}
+                            {dpaeCat && (
+                              <DossierPeriodCategory
+                                category={dpaeCat}
+                                icon={DOSSIER_CATEGORY_ICONS[dpaeCat.code] ?? FileText}
+                                entries={[entry]}
+                                documents={documents}
+                                notApplicable={notApplicable}
+                                uploadingKey={uploadingKey}
+                                onUpload={(code, file, registreEntryId) =>
+                                  uploadFile(code, file, { registreEntryId, documentDateIso: entry.date_entree })
+                                }
+                                onToggleNotApplicable={(code, registreEntryId, checked) =>
+                                  toggleNotApplicable(code, registreEntryId, checked)
+                                }
+                                onPreview={previewFile}
+                                onDownload={downloadFile}
+                                onDelete={deleteFile}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                          <Bi fr="Étape 3 — Habilitations & statut" ru="Этап 3 — Допуски и статус" />
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {stageCategoryCards(3)}
+                          <ManualStepList
+                            title={<Bi fr="Autres étapes" ru="Другие шаги" />}
+                            steps={EMBAUCHE_MANUAL_STEPS}
+                            checked={checkedEmbauche}
+                            onToggle={(code, next) => toggleManualStep(entry.id, "embauche", code, next)}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                          <Bi fr="Étape 4 — Complémentaire" ru="Этап 4 — Дополнительно" />
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{stageCategoryCards(4)}</div>
+                      </div>
+
+                      {entry.date_sortie && (
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
+                            <Bi fr="Départ" ru="Увольнение" />
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {ruptureCat && (
+                              <DossierPeriodCategory
+                                category={ruptureCat}
+                                icon={DOSSIER_CATEGORY_ICONS[ruptureCat.code] ?? FileText}
+                                entries={[entry]}
+                                documents={documents}
+                                notApplicable={notApplicable}
+                                uploadingKey={uploadingKey}
+                                onUpload={(code, file, registreEntryId) =>
+                                  uploadFile(code, file, { registreEntryId, documentDateIso: entry.date_sortie })
+                                }
+                                onToggleNotApplicable={(code, registreEntryId, checked) =>
+                                  toggleNotApplicable(code, registreEntryId, checked)
+                                }
+                                onPreview={previewFile}
+                                onDownload={downloadFile}
+                                onDelete={deleteFile}
+                              />
+                            )}
+                            <ManualStepList
+                              title={<Bi fr="Autres étapes" ru="Другие шаги" />}
+                              steps={DEPART_MANUAL_STEPS}
+                              checked={checkedDepart}
+                              onToggle={(code, next) => toggleManualStep(entry.id, "depart", code, next)}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -17239,6 +17684,151 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
           </div>
         )}
       </div>
+
+      <Modal open={!!expiryModal} onClose={() => setExpiryModal(null)} title="Dates du document" maxWidth="max-w-sm">
+        {expiryModal &&
+          (() => {
+            const cat = categories.find((c) => c.code === expiryModal.categoryCode);
+            const needsIssueDate = cat?.requires_issue_date ?? false;
+            const needsExpiry = cat?.requires_expiry ?? false;
+            const canSubmit =
+              (!needsIssueDate || noIssueDate || !!issueDate) && (!needsExpiry || noExpiryDate || !!expiryDate);
+            return (
+              <>
+                <p className="text-sm text-stone-500 mb-3">
+                  Fichier <span className="opacity-70">/ Файл</span> :{" "}
+                  <span className="font-semibold">{expiryModal.file.name}</span>
+                </p>
+                {needsIssueDate && (
+                  <div className="mb-3">
+                    <label className="text-xs font-bold text-stone-500 block">
+                      <Bi fr="Date de délivrance / création" ru="Дата выдачи / создания" />
+                      <input
+                        type="date"
+                        className="input mt-1"
+                        value={issueDate}
+                        disabled={noIssueDate}
+                        onChange={(e) => setIssueDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="mt-1.5 flex items-center gap-1.5 text-xs text-stone-500">
+                      <input
+                        type="checkbox"
+                        checked={noIssueDate}
+                        onChange={(e) => {
+                          setNoIssueDate(e.target.checked);
+                          if (e.target.checked) setIssueDate("");
+                        }}
+                      />
+                      <Bi fr="Pas de date connue" ru="Дата неизвестна / отсутствует" />
+                    </label>
+                  </div>
+                )}
+                {needsExpiry && (
+                  <div>
+                    <label className="text-xs font-bold text-stone-500 block">
+                      <Bi fr="Date d'expiration" ru="Дата истечения" />
+                      <input
+                        type="date"
+                        className="input mt-1"
+                        value={expiryDate}
+                        disabled={noExpiryDate}
+                        onChange={(e) => setExpiryDate(e.target.value)}
+                      />
+                    </label>
+                    <label className="mt-1.5 flex items-center gap-1.5 text-xs text-stone-500">
+                      <input
+                        type="checkbox"
+                        checked={noExpiryDate}
+                        onChange={(e) => {
+                          setNoExpiryDate(e.target.checked);
+                          if (e.target.checked) setExpiryDate("");
+                        }}
+                      />
+                      <Bi fr="Pas de date d'expiration" ru="Нет даты истечения" />
+                    </label>
+                  </div>
+                )}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    className="btn btn-primary text-sm px-3 py-2"
+                    disabled={!canSubmit}
+                    onClick={async () => {
+                      await uploadFile(expiryModal.categoryCode, expiryModal.file, {
+                        validUntil: needsExpiry && !noExpiryDate ? expiryDate : undefined,
+                        documentDateIso: needsIssueDate && !noIssueDate ? issueDate : undefined,
+                      });
+                      setExpiryModal(null);
+                    }}
+                  >
+                    <Bi fr="Ajouter" ru="Добавить" />
+                  </button>
+                  <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setExpiryModal(null)}>
+                    <Bi fr="Annuler" ru="Отмена" />
+                  </button>
+                </div>
+              </>
+            );
+          })()}
+      </Modal>
+
+      <Modal open={!!contractModal} onClose={() => setContractModal(null)} title="Contrat de travail" maxWidth="max-w-sm">
+        {contractModal && (
+          <>
+            <p className="text-sm text-stone-500 mb-3">
+              Fichier <span className="opacity-70">/ Файл</span> :{" "}
+              <span className="font-semibold">{contractModal.file.name}</span>
+            </p>
+            <p className="text-xs font-bold text-stone-500 mb-1">
+              <Bi fr="Ce contrat est-il signé ?" ru="Договор подписан?" />
+            </p>
+            <div className="flex gap-2">
+              <button
+                className={`btn text-sm px-3 py-2 ${contractSigned ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setContractSigned(true)}
+              >
+                <Bi fr="Signé" ru="Подписан" />
+              </button>
+              <button
+                className={`btn text-sm px-3 py-2 ${!contractSigned ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setContractSigned(false)}
+              >
+                <Bi fr="Non signé" ru="Не подписан" />
+              </button>
+            </div>
+            <label className="block text-xs font-bold text-stone-400 mt-3">
+              Date d&apos;embauche <span className="opacity-70">/ Дата приёма</span>
+              {!contractModal.hireDate && (
+                <span className="text-error-600 font-normal"> — {"non renseignée dans le Registre du personnel"}</span>
+              )}
+              <input
+                type="date"
+                className="input text-sm mt-1"
+                value={contractModal.hireDate ?? ""}
+                onChange={(e) => setContractModal({ ...contractModal, hireDate: e.target.value || null })}
+              />
+            </label>
+            <div className="flex gap-3 mt-4">
+              <button
+                className="btn btn-green text-sm px-3 py-2"
+                onClick={async () => {
+                  const fileName = standardContractFileName(contractModal.file.name, contractSigned, contractModal.hireDate);
+                  await uploadFile("contrat", contractModal.file, {
+                    registreEntryId: contractModal.registreEntryId,
+                    fileNameOverride: fileName,
+                  });
+                  setContractModal(null);
+                }}
+              >
+                <Bi fr="Ajouter" ru="Добавить" />
+              </button>
+              <button className="btn btn-secondary text-sm px-3 py-2" onClick={() => setContractModal(null)}>
+                <Bi fr="Annuler" ru="Отмена" />
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
