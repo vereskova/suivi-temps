@@ -64,6 +64,15 @@ export function dashIsStagiaire(e: DashEmployee, todayIso: string): boolean {
   return todayIso < addMonthsIso(e.hire_date, 2);
 }
 
+/** Someone who quit or was let go within their own 2-month période d'essai
+ *  — this never shows up in "stagiaire" (which is a live snapshot, gone the
+ *  moment they're terminated) or in the normal turnover figures for any
+ *  other group without digging, so it gets its own row. */
+export function dashLeftDuringTrial(e: DashEmployee): boolean {
+  if (dashIsFop(e) || e.status !== "terminated" || !e.hire_date || !e.end_date) return false;
+  return e.end_date <= addMonthsIso(e.hire_date, 2);
+}
+
 /** Whole completed months between two ISO dates — the unit every duration on the HR dashboard is built from. */
 export function monthsBetweenIso(startIso: string, endIso: string): number {
   const start = new Date(startIso + "T00:00:00Z");
@@ -102,13 +111,26 @@ export function dashHeadcountAt(emps: DashEmployee[], dateIso: string): number {
   return emps.filter((e) => e.hire_date && e.hire_date <= dateIso && (!e.end_date || e.end_date > dateIso)).length;
 }
 
-export type HrGroupKey = "all" | "monteur" | "chef" | "chantier" | "bureau" | "fop" | "stagiaire" | "revenu";
+export type HrGroupKey =
+  | "all"
+  | "monteur"
+  | "chef"
+  | "chantier"
+  | "bureau"
+  | "fop"
+  | "stagiaire"
+  | "revenu"
+  | "trial_dropout";
 
 export type HrGroupDef = {
   key: HrGroupKey;
   label: string;
   labelRu: string;
   predicate: (e: DashEmployee, todayIso: string) => boolean;
+  /** Everyone matching this group is terminated by construction (e.g. "left
+   *  during their trial") — computeGroupStats's usual "count" (people still
+   *  on the books) would always read 0, so this counts every match instead. */
+  countsTerminated?: boolean;
 };
 
 /**
@@ -143,6 +165,13 @@ export const HR_GROUPS: HrGroupDef[] = [
   { key: "fop", label: "FOP (sous-traitants)", labelRu: "FOP (подрядчики)", predicate: dashIsFop },
   { key: "stagiaire", label: "Stagiaires (< 2 mois)", labelRu: "Стажёры (< 2 мес)", predicate: dashIsStagiaire },
   { key: "revenu", label: "Revenus (réembauchés)", labelRu: "Вернулись (повторный найм)", predicate: dashIsRevenu },
+  {
+    key: "trial_dropout",
+    label: "Partis en période d'essai",
+    labelRu: "Ушли на испытательном сроке",
+    predicate: dashLeftDuringTrial,
+    countsTerminated: true,
+  },
 ];
 
 export type TurnoverPeriod = "rolling12" | "calendarYear";
@@ -205,7 +234,7 @@ export function computeGroupStats(group: HrGroupDef, allInGroup: DashEmployee[],
     key: group.key,
     label: group.label,
     labelRu: group.labelRu,
-    count: current.length,
+    count: group.countsTerminated ? allInGroup.length : current.length,
     avgTenureMonths: dashAverage(tenureMonths),
     avgAgeMonths: dashAverage(ageMonths),
     hires12mo: turnover.hires,
