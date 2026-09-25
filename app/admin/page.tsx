@@ -15841,11 +15841,17 @@ const DOSSIER_CATEGORY_ICONS: Record<string, LucideIcon> = {
 /** dateIso, when known (visit date, expiry, hire/exit date…), is always
  *  preferred over today's date — the day someone happens to upload a
  *  document is rarely the date that actually matters for it later. */
-function standardFileName(categoryLabel: string, originalName: string, dateIso?: string | null): string {
+function standardFileName(
+  categoryLabel: string,
+  originalName: string,
+  dateIso?: string | null,
+  employeeLabel?: string | null
+): string {
   const dot = originalName.lastIndexOf(".");
   const ext = dot > 0 ? originalName.slice(dot) : "";
   const dateStr = (dateIso ?? today()).split("-").reverse().join("-");
-  return `${categoryLabel} - ${dateStr}${ext}`;
+  const namePart = employeeLabel ? ` - ${employeeLabel}` : "";
+  return `${categoryLabel}${namePart} - ${dateStr}${ext}`;
 }
 
 /** Prevaly documents are generated for a specific visite médicale that's
@@ -15864,12 +15870,18 @@ function mostRecentMedicalVisitDate(visits: DossierMedicalVisit[]): string | nul
 /** Contracts carry more useful info than an upload date — whether it's signed,
  *  and the actual hire date from the Registre entry — "Contrat de travail -
  *  Signé - DD-MM-YYYY.ext". Other categories (RIB, etc.) don't need this. */
-function standardContractFileName(originalName: string, signed: boolean, hireDateIso: string | null): string {
+function standardContractFileName(
+  originalName: string,
+  signed: boolean,
+  hireDateIso: string | null,
+  employeeLabel?: string | null
+): string {
   const dot = originalName.lastIndexOf(".");
   const ext = dot > 0 ? originalName.slice(dot) : "";
   const signedLabel = signed ? "Signé" : "Non signé";
   const dateStr = hireDateIso ? hireDateIso.split("-").reverse().join("-") : "date-inconnue";
-  return `Contrat de travail - ${signedLabel} - ${dateStr}${ext}`;
+  const namePart = employeeLabel ? ` - ${employeeLabel}` : "";
+  return `Contrat de travail${namePart} - ${signedLabel} - ${dateStr}${ext}`;
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -16248,7 +16260,12 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
       category_code: categoryCode,
       file_name:
         opts?.fileNameOverride ??
-        standardFileName(categoryLabel, file.name, opts?.documentDateIso ?? opts?.validUntil ?? null),
+        standardFileName(
+          categoryLabel,
+          file.name,
+          opts?.documentDateIso ?? opts?.validUntil ?? null,
+          selectedEmployee ? employeeName(selectedEmployee) : null
+        ),
       storage_path: path,
       file_size: file.size,
       mime_type: file.type || null,
@@ -16897,7 +16914,8 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   const fileName = standardContractFileName(
                     contractModal.file.name,
                     contractSigned,
-                    contractModal.hireDate
+                    contractModal.hireDate,
+                    selectedEmployee ? employeeName(selectedEmployee) : null
                   );
                   await uploadFile("contrat", contractModal.file, {
                     registreEntryId: contractModal.registreEntryId,
@@ -17589,11 +17607,18 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
       return;
     }
     const categoryLabel = categories.find((c) => c.code === categoryCode)?.label ?? categoryCode;
+    const uploadEmployee = employees.find((e) => e.id === employeeId);
     const { error: insertError } = await supabase.from("employee_documents").insert({
       employee_id: employeeId,
       category_code: categoryCode,
       file_name:
-        opts?.fileNameOverride ?? standardFileName(categoryLabel, file.name, opts?.documentDateIso ?? opts?.validUntil ?? null),
+        opts?.fileNameOverride ??
+        standardFileName(
+          categoryLabel,
+          file.name,
+          opts?.documentDateIso ?? opts?.validUntil ?? null,
+          uploadEmployee ? employeeName(uploadEmployee) : null
+        ),
       storage_path: path,
       file_size: file.size,
       mime_type: file.type || null,
@@ -18250,7 +18275,13 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
               <button
                 className="btn btn-green text-sm px-3 py-2"
                 onClick={async () => {
-                  const fileName = standardContractFileName(contractModal.file.name, contractSigned, contractModal.hireDate);
+                  const contractEmployee = employees.find((e) => e.id === contractModal.employeeId);
+                  const fileName = standardContractFileName(
+                    contractModal.file.name,
+                    contractSigned,
+                    contractModal.hireDate,
+                    contractEmployee ? employeeName(contractEmployee) : null
+                  );
                   await uploadFile(contractModal.employeeId, "contrat", contractModal.file, {
                     registreEntryId: contractModal.registreEntryId,
                     fileNameOverride: fileName,
