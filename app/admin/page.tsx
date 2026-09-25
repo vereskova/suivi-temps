@@ -430,6 +430,7 @@ type ViewKey =
   | "organigramme"
   | "francais"
   | "dossier"
+  | "checklists"
   | "paie"
   | "paie_extras"
   | "dashboards"
@@ -481,6 +482,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
       { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
+      { key: "checklists", label: "Checklists RH", labelRu: "Чек-листы", icon: SquareCheck },
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
       { key: "paie_extras", label: "Primes & Bonus", labelRu: "Премии и бонусы", icon: Banknote },
       { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", icon: History },
@@ -547,6 +549,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   organigramme: ["rh_admin", "rh", "rh_readonly", "commercial_rh"],
   francais: ["rh_admin", "rh"],
   dossier: ["rh_admin", "rh"],
+  checklists: ["rh_admin", "rh"],
   paie: ["rh_admin", "comptable"],
   audit: ["rh_admin"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
@@ -1449,6 +1452,7 @@ export default function AdminPage() {
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
             {view === "francais" && <FrancaisView supabase={supabase} />}
             {view === "dossier" && <DossierView supabase={supabase} />}
+            {view === "checklists" && <ChecklistsView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} />}
             {view === "paie_extras" && <PayrollExtrasView supabase={supabase} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
@@ -16886,6 +16890,355 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
           </>
         )}
       </Modal>
+    </div>
+  );
+}
+
+// ── Vue "Checklists RH" — checklist d'embauche / de départ, par période ─────
+
+type ChecklistItemRow = { id: string; registre_entry_id: string; checklist_type: "embauche" | "depart"; item_code: string };
+
+type ChecklistItemDef = {
+  code: string;
+  label: string;
+  labelRu: string;
+  /** Absent = manual-only item, tracked in employee_checklist_items.
+   *  Present = derived live from data already in the app; never stored,
+   *  and the checkbox for it is read-only. */
+  auto?: (ctx: { entryDocs: EmployeeDocumentRow[]; employeeDocs: EmployeeDocumentRow[]; entry: RegistreEntry }) => boolean;
+};
+
+const EMBAUCHE_CHECKLIST: ChecklistItemDef[] = [
+  {
+    code: "dpae",
+    label: "DPAE déposée",
+    labelRu: "Подана DPAE",
+    auto: ({ entryDocs }) => entryDocs.some((d) => d.category_code === "dpae"),
+  },
+  {
+    code: "contrat",
+    label: "Contrat de travail signé",
+    labelRu: "Подписан трудовой договор",
+    auto: ({ entryDocs }) => entryDocs.some((d) => d.category_code === "contrat"),
+  },
+  {
+    code: "identite",
+    label: "Pièce d'identité / passeport au dossier",
+    labelRu: "Удостоверение личности / паспорт в досье",
+    auto: ({ employeeDocs }) => employeeDocs.some((d) => ["passeport", "carte_identite"].includes(d.category_code)),
+  },
+  {
+    code: "carte_btp",
+    label: "Carte BTP au dossier",
+    labelRu: "Карта BTP в досье",
+    auto: ({ employeeDocs }) => employeeDocs.some((d) => d.category_code === "carte_btp"),
+  },
+  {
+    code: "rib",
+    label: "RIB au dossier",
+    labelRu: "RIB в досье",
+    auto: ({ employeeDocs }) => employeeDocs.some((d) => d.category_code === "rib"),
+  },
+  {
+    code: "mutuelle",
+    label: "Affiliation mutuelle faite",
+    labelRu: "Оформлена страховка mutuelle",
+    auto: ({ employeeDocs }) => employeeDocs.some((d) => d.category_code === "mutuelle"),
+  },
+  { code: "visite_medicale", label: "Visite médicale d'embauche programmée", labelRu: "Записан на медосмотр при приёме" },
+  { code: "titre_sejour", label: "Titre de séjour / autorisation de travail vérifié", labelRu: "Проверен вид на жительство / разрешение на работу" },
+];
+
+const DEPART_CHECKLIST: ChecklistItemDef[] = [
+  {
+    code: "rupture_doc",
+    label: "Lettre de rupture au dossier",
+    labelRu: "Документ об увольнении в досье",
+    auto: ({ entryDocs }) => entryDocs.some((d) => d.category_code === "rupture"),
+  },
+  {
+    code: "registre_sortie",
+    label: "Date de sortie renseignée au registre",
+    labelRu: "Дата выхода указана в регистре",
+    auto: ({ entry }) => !!entry.date_sortie,
+  },
+  { code: "solde_tout_compte", label: "Certificat de travail / solde de tout compte remis", labelRu: "Выдан certificat de travail / solde de tout compte" },
+  { code: "attestation_ft", label: "Attestation France Travail transmise", labelRu: "Отправлена attestation France Travail" },
+  { code: "dernier_bulletin", label: "Dernier bulletin de paie émis", labelRu: "Выпущен последний расчётный листок" },
+  { code: "materiel", label: "Matériel restitué (badge, EPI, véhicule…)", labelRu: "Возвращено оборудование (бейдж, СИЗ, авто…)" },
+];
+
+function ChecklistBlock({
+  title,
+  items,
+  entry,
+  entryDocs,
+  employeeDocs,
+  checked,
+  onToggle,
+}: {
+  title: React.ReactNode;
+  items: ChecklistItemDef[];
+  entry: RegistreEntry;
+  entryDocs: EmployeeDocumentRow[];
+  employeeDocs: EmployeeDocumentRow[];
+  checked: Set<string>;
+  onToggle: (itemCode: string, next: boolean) => void;
+}) {
+  return (
+    <div className="rounded-xl border border-stone-100 p-3">
+      <p className="text-sm font-bold mb-2">{title}</p>
+      <ul className="space-y-1.5">
+        {items.map((item) => {
+          const isAuto = !!item.auto;
+          const isChecked = isAuto ? item.auto!({ entryDocs, employeeDocs, entry }) : checked.has(item.code);
+          return (
+            <li key={item.code} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isChecked}
+                disabled={isAuto}
+                onChange={(ev) => onToggle(item.code, ev.target.checked)}
+                title={isAuto ? "Détecté automatiquement / Определяется автоматически" : undefined}
+              />
+              <span className={isChecked ? "text-stone-700" : "text-stone-400"}>
+                <Bi fr={item.label} ru={item.labelRu} />
+              </span>
+              {isAuto && <span className="text-[10px] text-stone-300 shrink-0">auto</span>}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [employees, setEmployees] = useState<DossierEmployee[]>([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
+  const [search, setSearch] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
+  const [registreEntries, setRegistreEntries] = useState<RegistreEntry[]>([]);
+  const [documents, setDocuments] = useState<EmployeeDocumentRow[]>([]);
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemRow[]>([]);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  useEffect(() => {
+    async function load() {
+      setLoadingEmployees(true);
+      const { data: emp } = await supabase
+        .from("employees")
+        .select("id, first_name, last_name, status, hire_date")
+        .order("last_name");
+      setEmployees((emp as DossierEmployee[]) ?? []);
+      setLoadingEmployees(false);
+    }
+    load();
+  }, [supabase]);
+
+  useEffect(() => {
+    async function loadDetail() {
+      if (!selectedEmployeeId) {
+        setRegistreEntries([]);
+        setDocuments([]);
+        setChecklistItems([]);
+        return;
+      }
+      setLoadingDetail(true);
+      const [{ data: registre }, { data: docs }, { data: items }] = await Promise.all([
+        supabase
+          .from("registre_unique_personnel")
+          .select("id, date_entree, date_sortie, nationalite")
+          .eq("employee_id", selectedEmployeeId)
+          .order("date_entree", { ascending: false }),
+        supabase
+          .from("employee_documents")
+          .select(
+            "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
+          )
+          .eq("employee_id", selectedEmployeeId),
+        supabase
+          .from("employee_checklist_items")
+          .select("id, registre_entry_id, checklist_type, item_code")
+          .eq("employee_id", selectedEmployeeId),
+      ]);
+      setRegistreEntries((registre as RegistreEntry[]) ?? []);
+      setDocuments((docs as EmployeeDocumentRow[]) ?? []);
+      setChecklistItems((items as ChecklistItemRow[]) ?? []);
+      setLoadingDetail(false);
+    }
+    loadDetail();
+  }, [supabase, selectedEmployeeId]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return employees.filter((e) => {
+      if (statusFilter !== "all" && e.status !== statusFilter) return false;
+      if (q && !employeeName(e).toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [employees, statusFilter, search]);
+
+  const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
+
+  async function toggleItem(registreEntryId: string, checklistType: "embauche" | "depart", itemCode: string, next: boolean) {
+    if (!selectedEmployeeId) return;
+    if (next) {
+      const { data, error } = await supabase
+        .from("employee_checklist_items")
+        .insert({
+          employee_id: selectedEmployeeId,
+          registre_entry_id: registreEntryId,
+          checklist_type: checklistType,
+          item_code: itemCode,
+        })
+        .select("id, registre_entry_id, checklist_type, item_code")
+        .single();
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setChecklistItems((prev) => [...prev, data as ChecklistItemRow]);
+    } else {
+      const existing = checklistItems.find(
+        (i) => i.registre_entry_id === registreEntryId && i.checklist_type === checklistType && i.item_code === itemCode
+      );
+      if (!existing) return;
+      const { error } = await supabase.from("employee_checklist_items").delete().eq("id", existing.id);
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+      setChecklistItems((prev) => prev.filter((i) => i.id !== existing.id));
+    }
+  }
+
+  return (
+    <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+      <div className="card w-full lg:w-72 shrink-0">
+        <div className="font-bold mb-3">
+          <Bi
+            fr="Employés"
+            ru="Сотрудники"
+            after={
+              <InfoNote
+                title="Checklists RH"
+                text={
+                  "Чек-лист приёма и увольнения по каждому периоду трудоустройства сотрудника.\n\n" +
+                  "Пункты с пометкой «auto» определяются сами по уже загруженным данным (документ в личном деле, дата увольнения в регистре) — их нельзя снять вручную, нужно исправить сам источник. Остальные пункты отмечаются вручную."
+                }
+              />
+            }
+          />
+        </div>
+        <input
+          className="input mb-2"
+          placeholder="Rechercher un nom…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input mb-3"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as EmployeeStatus | "all")}
+        >
+          <option value="active">Actifs / Активны</option>
+          <option value="on_leave">En congé / В отпуске</option>
+          <option value="terminated">Sortis / Уволены</option>
+          <option value="unclear">Inactif / Неактивен</option>
+          <option value="all">Tous / Все</option>
+        </select>
+        {loadingEmployees ? (
+          <SkeletonRows rows={4} cols={1} />
+        ) : (
+          <div className="max-h-[32rem] overflow-y-auto -mx-1">
+            {filtered.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => setSelectedEmployeeId(e.id)}
+                className={`w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 text-sm font-semibold ${
+                  selectedEmployeeId === e.id ? "bg-primary-50 text-primary-700" : "text-stone-600 hover:bg-stone-50"
+                }`}
+              >
+                <span className="truncate">{employeeName(e)}</span>
+              </button>
+            ))}
+            {filtered.length === 0 && <EmptyState title="Aucun employé" titleRu="Нет сотрудников" />}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        {!selectedEmployee ? (
+          <div className="card">
+            <EmptyState
+              title="Sélectionnez un employé"
+              titleRu="Выберите сотрудника"
+              description="Choisissez un employé dans la liste pour voir ses checklists d'embauche et de départ."
+            />
+          </div>
+        ) : (
+          <div className="card">
+            <p className="font-bold mb-4">Checklists — {employeeName(selectedEmployee)}</p>
+            {loadingDetail ? (
+              <SkeletonRows rows={4} cols={1} />
+            ) : registreEntries.length === 0 ? (
+              <EmptyState
+                title="Aucune période trouvée"
+                titleRu="Период не найден"
+                description="Aucune entrée dans le Registre du personnel pour cet employé."
+              />
+            ) : (
+              <div className="space-y-6">
+                {registreEntries.map((entry) => {
+                  const entryDocs = documents.filter((d) => d.registre_entry_id === entry.id);
+                  const checkedForEntry = new Set(
+                    checklistItems.filter((i) => i.registre_entry_id === entry.id).map((i) => `${i.checklist_type}:${i.item_code}`)
+                  );
+                  const checkedEmbauche = new Set(
+                    [...checkedForEntry].filter((k) => k.startsWith("embauche:")).map((k) => k.slice("embauche:".length))
+                  );
+                  const checkedDepart = new Set(
+                    [...checkedForEntry].filter((k) => k.startsWith("depart:")).map((k) => k.slice("depart:".length))
+                  );
+                  return (
+                    <div key={entry.id}>
+                      <p className="text-xs font-semibold text-stone-500 mb-2">
+                        {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
+                        {entry.date_sortie ? formatDateShortDMY(entry.date_sortie) : "en cours"}
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <ChecklistBlock
+                          title={<Bi fr="Embauche" ru="Приём на работу" />}
+                          items={EMBAUCHE_CHECKLIST}
+                          entry={entry}
+                          entryDocs={entryDocs}
+                          employeeDocs={documents}
+                          checked={checkedEmbauche}
+                          onToggle={(code, next) => toggleItem(entry.id, "embauche", code, next)}
+                        />
+                        {entry.date_sortie && (
+                          <ChecklistBlock
+                            title={<Bi fr="Départ" ru="Увольнение" />}
+                            items={DEPART_CHECKLIST}
+                            entry={entry}
+                            entryDocs={entryDocs}
+                            employeeDocs={documents}
+                            checked={checkedDepart}
+                            onToggle={(code, next) => toggleItem(entry.id, "depart", code, next)}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
