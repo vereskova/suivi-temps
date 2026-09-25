@@ -239,7 +239,11 @@ export function computeGroupStats(group: HrGroupDef, allInGroup: DashEmployee[],
     avgAgeMonths: dashAverage(ageMonths),
     hires12mo: turnover.hires,
     departures12mo: turnover.departures,
-    turnoverRate: turnover.rate,
+    // "Turnover" is departures ÷ average headcount — meaningless for a
+    // group where everyone is terminated by construction (e.g. "left
+    // during trial"): headcount-at-any-date for such a group is close to
+    // zero, so the ratio blows up into a nonsense number like 1300%.
+    turnoverRate: group.countsTerminated ? null : turnover.rate,
   };
 }
 
