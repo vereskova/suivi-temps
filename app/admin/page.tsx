@@ -15867,6 +15867,7 @@ function DossierPeriodCategory({
   onDownload: (doc: EmployeeDocumentRow) => void;
   onDelete: (doc: EmployeeDocumentRow) => void;
 }) {
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   return (
     <div className="rounded-xl border border-stone-100 p-3">
       <p className="text-sm font-bold flex items-center gap-2 mb-2">
@@ -15893,8 +15894,25 @@ function DossierPeriodCategory({
               (d) => d.category_code === category.code && d.registre_entry_id === entry.id
             );
             const key = `${category.code}:${entry.id}`;
+            const isDragOver = dragOverKey === key;
             return (
-              <div key={entry.id} className={`rounded-lg p-2.5 ${docs.length === 0 ? "bg-error-50" : "bg-stone-50"}`}>
+              <div
+                key={entry.id}
+                className={`rounded-lg p-2.5 transition-colors ${
+                  isDragOver ? "bg-primary-50 ring-2 ring-primary-400" : docs.length === 0 ? "bg-error-50" : "bg-stone-50"
+                }`}
+                onDragOver={(ev) => {
+                  ev.preventDefault();
+                  setDragOverKey(key);
+                }}
+                onDragLeave={() => setDragOverKey((k) => (k === key ? null : k))}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  setDragOverKey((k) => (k === key ? null : k));
+                  const file = ev.dataTransfer.files?.[0];
+                  if (file && uploadingKey === null) onUpload(category.code, file, entry.id);
+                }}
+              >
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-xs font-semibold text-stone-500">
                     {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
@@ -15991,6 +16009,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [loadingDetail, setLoadingDetail] = useState(false);
 
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [expiryModal, setExpiryModal] = useState<{ categoryCode: string; file: File } | null>(null);
   const [expiryDate, setExpiryDate] = useState("");
   const [issueDate, setIssueDate] = useState("");
@@ -16167,6 +16186,28 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     }
     await Promise.all([reloadDocuments(), reloadOverdueCounts(), reloadActionLog()]);
     toast.success("Document ajouté");
+  }
+
+  /** Shared by the file-picker input and drag-and-drop for a non-period
+   *  category card — same routing (expiry modal / archive / plain upload)
+   *  regardless of how the file arrived. */
+  function handleFileForCategory(cat: DocumentCategory, file: File) {
+    if (cat.requires_expiry || cat.requires_issue_date) {
+      setExpiryModal({ categoryCode: cat.code, file });
+      setExpiryDate("");
+      setIssueDate("");
+      setNoIssueDate(false);
+      setNoExpiryDate(false);
+    } else if (cat.code === "archive") {
+      // Archive is the free-form catch-all (multiple unrelated files per
+      // employee) — keep each file's own name instead of the standardized
+      // "Catégorie - date" naming that other, one-file-per-period
+      // categories rely on.
+      uploadFile(cat.code, file, { fileNameOverride: file.name });
+    } else {
+      const documentDateIso = cat.code === "medical_prevaly" ? mostRecentMedicalVisitDate(medicalVisits) : undefined;
+      uploadFile(cat.code, file, documentDateIso ? { documentDateIso } : undefined);
+    }
   }
 
   // For employees whose attestation de droits (Sécu/Ameli) never arrived —
@@ -16399,13 +16440,29 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
                   const docs = documents.filter((d) => d.category_code === cat.code);
                   const key = `${cat.code}:`;
+                  const isDragOver = dragOverKey === key;
 
                   return (
                     <div
                       key={cat.code}
-                      className={`rounded-xl border p-3 ${
-                        docs.length === 0 ? "border-error-200 bg-error-50/40" : "border-stone-100"
+                      className={`rounded-xl border p-3 transition-colors ${
+                        isDragOver
+                          ? "border-primary-400 bg-primary-50 ring-2 ring-primary-400"
+                          : docs.length === 0
+                            ? "border-error-200 bg-error-50/40"
+                            : "border-stone-100"
                       }`}
+                      onDragOver={(ev) => {
+                        ev.preventDefault();
+                        setDragOverKey(key);
+                      }}
+                      onDragLeave={() => setDragOverKey((k) => (k === key ? null : k))}
+                      onDrop={(ev) => {
+                        ev.preventDefault();
+                        setDragOverKey((k) => (k === key ? null : k));
+                        const file = ev.dataTransfer.files?.[0];
+                        if (file && uploadingKey === null) handleFileForCategory(cat, file);
+                      }}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-bold flex items-center gap-2">
@@ -16432,24 +16489,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             onChange={(ev) => {
                               const file = ev.target.files?.[0];
                               ev.target.value = "";
-                              if (!file) return;
-                              if (cat.requires_expiry || cat.requires_issue_date) {
-                                setExpiryModal({ categoryCode: cat.code, file });
-                                setExpiryDate("");
-                                setIssueDate("");
-                                setNoIssueDate(false);
-                                setNoExpiryDate(false);
-                              } else if (cat.code === "archive") {
-                                // Archive is the free-form catch-all (multiple unrelated
-                                // files per employee) — keep each file's own name instead
-                                // of the standardized "Catégorie - date" naming that other,
-                                // one-file-per-period categories rely on.
-                                uploadFile(cat.code, file, { fileNameOverride: file.name });
-                              } else {
-                                const documentDateIso =
-                                  cat.code === "medical_prevaly" ? mostRecentMedicalVisitDate(medicalVisits) : undefined;
-                                uploadFile(cat.code, file, documentDateIso ? { documentDateIso } : undefined);
-                              }
+                              if (file) handleFileForCategory(cat, file);
                             }}
                           />
                         </label>
