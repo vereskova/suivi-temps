@@ -17873,7 +17873,12 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div className="min-w-0">
-                    <p className="font-bold truncate">{employeeName(m.employee)}</p>
+                    <p className="font-bold truncate flex items-center gap-1.5">
+                      {employeeName(m.employee)}
+                      {m.employee.team_name && (
+                        <span className="text-xs font-semibold text-stone-500 shrink-0">{m.employee.team_name}</span>
+                      )}
+                    </p>
                     <p className="text-xs text-stone-400">
                       <Bi fr={m.type === "embauche" ? "Embauche" : "Départ"} ru={m.type === "embauche" ? "Приём" : "Увольнение"} />
                       {" · "}
