@@ -17207,13 +17207,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     hireDate: string | null;
   } | null>(null);
   const [contractSigned, setContractSigned] = useState(true);
-  const [substepsModal, setSubstepsModal] = useState<{
-    employeeId: string;
-    registreEntryId: string;
-    checklistType: "embauche" | "depart";
-    itemCode: string;
-    label: string;
-  } | null>(null);
+  const [expandedSubsteps, setExpandedSubsteps] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newFirstName, setNewFirstName] = useState("");
@@ -17430,23 +17424,18 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
       }
       {
         const visit = medicalVisitByEmployee.get(employeeId);
-        const hasDate = !!(visit?.next_visit_date || visit?.last_visit_date);
-        const urgency = visit?.next_visit_date ? dateUrgency(visit.next_visit_date) : null;
+        const isScheduled = !!visit?.next_visit_date;
+        const urgency = isScheduled ? dateUrgency(visit!.next_visit_date) : null;
         result.push({
           code: "visite_medicale",
-          label: hasDate ? (
+          label: (
             <>
-              {visit?.visit_subtype ?? "Visite médicale"} — <Bi fr="dernière" ru="прошлая" /> :{" "}
-              {visit?.last_visit_date ? formatDateShortDMY(visit.last_visit_date) : "—"} ·{" "}
-              <Bi fr="prochaine" ru="следующая" /> :{" "}
-              {visit?.next_visit_date ? formatDateShortDMY(visit.next_visit_date) : "—"}
-              {visit?.next_visit_date && visit?.next_visit_time && ` ${visit.next_visit_time.slice(0, 5)}`}
+              <Bi fr="Visite médicale" ru="Медосмотр" /> —{" "}
+              {isScheduled ? <Bi fr="programmée" ru="назначен" /> : <Bi fr="non programmée" ru="не назначен" />}
               {urgency && <span className={`badge badge-${urgency.tone} ml-1.5`}>{urgency.label}</span>}
             </>
-          ) : (
-            <Bi fr="Visite médicale d'embauche programmée" ru="Записан на медосмотр при приёме" />
           ),
-          state: hasDate ? "done" : "missing",
+          state: isScheduled ? "done" : "missing",
           kind: "manual",
           registreEntryId: entry.id,
           checklistType: "embauche",
@@ -17913,61 +17902,92 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                   <ul className="space-y-1">
                     {items.map((item) => {
                       const substeps = ITEM_SUBSTEPS[item.code];
-                      const substepsDone = substeps
-                        ? (checklistItemsByEmployee.get(m.employee.id) ?? []).filter(
+                      const substepKey = `${m.key}:${item.code}`;
+                      const substepsOpen = expandedSubsteps === substepKey;
+                      const checkedSubsteps = new Set(
+                        (checklistItemsByEmployee.get(m.employee.id) ?? [])
+                          .filter(
                             (i) =>
                               i.registre_entry_id === m.entry.id &&
                               i.checklist_type === m.type &&
                               i.item_code.startsWith(`${item.code}:`)
-                          ).length
-                        : 0;
+                          )
+                          .map((i) => i.item_code.slice(`${item.code}:`.length))
+                      );
                       return (
-                    <li key={item.code} className="flex items-center gap-2 text-sm">
-                        {item.state === "done" ? (
-                          <Check size={14} className="text-success-600 shrink-0" />
-                        ) : item.state === "na" ? (
-                          <Ban size={14} className="text-stone-400 shrink-0" />
-                        ) : (
-                          <Square size={14} className="text-stone-300 shrink-0" />
-                        )}
-                        {substeps ? (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setSubstepsModal({
-                                employeeId: m.employee.id,
-                                registreEntryId: m.entry.id,
-                                checklistType: m.type,
-                                itemCode: item.code,
-                                label: typeof item.label === "string" ? item.label : item.code,
-                              })
-                            }
-                            className={`truncate flex-1 text-left underline decoration-dotted underline-offset-2 hover:text-primary-700 ${
-                              item.state === "missing" ? "text-stone-400" : "text-stone-600"
-                            }`}
-                          >
-                            {item.label} <span className="text-stone-400">({substepsDone}/{substeps.length})</span>
-                          </button>
-                        ) : (
-                          <span className={`truncate flex-1 ${item.state === "missing" ? "text-stone-400" : "text-stone-600"}`}>
-                            {item.label}
-                          </span>
-                        )}
-                        {item.kind === "doc" && (
-                          <button
-                            type="button"
-                            onClick={() => toggleNotApplicable(m.employee.id, item.code, item.registreEntryId, item.state !== "na")}
-                            title="Non applicable / Неприменимо"
-                            className={`shrink-0 rounded-full p-1 transition-colors ${
-                              item.state === "na"
-                                ? "bg-stone-200 text-stone-600"
-                                : "text-stone-300 hover:bg-stone-100 hover:text-stone-500"
-                            }`}
-                          >
-                            <Ban size={14} />
-                          </button>
-                        )}
-                    </li>
+                        <li key={item.code}>
+                          <div className="flex items-center gap-2 text-sm">
+                            {item.state === "done" ? (
+                              <Check size={14} className="text-success-600 shrink-0" />
+                            ) : item.state === "na" ? (
+                              <Ban size={14} className="text-stone-400 shrink-0" />
+                            ) : (
+                              <Square size={14} className="text-stone-300 shrink-0" />
+                            )}
+                            {substeps ? (
+                              <button
+                                type="button"
+                                onClick={() => setExpandedSubsteps(substepsOpen ? null : substepKey)}
+                                className={`truncate flex-1 text-left underline decoration-dotted underline-offset-2 hover:text-primary-700 ${
+                                  item.state === "missing" ? "text-stone-400" : "text-stone-600"
+                                }`}
+                              >
+                                {item.label} <span className="text-stone-400">({checkedSubsteps.size}/{substeps.length})</span>
+                                <ChevronDown
+                                  size={12}
+                                  className={`inline-block ml-1 transition-transform ${substepsOpen ? "rotate-180" : ""}`}
+                                />
+                              </button>
+                            ) : (
+                              <span className={`truncate flex-1 ${item.state === "missing" ? "text-stone-400" : "text-stone-600"}`}>
+                                {item.label}
+                              </span>
+                            )}
+                            {item.kind === "doc" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  toggleNotApplicable(m.employee.id, item.code, item.registreEntryId, item.state !== "na")
+                                }
+                                title="Non applicable / Неприменимо"
+                                className={`shrink-0 rounded-full p-1 transition-colors ${
+                                  item.state === "na"
+                                    ? "bg-stone-200 text-stone-600"
+                                    : "text-stone-300 hover:bg-stone-100 hover:text-stone-500"
+                                }`}
+                              >
+                                <Ban size={14} />
+                              </button>
+                            )}
+                          </div>
+                          {substeps && substepsOpen && (
+                            <ul className="ml-6 mt-1 mb-1 space-y-1 border-l-2 border-stone-100 pl-3">
+                              {substeps.map((step) => {
+                                const isChecked = checkedSubsteps.has(step.code);
+                                return (
+                                  <li key={step.code} className="flex items-center gap-2 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(ev) =>
+                                        toggleManualStep(
+                                          m.employee.id,
+                                          m.entry.id,
+                                          m.type,
+                                          `${item.code}:${step.code}`,
+                                          ev.target.checked
+                                        )
+                                      }
+                                    />
+                                    <span className={isChecked ? "text-stone-700" : "text-stone-500"}>
+                                      <Bi fr={step.label} ru={step.labelRu} />
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </li>
                       );
                     })}
                   </ul>
@@ -18246,54 +18266,6 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             </div>
           </>
         )}
-      </Modal>
-
-      <Modal
-        open={!!substepsModal}
-        onClose={() => setSubstepsModal(null)}
-        title={substepsModal?.label ?? ""}
-        maxWidth="max-w-sm"
-      >
-        {substepsModal &&
-          (() => {
-            const steps = ITEM_SUBSTEPS[substepsModal.itemCode] ?? [];
-            const checked = new Set(
-              (checklistItemsByEmployee.get(substepsModal.employeeId) ?? [])
-                .filter(
-                  (i) =>
-                    i.registre_entry_id === substepsModal.registreEntryId && i.checklist_type === substepsModal.checklistType
-                )
-                .map((i) => i.item_code)
-            );
-            return (
-              <ul className="space-y-2">
-                {steps.map((step) => {
-                  const code = `${substepsModal.itemCode}:${step.code}`;
-                  const isChecked = checked.has(code);
-                  return (
-                    <li key={step.code} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={(ev) =>
-                          toggleManualStep(
-                            substepsModal.employeeId,
-                            substepsModal.registreEntryId,
-                            substepsModal.checklistType,
-                            code,
-                            ev.target.checked
-                          )
-                        }
-                      />
-                      <span className={isChecked ? "text-stone-700" : "text-stone-500"}>
-                        <Bi fr={step.label} ru={step.labelRu} />
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            );
-          })()}
       </Modal>
     </div>
   );
