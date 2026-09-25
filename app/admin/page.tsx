@@ -226,6 +226,15 @@ function uniqueFileToken() {
   return Date.now();
 }
 
+/** Supabase Storage rejects object keys with accents, apostrophes, or other
+ *  non-ASCII/unsafe characters (e.g. a screenshot named "Capture d'écran
+ *  ... à ....pdf") — sanitize only the STORAGE key; the human-readable name
+ *  (accents and all) is kept separately in the `file_name` DB column. */
+function sanitizeStorageFileName(name: string): string {
+  const normalized = name.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  return normalized.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 /** Splits one delimited line, honoring double-quoted fields (so a quoted
  *  value can contain the delimiter itself) — used for Prevaly's CSV export. */
 function parseCsvLine(line: string, delimiter: string): string[] {
@@ -16159,7 +16168,7 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     if (!selectedEmployeeId) return;
     const key = `${categoryCode}:${opts?.registreEntryId ?? ""}`;
     setUploadingKey(key);
-    const path = `${selectedEmployeeId}/${categoryCode}/${uniqueFileToken()}_${file.name}`;
+    const path = `${selectedEmployeeId}/${categoryCode}/${uniqueFileToken()}_${sanitizeStorageFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from(DOSSIER_BUCKET).upload(path, file);
     if (uploadError) {
       setUploadingKey(null);
@@ -17066,7 +17075,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
   async function uploadDoc(categoryCode: string, file: File) {
     if (!selectedVehicleId) return;
     setUploadingKey(categoryCode);
-    const path = `${selectedVehicleId}/${categoryCode}/${uniqueFileToken()}_${file.name}`;
+    const path = `${selectedVehicleId}/${categoryCode}/${uniqueFileToken()}_${sanitizeStorageFileName(file.name)}`;
     const { error: uploadError } = await supabase.storage.from(AUTOPARK_BUCKET).upload(path, file);
     if (uploadError) {
       setUploadingKey(null);
