@@ -17298,6 +17298,24 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]);
 
+  // Les documents peuvent être ajoutés depuis un autre onglet (Dossier
+  // salarié) pendant que celui-ci reste ouvert — on recharge dès qu'on
+  // revient sur cet onglet/fenêtre plutôt que d'exiger un rechargement
+  // complet de la page.
+  useEffect(() => {
+    function onFocusOrVisible() {
+      if (document.visibilityState === "hidden") return;
+      void reloadAll();
+    }
+    window.addEventListener("focus", onFocusOrVisible);
+    document.addEventListener("visibilitychange", onFocusOrVisible);
+    return () => {
+      window.removeEventListener("focus", onFocusOrVisible);
+      document.removeEventListener("visibilitychange", onFocusOrVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase]);
+
   // Un nouveau salarié (même sans date d'embauche) déclenche tout de suite
   // une ligne dans le Registre du personnel côté serveur (0048) — donc dès
   // qu'il est créé ici, sa checklist "Embauche" est déjà prête à cocher.
@@ -17851,7 +17869,15 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             <input type="checkbox" checked={hideComplete} onChange={(e) => setHideComplete(e.target.checked)} />
             <Bi fr="Masquer les checklists terminées" ru="Скрыть завершённые" />
           </label>
-          <span className="badge badge-neutral ml-auto">
+          <button
+            className="btn btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5 ml-auto"
+            disabled={loadingData}
+            onClick={() => reloadAll()}
+          >
+            <RefreshCw size={13} className={loadingData ? "animate-spin" : ""} />
+            <Bi fr="Actualiser" ru="Обновить" />
+          </button>
+          <span className="badge badge-neutral">
             {visibleMovements.length} <Bi fr="checklists" ru="чек-листов" />
           </span>
         </div>
