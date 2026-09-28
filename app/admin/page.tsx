@@ -15897,6 +15897,10 @@ type DocumentCategory = {
   requires_issue_date: boolean;
   foreigners_only: boolean;
   per_period: boolean;
+  /** Set only for the optional départ paperwork categories — which of the
+   *  two procedures they belong to, or "commun" for the 3 shared at the end
+   *  of either one. Null for every ordinary, always-visible category. */
+  departure_procedure: "rupture_conventionnelle" | "demission" | "commun" | null;
 };
 type EmployeeDocumentRow = {
   id: string;
@@ -15934,7 +15938,13 @@ type DossierMedicalVisit = {
   next_visit_time: string | null;
   visit_subtype: string | null;
 };
-type RegistreEntry = { id: string; date_entree: string | null; date_sortie: string | null; nationalite: string | null };
+type RegistreEntry = {
+  id: string;
+  date_entree: string | null;
+  date_sortie: string | null;
+  nationalite: string | null;
+  procedure_depart: "rupture_conventionnelle" | "demission" | null;
+};
 type NotApplicableRow = { id: string; category_code: string; registre_entry_id: string | null };
 
 const DOSSIER_BUCKET = "dossier-salarie";
@@ -16332,7 +16342,7 @@ function DossierView({
           .order("next_visit_date", { ascending: false }),
         supabase
           .from("registre_unique_personnel")
-          .select("id, date_entree, date_sortie, nationalite")
+          .select("id, date_entree, date_sortie, nationalite, procedure_depart")
           .eq("employee_id", selectedEmployeeId)
           .order("date_entree", { ascending: false }),
         supabase
@@ -16369,7 +16379,7 @@ function DossierView({
   const selectedEmployee = employees.find((e) => e.id === selectedEmployeeId);
   const isForeign = isForeignNationality(confidential?.nationality ?? registreEntries[0]?.nationalite ?? null);
   const visibleCategories = useMemo(
-    () => categories.filter((c) => !c.foreigners_only || isForeign),
+    () => categories.filter((c) => !c.foreigners_only || isForeign).filter((c) => !c.departure_procedure),
     [categories, isForeign]
   );
 
@@ -16532,6 +16542,18 @@ function DossierView({
       .from("employee_confidential")
       .upsert({ employee_id: selectedEmployeeId, rib }, { onConflict: "employee_id" });
     if (error) toast.error("Erreur lors de la mise à jour de l'IBAN.");
+  }
+
+  // Picking (or resetting) the départ procedure for the employee's current
+  // registre entry — this is what makes the détaillée départ block above
+  // opt-in: nothing shows until this is set once.
+  async function updateProcedureDepart(registreEntryId: string, procedure: "rupture_conventionnelle" | "demission" | null) {
+    setRegistreEntries((prev) => prev.map((r) => (r.id === registreEntryId ? { ...r, procedure_depart: procedure } : r)));
+    const { error } = await supabase
+      .from("registre_unique_personnel")
+      .update({ procedure_depart: procedure })
+      .eq("id", registreEntryId);
+    if (error) toast.error("Erreur lors de la mise à jour de la procédure de départ.");
   }
 
   async function downloadFile(doc: EmployeeDocumentRow) {
@@ -16946,6 +16968,82 @@ function DossierView({
                     </div>
                   );
                 })}
+                {registreEntries[0] &&
+                  (() => {
+                    const latestEntry = registreEntries[0];
+                    const departureCategories = categories.filter((c) => c.departure_procedure);
+                    if (!latestEntry.procedure_depart) {
+                      return (
+                        <div className="rounded-xl border border-dashed border-stone-200 p-3 flex items-center justify-between gap-3 flex-wrap">
+                          <p className="text-sm text-stone-500">
+                            <Bi
+                              fr="Procédure de départ (convocation, rupture conventionnelle, démission…) pas encore démarrée."
+                              ru="Процедура увольнения (собеседование, соглашение о расторжении, увольнение по собственному…) ещё не начата."
+                            />
+                          </p>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              className="btn btn-secondary text-xs px-2.5 py-1.5"
+                              onClick={() => updateProcedureDepart(latestEntry.id, "rupture_conventionnelle")}
+                            >
+                              <Bi fr="+ Rupture conventionnelle" ru="+ Расторжение по соглашению" />
+                            </button>
+                            <button
+                              className="btn btn-secondary text-xs px-2.5 py-1.5"
+                              onClick={() => updateProcedureDepart(latestEntry.id, "demission")}
+                            >
+                              <Bi fr="+ Démission" ru="+ Увольнение по собственному" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="rounded-xl border border-stone-100 p-3">
+                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                          <p className="text-sm font-bold flex items-center gap-2">
+                            <LogOut size={15} className="text-stone-400" />
+                            <Bi fr="Procédure de départ" ru="Процедура увольнения" />
+                            <span className="badge badge-neutral">
+                              {latestEntry.procedure_depart === "rupture_conventionnelle" ? (
+                                <Bi fr="Rupture conventionnelle" ru="Расторжение по соглашению" />
+                              ) : (
+                                <Bi fr="Démission" ru="Увольнение по собственному" />
+                              )}
+                            </span>
+                          </p>
+                          <button
+                            className="text-xs text-stone-400 hover:text-stone-600 underline"
+                            onClick={() => updateProcedureDepart(latestEntry.id, null)}
+                          >
+                            <Bi fr="Changer" ru="Изменить" />
+                          </button>
+                        </div>
+                        <div className="space-y-3">
+                          {departureCategories
+                            .filter((c) => c.departure_procedure === latestEntry.procedure_depart || c.departure_procedure === "commun")
+                            .map((cat) => (
+                              <DossierPeriodCategory
+                                key={cat.code}
+                                category={cat}
+                                icon={DOSSIER_CATEGORY_ICONS[cat.code] ?? FileText}
+                                entries={[latestEntry]}
+                                documents={documents}
+                                notApplicable={notApplicable}
+                                uploadingKey={uploadingKey}
+                                onUpload={(code, file, registreEntryId) =>
+                                  uploadFile(code, file, { registreEntryId, documentDateIso: latestEntry.date_sortie })
+                                }
+                                onToggleNotApplicable={toggleNotApplicable}
+                                onPreview={previewFile}
+                                onDownload={downloadFile}
+                                onDelete={deleteFile}
+                              />
+                            ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
               </div>
             )}
           </div>
@@ -17445,7 +17543,9 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
         .select("id, first_name, last_name, status, hire_date, teams!employees_team_id_fkey(name)")
         .order("last_name"),
       supabase.from("document_categories").select("*").order("sort_order"),
-      supabase.from("registre_unique_personnel").select("id, employee_id, date_entree, date_sortie, nationalite"),
+      supabase
+        .from("registre_unique_personnel")
+        .select("id, employee_id, date_entree, date_sortie, nationalite, procedure_depart"),
       fetchAllRows<EmployeeDocumentRow>(
         "employee_documents",
         "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
