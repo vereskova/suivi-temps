@@ -17232,6 +17232,24 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newLastName, setNewLastName] = useState("");
   const [adding, setAdding] = useState(false);
 
+  // PostgREST caps a plain .select() at 1000 rows — employee_documents alone
+  // is already past that (1900+), so a page loops until it gets a short
+  // page back rather than silently dropping whatever falls past row 1000.
+  async function fetchAllRows<T>(table: string, columns: string): Promise<T[]> {
+    const pageSize = 1000;
+    const rows: T[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(columns)
+        .range(from, from + pageSize - 1);
+      if (error) break;
+      rows.push(...((data as T[]) ?? []));
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
+  }
+
   async function reloadAll() {
     setLoadingEmployees(true);
     setLoadingData(true);
@@ -17239,7 +17257,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
       { data: emp },
       { data: cats },
       { data: registre },
-      { data: docs },
+      docs,
       { data: na },
       { data: conf },
       { data: items },
@@ -17252,11 +17270,10 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
         .order("last_name"),
       supabase.from("document_categories").select("*").order("sort_order"),
       supabase.from("registre_unique_personnel").select("id, employee_id, date_entree, date_sortie, nationalite"),
-      supabase
-        .from("employee_documents")
-        .select(
-          "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
-        ),
+      fetchAllRows<EmployeeDocumentRow>(
+        "employee_documents",
+        "id, employee_id, category_code, file_name, storage_path, file_size, created_at, valid_until, registre_entry_id, uploaded_by_email"
+      ),
       supabase.from("employee_document_not_applicable").select("id, employee_id, category_code, registre_entry_id"),
       supabase
         .from("employee_confidential")
@@ -17280,7 +17297,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     );
     setCategories((cats as DocumentCategory[]) ?? []);
     setAllRegistreEntries((registre as unknown as (RegistreEntry & { employee_id: string })[]) ?? []);
-    setAllDocuments((docs as EmployeeDocumentRow[]) ?? []);
+    setAllDocuments(docs);
     setAllNotApplicable((na as unknown as (NotApplicableRow & { employee_id: string })[]) ?? []);
     setAllConfidential((conf as (DossierConfidential & { employee_id: string })[]) ?? []);
     setAllChecklistItems((items as unknown as (ChecklistItemRow & { employee_id: string })[]) ?? []);
