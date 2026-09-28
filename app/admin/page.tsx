@@ -16367,6 +16367,32 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
     if (error) toast.error("Erreur lors de la mise à jour du numéro de sécurité sociale.");
   }
 
+  // "IBAN enregistré" next to the RIB category was read-only and drifted
+  // from reality whenever an employee sent an updated RIB — editing it here
+  // writes the same employee_confidential.rib every other view (Paie…)
+  // reads, so there's a single source of truth instead of one per screen.
+  async function updateRib(value: string) {
+    if (!selectedEmployeeId) return;
+    const rib = value.trim() || null;
+    setConfidential((prev) =>
+      prev
+        ? { ...prev, rib }
+        : {
+            nationality: null,
+            rib,
+            securite_sociale: null,
+            status_ameli: null,
+            carte_vitale: null,
+            residence_permit_type: null,
+            residence_permit_number: null,
+          }
+    );
+    const { error } = await supabase
+      .from("employee_confidential")
+      .upsert({ employee_id: selectedEmployeeId, rib }, { onConflict: "employee_id" });
+    if (error) toast.error("Erreur lors de la mise à jour de l'IBAN.");
+  }
+
   async function downloadFile(doc: EmployeeDocumentRow) {
     const { data, error } = await supabase.storage.from(DOSSIER_BUCKET).download(doc.storage_path);
     if (error || !data) {
@@ -16629,11 +16655,20 @@ function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </label>
                       </div>
 
-                      {cat.code === "rib" && confidential?.rib && (
-                        <p className="text-xs text-stone-500 mb-2">
-                          IBAN enregistré <span className="opacity-70">/ Зарегистрированный IBAN</span> :{" "}
-                          <span className="font-semibold">{confidential.rib}</span>
-                        </p>
+                      {cat.code === "rib" && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <label className="text-xs text-stone-500 shrink-0">
+                            IBAN enregistré <span className="opacity-70">/ Зарегистрированный IBAN</span> :
+                          </label>
+                          <input
+                            className="input text-xs py-1 px-1.5 w-64 font-semibold"
+                            placeholder="BE48 9051 6667 7127"
+                            defaultValue={confidential?.rib ?? ""}
+                            key={`rib-${selectedEmployeeId}-${confidential?.rib ?? ""}`}
+                            onBlur={(e) => updateRib(e.target.value)}
+                            title="Le RIB le plus récent envoyé par le salarié peut différer du fichier déjà classé — corriger ici met à jour l'IBAN partout où il est affiché / Актуальный RIB, присланный сотрудником, может отличаться от уже загруженного файла — исправление здесь обновит IBAN везде"
+                          />
+                        </div>
                       )}
                       {cat.code === "assurance_maladie" && (
                         <div className="flex items-center gap-2 mb-2">
