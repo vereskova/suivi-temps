@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -628,6 +628,43 @@ function PageAccessBadge({ viewKey }: { viewKey: string }) {
   );
 }
 
+// Lets any view with an employee card/row jump straight to that person's
+// Dossier salarié — without prop-drilling a navigation callback through
+// every view component, most of which don't otherwise need to know about
+// the "dossier" view at all.
+const DossierNavContext = createContext<(employeeId: string) => void>(() => {});
+
+function OpenDossierButton({
+  employeeId,
+  className,
+  withLabel = false,
+}: {
+  employeeId: string;
+  className?: string;
+  /** Adds "Dossier / Личное дело" text next to the icon, for a standalone button rather than an icon slotted into a row of other icons. */
+  withLabel?: boolean;
+}) {
+  const openDossier = useContext(DossierNavContext);
+  return (
+    <button
+      type="button"
+      className={className ?? "text-stone-400 hover:text-stone-700"}
+      title="Ouvrir le dossier salarié / Открыть личное дело"
+      onClick={(e) => {
+        e.stopPropagation();
+        openDossier(employeeId);
+      }}
+    >
+      <FolderLock size={14} />
+      {withLabel && (
+        <span>
+          <Bi fr="Dossier" ru="Личное дело" />
+        </span>
+      )}
+    </button>
+  );
+}
+
 export default function AdminPage() {
   const [supabase] = useState(() => createClient());
   const router = useRouter();
@@ -635,6 +672,11 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = usePersistedView<ViewKey>("admin_view", "jour", VALID_VIEW_KEYS);
+  const [dossierTargetEmployeeId, setDossierTargetEmployeeId] = useState<string | null>(null);
+  function openDossier(employeeId: string) {
+    setDossierTargetEmployeeId(employeeId);
+    setView("dossier");
+  }
   const [comptableView, setComptableView] = usePersistedView<"paie" | "employees">("admin_comptable_view", "paie");
   const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme">(
     "admin_commercial_rh_view",
@@ -1404,6 +1446,7 @@ export default function AdminPage() {
           )}
 
           <div className="flex-1 min-w-0">
+          <DossierNavContext.Provider value={openDossier}>
             {view === "jour" && (
               <JourView
                 supabase={supabase}
@@ -1431,6 +1474,7 @@ export default function AdminPage() {
                 teams={teams}
                 onChanged={loadActiveEmployees}
                 onToggleChef={handleToggleChef}
+                canOpenDossier
               />
             )}
             {view === "medical" && <MedicalSectionView supabase={supabase} />}
@@ -1451,14 +1495,17 @@ export default function AdminPage() {
             {view === "registre" && <RegistreView supabase={supabase} />}
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
             {view === "francais" && <FrancaisView supabase={supabase} />}
-            {view === "dossier" && <DossierView supabase={supabase} />}
+            {view === "dossier" && (
+              <DossierView supabase={supabase} initialEmployeeId={dossierTargetEmployeeId} />
+            )}
             {view === "checklists" && <ChecklistsView supabase={supabase} />}
-            {view === "paie" && <PaieView supabase={supabase} />}
+            {view === "paie" && <PaieView supabase={supabase} canOpenDossier />}
             {view === "paie_extras" && <PayrollExtrasView supabase={supabase} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
+          </DossierNavContext.Provider>
           </div>
         </div>
       </div>
@@ -2300,6 +2347,13 @@ function EmployeView({
             ))}
           </select>
         </label>
+        {employeeId && (
+          <OpenDossierButton
+            employeeId={employeeId}
+            withLabel
+            className="btn btn-secondary text-xs px-2.5 py-1.5 flex items-center gap-1.5"
+          />
+        )}
 
         <label className="font-bold text-sm">
           <Bi fr="Mois" ru="Месяц" />
@@ -3130,6 +3184,7 @@ function EmployeesView({
   onToggleChef,
   readOnly = false,
   confidentialMode = "full",
+  canOpenDossier = false,
 }: {
   supabase: ReturnType<typeof createClient>;
   teams: Team[];
@@ -3138,6 +3193,8 @@ function EmployeesView({
   readOnly?: boolean;
   /** "rib_only" hides employee_confidential entirely except the RIB, for comptable — see EmployeeDetailPanel. */
   confidentialMode?: "full" | "rib_only";
+  /** Only rh/rh_admin can reach Dossier salarié — the comptable/commercial_rh/rh_readonly shells reuse this same view without it. */
+  canOpenDossier?: boolean;
 }) {
   const [employees, setEmployees] = useState<EmployeeFull[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3153,6 +3210,7 @@ function EmployeesView({
   const [adding, setAdding] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const openDossier = useContext(DossierNavContext);
 
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [teamFilter, setTeamFilter] = useState<string>("all");
@@ -3595,6 +3653,14 @@ function EmployeesView({
                           titleRu={expandedId === e.id ? "Закрыть" : "Подробнее"}
                           onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
                         />
+                        {canOpenDossier && (
+                          <RowAction
+                            icon={FolderLock}
+                            title="Dossier salarié"
+                            titleRu="Личное дело"
+                            onClick={() => openDossier(e.id)}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -3927,6 +3993,14 @@ function EmployeesView({
                               setExpandedId(expandedId === e.id ? null : e.id)
                             }
                           />
+                          {canOpenDossier && (
+                            <RowAction
+                              icon={FolderLock}
+                              title="Dossier salarié"
+                              titleRu="Личное дело"
+                              onClick={() => openDossier(e.id)}
+                            />
+                          )}
                         </td>
                       </>
                     )}
@@ -4986,6 +5060,7 @@ function SortableMedicalTh({
 }
 
 function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const openDossier = useContext(DossierNavContext);
   const [visits, setVisits] = useState<MedicalVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [roster, setRoster] = useState<MedicalRosterRow[]>([]);
@@ -6082,6 +6157,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   {!isEditing && (
                     <div className="flex items-center gap-1 shrink-0">
                       <RowAction
+                        icon={FolderLock}
+                        title="Dossier salarié"
+                        titleRu="Личное дело"
+                        onClick={() => openDossier(row.employee.id)}
+                      />
+                      <RowAction
                         icon={Ban}
                         title={row.status === "exempte" ? "Concerné(e) par la visite médicale" : "Non concerné(e) par la visite médicale"}
                         titleRu={row.status === "exempte" ? "Медосмотр снова касается" : "Медосмотр не касается"}
@@ -6288,6 +6369,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2">
                           <div className="flex items-center gap-1">
+                            <RowAction
+                              icon={FolderLock}
+                              title="Dossier salarié"
+                              titleRu="Личное дело"
+                              onClick={() => openDossier(row.employee.id)}
+                            />
                             <RowAction
                               icon={Ban}
                               title={row.status === "exempte" ? "Concerné(e) par la visite médicale" : "Non concerné(e) par la visite médicale"}
@@ -10724,6 +10811,7 @@ function CommercialView({
 // ── Vue "Registre du personnel" — copie fidèle du Registre unique du personnel ──
 type RegistreRow = {
   id: string;
+  employee_id: string | null;
   numero: number | null;
   nom_prenom: string;
   date_entree: string | null;
@@ -12347,6 +12435,7 @@ function addYearsIsoLocal(iso: string, years: number): string {
 }
 
 function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const openDossier = useContext(DossierNavContext);
   const [rows, setRows] = useState<RegistreRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -12367,7 +12456,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
       const { data } = await supabase
         .from("registre_unique_personnel")
         .select(
-          "id, numero, nom_prenom, date_entree, nationalite, date_naissance, sexe, emploi, qualification, type_titre, numero_titre, type_contrat, temps_partiel, date_sortie"
+          "id, employee_id, numero, nom_prenom, date_entree, nationalite, date_naissance, sexe, emploi, qualification, type_titre, numero_titre, type_contrat, temps_partiel, date_sortie"
         )
         .order("numero", { ascending: true });
       setRows((data as unknown as RegistreRow[]) ?? []);
@@ -12677,7 +12766,17 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                       <p className="font-bold truncate">{r.nom_prenom}</p>
                       <p className="text-xs text-stone-400">N° {r.numero ?? "—"}</p>
                     </div>
-                    <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(r)} />
+                    <div className="flex shrink-0">
+                      {r.employee_id && (
+                        <RowAction
+                          icon={FolderLock}
+                          title="Dossier salarié"
+                          titleRu="Личное дело"
+                          onClick={() => openDossier(r.employee_id!)}
+                        />
+                      )}
+                      <RowAction icon={Pencil} title="Modifier" titleRu="Изменить" onClick={() => startEdit(r)} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm mt-2">
                     <p><span className="text-stone-400">Entrée: </span>{r.date_entree ?? "—"}</p>
@@ -12734,6 +12833,14 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                       <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
                       <td className="py-2 pr-2 whitespace-nowrap">
+                        {r.employee_id && (
+                          <RowAction
+                            icon={FolderLock}
+                            title="Dossier salarié"
+                            titleRu="Личное дело"
+                            onClick={() => openDossier(r.employee_id!)}
+                          />
+                        )}
                         <RowAction
                           icon={Pencil}
                           title="Modifier"
@@ -13462,12 +13569,19 @@ type PaieEmployee = {
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
  *  employees — their compensation is worked out entirely outside this system,
  *  so their row is excluded from every formula/bulk-apply/import/sync path. */
-function PaieEmployeeName({ employee: e }: { employee: PaieEmployee }) {
+function PaieEmployeeName({
+  employee: e,
+  canOpenDossier = false,
+}: {
+  employee: PaieEmployee;
+  canOpenDossier?: boolean;
+}) {
   const isChef = !!e.team_id && e.teams?.chef_employee_id === e.id;
   return (
     <span className="inline-flex items-center gap-1.5">
       {isChef && <Crown size={12} className="shrink-0 fill-current text-success-600" />}
       {employeeName(e)}
+      {canOpenDossier && <OpenDossierButton employeeId={e.id} className="text-stone-300 hover:text-stone-600" />}
     </span>
   );
 }
@@ -13695,7 +13809,14 @@ function defaultJoursTravaillesFor(e: PaieEmployee, monthStart: string, monthEnd
   return String(countWeekdaysBetween(rangeStart, rangeEnd));
 }
 
-function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+function PaieView({
+  supabase,
+  canOpenDossier = false,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  /** Only rh/rh_admin can reach Dossier salarié — comptable reuses this same view without it. */
+  canOpenDossier?: boolean;
+}) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -14648,7 +14769,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                 )}
                 <div className={`card ${row.colorClass}`}>
                   <p className="font-semibold mb-2">
-                    <PaieEmployeeName employee={e} />
+                    <PaieEmployeeName employee={e} canOpenDossier={canOpenDossier} />
                   </p>
                   {isFopContractor(e) ? (
                     <p className="italic text-stone-500 text-sm">
@@ -14820,7 +14941,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     {isFopContractor(e) ? (
                       <tr className={`border-t border-stone-100 ${row.colorClass}`}>
                         <td className="py-2 pr-4 font-semibold whitespace-nowrap">
-                          <PaieEmployeeName employee={e} />
+                          <PaieEmployeeName employee={e} canOpenDossier={canOpenDossier} />
                         </td>
                         <td colSpan={9} className="py-2 pr-4 italic text-stone-500">
                           FOP — rémunération hors paie, calcul non applicable
@@ -14829,7 +14950,7 @@ function PaieView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
                     ) : (
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
                     <td className="py-2 pr-4 font-semibold whitespace-nowrap">
-                      <PaieEmployeeName employee={e} />
+                      <PaieEmployeeName employee={e} canOpenDossier={canOpenDossier} />
                     </td>
                     <td className="py-2 pr-4">
                       <input
@@ -16072,13 +16193,33 @@ function DossierPeriodCategory({
   );
 }
 
-function DossierView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+function DossierView({
+  supabase,
+  initialEmployeeId,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  /** Set when another view's "Dossier salarié" link sends us here for a
+   *  specific person — switches straight to their file instead of leaving
+   *  whatever was previously selected (or nothing) showing. */
+  initialEmployeeId?: string | null;
+}) {
   const [employees, setEmployees] = useState<DossierEmployee[]>([]);
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [search, setSearch] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+
+  // "Adjusting state when a prop changes" (React docs) rather than an
+  // effect — initialEmployeeId only ever changes when another view sends
+  // us here for a specific person, and this must apply before that
+  // render paints, not one render later.
+  const [appliedInitialEmployeeId, setAppliedInitialEmployeeId] = useState<string | null | undefined>(undefined);
+  if (initialEmployeeId && initialEmployeeId !== appliedInitialEmployeeId) {
+    setAppliedInitialEmployeeId(initialEmployeeId);
+    setSelectedEmployeeId(initialEmployeeId);
+    setStatusFilter("all");
+  }
 
   const [documents, setDocuments] = useState<EmployeeDocumentRow[]>([]);
   const [confidential, setConfidential] = useState<DossierConfidential | null>(null);
@@ -17979,6 +18120,10 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <OpenDossierButton
+                      employeeId={m.employee.id}
+                      className="rounded-md p-1.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                    />
                     {!isExpanded && done < total && (
                       <button
                         className="btn btn-green text-xs px-2.5 py-1.5"
