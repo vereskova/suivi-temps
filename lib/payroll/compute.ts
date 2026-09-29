@@ -203,21 +203,29 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *      le compteur repart de zéro. Un seul pool pour toute l'entreprise, pas
  *      un par équipe — confirmé avec l'utilisatrice.
  *
- * Штраф — UN SEUL champ, dont le sens dépend de faitPartieEquipe (confirmé
- * avec l'utilisatrice, 29/09/2026 : "для команд это будет так, а для не
- * команд вообще нет системы этой, бонусы это просто бонусы в зп") :
- *   - équipe chantier (faitPartieEquipe = true) : Штраф est la pénalité du
- *     contrôleur. Une valeur NÉGATIVE est déduite du БАНК qualité (jamais de
- *     la paie directement — le salarié ne "paie" qu'une fois, via le БАНК) ;
- *     une valeur POSITIVE (rare, ajustement) s'ajoute directement à la paie,
- *     comme avant, sans jamais alimenter le БАНК (jamais de pénalité
- *     "positive" implicite).
+ * Штраф контроль — UN SEUL champ, dont le sens dépend de faitPartieEquipe
+ * (confirmé avec l'utilisatrice, 29/09/2026 : "для команд это будет так, а
+ * для не команд вообще нет системы этой, бонусы это просто бонусы в зп") :
+ *   - équipe chantier (faitPartieEquipe = true) : Штраф контроль est la
+ *     pénalité du contrôleur qualité. Une valeur NÉGATIVE est déduite du
+ *     БАНК 3000 (jamais de la paie directement — le salarié ne "paie" qu'une
+ *     fois, via le БАНК) ; une valeur POSITIVE (rare, ajustement) s'ajoute
+ *     directement à la paie, comme avant, sans jamais alimenter le БАНК
+ *     (jamais de pénalité "positive" implicite).
  *   - hors équipe (Bureau / Contrôle & Formation / sans équipe) : pas de
- *     système БАНК du tout. Штраф est un simple ajustement signé de paie,
- *     ajouté tel quel (positif ou négatif), sans aucun lien avec le БАНК ni
- *     avec le contrôleur/Банк качества.
+ *     système БАНК du tout. Штраф контроль est un simple ajustement signé de
+ *     paie, ajouté tel quel (positif ou négatif), sans aucun lien avec le
+ *     БАНК ni avec le contrôleur/Банк качества.
  *
- *   Ставка за дни = Jours × Ставка + (ajustement direct du Штраф, voir ci-dessus)
+ * Штраф direct (nouveau, 29/09/2026, confirmé avec l'utilisatrice — distinct
+ * du Штраф контроль ci-dessus : "штрафы от контролера и штрафы просто за
+ * превышение скорости или допустим за поломку инструментов это разное")
+ * — pour les pénalités SANS rapport avec le contrôle qualité chantier
+ * (excès de vitesse, casse de matériel, etc.). Toujours un ajustement signé
+ * direct sur la paie, pour TOUT employé (équipe ou non) — ne touche JAMAIS
+ * le БАНК 3000 ni le contrôleur/Банк качества.
+ *
+ *   Ставка за дни = Jours × Ставка + (ajustement direct du Штраф контроль, voir ci-dessus) + Штраф direct
  *   Dépôt banque = équipe chantier uniquement (Bureau / Contrôle & Formation
  *     / sans équipe : toujours 0, tout le BONUS est payé directement) :
  *     MIN(MAX(0, BONUS équipe × 30 %), MAX(0, 3000 − БАНК début))
@@ -249,6 +257,8 @@ export type PayrollExtrasInput = {
   bonusEquipe: number;
   /** Montant signé. Équipe chantier : négatif = pénalité contrôleur (déduite du БАНК, jamais de la paie) ; positif = ajustement direct de paie. Hors équipe : ajustement direct de paie, signé, sans aucun lien БАНК. Voir la note en tête de fichier. */
   penaliteMontant: number;
+  /** Montant signé, ajusté directement sur la paie pour TOUT employé — excès de vitesse, casse de matériel, etc. Jamais lié au БАНК 3000 ni au contrôleur/Банк качества, contrairement à penaliteMontant. Voir la note en tête de fichier. */
+  penaliteDirecte: number;
   /** Fin de БАНК qualité du mois précédent pour ce même employé, ou null s'il n'y en a pas (premier mois). */
   banqueQualitePrecedente: number | null;
   /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ — sinon laisser null. */
@@ -279,7 +289,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
   // Hors équipe : pas de БАНК du tout, le montant signé va tel quel dans la paie.
   const penalitesControle = input.faitPartieEquipe ? Math.max(0, -input.penaliteMontant) : 0;
   const ajustementDirect = input.faitPartieEquipe ? Math.max(0, input.penaliteMontant) : input.penaliteMontant;
-  const salaireJours = input.jours * input.tauxJournalier + ajustementDirect;
+  const salaireJours = input.jours * input.tauxJournalier + ajustementDirect + input.penaliteDirecte;
   const banqueQualiteDebut = input.banqueAjustementManuel ?? input.banqueQualitePrecedente ?? 0;
   const banqueDepot = input.faitPartieEquipe
     ? Math.min(Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX), Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut))
