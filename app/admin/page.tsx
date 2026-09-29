@@ -15277,8 +15277,8 @@ type ExtrasColStyle = { width: number; fontSize: number; color: string; bg: stri
 type ExtrasColDef = { key: string; lines: string[]; title: string; defaultStyle: ExtrasColStyle };
 
 const EXTRAS_COL_DEFS: ExtrasColDef[] = [
-  { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 74, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 85, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 90, fontSize: 11, color: "#0369a1", bg: "" } },
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
