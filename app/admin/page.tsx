@@ -13668,6 +13668,80 @@ function RaisonButton({
   );
 }
 
+/** Bouton + popover pour saisir/corriger manuellement le solde de départ du
+ *  БАНК 3000 (banqueAjustementManuel) — sert notamment à amorcer le solde
+ *  déjà accumulé avant que cette table n'existe, pour un salarié donné. Vide
+ *  = reprendre automatiquement la fin du mois précédent (comportement par
+ *  défaut, jamais retapé à la main). Même portail que RaisonButton, pour la
+ *  même raison (conteneur overflow-x-auto qui coupe tout enfant débordant). */
+function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const POPOVER_WIDTH = 260;
+
+  useEffect(() => {
+    if (!isOpen || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setPos({ top: rect.bottom + 4, left: Math.max(4, rect.left) });
+  }, [isOpen]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        title={
+          value
+            ? `Стартовый баланс переопределён вручную: ${value}€ / Solde de départ forcé : ${value}€`
+            : "Задать/исправить стартовый баланс БАНК 3000 / Saisir/corriger le solde de départ du БАНК 3000"
+        }
+        className={`absolute -top-1.5 -left-1.5 rounded-full p-0.5 ${value ? "bg-primary-500 text-white" : "bg-stone-200 text-stone-500"}`}
+      >
+        <Pencil size={9} />
+      </button>
+      {isOpen &&
+        pos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+            <div
+              className="fixed z-50 rounded-xl border border-primary-200 bg-primary-50 p-2.5 shadow-lg text-left"
+              style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <p className="mb-1.5 text-xs font-semibold text-stone-500">
+                <Bi fr="БАНК 3000 — solde de départ" ru="БАНК 3000 — стартовый баланс" />
+              </p>
+              <input
+                type="number"
+                autoFocus
+                className="input w-full text-xs px-2 py-1.5 bg-white"
+                value={value}
+                onChange={(ev) => onChange(ev.target.value)}
+                placeholder="0"
+              />
+              <p className="mt-1.5 text-[10px] text-stone-400">
+                <Bi
+                  fr="Vide = reprend automatiquement la fin du mois précédent. Rempli = remplace ce report pour ce mois."
+                  ru="Пусто — берётся конец прошлого месяца автоматически. Заполнено — заменяет перенос для этого месяца."
+                />
+              </p>
+              <div className="mt-1.5 flex justify-end">
+                <button type="button" className="btn btn-secondary text-xs px-2 py-1" onClick={() => setIsOpen(false)}>
+                  <Bi fr="Fermer" ru="Закрыть" />
+                </button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  );
+}
+
 function isFopContractor(e: PaieEmployee): boolean {
   return e.contract_type === "FOP";
 }
@@ -16454,22 +16528,28 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                             </div>
                           </td>
                           <td
-                            className={
+                            className={`relative ${
                               bureauOrControl
                                 ? "py-2 px-2 text-center text-stone-300"
                                 : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                            }
+                            }`}
                             title={
                               bureauOrControl
                                 ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
                                 : extrasTooltip(
                                     "БАНК 3000",
-                                    `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
+                                    `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
                                     "БАНК 3000",
-                                    `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
+                                    `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
                                   )
                             }
                           >
+                            {!bureauOrControl && (
+                              <BanqueAdjustButton
+                                value={line.banqueAjustementManuel}
+                                onChange={(v) => updateInput(e.id, "banqueAjustementManuel", v)}
+                              />
+                            )}
                             {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
                           </td>
                           <td
