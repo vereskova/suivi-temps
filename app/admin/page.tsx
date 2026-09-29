@@ -15586,8 +15586,8 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 </th>
                 <th colSpan={16} />
               </tr>
-              <tr className="text-left text-stone-400 whitespace-nowrap">
-                <th className="py-2 pr-4 truncate"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+              <tr className="text-left text-stone-400 align-bottom">
+                <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pr-2 text-stone-500"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
@@ -15607,36 +15607,40 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     </th>
                   );
                 })}
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Ставка €/j" ru="Ставка €/день" /></th>
-                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Salaire jours €" ru="Оплата за дни €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="BONUS équipe €" ru="Бонус команды €" /></th>
-                <th className="py-2 pr-2 font-bold truncate" style={{ backgroundColor: EXTRAS_COLOR_PENALTY_HEADER, color: "#fff" }}>
-                  <Bi fr="Штраф €" ru="Штраф €" />
-                </th>
-                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Congés payés €" ru="Отпускные €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate" title="Vacance j / Отпуск дн"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
-                <th className="py-2 pr-2 text-primary-600 truncate" title="Vacance pay € / Оплата отпуска €"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate" title="Km / Км"><Bi fr="Km" ru="Км" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate" title="Péage € / Дорога €"><Bi fr="Péage €" ru="Дорога €" /></th>
-                <th className="py-2 pr-2 text-primary-600 truncate" title="Km cost € / Стоимость км €"><Bi fr="Km cost €" ru="Стоимость км €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate" title="Contrôle 1 / Контроль 1"><Bi fr="Contrôle 1" ru="Контроль 1" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate" title="Contrôle 2 / Контроль 2"><Bi fr="Contrôle 2" ru="Контроль 2" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate" title="Contrôle 3 / Контроль 3"><Bi fr="Contrôle 3" ru="Контроль 3" /></th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Ставка €/jour / Ставка €/день">Ставка<br />€/j</th>
+                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Salaire jours € / Оплата за дни €">Salaire<br />jours €</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="BONUS équipe € / Бонус команды €">BONUS<br />équipe €</th>
                 <th
-                  className="py-2 pr-2 font-bold truncate"
+                  className="py-2 px-1 font-bold text-[11px] leading-tight align-bottom"
+                  title="Штраф € / Штраф €"
+                  style={{ backgroundColor: EXTRAS_COLOR_PENALTY_HEADER, color: "#fff" }}
+                >
+                  Штраф €
+                </th>
+                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Congés payés € / Отпускные €">Congés<br />payés €</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Vacance jours / Отпуск дн">Vacance<br />j</th>
+                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Vacance pay € / Оплата отпуска €">Vacance<br />pay €</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Km / Км">Km</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Péage € / Дорога €">Péage €</th>
+                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Km cost € / Стоимость км €">Km<br />cost €</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Contrôle 1 / Контроль 1">Ctrl<br />1</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Contrôle 2 / Контроль 2">Ctrl<br />2</th>
+                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Contrôle 3 / Контроль 3">Ctrl<br />3</th>
+                <th
+                  className="py-2 px-1 font-bold text-[11px] leading-tight align-bottom"
                   title="БАНК qualité € / БАНК качества €"
                   style={{ backgroundColor: EXTRAS_COLOR_BANK_HEADER }}
                 >
-                  <Bi fr="БАНК qualité €" ru="БАНК качества €" />
+                  БАНК<br />qualité €
                 </th>
                 <th
-                  className="py-2 pr-4 font-bold truncate"
+                  className="py-2 px-1 font-bold text-[11px] leading-tight align-bottom"
                   title="Bonus qualité € / Бонус качества €"
                   style={{ backgroundColor: EXTRAS_COLOR_BANK2_HEADER }}
                 >
-                  <Bi fr="Bonus qualité €" ru="Бонус качества €" />
+                  Bonus<br />qualité €
                 </th>
-                <th className="py-2 pr-4 font-bold text-stone-700 truncate" title="À payer € / К оплате €"><Bi fr="À payer €" ru="К оплате €" /></th>
+                <th className="py-2 px-1 font-bold text-stone-700 text-[11px] leading-tight align-bottom" title="À payer € / К оплате €">À<br />payer €</th>
               </tr>
             </thead>
             <tbody>
