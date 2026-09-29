@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
@@ -13590,6 +13591,83 @@ function PaieEmployeeName({
   );
 }
 
+const RAISON_POPOVER_WIDTH = 224; // w-56
+
+/** Bulle de commentaire multi-lignes ancrée sous son bouton déclencheur, en
+ *  portail vers document.body (position: fixed, calculée depuis le bouton).
+ *  Nécessaire car ses appelants vivent dans un conteneur overflow-x-auto qui
+ *  coupe court tout enfant absolute positionné débordant verticalement. */
+function RaisonButton({
+  value,
+  labelFr,
+  labelRu,
+  activeColorClass,
+  isOpen,
+  onToggle,
+  onChange,
+}: {
+  value: string;
+  labelFr: string;
+  labelRu: string;
+  activeColorClass: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+}) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    setPos({ top: rect.bottom + 4, left: Math.max(4, rect.right - RAISON_POPOVER_WIDTH) });
+  }, [isOpen]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={onToggle}
+        title={value ? `Причина: ${value}` : "Ajouter une raison / Добавить причину"}
+        className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${value ? activeColorClass : "bg-stone-200 text-stone-500"}`}
+      >
+        <MessageSquare size={10} />
+      </button>
+      {isOpen &&
+        pos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={onToggle} />
+            <div
+              className="fixed z-50 rounded-xl border border-amber-200 bg-amber-50 p-2.5 shadow-lg text-left"
+              style={{ top: pos.top, left: pos.left, width: RAISON_POPOVER_WIDTH }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <p className="mb-1.5 text-xs font-semibold text-stone-500">
+                <Bi fr={labelFr} ru={labelRu} />
+              </p>
+              <textarea
+                autoFocus
+                rows={3}
+                className="input w-full text-xs px-2 py-1.5 resize-y bg-white"
+                value={value}
+                onChange={(ev) => onChange(ev.target.value)}
+              />
+              <div className="mt-1.5 flex justify-end">
+                <button type="button" className="btn btn-secondary text-xs px-2 py-1" onClick={onToggle}>
+                  <Bi fr="Fermer" ru="Закрыть" />
+                </button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  );
+}
+
 function isFopContractor(e: PaieEmployee): boolean {
   return e.contract_type === "FOP";
 }
@@ -15326,6 +15404,11 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   });
   const [editMode, setEditMode] = useState(false);
   const [editingColKey, setEditingColKey] = useState<string | null>(null);
+  // Bulle de commentaire multi-lignes (BONUS/Штраф), ancrée sous le bouton —
+  // remplace window.prompt (une seule ligne, fenêtre séparée bloquante), sur
+  // le modèle de la bulle de commentaire "часы работы.numbers" (auteur/date/
+  // multi-lignes) — ici sans auteur/historique, juste le texte multi-lignes.
+  const [openRaisonFor, setOpenRaisonFor] = useState<string | null>(null);
 
   function updateColStyle(key: string, patch: Partial<ExtrasColStyle>) {
     setColStyles((prev) => {
@@ -15466,6 +15549,32 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
 
   function updateInput(employeeId: string, field: keyof ExtrasLineInput, value: string) {
     setInputs((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_EXTRAS_LINE), [field]: value } }));
+  }
+
+  /** Bouton + bulle de commentaire multi-lignes pour BONUS/Штраф — remplace
+   *  window.prompt. Rendu en portail (voir RaisonButton) car ce tableau vit
+   *  dans un .card overflow-x-auto, qui coupe court tout enfant absolute
+   *  positionné qui déborde verticalement de la carte. */
+  function raisonButton(
+    employeeId: string,
+    field: "bonusRaison" | "penaliteRaison",
+    value: string,
+    labelFr: string,
+    labelRu: string,
+    activeColorClass: string
+  ) {
+    const key = `${employeeId}:${field}`;
+    return (
+      <RaisonButton
+        value={value}
+        labelFr={labelFr}
+        labelRu={labelRu}
+        activeColorClass={activeColorClass}
+        isOpen={openRaisonFor === key}
+        onToggle={() => setOpenRaisonFor(openRaisonFor === key ? null : key)}
+        onChange={(v) => updateInput(employeeId, field, v)}
+      />
+    );
   }
 
   // 25 % du total des pénalités de TOUS les salariés d'équipe (tous
@@ -15823,11 +15932,11 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             style={{
               borderSpacing: 0,
               tableLayout: "fixed",
-              width: `${170 + 60 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
+              width: `${220 + 60 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
             }}
           >
             <colgroup>
-              <col style={{ width: "170px" }} />
+              <col style={{ width: "220px" }} />
               <col style={{ width: "60px" }} />
               {dayColumns.map((d) => (
                 <col key={d} style={{ width: "20px" }} />
@@ -16078,26 +16187,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                               `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
                             )}
                           />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const raison = window.prompt(
-                                "Raison du BONUS / Причина бонуса :",
-                                line.bonusRaison
-                              );
-                              if (raison !== null) updateInput(e.id, "bonusRaison", raison);
-                            }}
-                            title={
-                              line.bonusRaison
-                                ? `Причина: ${line.bonusRaison}`
-                                : "Ajouter une raison / Добавить причину"
-                            }
-                            className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${
-                              line.bonusRaison ? "bg-success-500 text-white" : "bg-stone-200 text-stone-500"
-                            }`}
-                          >
-                            <MessageSquare size={10} />
-                          </button>
+                          {raisonButton(e.id, "bonusRaison", line.bonusRaison, "Raison du BONUS", "Причина бонуса", "bg-success-500 text-white")}
                         </div>
                       </td>
                       <td className="py-2 pr-2">
@@ -16113,26 +16203,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                                 : "Hors équipe : ajustement direct de paie, pas de БАНК / Вне команды: сразу влияет на зп, БАНК не участвует"
                             }
                           />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const raison = window.prompt(
-                                "Raison du Штраф / Причина штрафа :",
-                                line.penaliteRaison
-                              );
-                              if (raison !== null) updateInput(e.id, "penaliteRaison", raison);
-                            }}
-                            title={
-                              line.penaliteRaison
-                                ? `Причина: ${line.penaliteRaison}`
-                                : "Ajouter une raison / Добавить причину"
-                            }
-                            className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${
-                              line.penaliteRaison ? "bg-warning-500 text-white" : "bg-stone-200 text-stone-500"
-                            }`}
-                          >
-                            <MessageSquare size={10} />
-                          </button>
+                          {raisonButton(e.id, "penaliteRaison", line.penaliteRaison, "Raison du Штраф", "Причина штрафа", "bg-warning-500 text-white")}
                         </div>
                       </td>
                       <td className="py-2 pr-2">
