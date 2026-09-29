@@ -116,9 +116,13 @@ import {
   computePayrollLine,
   computeNightPremium,
   computePayrollExtras,
+  computeControllerSplit,
+  rankQualityBankWinners,
+  QUALITY_BANK_TARGET,
   DEFAULT_PAYROLL_PARAMS,
   PayrollParams,
   PayrollExtrasInput,
+  QualityBankCandidate,
 } from "@/lib/payroll/compute";
 import {
   countWeekdaysBetween,
@@ -15283,6 +15287,12 @@ const EXTRAS_ABSENCE_LEGEND: { code: string; label: string; labelRu: string; bg:
   { code: "✕", label: "Fin de contrat ce jour", labelRu: "Увольнение с этого дня", bg: "" },
 ];
 
+/** Contrôleur désigné pour le Банк качества — un seul pour toute
+ *  l'entreprise pour l'instant (confirmé avec l'utilisatrice, 29/09/2026).
+ *  CIOBANU Valeriu, Contrôle & Formation. À rendre configurable le jour où
+ *  il y en a plus d'un. */
+const QUALITY_BANK_CONTROLLER_EMPLOYEE_ID = "878a6357-4f00-4571-8fee-5b5081716dc4";
+
 /** Port de "часы работы.numbers" — même grille visuelle (jours du mois en
  *  colonnes, mêmes couleurs mesurées dans le fichier d'origine) mais avec
  *  un БАНК qualité qui se reporte tout seul d'un mois sur l'autre, et les
@@ -15301,6 +15311,15 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
   const [joursByEmployee, setJoursByEmployee] = useState<Record<string, number>>({});
   const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
+  // Банк качества commun à l'entreprise (pas par équipe) — confirmé avec
+  // l'utilisatrice. Un seul contrôleur pour l'instant, en dur : CIOBANU
+  // Valeriu. `banqueQualitePrimeByEmployee` ne contient une valeur que pour
+  // les 5 gagnants du mois exact où le pool a été distribué (lu tel quel
+  // depuis payroll_extras.banque_qualite_prime, jamais recalculé au vol).
+  const [companyQualityBank, setCompanyQualityBank] = useState<{ id: string; current_total: number; period_start: string } | null>(
+    null
+  );
+  const [banqueQualitePrimeByEmployee, setBanqueQualitePrimeByEmployee] = useState<Record<string, number>>({});
   // Présence par jour — même table que "Par jour" (pointage_entries),
   // modifiable directement ici (choix dans chaque case : présent, absent,
   // ou un type précis — maladie, congé payé, etc.).
@@ -15435,9 +15454,15 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         Object.fromEntries(Array.from(prevByEmployee.entries()).map(([id, v]) => [id, v.banque_qualite_fin]))
       );
 
+      const { data: bank } = await supabase.from("company_quality_bank").select("id, current_total, period_start").limit(1).maybeSingle();
+      setCompanyQualityBank(bank ?? null);
+
       if (run?.id) {
         const { data: lines } = await supabase.from("payroll_extras").select("*").eq("run_id", run.id);
         const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
+        setBanqueQualitePrimeByEmployee(
+          Object.fromEntries((lines ?? []).map((l) => [l.employee_id, Number(l.banque_qualite_prime) || 0]))
+        );
         const map: Record<string, ExtrasLineInput> = {};
         (emp ?? []).forEach((e) => {
           const l = savedByEmployee.get(e.id);
@@ -15471,6 +15496,19 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
     setInputs((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_EXTRAS_LINE), [field]: value } }));
   }
 
+  // 25 % du total des pénalités de TOUS les salariés (tous ensemble, pas
+  // ligne par ligne) revient au contrôleur désigné ce même mois — recalculé
+  // en direct à chaque frappe, comme le reste de ce tableau.
+  const totalPenalitesThisMonth = useMemo(
+    () =>
+      employees.reduce((sum, e) => {
+        const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+        return sum + (Number(line.controle1) || 0) + (Number(line.controle2) || 0) + (Number(line.controle3) || 0);
+      }, 0),
+    [employees, inputs]
+  );
+  const controllerSplit = useMemo(() => computeControllerSplit(totalPenalitesThisMonth), [totalPenalitesThisMonth]);
+
   const computed = useMemo(() => {
     const map: Record<string, ReturnType<typeof computePayrollExtras>> = {};
     employees.forEach((e) => {
@@ -15493,11 +15531,13 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         // Même condition que groupPaieEmployees pour byTeam vs noTeam — Bureau,
         // Contrôle & Formation et chantier "sans équipe" n'ont pas de dépôt banque.
         faitPartieEquipe: e.category === "chantier" && !!e.team_id && !!e.teams?.name,
+        controleBonusRecu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0,
+        banqueQualitePrime: banqueQualitePrimeByEmployee[e.id] ?? 0,
       };
       map[e.id] = computePayrollExtras(extrasInput);
     });
     return map;
-  }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee]);
+  }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee, controllerSplit, banqueQualitePrimeByEmployee]);
 
   const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
   const absenceTypeIdByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.id])), [absenceTypes]);
@@ -15506,6 +15546,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   async function save() {
     if (!runId) return;
     setSaving(true);
+
     const rows = employees
       .filter((e) => !isFopContractor(e))
       .map((e) => {
@@ -15528,8 +15569,90 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           controle_3: Number(line.controle3) || 0,
           banque_ajustement_manuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
           banque_qualite_fin: c?.banqueQualiteFin ?? 0,
+          controle_bonus_recu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0,
+          banque_qualite_prime: banqueQualitePrimeByEmployee[e.id] ?? 0,
         };
       });
+
+    // Банк качества commun : 75 % du total pénalités de ce mois vient s'y
+    // ajouter. S'il franchit 10000, on partage tout de suite (pas de bouton
+    // séparé — confirmé avec l'utilisatrice : automatisation complète).
+    if (companyQualityBank) {
+      const newTotal = Math.round((companyQualityBank.current_total + controllerSplit.bankShare) * 100) / 100;
+      if (newTotal >= QUALITY_BANK_TARGET) {
+        const { data: pastRuns } = await supabase
+          .from("payroll_runs")
+          .select("id")
+          .gte("month", companyQualityBank.period_start)
+          .neq("id", runId);
+        const pastRunIds = (pastRuns ?? []).map((r) => r.id);
+
+        let pastLines: { employee_id: string; controle_1: number; controle_2: number; controle_3: number; bonus_equipe: number }[] = [];
+        if (pastRunIds.length > 0) {
+          const { data } = await supabase
+            .from("payroll_extras")
+            .select("employee_id, controle_1, controle_2, controle_3, bonus_equipe")
+            .in("run_id", pastRunIds);
+          pastLines = data ?? [];
+        }
+
+        const cumulative = new Map<string, QualityBankCandidate>();
+        const addToCumulative = (employeeId: string, penalites: number, bonus: number) => {
+          const prev = cumulative.get(employeeId) ?? { employeeId, totalPenalites: 0, totalBonus: 0 };
+          prev.totalPenalites += penalites;
+          prev.totalBonus += bonus;
+          cumulative.set(employeeId, prev);
+        };
+        pastLines.forEach((l) =>
+          addToCumulative(l.employee_id, (Number(l.controle_1) || 0) + (Number(l.controle_2) || 0) + (Number(l.controle_3) || 0), Number(l.bonus_equipe) || 0)
+        );
+        rows.forEach((r) => addToCumulative(r.employee_id, r.controle_1 + r.controle_2 + r.controle_3, r.bonus_equipe));
+
+        const winners = rankQualityBankWinners(Array.from(cumulative.values()), newTotal);
+        const periodEnd = `${year}-${String(month).padStart(2, "0")}-01`;
+        const { data: payout, error: payoutError } = await supabase
+          .from("quality_bank_payouts")
+          .insert({ total_distributed: newTotal, period_start: companyQualityBank.period_start, period_end: periodEnd })
+          .select("id")
+          .single();
+
+        if (payoutError || !payout?.id) {
+          toast.error("Erreur БАНК качества : " + (payoutError?.message ?? "inconnue"));
+        } else {
+          await supabase.from("quality_bank_payout_winners").insert(
+            winners.map((w) => ({
+              payout_id: payout.id,
+              employee_id: w.employeeId,
+              rank: w.rank,
+              share_pct: w.sharePct,
+              amount: w.amount,
+              total_penalites: w.totalPenalites,
+              total_bonus: w.totalBonus,
+            }))
+          );
+          winners.forEach((w) => {
+            const row = rows.find((r) => r.employee_id === w.employeeId);
+            if (row) row.banque_qualite_prime = Math.round(((row.banque_qualite_prime || 0) + w.amount) * 100) / 100;
+          });
+
+          const nextPeriodStart = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+          await supabase
+            .from("company_quality_bank")
+            .update({ current_total: 0, period_start: nextPeriodStart })
+            .eq("id", companyQualityBank.id);
+          setCompanyQualityBank({ id: companyQualityBank.id, current_total: 0, period_start: nextPeriodStart });
+
+          const winnersText = winners
+            .map((w) => `${w.rank}. ${employeeName(employees.find((e) => e.id === w.employeeId) ?? { first_name: "", last_name: w.employeeId })} — ${w.amount.toFixed(0)}€`)
+            .join(", ");
+          toast.success(`🏆 Банк качества достиг ${newTotal.toFixed(0)}€ — распределено: ${winnersText}`);
+        }
+      } else {
+        await supabase.from("company_quality_bank").update({ current_total: newTotal }).eq("id", companyQualityBank.id);
+        setCompanyQualityBank({ ...companyQualityBank, current_total: newTotal });
+      }
+    }
+
     const { error } = await supabase.from("payroll_extras").upsert(rows, { onConflict: "run_id,employee_id" });
     setSaving(false);
     if (error) {
@@ -15664,6 +15787,31 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
       ) : (
         <div className="card overflow-x-auto">
+          {companyQualityBank && (
+            <div className="mb-3 flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-bold text-stone-500 shrink-0">
+                <Bi fr="Банк качества (entreprise)" ru="Банк качества (компания)" />
+              </span>
+              <div className="flex-1 min-w-[160px] max-w-xs h-3 rounded-full bg-stone-100 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-300 to-amber-500"
+                  style={{ width: `${Math.min(100, (companyQualityBank.current_total / QUALITY_BANK_TARGET) * 100)}%` }}
+                />
+              </div>
+              <span className="text-xs font-semibold text-stone-600 shrink-0">
+                {companyQualityBank.current_total.toFixed(0)} / {QUALITY_BANK_TARGET} €
+              </span>
+              <span
+                className="text-[11px] text-stone-400 shrink-0"
+                title="Contrôleur désigné qui reçoit 25% des pénalités chaque mois / Назначенный контролёр, получающий 25% штрафов каждый месяц"
+              >
+                <Bi
+                  fr={`Contrôleur : ${employeeName(employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID) ?? { first_name: "", last_name: "?" })}`}
+                  ru="Контролёр"
+                />
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap text-[11px]">
               {EXTRAS_ABSENCE_LEGEND.map((item) => (
@@ -16111,7 +16259,17 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       >
                         {(c?.bonusQualite ?? 0).toFixed(2)} €
                       </td>
-                      <td className="py-2 px-2 text-center font-bold text-stone-700">{(c?.aPayer ?? 0).toFixed(2)} €</td>
+                      <td
+                        className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
+                        title={extrasTooltip(
+                          "À payer",
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€) + Congés payés(${(c?.congesPayes ?? 0).toFixed(2)}€) + Vacance pay(${(c?.vacancePay ?? 0).toFixed(2)}€) + Km cost(${(c?.kmCost ?? 0).toFixed(2)}€) + Bonus qualité(${(c?.bonusQualite ?? 0).toFixed(2)}€)${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€`,
+                          "К оплате",
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€) + отпускные(${(c?.congesPayes ?? 0).toFixed(2)}€) + оплата отпуска(${(c?.vacancePay ?? 0).toFixed(2)}€) + километраж(${(c?.kmCost ?? 0).toFixed(2)}€) + бонус качества(${(c?.bonusQualite ?? 0).toFixed(2)}€)${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€`
+                        )}
+                      >
+                        {(c?.aPayer ?? 0).toFixed(2)} €
+                      </td>
                     </tr>
                   </Fragment>
                 );

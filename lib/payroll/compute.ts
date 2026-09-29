@@ -184,6 +184,20 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  * (août avait masqué deux points : vacance_taux_journalier et le dépôt en
  * banque ci-dessous, tous deux invisibles quand ils valent 0/vide) :
  *
+ * DEUX banques distinctes, à ne pas confondre :
+ *   1. Le БАНК (plafond 3000) ci-dessous — propre à CHAQUE salarié d'équipe,
+ *      alimenté par SON PROPRE BONUS équipe (30 % déposé, voir plus bas).
+ *   2. Le "Банк качества" de l'ENTREPRISE (plafond 10000, company_quality_bank,
+ *      computeControllerSplit / rankQualityBankWinners plus bas) — alimenté
+ *      par 75 % de chaque pénalité (Контроль 1/2/3) déduite du БАНК #1 d'un
+ *      salarié ; les 25 % restants vont directement dans la paie du mois du
+ *      contrôleur désigné (CIOBANU Valeriu pour l'instant, un seul pour toute
+ *      l'entreprise). Quand ce second banque atteint 10000, les 5 salariés
+ *      ayant le MOINS de pénalités et le PLUS de BONUS cumulés depuis le
+ *      dernier partage se répartissent la totalité : 30/25/20/15/10 %, puis
+ *      le compteur repart de zéro. Un seul pool pour toute l'entreprise, pas
+ *      un par équipe — confirmé avec l'utilisatrice.
+ *
  *   Ставка за дни = Jours × Ставка + Штраф        (Штраф est un montant
  *     signé — positif = ajustement, négatif = pénalité, comme dans la
  *     feuille d'origine ; jamais une pénalité "positive" implicite)
@@ -236,6 +250,10 @@ export type PayrollExtrasInput = {
   banqueAjustementManuel: number | null;
   /** Le dépôt en БАНК ne concerne que les équipes chantier — Bureau, Contrôle & Formation et "sans équipe" touchent tout leur BONUS équipe directement dans la paie du mois, sans passer par le БАНК qualité. */
   faitPartieEquipe: boolean;
+  /** Part du contrôleur ce mois-ci (25 % du total des pénalités de tous les autres salariés) — 0 pour tout le monde sauf le contrôleur désigné. Calculé ailleurs (nécessite le total tous salariés confondus), jamais recalculé ici. */
+  controleBonusRecu: number;
+  /** Prime reçue lors d'une distribution du БАНК qualité (compagnie) à 10000 — 0 la plupart des mois. Calculée ailleurs, jamais recalculée ici. */
+  banqueQualitePrime: number;
 };
 
 export type PayrollExtrasResult = {
@@ -249,6 +267,8 @@ export type PayrollExtrasResult = {
   bonusEquipePaye: number;
   banqueQualiteFin: number;
   bonusQualite: number;
+  controleBonusRecu: number;
+  banqueQualitePrime: number;
   aPayer: number;
 };
 
@@ -268,8 +288,13 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle
   );
   const bonusQualite = Math.round(banqueQualiteFin * BANQUE_QUALITE_RATE * 100) / 100;
+  const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
+  const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
   const aPayer =
-    Math.round((salaireJours + bonusEquipePaye + congesPayes + vacancePay + kmCost + bonusQualite) * 100) / 100;
+    Math.round(
+      (salaireJours + bonusEquipePaye + congesPayes + vacancePay + kmCost + bonusQualite + controleBonusRecu + banqueQualitePrime) *
+        100
+    ) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
@@ -282,6 +307,63 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     bonusEquipePaye: Math.round(bonusEquipePaye * 100) / 100,
     banqueQualiteFin,
     bonusQualite,
+    controleBonusRecu,
+    banqueQualitePrime,
     aPayer,
   };
+}
+
+/**
+ * 25/75 sur le total des pénalités (Контроль 1+2+3) de TOUS les salariés
+ * d'un mois donné, tous ensemble — pas ligne par ligne. 25 % file
+ * directement dans la paie du contrôleur ce même mois (controleBonusRecu),
+ * 75 % rejoint le Банк качества commun à toute l'entreprise.
+ */
+export const CONTROLEUR_SHARE_RATE = 0.25;
+export const QUALITY_BANK_SHARE_RATE = 0.75;
+
+export function computeControllerSplit(totalPenalitesTousSalaries: number): {
+  controllerShare: number;
+  bankShare: number;
+} {
+  const total = Math.max(0, totalPenalitesTousSalaries);
+  return {
+    controllerShare: Math.round(total * CONTROLEUR_SHARE_RATE * 100) / 100,
+    bankShare: Math.round(total * QUALITY_BANK_SHARE_RATE * 100) / 100,
+  };
+}
+
+/**
+ * Quand le Банк качества (commun à l'entreprise) atteint QUALITY_BANK_TARGET
+ * (10000), les 5 salariés avec le MOINS de pénalités cumulées et — à
+ * pénalités égales — le PLUS de BONUS équipe cumulé depuis le dernier
+ * partage se répartissent la totalité du pool : 30/25/20/15/10 %. Le tri se
+ * fait ici ; l'appelant fournit déjà les totaux cumulés par salarié (somme
+ * sur payroll_extras depuis period_start) et récupère qui gagne combien.
+ */
+export const QUALITY_BANK_TARGET = 10000;
+export const QUALITY_BANK_PAYOUT_SHARES = [0.3, 0.25, 0.2, 0.15, 0.1];
+
+export type QualityBankCandidate = {
+  employeeId: string;
+  totalPenalites: number;
+  totalBonus: number;
+};
+
+export type QualityBankWinner = QualityBankCandidate & { rank: number; sharePct: number; amount: number };
+
+export function rankQualityBankWinners(
+  candidates: QualityBankCandidate[],
+  poolTotal: number
+): QualityBankWinner[] {
+  const sorted = [...candidates].sort((a, b) => {
+    if (a.totalPenalites !== b.totalPenalites) return a.totalPenalites - b.totalPenalites; // moins de pénalités d'abord
+    return b.totalBonus - a.totalBonus; // à égalité, plus de bonus d'abord
+  });
+  return sorted.slice(0, QUALITY_BANK_PAYOUT_SHARES.length).map((c, i) => ({
+    ...c,
+    rank: i + 1,
+    sharePct: QUALITY_BANK_PAYOUT_SHARES[i] * 100,
+    amount: Math.round(poolTotal * QUALITY_BANK_PAYOUT_SHARES[i] * 100) / 100,
+  }));
 }
