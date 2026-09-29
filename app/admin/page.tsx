@@ -15245,6 +15245,44 @@ function absenceShortCode(code: string): string {
   }
 }
 
+/** Couleur de fond de la case entière selon le statut du jour — le code
+ *  court seul (M, SS, CP…) ne se lit pas sans survoler ; la couleur donne un
+ *  repère immédiat, la légende (EXTRAS_ABSENCE_LEGEND) explique chaque code
+ *  une seule fois en haut du tableau plutôt que sur chaque case. Classes
+ *  Tailwind écrites en toutes lettres (jamais construites dynamiquement) —
+ *  sinon le build ne les inclut pas. */
+function absenceCellBg(worked: boolean, absenceCode: string | null): string {
+  if (worked) return "#dcfce7"; // success-100 — présent
+  switch (absenceCode) {
+    case "maladie":
+      return "#ffe4e6"; // rose-100
+    case "cp":
+      return "#e0f2fe"; // sky-100
+    case "rtt":
+      return "#f3e8ff"; // purple-100
+    case "sans_solde":
+      return "#fef3c7"; // amber-100
+    case "ferie":
+      return "#ccfbf1"; // teal-100
+    case "autre":
+      return "#fce7f3"; // pink-100
+    default:
+      return absenceCode ? "#f5f5f4" : ""; // code inconnu : gris neutre ; rien : laisse le fond du <td> (week-end ou blanc)
+  }
+}
+
+const EXTRAS_ABSENCE_LEGEND: { code: string; label: string; labelRu: string; bg: string }[] = [
+  { code: "1", label: "Présent", labelRu: "Присутствовал", bg: "#dcfce7" },
+  { code: "0", label: "Absent (motif non précisé)", labelRu: "Отсутствовал (без причины)", bg: "" },
+  { code: "M", label: "Arrêt maladie", labelRu: "Больничный", bg: "#ffe4e6" },
+  { code: "CP", label: "Congé payé", labelRu: "Оплачиваемый отпуск", bg: "#e0f2fe" },
+  { code: "RTT", label: "RTT", labelRu: "RTT (отгул)", bg: "#f3e8ff" },
+  { code: "SS", label: "Absence sans solde", labelRu: "Отпуск за свой счёт", bg: "#fef3c7" },
+  { code: "F", label: "Jour férié", labelRu: "Праздничный день", bg: "#ccfbf1" },
+  { code: "A", label: "Autre", labelRu: "Другое", bg: "#fce7f3" },
+  { code: "✕", label: "Fin de contrat ce jour", labelRu: "Увольнение с этого дня", bg: "" },
+];
+
 /** Port de "часы работы.numbers" — même grille visuelle (jours du mois en
  *  colonnes, mêmes couleurs mesurées dans le fichier d'origine) mais avec
  *  un БАНК qualité qui se reporte tout seul d'un mois sur l'autre, et les
@@ -15623,7 +15661,20 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <div className="flex items-center justify-end mb-2">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap text-[11px]">
+              {EXTRAS_ABSENCE_LEGEND.map((item) => (
+                <span
+                  key={item.code}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 border border-stone-200"
+                  style={{ backgroundColor: item.bg || "#fff" }}
+                  title={`${item.label} / ${item.labelRu}`}
+                >
+                  <span className="font-bold">{item.code}</span>
+                  <span className="text-stone-500">{item.label}</span>
+                </span>
+              ))}
+            </div>
             <button
               className={`btn text-xs px-2.5 py-1.5 ${editMode ? "btn-primary" : "btn-secondary"}`}
               onClick={() => {
@@ -15819,13 +15870,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         const selectValue = worked ? "present" : absenceCode ? `abs:${absenceCode}` : "absent";
                         const dow = new Date(d + "T00:00:00Z").getUTCDay();
                         const isWeekend = dow === 0 || dow === 6;
+                        const cellBg = absenceCellBg(worked, absenceCode) || (isWeekend ? EXTRAS_COLOR_WEEKEND : undefined);
                         return (
                           <td
                             key={d}
                             className="text-center p-0 border-r border-stone-200"
-                            style={{
-                              backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
-                            }}
+                            style={{ backgroundColor: cellBg }}
                           >
                             <select
                               value={selectValue}
@@ -15839,9 +15889,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                               }
                               className={`w-full appearance-none border-0 bg-transparent py-2 text-center text-[10px] cursor-pointer ${
                                 worked
-                                  ? "font-bold text-success-700"
+                                  ? "font-bold text-success-800"
                                   : absenceCode
-                                    ? "font-bold text-warning-700"
+                                    ? "font-bold text-stone-700"
                                     : "text-stone-300"
                               }`}
                             >
