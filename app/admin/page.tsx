@@ -1733,12 +1733,12 @@ function JourView({
   }
 
   async function saveEdit(e: Employee) {
-    if (!editForm || !e.team_id) return;
+    if (!editForm) return;
     setSaving(true);
 
     const payload = {
       work_date: date,
-      team_id: e.team_id,
+      team_id: e.team_id ?? null,
       employee_id: e.id,
       start_time: editForm.absent || !editForm.start ? null : editForm.start,
       end_time: editForm.absent || !editForm.end ? null : editForm.end,
@@ -15204,7 +15204,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "vacanceJ", lines: ["Vacance", "j"], title: "Vacance jours / Отпуск дн", defaultStyle: { width: 150, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "banque", lines: ["БАНК", "qualité €"], title: "БАНК qualité € / БАНК качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "bonusQual", lines: ["Bonus", "qualité €"], title: "Bonus qualité € / Бонус качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK2_HEADER } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 85, fontSize: 11, color: "#44403c", bg: "" } },
@@ -15666,7 +15666,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
       return;
     }
 
-    if (!employee.team_id) return;
     const worked = value === "present";
     const absenceCode = value.startsWith("abs:") ? value.slice(4) : null;
     const absenceTypeId = absenceCode ? absenceTypeIdByCode.get(absenceCode) ?? null : null;
@@ -15851,7 +15850,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
-                <th className="py-2 px-2 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
+                <th className="py-2 pl-2 pr-4 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
                   const isWeekend = dow === 0 || dow === 6;
@@ -15977,7 +15976,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       <td className="py-2 pr-4 font-semibold truncate" title={employeeName(e)}>
                         <PaieEmployeeName employee={e} />
                       </td>
-                      <td className="py-2 pr-2 text-stone-500 text-center border-r-2 border-stone-200">{jours}</td>
+                      <td className="py-2 pr-4 text-stone-500 text-center border-r-2 border-stone-200">{jours}</td>
                       {dayColumns.map((d) => {
                         const outsideEmployment = (e.hire_date && d < e.hire_date) || (e.end_date && d > e.end_date);
                         if (outsideEmployment) {
