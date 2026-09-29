@@ -568,14 +568,19 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
 function PageAccessBadge({ viewKey }: { viewKey: string }) {
   const [open, setOpen] = useState(false);
   const [emailsByRole, setEmailsByRole] = useState<Record<string, string[]> | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const roles = VIEW_ACCESS_ROLES[viewKey] ?? [];
 
   useEffect(() => {
     if (!open || emailsByRole) return;
     fetch("/api/admin/user-roles")
-      .then((res) => res.json())
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+        return json;
+      })
       .then((json) => setEmailsByRole(json.byRole ?? {}))
-      .catch(() => setEmailsByRole({}));
+      .catch((err) => setFetchError(err?.message || "Erreur inconnue"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -597,6 +602,14 @@ function PageAccessBadge({ viewKey }: { viewKey: string }) {
             <p className="mb-2 text-[10px] font-bold uppercase text-stone-400">
               <Bi fr="Accès à cette page" ru="Доступ к этой странице" />
             </p>
+            {fetchError && (
+              <p className="mb-2 rounded-lg bg-error-50 px-2 py-1.5 text-xs text-error-700">
+                <Bi
+                  fr={`Erreur de chargement des comptes : ${fetchError}`}
+                  ru={`Ошибка загрузки аккаунтов: ${fetchError}`}
+                />
+              </p>
+            )}
             <div className="space-y-2">
               {roles.map((r) => {
                 const emails = emailsByRole?.[r] ?? [];
