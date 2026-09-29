@@ -557,6 +557,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   checklists: ["rh_admin", "rh"],
   paie: ["rh_admin", "comptable"],
   paie_extras: ["rh_admin", "comptable", "rh_readonly"],
+  planning: ["rh_admin", "rh"],
   audit: ["rh_admin"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
