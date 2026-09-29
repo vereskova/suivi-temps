@@ -15636,16 +15636,23 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               <Bi fr={editMode ? "Terminer l'édition" : "Éditer le tableau"} ru={editMode ? "Готово" : "Редактировать таблицу"} />
             </button>
           </div>
+          {/* Grille visible sur toutes les cellules (jours + colonnes primes) — bien plus
+              simple et fiable ici qu'ajouter une bordure à chacune des dizaines de <td>
+              individuelles ci-dessous, dont plusieurs ont déjà leur propre style ponctuel. */}
+          <style>{`
+            .extras-grid td, .extras-grid th { border-right: 1px solid #e7e5e4; }
+            .extras-grid td:last-child, .extras-grid th:last-child { border-right: none; }
+          `}</style>
           <table
-            className="text-sm border-separate"
+            className="text-sm border-separate extras-grid"
             style={{
               borderSpacing: 0,
               tableLayout: "fixed",
-              width: `${140 + 45 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
+              width: `${170 + 45 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
             }}
           >
             <colgroup>
-              <col style={{ width: "140px" }} />
+              <col style={{ width: "170px" }} />
               <col style={{ width: "45px" }} />
               {dayColumns.map((d) => (
                 <col key={d} style={{ width: "20px" }} />
@@ -15668,7 +15675,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
-                <th className="py-2 pr-2 text-stone-500"><Bi fr="Jours" ru="Дней" /></th>
+                <th className="py-2 pr-2 text-stone-500 border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
                   const isWeekend = dow === 0 || dow === 6;
@@ -15677,7 +15684,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     <th
                       key={d}
                       title={weekdayLabelFr(d)}
-                      className="text-center text-[10px] font-normal"
+                      className="text-center text-[10px] font-normal border-r border-stone-200"
                       style={{
                         backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
                         boxShadow: isMonday ? "inset 2px 0 0 0 #a8a29e" : undefined,
@@ -15687,13 +15694,15 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     </th>
                   );
                 })}
-                {EXTRAS_COL_DEFS.map((def) => {
+                {EXTRAS_COL_DEFS.map((def, i) => {
                   const s = extrasColStyle(def.key);
                   const isEditing = editingColKey === def.key;
                   return (
                     <th
                       key={def.key}
-                      className="relative py-2 px-1 leading-tight align-bottom text-center font-bold"
+                      className={`relative py-2 px-1 leading-tight align-bottom text-center font-bold border-r border-stone-200 ${
+                        i === 0 ? "border-l-2 border-l-stone-200" : ""
+                      }`}
                       title={editMode ? undefined : def.title}
                       style={{ fontSize: s.fontSize, color: s.color || undefined, backgroundColor: s.bg || undefined }}
                     >
@@ -15788,21 +15797,21 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       </tr>
                     )}
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
-                      <td className="py-2 pr-4 font-semibold truncate">
+                      <td className="py-2 pr-4 font-semibold truncate" title={employeeName(e)}>
                         <PaieEmployeeName employee={e} />
                       </td>
-                      <td className="py-2 pr-2 text-stone-500">{jours}</td>
+                      <td className="py-2 pr-2 text-stone-500 border-r-2 border-stone-200">{jours}</td>
                       {dayColumns.map((d) => {
                         const outsideEmployment = (e.hire_date && d < e.hire_date) || (e.end_date && d > e.end_date);
                         if (outsideEmployment) {
                           return (
                             <td
                               key={d}
-                              className="text-center text-[10px]"
+                              className="text-center text-[10px] border-r border-stone-200"
                               style={{ backgroundColor: EXTRAS_COLOR_HORS_EMPLOI, color: "#a8a29e" }}
                               title="Hors période d'emploi / Вне периода работы"
                             >
-                              0
+                              ·
                             </td>
                           );
                         }
@@ -15816,7 +15825,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         return (
                           <td
                             key={d}
-                            className="text-center p-0"
+                            className="text-center p-0 border-r border-stone-200"
                             style={{
                               backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
                               boxShadow: isMonday ? "inset 2px 0 0 0 #a8a29e" : undefined,
