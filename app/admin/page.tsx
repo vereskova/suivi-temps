@@ -13802,7 +13802,12 @@ function groupPaieEmployees(employees: PaieEmployee[]): PaieGroupedRow[] {
     rows.push({ employee: e, groupKey: "control", groupLabel: "Contrôle & Formation", colorClass: "bg-emerald-50" })
   );
   teamNames.forEach((name, i) => {
-    const members = byTeam.get(name)!.sort((a, b) => employeeName(a).localeCompare(employeeName(b)));
+    const members = byTeam.get(name)!.sort((a, b) => {
+      const aChef = a.teams?.chef_employee_id === a.id;
+      const bChef = b.teams?.chef_employee_id === b.id;
+      if (aChef !== bChef) return aChef ? -1 : 1;
+      return employeeName(a).localeCompare(employeeName(b));
+    });
     const colorClass = PAIE_TEAM_COLOR_PALETTE[i % PAIE_TEAM_COLOR_PALETTE.length];
     members.forEach((e) => rows.push({ employee: e, groupKey: `team:${name}`, groupLabel: name, colorClass }));
   });
