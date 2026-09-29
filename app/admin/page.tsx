@@ -15283,7 +15283,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "banque", lines: ["БАНК", "qualité €"], title: "БАНК qualité € / БАНК качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
+  { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "bonusQual", lines: ["Bonus", "qualité €"], title: "Bonus qualité € / Бонус качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK2_HEADER } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 85, fontSize: 11, color: "#44403c", bg: "" } },
 ];
@@ -15884,7 +15884,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 "Перенос логики из старой таблицы «часы работы» — но с одной версией правил на все месяцы (в старой таблице формула менялась почти каждый месяц), а Jours берётся из реальных отметок присутствия (Par jour), а не вводится руками.\n\n" +
                 "Ставка за дни = Jours × Ставка + Штраф (для команды: только положительный Штраф; отрицательный уходит в БАНК, не сюда — см. подсказку у поля Штраф).\n" +
                 "Congés payés и Vacance — просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
-                "БАНК качества = прошлый банк (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф (отрицательный), не ниже 0 и не выше 3000. Бонус качества = БАНК качества × 80%.\n" +
+                "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф (отрицательный), не ниже 0 и не выше 3000. Бонус качества = БАНК 3000 × 80% (не уменьшает сам БАНК 3000).\n" +
                 "BONUS — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом.\n\n" +
                 "Итог (Jours) автоматически передаётся в раздел «Paie»."
               }
@@ -16129,8 +16129,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 const c = computed[e.id];
                 const jours = joursByEmployee[e.id] ?? 0;
                 // Même condition que groupPaieEmployees / computeControllerSplit plus haut —
-                // détermine si Штраф passe par le БАНК ou directement dans la paie (voir compute.ts).
+                // détermine si Штраф passe par le БАНК 3000 ou directement dans la paie (voir compute.ts).
                 const faitPartieEquipe = e.category === "chantier" && !!e.team_id && !!e.teams?.name;
+                // Bureau + Contrôle & Formation : BONUS équipe, Штраф contrôle, БАНК 3000 et Bonus
+                // qualité ne s'appliquent jamais à eux (confirmé avec l'utilisatrice, 29/09/2026) —
+                // grisés plutôt que masqués, pour de rares exceptions (ex. prime ponctuelle au bureau).
+                const bureauOrControl = e.category === "bureau";
                 const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
                 return (
                   <Fragment key={e.id}>
@@ -16231,9 +16235,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           faitPartieEquipe
                             ? extrasTooltip(
                                 "Salaire jours",
-                                `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф positif(${Math.max(0, Number(line.penaliteMontant) || 0)}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (Штраф négatif va au БАНК, pas ici)`,
+                                `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф positif(${Math.max(0, Number(line.penaliteMontant) || 0)}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (Штраф négatif va au БАНК 3000, pas ici)`,
                                 "Оплата за дни",
-                                `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + положительный Штраф(${Math.max(0, Number(line.penaliteMontant) || 0)}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (отрицательный Штраф уходит в БАНК, не сюда)`
+                                `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + положительный Штраф(${Math.max(0, Number(line.penaliteMontant) || 0)}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (отрицательный Штраф уходит в БАНК 3000, не сюда)`
                               )
                             : extrasTooltip(
                                 "Salaire jours",
@@ -16249,15 +16253,22 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         <div className="relative">
                           <input
                             type="number"
-                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                            placeholder={bureauOrControl ? "—" : undefined}
+                            className={`input w-full px-1.5 py-1.5 text-xs ${
+                              bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
+                            }`}
                             value={line.bonusEquipe}
                             onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
-                            title={extrasTooltip(
-                              "Bonus équipe",
-                              `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
-                              "Бонус команды",
-                              `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
-                            )}
+                            title={
+                              bureauOrControl
+                                ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de BONUS équipe (cas rare : reste saisissable) / Не применимо — у Bureau / Contrôle & Formation нет BONUS équipe (редкий случай: поле всё ещё доступно)"
+                                : extrasTooltip(
+                                    "Bonus équipe",
+                                    `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
+                                    "Бонус команды",
+                                    `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
+                                  )
+                            }
                           />
                           {raisonButton(e.id, "bonusRaison", line.bonusRaison, "Raison du BONUS", "Причина бонуса", "bg-success-500 text-white")}
                         </div>
@@ -16266,13 +16277,18 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         <div className="relative">
                           <input
                             type="number"
-                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                            placeholder={bureauOrControl ? "—" : undefined}
+                            className={`input w-full px-1.5 py-1.5 text-xs ${
+                              bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
+                            }`}
                             value={line.penaliteMontant}
                             onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
                             title={
-                              faitPartieEquipe
-                                ? "Équipe : négatif = pénalité déduite du БАНК ; positif = ajustement direct de paie / В команде: отрицательное — штраф из БАНК; положительное — сразу в зп"
-                                : "Hors équipe : ajustement direct de paie, pas de БАНК / Вне команды: сразу влияет на зп, БАНК не участвует"
+                              bureauOrControl
+                                ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de contrôle qualité chantier (cas rare : reste saisissable, ajustement direct de paie) / Не применимо — у Bureau / Contrôle & Formation нет контроля качества на объекте (редкий случай: поле всё ещё доступно, сразу влияет на зп)"
+                                : faitPartieEquipe
+                                  ? "Équipe : négatif = pénalité déduite du БАНК 3000 ; positif = ajustement direct de paie / В команде: отрицательное — штраф из БАНК 3000; положительное — сразу в зп"
+                                  : "Hors équipe : ajustement direct de paie, pas de БАНК 3000 / Вне команды: сразу влияет на зп, БАНК 3000 не участвует"
                             }
                           />
                           {raisonButton(e.id, "penaliteRaison", line.penaliteRaison, "Raison du Штраф", "Причина штрафа", "bg-warning-500 text-white")}
@@ -16297,26 +16313,42 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         />
                       </td>
                       <td
-                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={extrasTooltip(
-                          "БАНК qualité",
-                          `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
-                          "БАНК качества",
-                          `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
-                        )}
+                        className={
+                          bureauOrControl
+                            ? "py-2 px-2 text-center text-stone-300"
+                            : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        }
+                        title={
+                          bureauOrControl
+                            ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
+                            : extrasTooltip(
+                                "БАНК 3000",
+                                `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
+                                "БАНК 3000",
+                                `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
+                              )
+                        }
                       >
-                        {(c?.banqueQualiteFin ?? 0).toFixed(2)} €
+                        {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
                       </td>
                       <td
-                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={extrasTooltip(
-                          "Bonus qualité",
-                          `БАНК качества(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
-                          "Бонус качества",
-                          `БАНК качества(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`
-                        )}
+                        className={
+                          bureauOrControl
+                            ? "py-2 px-2 text-center text-stone-300"
+                            : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        }
+                        title={
+                          bureauOrControl
+                            ? "Non applicable — pas de Bonus qualité pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет Bonus qualité"
+                            : extrasTooltip(
+                                "Bonus qualité",
+                                `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
+                                "Бонус качества",
+                                `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`
+                              )
+                        }
                       >
-                        {(c?.bonusQualite ?? 0).toFixed(2)} €
+                        {bureauOrControl ? "—" : `${(c?.bonusQualite ?? 0).toFixed(2)} €`}
                       </td>
                       <td
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
