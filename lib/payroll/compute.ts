@@ -182,31 +182,42 @@ export function computeNightPremium(heuresNuit: number, classification: string |
 /**
  * Port de "часы работы.numbers" — logique reconfirmée sur septembre 2026
  * (août avait masqué deux points : vacance_taux_journalier et le dépôt en
- * banque ci-dessous, tous deux invisibles quand ils valent 0/vide) :
+ * banque ci-dessous, tous deux invisibles quand ils valent 0/vide), puis
+ * simplifiée le 29/09/2026 : Congés payés et Vacance jours sont redescendus
+ * en simples compteurs de jours saisis à la main depuis le bulletin de paie
+ * (la RH ne calcule ni ne verse ces montants — le comptable s'en charge à
+ * part) ; Km/Péage ont été retirés (pas utilisés) ; Contrôle 1/2/3 ont été
+ * fusionnés dans le seul champ Штраф.
  *
  * DEUX banques distinctes, à ne pas confondre :
  *   1. Le БАНК (plafond 3000) ci-dessous — propre à CHAQUE salarié d'équipe,
  *      alimenté par SON PROPRE BONUS équipe (30 % déposé, voir plus bas).
  *   2. Le "Банк качества" de l'ENTREPRISE (plafond 10000, company_quality_bank,
  *      computeControllerSplit / rankQualityBankWinners plus bas) — alimenté
- *      par 75 % de chaque pénalité (Контроль 1/2/3) déduite du БАНК #1 d'un
- *      salarié ; les 25 % restants vont directement dans la paie du mois du
- *      contrôleur désigné (CIOBANU Valeriu pour l'instant, un seul pour toute
+ *      par 75 % de chaque pénalité déduite du БАНК #1 d'un salarié d'équipe ;
+ *      les 25 % restants vont directement dans la paie du mois du contrôleur
+ *      désigné (CIOBANU Valeriu pour l'instant, un seul pour toute
  *      l'entreprise). Quand ce second banque atteint 10000, les 5 salariés
  *      ayant le MOINS de pénalités et le PLUS de BONUS cumulés depuis le
  *      dernier partage se répartissent la totalité : 30/25/20/15/10 %, puis
  *      le compteur repart de zéro. Un seul pool pour toute l'entreprise, pas
  *      un par équipe — confirmé avec l'utilisatrice.
  *
- *   Ставка за дни = Jours × Ставка + Штраф        (Штраф est un montant
- *     signé — positif = ajustement, négatif = pénalité, comme dans la
- *     feuille d'origine ; jamais une pénalité "positive" implicite)
- *   Congés payés  = Jours × 9,9 %
- *   Vacance pay   = jours de vacances × taux de vacance PROPRE au salarié
- *     (55 à 120 €/jour selon la personne dans la feuille d'origine — pas un
- *     taux unique, exactement comme le taux journalier)
- *   Km cost       = km × 0,30 € + péage
- *   Штрафы от контроля = Контроль 1 + 2 + 3
+ * Штраф — UN SEUL champ, dont le sens dépend de faitPartieEquipe (confirmé
+ * avec l'utilisatrice, 29/09/2026 : "для команд это будет так, а для не
+ * команд вообще нет системы этой, бонусы это просто бонусы в зп") :
+ *   - équipe chantier (faitPartieEquipe = true) : Штраф est la pénalité du
+ *     contrôleur. Une valeur NÉGATIVE est déduite du БАНК qualité (jamais de
+ *     la paie directement — le salarié ne "paie" qu'une fois, via le БАНК) ;
+ *     une valeur POSITIVE (rare, ajustement) s'ajoute directement à la paie,
+ *     comme avant, sans jamais alimenter le БАНК (jamais de pénalité
+ *     "positive" implicite).
+ *   - hors équipe (Bureau / Contrôle & Formation / sans équipe) : pas de
+ *     système БАНК du tout. Штраф est un simple ajustement signé de paie,
+ *     ajouté tel quel (positif ou négatif), sans aucun lien avec le БАНК ni
+ *     avec le contrôleur/Банк качества.
+ *
+ *   Ставка за дни = Jours × Ставка + (ajustement direct du Штраф, voir ci-dessus)
  *   Dépôt banque = équipe chantier uniquement (Bureau / Contrôle & Formation
  *     / sans équipe : toujours 0, tout le BONUS est payé directement) :
  *     MIN(MAX(0, BONUS équipe × 30 %), MAX(0, 3000 − БАНК début))
@@ -214,19 +225,20 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *     БАНК ne dépasse jamais 3000) part dans le БАНК qualité au lieu d'être
  *     payée directement ce mois-ci.
  *   Bonus équipe payé = BONUS équipe − Dépôt banque
- *   БАНК qualité (fin de mois) = MAX(0, MIN(3000, БАНК début + Dépôt banque) − Штрафы от контроля)
+ *   БАНК qualité (fin de mois) = MAX(0, MIN(3000, БАНК début + Dépôt banque) − pénalité contrôleur)
  *     — le "début" reprend automatiquement la fin du mois précédent pour ce
  *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
  *   Bonus qualité = БАНК qualité (fin) × 80 %
- *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Congés payés +
- *     Vacance pay + Km cost + Bonus qualité
+ *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus qualité
+ *     + part contrôleur + prime Банк качества
+ *     — Congés payés et Vacance jours sont de simples compteurs de jours,
+ *     affichés à titre indicatif, jamais inclus dans ce total (le montant
+ *     réel est calculé et versé par la comptabilité, pas ici).
  *
  * Le BONUS d'équipe lui-même (avant dépôt banque) est calculé ailleurs
  * (plusieurs facteurs, pas une formule de cette feuille) — saisi ici tel
  * quel, jamais recalculé.
  */
-export const CONGES_PAYES_RATE = 0.099;
-export const KM_RATE = 0.3;
 export const BANQUE_QUALITE_RATE = 0.8;
 export const BANQUE_QUALITE_PLAFOND = 3000;
 export const BANQUE_DEPOT_TAUX = 0.3;
@@ -235,22 +247,15 @@ export type PayrollExtrasInput = {
   jours: number;
   tauxJournalier: number;
   bonusEquipe: number;
+  /** Montant signé. Équipe chantier : négatif = pénalité contrôleur (déduite du БАНК, jamais de la paie) ; positif = ajustement direct de paie. Hors équipe : ajustement direct de paie, signé, sans aucun lien БАНК. Voir la note en tête de fichier. */
   penaliteMontant: number;
-  vacanceJours: number;
-  /** Propre à chaque salarié, comme tauxJournalier — pas un taux global (55 à 120 €/jour selon la personne). */
-  vacanceTauxJournalier: number;
-  km: number;
-  peage: number;
-  controle1: number;
-  controle2: number;
-  controle3: number;
   /** Fin de БАНК qualité du mois précédent pour ce même employé, ou null s'il n'y en a pas (premier mois). */
   banqueQualitePrecedente: number | null;
   /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ — sinon laisser null. */
   banqueAjustementManuel: number | null;
-  /** Le dépôt en БАНК ne concerne que les équipes chantier — Bureau, Contrôle & Formation et "sans équipe" touchent tout leur BONUS équipe directement dans la paie du mois, sans passer par le БАНК qualité. */
+  /** Le dépôt en БАНК et la pénalité contrôleur ne concernent que les équipes chantier — Bureau, Contrôle & Formation et "sans équipe" n'ont pas de БАНК du tout, tout passe directement dans la paie du mois. */
   faitPartieEquipe: boolean;
-  /** Part du contrôleur ce mois-ci (25 % du total des pénalités de tous les autres salariés) — 0 pour tout le monde sauf le contrôleur désigné. Calculé ailleurs (nécessite le total tous salariés confondus), jamais recalculé ici. */
+  /** Part du contrôleur ce mois-ci (25 % du total des pénalités de tous les autres salariés d'équipe) — 0 pour tout le monde sauf le contrôleur désigné. Calculé ailleurs (nécessite le total tous salariés confondus), jamais recalculé ici. */
   controleBonusRecu: number;
   /** Prime reçue lors d'une distribution du БАНК qualité (compagnie) à 10000 — 0 la plupart des mois. Calculée ailleurs, jamais recalculée ici. */
   banqueQualitePrime: number;
@@ -258,9 +263,6 @@ export type PayrollExtrasInput = {
 
 export type PayrollExtrasResult = {
   salaireJours: number;
-  congesPayes: number;
-  vacancePay: number;
-  kmCost: number;
   penalitesControle: number;
   banqueQualiteDebut: number;
   banqueDepot: number;
@@ -273,11 +275,11 @@ export type PayrollExtrasResult = {
 };
 
 export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasResult {
-  const salaireJours = input.jours * input.tauxJournalier + input.penaliteMontant;
-  const congesPayes = Math.round(input.jours * CONGES_PAYES_RATE * 100) / 100;
-  const vacancePay = Math.round(input.vacanceJours * input.vacanceTauxJournalier * 100) / 100;
-  const kmCost = Math.round((input.km * KM_RATE + input.peage) * 100) / 100;
-  const penalitesControle = input.controle1 + input.controle2 + input.controle3;
+  // Équipe : négatif → БАНК uniquement (jamais la paie) ; positif → paie uniquement (jamais le БАНК).
+  // Hors équipe : pas de БАНК du tout, le montant signé va tel quel dans la paie.
+  const penalitesControle = input.faitPartieEquipe ? Math.max(0, -input.penaliteMontant) : 0;
+  const ajustementDirect = input.faitPartieEquipe ? Math.max(0, input.penaliteMontant) : input.penaliteMontant;
+  const salaireJours = input.jours * input.tauxJournalier + ajustementDirect;
   const banqueQualiteDebut = input.banqueAjustementManuel ?? input.banqueQualitePrecedente ?? 0;
   const banqueDepot = input.faitPartieEquipe
     ? Math.min(Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX), Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut))
@@ -291,16 +293,10 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
   const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
   const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
   const aPayer =
-    Math.round(
-      (salaireJours + bonusEquipePaye + congesPayes + vacancePay + kmCost + bonusQualite + controleBonusRecu + banqueQualitePrime) *
-        100
-    ) / 100;
+    Math.round((salaireJours + bonusEquipePaye + bonusQualite + controleBonusRecu + banqueQualitePrime) * 100) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
-    congesPayes,
-    vacancePay,
-    kmCost,
     penalitesControle,
     banqueQualiteDebut,
     banqueDepot: Math.round(banqueDepot * 100) / 100,
@@ -314,10 +310,11 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
 }
 
 /**
- * 25/75 sur le total des pénalités (Контроль 1+2+3) de TOUS les salariés
- * d'un mois donné, tous ensemble — pas ligne par ligne. 25 % file
- * directement dans la paie du contrôleur ce même mois (controleBonusRecu),
- * 75 % rejoint le Банк качества commun à toute l'entreprise.
+ * 25/75 sur le total des pénalités contrôleur (Штраф négatif, équipe chantier
+ * uniquement) de TOUS les salariés d'un mois donné, tous ensemble — pas ligne
+ * par ligne. 25 % file directement dans la paie du contrôleur ce même mois
+ * (controleBonusRecu), 75 % rejoint le Банк качества commun à toute
+ * l'entreprise.
  */
 export const CONTROLEUR_SHARE_RATE = 0.25;
 export const QUALITY_BANK_SHARE_RATE = 0.75;

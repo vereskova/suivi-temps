@@ -15160,12 +15160,7 @@ type ExtrasLineInput = {
   penaliteMontant: string;
   penaliteRaison: string;
   vacanceJours: string;
-  vacanceTauxJournalier: string;
-  km: string;
-  peage: string;
-  controle1: string;
-  controle2: string;
-  controle3: string;
+  congesJours: string;
   banqueAjustementManuel: string;
 };
 
@@ -15176,12 +15171,7 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   penaliteMontant: "",
   penaliteRaison: "",
   vacanceJours: "",
-  vacanceTauxJournalier: "",
-  km: "",
-  peage: "",
-  controle1: "",
-  controle2: "",
-  controle3: "",
+  congesJours: "",
   banqueAjustementManuel: "",
 };
 
@@ -15212,16 +15202,9 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 74, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "penalite", lines: ["Штраф €"], title: "Штраф € / Штраф €", defaultStyle: { width: 90, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
-  { key: "conges", lines: ["Congés", "payés €"], title: "Congés payés € / Отпускные €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
+  { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "j"], title: "Vacance jours / Отпуск дн", defaultStyle: { width: 150, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "vacancePay", lines: ["Vacance", "pay €"], title: "Vacance pay € / Оплата отпуска €", defaultStyle: { width: 95, fontSize: 11, color: "#0369a1", bg: "" } },
-  { key: "km", lines: ["Km"], title: "Km / Км", defaultStyle: { width: 62, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "peage", lines: ["Péage €"], title: "Péage € / Дорога €", defaultStyle: { width: 70, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "kmCost", lines: ["Km", "cost €"], title: "Km cost € / Стоимость км €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
-  { key: "ctrl1", lines: ["Ctrl", "1"], title: "Contrôle 1 / Контроль 1", defaultStyle: { width: 60, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "ctrl2", lines: ["Ctrl", "2"], title: "Contrôle 2 / Контроль 2", defaultStyle: { width: 60, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "ctrl3", lines: ["Ctrl", "3"], title: "Contrôle 3 / Контроль 3", defaultStyle: { width: 60, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "banque", lines: ["БАНК", "qualité €"], title: "БАНК qualité € / БАНК качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "bonusQual", lines: ["Bonus", "qualité €"], title: "Bonus qualité € / Бонус качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK2_HEADER } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 85, fontSize: 11, color: "#44403c", bg: "" } },
@@ -15433,20 +15416,16 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
       const prevDate = new Date(Date.UTC(year, month - 2, 1));
       const prevMonthIso = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}-01`;
       const { data: prevRun } = await supabase.from("payroll_runs").select("id").eq("month", prevMonthIso).maybeSingle();
-      const prevByEmployee = new Map<
-        string,
-        { banque_qualite_fin: number; taux_journalier: number; vacance_taux_journalier: number }
-      >();
+      const prevByEmployee = new Map<string, { banque_qualite_fin: number; taux_journalier: number }>();
       if (prevRun?.id) {
         const { data: prevLines } = await supabase
           .from("payroll_extras")
-          .select("employee_id, banque_qualite_fin, taux_journalier, vacance_taux_journalier")
+          .select("employee_id, banque_qualite_fin, taux_journalier")
           .eq("run_id", prevRun.id);
         (prevLines ?? []).forEach((l) =>
           prevByEmployee.set(l.employee_id, {
             banque_qualite_fin: Number(l.banque_qualite_fin) || 0,
             taux_journalier: Number(l.taux_journalier) || 0,
-            vacance_taux_journalier: Number(l.vacance_taux_journalier) || 0,
           })
         );
       }
@@ -15474,14 +15453,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
             penaliteRaison: l?.penalite_raison ?? "",
             vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
-            vacanceTauxJournalier: l
-              ? String(l.vacance_taux_journalier ?? 55)
-              : String(prev?.vacance_taux_journalier || 55),
-            km: l?.km ? String(l.km) : "",
-            peage: l?.peage ? String(l.peage) : "",
-            controle1: l?.controle_1 ? String(l.controle_1) : "",
-            controle2: l?.controle_2 ? String(l.controle_2) : "",
-            controle3: l?.controle_3 ? String(l.controle_3) : "",
+            congesJours: l?.conges_jours ? String(l.conges_jours) : "",
             banqueAjustementManuel: l?.banque_ajustement_manuel != null ? String(l.banque_ajustement_manuel) : "",
           };
         });
@@ -15496,14 +15468,18 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
     setInputs((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_EXTRAS_LINE), [field]: value } }));
   }
 
-  // 25 % du total des pénalités de TOUS les salariés (tous ensemble, pas
-  // ligne par ligne) revient au contrôleur désigné ce même mois — recalculé
-  // en direct à chaque frappe, comme le reste de ce tableau.
+  // 25 % du total des pénalités de TOUS les salariés d'équipe (tous
+  // ensemble, pas ligne par ligne) revient au contrôleur désigné ce même
+  // mois — recalculé en direct à chaque frappe, comme le reste de ce
+  // tableau. Штраф négatif = pénalité, uniquement pour les équipes chantier
+  // (hors équipe : pas de système БАНК du tout, voir compute.ts).
   const totalPenalitesThisMonth = useMemo(
     () =>
       employees.reduce((sum, e) => {
+        const faitPartieEquipe = e.category === "chantier" && !!e.team_id && !!e.teams?.name;
+        if (!faitPartieEquipe) return sum;
         const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
-        return sum + (Number(line.controle1) || 0) + (Number(line.controle2) || 0) + (Number(line.controle3) || 0);
+        return sum + Math.max(0, -(Number(line.penaliteMontant) || 0));
       }, 0),
     [employees, inputs]
   );
@@ -15519,13 +15495,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         tauxJournalier: Number(line.tauxJournalier) || 0,
         bonusEquipe: Number(line.bonusEquipe) || 0,
         penaliteMontant: Number(line.penaliteMontant) || 0,
-        vacanceJours: Number(line.vacanceJours) || 0,
-        vacanceTauxJournalier: Number(line.vacanceTauxJournalier) || 55,
-        km: Number(line.km) || 0,
-        peage: Number(line.peage) || 0,
-        controle1: Number(line.controle1) || 0,
-        controle2: Number(line.controle2) || 0,
-        controle3: Number(line.controle3) || 0,
         banqueQualitePrecedente: banquePrecedenteByEmployee[e.id] ?? null,
         banqueAjustementManuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
         // Même condition que groupPaieEmployees pour byTeam vs noTeam — Bureau,
@@ -15561,12 +15530,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           penalite_montant: Number(line.penaliteMontant) || 0,
           penalite_raison: line.penaliteRaison || null,
           vacance_jours: Number(line.vacanceJours) || 0,
-          vacance_taux_journalier: Number(line.vacanceTauxJournalier) || 55,
-          km: Number(line.km) || 0,
-          peage: Number(line.peage) || 0,
-          controle_1: Number(line.controle1) || 0,
-          controle_2: Number(line.controle2) || 0,
-          controle_3: Number(line.controle3) || 0,
+          conges_jours: line.congesJours === "" ? null : Number(line.congesJours),
           banque_ajustement_manuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
           banque_qualite_fin: c?.banqueQualiteFin ?? 0,
           controle_bonus_recu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0,
@@ -15587,15 +15551,21 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           .neq("id", runId);
         const pastRunIds = (pastRuns ?? []).map((r) => r.id);
 
-        let pastLines: { employee_id: string; controle_1: number; controle_2: number; controle_3: number; bonus_equipe: number }[] = [];
+        let pastLines: { employee_id: string; penalite_montant: number; bonus_equipe: number }[] = [];
         if (pastRunIds.length > 0) {
           const { data } = await supabase
             .from("payroll_extras")
-            .select("employee_id, controle_1, controle_2, controle_3, bonus_equipe")
+            .select("employee_id, penalite_montant, bonus_equipe")
             .in("run_id", pastRunIds);
           pastLines = data ?? [];
         }
 
+        // Штраф négatif = pénalité contrôleur — uniquement pour les équipes
+        // chantier (basé sur le statut d'équipe ACTUEL de l'employé, comme
+        // pour totalPenalitesThisMonth ci-dessus).
+        const faitPartieEquipeById = new Map(
+          employees.map((e) => [e.id, e.category === "chantier" && !!e.team_id && !!e.teams?.name])
+        );
         const cumulative = new Map<string, QualityBankCandidate>();
         const addToCumulative = (employeeId: string, penalites: number, bonus: number) => {
           const prev = cumulative.get(employeeId) ?? { employeeId, totalPenalites: 0, totalBonus: 0 };
@@ -15603,10 +15573,14 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           prev.totalBonus += bonus;
           cumulative.set(employeeId, prev);
         };
-        pastLines.forEach((l) =>
-          addToCumulative(l.employee_id, (Number(l.controle_1) || 0) + (Number(l.controle_2) || 0) + (Number(l.controle_3) || 0), Number(l.bonus_equipe) || 0)
-        );
-        rows.forEach((r) => addToCumulative(r.employee_id, r.controle_1 + r.controle_2 + r.controle_3, r.bonus_equipe));
+        pastLines.forEach((l) => {
+          if (!faitPartieEquipeById.get(l.employee_id)) return;
+          addToCumulative(l.employee_id, Math.max(0, -(Number(l.penalite_montant) || 0)), Number(l.bonus_equipe) || 0);
+        });
+        rows.forEach((r) => {
+          if (!faitPartieEquipeById.get(r.employee_id)) return;
+          addToCumulative(r.employee_id, Math.max(0, -r.penalite_montant), r.bonus_equipe);
+        });
 
         const winners = rankQualityBankWinners(Array.from(cumulative.values()), newTotal);
         const periodEnd = `${year}-${String(month).padStart(2, "0")}-01`;
@@ -15873,7 +15847,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 >
                   {monthLabel}
                 </th>
-                <th colSpan={16} />
+                <th colSpan={9} />
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
@@ -15986,12 +15960,15 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
                 const c = computed[e.id];
                 const jours = joursByEmployee[e.id] ?? 0;
+                // Même condition que groupPaieEmployees / computeControllerSplit plus haut —
+                // détermine si Штраф passe par le БАНК ou directement dans la paie (voir compute.ts).
+                const faitPartieEquipe = e.category === "chantier" && !!e.team_id && !!e.teams?.name;
                 const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
                 return (
                   <Fragment key={e.id}>
                     {showGroupHeader && (
                       <tr>
-                        <td colSpan={18 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                        <td colSpan={11 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
                           {row.groupLabel}
                         </td>
                       </tr>
@@ -16070,12 +16047,21 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       </td>
                       <td
                         className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={extrasTooltip(
-                          "Salaire jours",
-                          `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`,
-                          "Оплата за дни",
-                          `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`
-                        )}
+                        title={
+                          faitPartieEquipe
+                            ? extrasTooltip(
+                                "Salaire jours",
+                                `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф positif(${Math.max(0, Number(line.penaliteMontant) || 0)}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (Штраф négatif va au БАНК, pas ici)`,
+                                "Оплата за дни",
+                                `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + положительный Штраф(${Math.max(0, Number(line.penaliteMontant) || 0)}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (отрицательный Штраф уходит в БАНК, не сюда)`
+                              )
+                            : extrasTooltip(
+                                "Salaire jours",
+                                `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`,
+                                "Оплата за дни",
+                                `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`
+                              )
+                        }
                       >
                         {(c?.salaireJours ?? 0).toFixed(2)} €
                       </td>
@@ -16122,6 +16108,11 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                             className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                             value={line.penaliteMontant}
                             onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
+                            title={
+                              faitPartieEquipe
+                                ? "Équipe : négatif = pénalité déduite du БАНК ; positif = ajustement direct de paie / В команде: отрицательное — штраф из БАНК; положительное — сразу в зп"
+                                : "Hors équipe : ajustement direct de paie, pas de БАНК / Вне команды: сразу влияет на зп, БАНК не участвует"
+                            }
                           />
                           <button
                             type="button"
@@ -16145,96 +16136,22 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           </button>
                         </div>
                       </td>
-                      <td
-                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={extrasTooltip(
-                          "Congés payés",
-                          `${jours}j × 9,9% = ${(c?.congesPayes ?? 0).toFixed(2)}€`,
-                          "Отпускные",
-                          `${jours}дн × 9,9% = ${(c?.congesPayes ?? 0).toFixed(2)}€`
-                        )}
-                      >
-                        {(c?.congesPayes ?? 0).toFixed(2)} €
-                      </td>
-                      <td className="py-2 pr-2">
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            title="Jours de vacance / Дней отпуска"
-                            className="input bg-warning-50/60 w-14 px-1.5 py-1.5 text-xs"
-                            value={line.vacanceJours}
-                            onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
-                          />
-                          <span className="text-stone-300 text-xs">×</span>
-                          <input
-                            type="number"
-                            title="Taux par jour de vacance, propre à ce salarié / Ставка за день отпуска, у каждого своя"
-                            className="input bg-warning-50/60 w-14 px-1.5 py-1.5 text-xs"
-                            value={line.vacanceTauxJournalier}
-                            onChange={(ev) => updateInput(e.id, "vacanceTauxJournalier", ev.target.value)}
-                          />
-                        </div>
-                      </td>
-                      <td
-                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={extrasTooltip(
-                          "Vacance pay",
-                          `${Number(line.vacanceJours) || 0}j × ${Number(line.vacanceTauxJournalier) || 55}€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`,
-                          "Оплата отпуска",
-                          `${Number(line.vacanceJours) || 0}дн × ${Number(line.vacanceTauxJournalier) || 55}€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`
-                        )}
-                      >
-                        {(c?.vacancePay ?? 0).toFixed(2)} €
-                      </td>
                       <td className="py-2 pr-2">
                         <input
                           type="number"
+                          title="Jours de congés payés accumulés, saisis depuis le bulletin de paie / Дней отпускных, из билютеня, вручную"
                           className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.km}
-                          onChange={(ev) => updateInput(e.id, "km", ev.target.value)}
+                          value={line.congesJours}
+                          onChange={(ev) => updateInput(e.id, "congesJours", ev.target.value)}
                         />
                       </td>
                       <td className="py-2 pr-2">
                         <input
                           type="number"
+                          title="Jours de vacance, saisis à la main / Дней вакансов, вручную"
                           className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.peage}
-                          onChange={(ev) => updateInput(e.id, "peage", ev.target.value)}
-                        />
-                      </td>
-                      <td
-                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={extrasTooltip(
-                          "Km cost",
-                          `${Number(line.km) || 0}km × 0,30€ + péage(${Number(line.peage) || 0}€) = ${(c?.kmCost ?? 0).toFixed(2)}€`,
-                          "Стоимость км",
-                          `${Number(line.km) || 0}км × 0,30€ + дорога(${Number(line.peage) || 0}€) = ${(c?.kmCost ?? 0).toFixed(2)}€`
-                        )}
-                      >
-                        {(c?.kmCost ?? 0).toFixed(2)} €
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.controle1}
-                          onChange={(ev) => updateInput(e.id, "controle1", ev.target.value)}
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.controle2}
-                          onChange={(ev) => updateInput(e.id, "controle2", ev.target.value)}
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.controle3}
-                          onChange={(ev) => updateInput(e.id, "controle3", ev.target.value)}
+                          value={line.vacanceJours}
+                          onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
                         />
                       </td>
                       <td
@@ -16263,9 +16180,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
                         title={extrasTooltip(
                           "À payer",
-                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€) + Congés payés(${(c?.congesPayes ?? 0).toFixed(2)}€) + Vacance pay(${(c?.vacancePay ?? 0).toFixed(2)}€) + Km cost(${(c?.kmCost ?? 0).toFixed(2)}€) + Bonus qualité(${(c?.bonusQualite ?? 0).toFixed(2)}€)${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€`,
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€) + Bonus qualité(${(c?.bonusQualite ?? 0).toFixed(2)}€)${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€) + отпускные(${(c?.congesPayes ?? 0).toFixed(2)}€) + оплата отпуска(${(c?.vacancePay ?? 0).toFixed(2)}€) + километраж(${(c?.kmCost ?? 0).toFixed(2)}€) + бонус качества(${(c?.bonusQualite ?? 0).toFixed(2)}€)${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€) + бонус качества(${(c?.bonusQualite ?? 0).toFixed(2)}€)${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
@@ -16276,7 +16193,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={18 + dayColumns.length} className="py-6 text-center text-stone-400">
+                  <td colSpan={11 + dayColumns.length} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
