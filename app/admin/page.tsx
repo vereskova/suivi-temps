@@ -15675,7 +15675,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
-                <th className="py-2 pr-2 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
+                <th className="py-2 px-2 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
                   const isWeekend = dow === 0 || dow === 6;
@@ -15683,7 +15683,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     <th
                       key={d}
                       title={weekdayLabelFr(d)}
-                      className="text-center align-middle text-[10px] font-normal border-r border-stone-200"
+                      className="p-0 text-center align-middle text-[10px] font-normal border-r border-stone-200"
                       style={{
                         backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
                       }}
