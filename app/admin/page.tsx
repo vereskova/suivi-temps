@@ -682,12 +682,15 @@ export default function AdminPage() {
     setDossierTargetEmployeeId(employeeId);
     setView("dossier");
   }
-  const [comptableView, setComptableView] = usePersistedView<"paie" | "employees">("admin_comptable_view", "paie");
+  const [comptableView, setComptableView] = usePersistedView<"paie" | "paie_extras" | "employees">(
+    "admin_comptable_view",
+    "paie"
+  );
   const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme">(
     "admin_commercial_rh_view",
     "commercial"
   );
-  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "organigramme">(
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "organigramme">(
     "admin_rh_readonly_view",
     "employees"
   );
@@ -960,6 +963,16 @@ export default function AdminPage() {
           }}
         />
         <SidebarLink
+          icon={Banknote}
+          active={comptableView === "paie_extras"}
+          label="Primes & Bonus"
+          labelRu="Премии и бонусы"
+          onClick={() => {
+            setComptableView("paie_extras");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
           icon={Users}
           active={comptableView === "employees"}
           label="Employés"
@@ -1032,6 +1045,8 @@ export default function AdminPage() {
             <div className="flex-1 min-w-0">
               {comptableView === "paie" ? (
                 <PaieView supabase={supabase} />
+              ) : comptableView === "paie_extras" ? (
+                <PayrollExtrasView supabase={supabase} />
               ) : (
                 <EmployeesView
                   supabase={supabase}
@@ -1062,6 +1077,16 @@ export default function AdminPage() {
           labelRu="Сотрудники"
           onClick={() => {
             setRhReadonlyView("employees");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Banknote}
+          active={rhReadonlyView === "paie_extras"}
+          label="Primes & Bonus"
+          labelRu="Премии и бонусы"
+          onClick={() => {
+            setRhReadonlyView("paie_extras");
             setMobileNavOpen(false);
           }}
         />
@@ -1145,6 +1170,8 @@ export default function AdminPage() {
                   readOnly
                   confidentialMode="rib_only"
                 />
+              ) : rhReadonlyView === "paie_extras" ? (
+                <PayrollExtrasView supabase={supabase} readOnly />
               ) : (
                 <OrganigrammeView supabase={supabase} readOnly />
               )}
@@ -15479,7 +15506,17 @@ const CHEF_RATE_FRENCH = 115;
  *  forme chaque mois. Les cases de présence se cliquent directement ici —
  *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
  *  jour", pas une copie). Alimente Jours dans Paie. */
-function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+function PayrollExtrasView({
+  supabase,
+  readOnly = false,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  /** comptable a un accès complet (comme prévu dès la création de payroll_extras,
+   *  voir 0074) ; rh_readonly n'a que du SELECT en RLS — l'UI doit donc être
+   *  purement consultative pour ce rôle, sans quoi "Enregistrer" échouerait
+   *  silencieusement contre la base. */
+  readOnly?: boolean;
+}) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -16090,19 +16127,23 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
-              disabled={loading}
-              onClick={() => fillWeekdaysPresent(employees.filter((e) => !isFopContractor(e)))}
-              title="Remplit les jours ouvrés vides en présent, pour tout le monde — ne touche jamais un jour déjà saisi / Заполняет пустые будни как «присутствовал», для всех — уже отмеченные дни не трогает"
-            >
-              <ClipboardCheck size={14} />
-              <Bi fr="Remplir les jours vides" ru="Заполнить пустые дни" />
-            </button>
-            <button className="btn btn-primary text-sm" disabled={saving || loading} onClick={save}>
-              {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
-            </button>
+            {!readOnly && (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
+                  disabled={loading}
+                  onClick={() => fillWeekdaysPresent(employees.filter((e) => !isFopContractor(e)))}
+                  title="Remplit les jours ouvrés vides en présent, pour tout le monde — ne touche jamais un jour déjà saisi / Заполняет пустые будни как «присутствовал», для всех — уже отмеченные дни не трогает"
+                >
+                  <ClipboardCheck size={14} />
+                  <Bi fr="Remplir les jours vides" ru="Заполнить пустые дни" />
+                </button>
+                <button className="btn btn-primary text-sm" disabled={saving || loading} onClick={save}>
+                  {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
+                </button>
+              </>
+            )}
           </div>
         </div>
         <p className="text-xs text-stone-400 mt-2 capitalize">{monthLabel}</p>
@@ -16204,6 +16245,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             .extras-grid td, .extras-grid th { border-right: 1px solid #e7e5e4; }
             .extras-grid td:last-child, .extras-grid th:last-child { border-right: none; }
           `}</style>
+          {/* fieldset[disabled] cascade nativement à tous les input/select/textarea/
+              button qu'il contient — un seul point de contrôle pour rendre toute la
+              grille purement consultative (rh_readonly), au lieu de passer readOnly
+              à chaque champ individuellement. display:contents pour ne rien changer
+              à la mise en page (table/colgroup ont besoin d'un parent transparent). */}
+          <fieldset disabled={readOnly} style={{ display: "contents" }}>
           <table
             className="text-sm border-separate extras-grid"
             style={{
@@ -16620,6 +16667,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               )}
             </tbody>
           </table>
+          </fieldset>
         </div>
       )}
     </div>
