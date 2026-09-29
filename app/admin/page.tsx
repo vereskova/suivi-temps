@@ -15365,6 +15365,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel — indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус — не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) — toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
+  { key: "banqueDebut", lines: ["БАНК 3000", "(пред.) €"], title: "БАНК 3000 — solde du mois précédent (report automatique, ou forcé via le crayon) / БАНК 3000 — баланс за предыдущий месяц (переносится автоматически, либо задан вручную через карандашик)", defaultStyle: { width: 90, fontSize: 11, color: "#78716c", bg: "" } },
   { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
@@ -15383,6 +15384,7 @@ const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "bonusDirect",
   "penalite",
   "penaliteDirecte",
+  "banqueDebut",
   "banque",
 ]);
 const EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY = "vladis_payroll_extras_details_collapsed_v1";
@@ -16526,10 +16528,30 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           </td>
                           <td
                             className={`relative ${
+                              bureauOrControl ? "py-2 px-2 text-center text-stone-300" : "py-2 px-2 text-center text-stone-500 cursor-help"
+                            }`}
+                            title={
+                              bureauOrControl
+                                ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
+                                : line.banqueAjustementManuel
+                                  ? "Задано вручную через карандашик (заменяет перенос с прошлого месяца) / Forcé manuellement via le crayon (remplace le report du mois précédent)"
+                                  : "Перенесено автоматически с конца прошлого месяца / Reporté automatiquement depuis la fin du mois précédent"
+                            }
+                          >
+                            {!bureauOrControl && (
+                              <BanqueAdjustButton
+                                value={line.banqueAjustementManuel}
+                                onChange={(v) => updateInput(e.id, "banqueAjustementManuel", v)}
+                              />
+                            )}
+                            {bureauOrControl ? "—" : `${(c?.banqueQualiteDebut ?? 0).toFixed(2)} €`}
+                          </td>
+                          <td
+                            className={
                               bureauOrControl
                                 ? "py-2 px-2 text-center text-stone-300"
                                 : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                            }`}
+                            }
                             title={
                               bureauOrControl
                                 ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
@@ -16541,12 +16563,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                                   )
                             }
                           >
-                            {!bureauOrControl && (
-                              <BanqueAdjustButton
-                                value={line.banqueAjustementManuel}
-                                onChange={(v) => updateInput(e.id, "banqueAjustementManuel", v)}
-                              />
-                            )}
                             {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
                           </td>
                         </>
