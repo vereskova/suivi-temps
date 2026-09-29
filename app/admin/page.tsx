@@ -15197,6 +15197,34 @@ const EXTRAS_COLOR_BANK2_HEADER = "#FC847A"; // Бонус qualité
 const EXTRAS_COLOR_WEEKEND = "#FFFF0B"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil, sur toute la hauteur de la colonne
 const EXTRAS_COLOR_HORS_EMPLOI = "#E7E5E4"; // jour hors période d'emploi (avant l'embauche / après la sortie)
 
+/** Les 16 colonnes "primes" après les jours du mois — définition + valeurs
+ *  par défaut (celles déjà en dur avant le mode édition). L'utilisatrice
+ *  peut ensuite personnaliser largeur/police/couleurs elle-même (voir
+ *  ExtrasColStyle plus bas) sans repasser par du code à chaque fois. */
+type ExtrasColStyle = { width: number; fontSize: number; color: string; bg: string };
+type ExtrasColDef = { key: string; lines: string[]; title: string; defaultStyle: ExtrasColStyle };
+
+const EXTRAS_COL_DEFS: ExtrasColDef[] = [
+  { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 74, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "penalite", lines: ["Штраф €"], title: "Штраф € / Штраф €", defaultStyle: { width: 84, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
+  { key: "conges", lines: ["Congés", "payés €"], title: "Congés payés € / Отпускные €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "vacanceJ", lines: ["Vacance", "j"], title: "Vacance jours / Отпуск дн", defaultStyle: { width: 62, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "vacancePay", lines: ["Vacance", "pay €"], title: "Vacance pay € / Оплата отпуска €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "km", lines: ["Km"], title: "Km / Км", defaultStyle: { width: 62, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "peage", lines: ["Péage €"], title: "Péage € / Дорога €", defaultStyle: { width: 70, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "kmCost", lines: ["Km", "cost €"], title: "Km cost € / Стоимость км €", defaultStyle: { width: 80, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "ctrl1", lines: ["Ctrl", "1"], title: "Contrôle 1 / Контроль 1", defaultStyle: { width: 60, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "ctrl2", lines: ["Ctrl", "2"], title: "Contrôle 2 / Контроль 2", defaultStyle: { width: 60, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "ctrl3", lines: ["Ctrl", "3"], title: "Contrôle 3 / Контроль 3", defaultStyle: { width: 60, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "banque", lines: ["БАНК", "qualité €"], title: "БАНК qualité € / БАНК качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
+  { key: "bonusQual", lines: ["Bonus", "qualité €"], title: "Bonus qualité € / Бонус качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK2_HEADER } },
+  { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 85, fontSize: 11, color: "#44403c", bg: "" } },
+];
+
+const EXTRAS_COL_STYLES_STORAGE_KEY = "vladis_payroll_extras_col_styles_v1";
+
 /** Codes courts affichés dans la case (20px de large) — le libellé complet reste dans le title au survol. */
 function absenceShortCode(code: string): string {
   switch (code) {
@@ -15243,6 +15271,51 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   >({});
   const [dayColumns, setDayColumns] = useState<string[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<{ id: string; code: string; label: string }[]>([]);
+
+  // Personnalisation des colonnes (largeur/police/couleurs) — un réglage par
+  // navigateur, jamais par code : lu/écrit dans localStorage seulement, rien
+  // en base (préférence d'affichage personnelle, pas une donnée métier).
+  const [colStyles, setColStyles] = useState<Record<string, Partial<ExtrasColStyle>>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem(EXTRAS_COL_STYLES_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {}; // localStorage indisponible (navigation privée, etc.) — reste aux valeurs par défaut.
+    }
+  });
+  const [editMode, setEditMode] = useState(false);
+  const [editingColKey, setEditingColKey] = useState<string | null>(null);
+
+  function updateColStyle(key: string, patch: Partial<ExtrasColStyle>) {
+    setColStyles((prev) => {
+      const next = { ...prev, [key]: { ...prev[key], ...patch } };
+      try {
+        window.localStorage.setItem(EXTRAS_COL_STYLES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // tant pis, la session en cours a quand même le nouveau style
+      }
+      return next;
+    });
+  }
+
+  function resetColStyle(key: string) {
+    setColStyles((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      try {
+        window.localStorage.setItem(EXTRAS_COL_STYLES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
+
+  function extrasColStyle(key: string): ExtrasColStyle {
+    const def = EXTRAS_COL_DEFS.find((d) => d.key === key)!;
+    return { ...def.defaultStyle, ...colStyles[key] };
+  }
 
   useEffect(() => {
     async function load() {
@@ -15550,29 +15623,36 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
       ) : (
         <div className="card overflow-x-auto">
-          <table className="text-sm border-separate" style={{ borderSpacing: 0, tableLayout: "fixed", width: `${1366 + dayColumns.length * 20}px` }}>
+          <div className="flex items-center justify-end mb-2">
+            <button
+              className={`btn text-xs px-2.5 py-1.5 ${editMode ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => {
+                setEditMode((v) => !v);
+                setEditingColKey(null);
+              }}
+              title="Ajuster largeur, police et couleurs des colonnes / Настроить ширину, шрифт и цвета колонок"
+            >
+              <Pencil size={13} />
+              <Bi fr={editMode ? "Terminer l'édition" : "Éditer le tableau"} ru={editMode ? "Готово" : "Редактировать таблицу"} />
+            </button>
+          </div>
+          <table
+            className="text-sm border-separate"
+            style={{
+              borderSpacing: 0,
+              tableLayout: "fixed",
+              width: `${140 + 45 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
+            }}
+          >
             <colgroup>
               <col style={{ width: "140px" }} />
               <col style={{ width: "45px" }} />
               {dayColumns.map((d) => (
                 <col key={d} style={{ width: "20px" }} />
               ))}
-              <col style={{ width: "74px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "84px" }} />
-              <col style={{ width: "84px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "62px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "62px" }} />
-              <col style={{ width: "70px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "60px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "80px" }} />
-              <col style={{ width: "85px" }} />
+              {EXTRAS_COL_DEFS.map((d) => (
+                <col key={d.key} style={{ width: `${extrasColStyle(d.key).width}px` }} />
+              ))}
             </colgroup>
             <thead>
               <tr>
@@ -15607,40 +15687,87 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     </th>
                   );
                 })}
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Ставка €/jour / Ставка €/день">Ставка<br />€/j</th>
-                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Salaire jours € / Оплата за дни €">Salaire<br />jours €</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="BONUS équipe € / Бонус команды €">BONUS<br />équipe €</th>
-                <th
-                  className="py-2 px-1 font-bold text-[11px] leading-tight align-bottom"
-                  title="Штраф € / Штраф €"
-                  style={{ backgroundColor: EXTRAS_COLOR_PENALTY_HEADER, color: "#fff" }}
-                >
-                  Штраф €
-                </th>
-                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Congés payés € / Отпускные €">Congés<br />payés €</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Vacance jours / Отпуск дн">Vacance<br />j</th>
-                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Vacance pay € / Оплата отпуска €">Vacance<br />pay €</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Km / Км">Km</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Péage € / Дорога €">Péage €</th>
-                <th className="py-2 px-1 text-primary-600 text-[11px] leading-tight align-bottom" title="Km cost € / Стоимость км €">Km<br />cost €</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Contrôle 1 / Контроль 1">Ctrl<br />1</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Contrôle 2 / Контроль 2">Ctrl<br />2</th>
-                <th className="py-2 px-1 text-warning-700 text-[11px] leading-tight align-bottom" title="Contrôle 3 / Контроль 3">Ctrl<br />3</th>
-                <th
-                  className="py-2 px-1 font-bold text-[11px] leading-tight align-bottom"
-                  title="БАНК qualité € / БАНК качества €"
-                  style={{ backgroundColor: EXTRAS_COLOR_BANK_HEADER }}
-                >
-                  БАНК<br />qualité €
-                </th>
-                <th
-                  className="py-2 px-1 font-bold text-[11px] leading-tight align-bottom"
-                  title="Bonus qualité € / Бонус качества €"
-                  style={{ backgroundColor: EXTRAS_COLOR_BANK2_HEADER }}
-                >
-                  Bonus<br />qualité €
-                </th>
-                <th className="py-2 px-1 font-bold text-stone-700 text-[11px] leading-tight align-bottom" title="À payer € / К оплате €">À<br />payer €</th>
+                {EXTRAS_COL_DEFS.map((def) => {
+                  const s = extrasColStyle(def.key);
+                  const isEditing = editingColKey === def.key;
+                  return (
+                    <th
+                      key={def.key}
+                      className="relative py-2 px-1 leading-tight align-bottom text-center font-bold"
+                      title={editMode ? undefined : def.title}
+                      style={{ fontSize: s.fontSize, color: s.color || undefined, backgroundColor: s.bg || undefined }}
+                    >
+                      {def.lines.map((line, i) => (
+                        <span key={i} className="block">
+                          {line}
+                        </span>
+                      ))}
+                      {editMode && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingColKey(isEditing ? null : def.key)}
+                          title="Ajuster cette colonne / Настроить эту колонку"
+                          className={`absolute top-0.5 right-0.5 rounded-full p-0.5 ${
+                            isEditing ? "bg-primary-600 text-white" : "bg-white/70 text-stone-500 hover:bg-white"
+                          }`}
+                        >
+                          <Pencil size={9} />
+                        </button>
+                      )}
+                      {isEditing && (
+                        <div
+                          className="absolute z-20 top-full right-0 mt-1 w-48 rounded-xl border border-stone-200 bg-white p-3 shadow-lg text-left text-xs font-normal normal-case"
+                          onClick={(ev) => ev.stopPropagation()}
+                        >
+                          <p className="font-bold mb-2 text-stone-700">{def.title}</p>
+                          <label className="block mb-1.5">
+                            <Bi fr="Largeur (px)" ru="Ширина (px)" />
+                            <input
+                              type="number"
+                              className="input text-xs py-1 px-1.5 w-full mt-0.5"
+                              value={s.width}
+                              onChange={(ev) => updateColStyle(def.key, { width: Number(ev.target.value) || s.width })}
+                            />
+                          </label>
+                          <label className="block mb-1.5">
+                            <Bi fr="Taille police (px)" ru="Размер шрифта (px)" />
+                            <input
+                              type="number"
+                              className="input text-xs py-1 px-1.5 w-full mt-0.5"
+                              value={s.fontSize}
+                              onChange={(ev) => updateColStyle(def.key, { fontSize: Number(ev.target.value) || s.fontSize })}
+                            />
+                          </label>
+                          <label className="block mb-1.5">
+                            <Bi fr="Couleur du texte" ru="Цвет текста" />
+                            <input
+                              type="color"
+                              className="w-full h-7 mt-0.5 rounded border border-stone-200"
+                              value={s.color || "#000000"}
+                              onChange={(ev) => updateColStyle(def.key, { color: ev.target.value })}
+                            />
+                          </label>
+                          <label className="block mb-2">
+                            <Bi fr="Couleur de fond" ru="Цвет фона" />
+                            <input
+                              type="color"
+                              className="w-full h-7 mt-0.5 rounded border border-stone-200"
+                              value={s.bg || "#ffffff"}
+                              onChange={(ev) => updateColStyle(def.key, { bg: ev.target.value })}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="btn btn-secondary text-xs px-2 py-1 w-full"
+                            onClick={() => resetColStyle(def.key)}
+                          >
+                            <Bi fr="Réinitialiser" ru="Сбросить" />
+                          </button>
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
