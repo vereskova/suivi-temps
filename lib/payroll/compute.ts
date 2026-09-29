@@ -193,7 +193,9 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *     taux unique, exactement comme le taux journalier)
  *   Km cost       = km × 0,30 € + péage
  *   Штрафы от контроля = Контроль 1 + 2 + 3
- *   Dépôt banque = MIN(MAX(0, BONUS équipe × 30 %), MAX(0, 3000 − БАНК début))
+ *   Dépôt banque = équipe chantier uniquement (Bureau / Contrôle & Formation
+ *     / sans équipe : toujours 0, tout le BONUS est payé directement) :
+ *     MIN(MAX(0, BONUS équipe × 30 %), MAX(0, 3000 − БАНК début))
  *     — une partie du BONUS d'équipe (jusqu'à 30 %, plafonnée pour que le
  *     БАНК ne dépasse jamais 3000) part dans le БАНК qualité au lieu d'être
  *     payée directement ce mois-ci.
@@ -232,6 +234,8 @@ export type PayrollExtrasInput = {
   banqueQualitePrecedente: number | null;
   /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ — sinon laisser null. */
   banqueAjustementManuel: number | null;
+  /** Le dépôt en БАНК ne concerne que les équipes chantier — Bureau, Contrôle & Formation et "sans équipe" touchent tout leur BONUS équipe directement dans la paie du mois, sans passer par le БАНК qualité. */
+  faitPartieEquipe: boolean;
 };
 
 export type PayrollExtrasResult = {
@@ -255,10 +259,9 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
   const kmCost = Math.round((input.km * KM_RATE + input.peage) * 100) / 100;
   const penalitesControle = input.controle1 + input.controle2 + input.controle3;
   const banqueQualiteDebut = input.banqueAjustementManuel ?? input.banqueQualitePrecedente ?? 0;
-  const banqueDepot = Math.min(
-    Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX),
-    Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut)
-  );
+  const banqueDepot = input.faitPartieEquipe
+    ? Math.min(Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX), Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut))
+    : 0;
   const bonusEquipePaye = input.bonusEquipe - banqueDepot;
   const banqueQualiteFin = Math.max(
     0,

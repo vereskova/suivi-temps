@@ -15490,6 +15490,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         controle3: Number(line.controle3) || 0,
         banqueQualitePrecedente: banquePrecedenteByEmployee[e.id] ?? null,
         banqueAjustementManuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
+        // Même condition que groupPaieEmployees pour byTeam vs noTeam — Bureau,
+        // Contrôle & Formation et chantier "sans équipe" n'ont pas de dépôt banque.
+        faitPartieEquipe: e.category === "chantier" && !!e.team_id && !!e.teams?.name,
       };
       map[e.id] = computePayrollExtras(extrasInput);
     });
