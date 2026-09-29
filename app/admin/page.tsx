@@ -15292,14 +15292,29 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel — indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус — не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) — toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
-  { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "bonusQual", lines: ["Bonus", "qualité €"], title: "Bonus qualité € / Бонус качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK2_HEADER } },
+  { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 85, fontSize: 11, color: "#44403c", bg: "" } },
 ];
 
 const EXTRAS_COL_STYLES_STORAGE_KEY = "vladis_payroll_extras_col_styles_v1";
+
+/** Colonnes repliables ensemble via le bouton "Условие/Детали" (Ставка →
+ *  Congés payés) — Vacance (j) et À payer restent toujours visibles. */
+const EXTRAS_COLLAPSIBLE_KEYS = new Set([
+  "taux",
+  "salaire",
+  "bonus",
+  "bonusDirect",
+  "penalite",
+  "penaliteDirecte",
+  "banque",
+  "bonusQual",
+  "conges",
+]);
+const EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY = "vladis_payroll_extras_details_collapsed_v1";
 
 /** Codes courts affichés dans la case (20px de large) — le libellé complet reste dans le title au survol. */
 function absenceShortCode(code: string): string {
@@ -15420,6 +15435,28 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   // le modèle de la bulle de commentaire "часы работы.numbers" (auteur/date/
   // multi-lignes) — ici sans auteur/historique, juste le texte multi-lignes.
   const [openRaisonFor, setOpenRaisonFor] = useState<string | null>(null);
+  // Replier Ставка → Congés payés d'un coup (demandé par l'utilisatrice,
+  // 29/09/2026) — préférence d'affichage par navigateur, comme colStyles.
+  const [detailsCollapsed, setDetailsCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function toggleDetailsCollapsed() {
+    setDetailsCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        // tant pis, la session en cours a quand même le nouvel état
+      }
+      return next;
+    });
+  }
 
   function updateColStyle(key: string, patch: Partial<ExtrasColStyle>) {
     setColStyles((prev) => {
@@ -15450,6 +15487,11 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
     const def = EXTRAS_COL_DEFS.find((d) => d.key === key)!;
     return { ...def.defaultStyle, ...colStyles[key] };
   }
+
+  const visibleColDefs = useMemo(
+    () => (detailsCollapsed ? EXTRAS_COL_DEFS.filter((d) => !EXTRAS_COLLAPSIBLE_KEYS.has(d.key)) : EXTRAS_COL_DEFS),
+    [detailsCollapsed]
+  );
 
   useEffect(() => {
     async function load() {
@@ -15990,6 +16032,14 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               ))}
             </div>
             <button
+              className={`btn text-xs px-2.5 py-1.5 ${detailsCollapsed ? "btn-primary" : "btn-secondary"}`}
+              onClick={toggleDetailsCollapsed}
+              title="Replier/déplier Ставка → Congés payés / Свернуть/развернуть от Ставка до Congés payés"
+            >
+              {detailsCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+              <Bi fr={detailsCollapsed ? "Déplier" : "Replier"} ru={detailsCollapsed ? "Развернуть" : "Свернуть"} />
+            </button>
+            <button
               className={`btn text-xs px-2.5 py-1.5 ${editMode ? "btn-primary" : "btn-secondary"}`}
               onClick={() => {
                 setEditMode((v) => !v);
@@ -16013,7 +16063,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             style={{
               borderSpacing: 0,
               tableLayout: "fixed",
-              width: `${220 + 60 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
+              width: `${220 + 60 + dayColumns.length * 20 + visibleColDefs.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
             }}
           >
             <colgroup>
@@ -16022,7 +16072,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               {dayColumns.map((d) => (
                 <col key={d} style={{ width: "20px" }} />
               ))}
-              {EXTRAS_COL_DEFS.map((d) => (
+              {visibleColDefs.map((d) => (
                 <col key={d.key} style={{ width: `${extrasColStyle(d.key).width}px` }} />
               ))}
             </colgroup>
@@ -16036,7 +16086,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 >
                   {monthLabel}
                 </th>
-                <th colSpan={11} />
+                <th colSpan={visibleColDefs.length} />
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
@@ -16057,7 +16107,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     </th>
                   );
                 })}
-                {EXTRAS_COL_DEFS.map((def, i) => {
+                {visibleColDefs.map((def, i) => {
                   const s = extrasColStyle(def.key);
                   const isEditing = editingColKey === def.key;
                   return (
@@ -16161,7 +16211,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                   <Fragment key={e.id}>
                     {showGroupHeader && (
                       <tr>
-                        <td colSpan={13 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                        <td colSpan={2 + dayColumns.length + visibleColDefs.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
                           {row.groupLabel}
                         </td>
                       </tr>
@@ -16242,113 +16292,155 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           </td>
                         );
                       })}
-                      <td className="py-2 pl-3 pr-2">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.tauxJournalier}
-                          onChange={(ev) => updateInput(e.id, "tauxJournalier", ev.target.value)}
-                        />
-                      </td>
-                      <td
-                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        title={
-                          faitPartieEquipe
-                            ? extrasTooltip(
-                                "Salaire jours",
-                                `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф positif(${Math.max(0, Number(line.penaliteMontant) || 0)}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (Штраф контроль négatif va au БАНК 3000, pas ici)`,
-                                "Оплата за дни",
-                                `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + положительный Штраф(${Math.max(0, Number(line.penaliteMontant) || 0)}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (отрицательный Штраф контроль уходит в БАНК 3000, не сюда)`
-                              )
-                            : extrasTooltip(
-                                "Salaire jours",
-                                `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`,
-                                "Оплата за дни",
-                                `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`
-                              )
-                        }
-                      >
-                        {(c?.salaireJours ?? 0).toFixed(2)} €
-                      </td>
-                      <td className="py-2 pr-2">
-                        <div className="relative">
-                          <input
-                            type="number"
-                            placeholder={bureauOrControl ? "—" : undefined}
-                            className={`input w-full px-1.5 py-1.5 text-xs ${
-                              bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
-                            }`}
-                            value={line.bonusEquipe}
-                            onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
+                      {!detailsCollapsed && (
+                        <>
+                          <td className="py-2 pl-3 pr-2">
+                            <input
+                              type="number"
+                              className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                              value={line.tauxJournalier}
+                              onChange={(ev) => updateInput(e.id, "tauxJournalier", ev.target.value)}
+                            />
+                          </td>
+                          <td
+                            className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                             title={
-                              bureauOrControl
-                                ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de BONUS équipe (cas rare : reste saisissable) / Не применимо — у Bureau / Contrôle & Formation нет BONUS équipe (редкий случай: поле всё ещё доступно)"
+                              faitPartieEquipe
+                                ? extrasTooltip(
+                                    "Salaire jours",
+                                    `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф positif(${Math.max(0, Number(line.penaliteMontant) || 0)}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (Штраф контроль négatif va au БАНК 3000, pas ici)`,
+                                    "Оплата за дни",
+                                    `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + положительный Штраф(${Math.max(0, Number(line.penaliteMontant) || 0)}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€ (отрицательный Штраф контроль уходит в БАНК 3000, не сюда)`
+                                  )
                                 : extrasTooltip(
-                                    "Bonus équipe",
-                                    `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
-                                    "Бонус команды",
-                                    `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
+                                    "Salaire jours",
+                                    `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`,
+                                    "Оплата за дни",
+                                    `${jours}дн × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) + Штраф прочее(${Number(line.penaliteDirecteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`
                                   )
                             }
-                          />
-                          {raisonButton(e.id, "bonusRaison", line.bonusRaison, "Raison du BONUS", "Причина бонуса", "bg-success-500 text-white")}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-2">
-                        <div className="relative">
-                          <input
-                            type="number"
-                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                            value={line.bonusDirectMontant}
-                            onChange={(ev) => updateInput(e.id, "bonusDirectMontant", ev.target.value)}
-                            title="Bonus ponctuel, indépendant du BONUS équipe/БАНК 3000 — disponible pour tout employé, notamment Bureau/Contrôle & Formation / Разовый бонус, не связан с BONUS équipe/БАНК 3000 — доступен любому сотруднику, в т.ч. Bureau/Contrôle & Formation"
-                          />
-                          {raisonButton(e.id, "bonusDirectRaison", line.bonusDirectRaison, "Raison du Bonus (прочее)", "Причина бонуса (прочее)", "bg-success-500 text-white")}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-2">
-                        <div className="relative">
-                          <input
-                            type="number"
-                            placeholder={bureauOrControl ? "—" : undefined}
-                            className={`input w-full px-1.5 py-1.5 text-xs ${
-                              bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
-                            }`}
-                            value={line.penaliteMontant}
-                            onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
+                          >
+                            {(c?.salaireJours ?? 0).toFixed(2)} €
+                          </td>
+                          <td className="py-2 pr-2">
+                            <div className="relative">
+                              <input
+                                type="number"
+                                placeholder={bureauOrControl ? "—" : undefined}
+                                className={`input w-full px-1.5 py-1.5 text-xs ${
+                                  bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
+                                }`}
+                                value={line.bonusEquipe}
+                                onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
+                                title={
+                                  bureauOrControl
+                                    ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de BONUS équipe (cas rare : reste saisissable) / Не применимо — у Bureau / Contrôle & Formation нет BONUS équipe (редкий случай: поле всё ещё доступно)"
+                                    : extrasTooltip(
+                                        "Bonus équipe",
+                                        `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
+                                        "Бонус команды",
+                                        `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
+                                      )
+                                }
+                              />
+                              {raisonButton(e.id, "bonusRaison", line.bonusRaison, "Raison du BONUS", "Причина бонуса", "bg-success-500 text-white")}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-2">
+                            <div className="relative">
+                              <input
+                                type="number"
+                                className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                                value={line.bonusDirectMontant}
+                                onChange={(ev) => updateInput(e.id, "bonusDirectMontant", ev.target.value)}
+                                title="Bonus ponctuel, indépendant du BONUS équipe/БАНК 3000 — disponible pour tout employé, notamment Bureau/Contrôle & Formation / Разовый бонус, не связан с BONUS équipe/БАНК 3000 — доступен любому сотруднику, в т.ч. Bureau/Contrôle & Formation"
+                              />
+                              {raisonButton(e.id, "bonusDirectRaison", line.bonusDirectRaison, "Raison du Bonus (прочее)", "Причина бонуса (прочее)", "bg-success-500 text-white")}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-2">
+                            <div className="relative">
+                              <input
+                                type="number"
+                                placeholder={bureauOrControl ? "—" : undefined}
+                                className={`input w-full px-1.5 py-1.5 text-xs ${
+                                  bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
+                                }`}
+                                value={line.penaliteMontant}
+                                onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
+                                title={
+                                  bureauOrControl
+                                    ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de contrôle qualité chantier (cas rare : reste saisissable, ajustement direct de paie) / Не применимо — у Bureau / Contrôle & Formation нет контроля качества на объекте (редкий случай: поле всё ещё доступно, сразу влияет на зп)"
+                                    : faitPartieEquipe
+                                      ? "Équipe : négatif = pénalité déduite du БАНК 3000 ; positif = ajustement direct de paie / В команде: отрицательное — штраф из БАНК 3000; положительное — сразу в зп"
+                                      : "Hors équipe : ajustement direct de paie, pas de БАНК 3000 / Вне команды: сразу влияет на зп, БАНК 3000 не участвует"
+                                }
+                              />
+                              {raisonButton(e.id, "penaliteRaison", line.penaliteRaison, "Raison du Штраф", "Причина штрафа", "bg-warning-500 text-white")}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-2">
+                            <div className="relative">
+                              <input
+                                type="number"
+                                className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                                value={line.penaliteDirecteMontant}
+                                onChange={(ev) => updateInput(e.id, "penaliteDirecteMontant", ev.target.value)}
+                                title="Amende directe (excès de vitesse, casse de matériel…) — toujours retirée directement de la paie, pour tout employé, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, для любого сотрудника, БАНК 3000 не участвует"
+                              />
+                              {raisonButton(e.id, "penaliteDirecteRaison", line.penaliteDirecteRaison, "Raison du Штраф (прочее)", "Причина штрафа (прочее)", "bg-warning-500 text-white")}
+                            </div>
+                          </td>
+                          <td
+                            className={
+                              bureauOrControl
+                                ? "py-2 px-2 text-center text-stone-300"
+                                : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                            }
                             title={
                               bureauOrControl
-                                ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de contrôle qualité chantier (cas rare : reste saisissable, ajustement direct de paie) / Не применимо — у Bureau / Contrôle & Formation нет контроля качества на объекте (редкий случай: поле всё ещё доступно, сразу влияет на зп)"
-                                : faitPartieEquipe
-                                  ? "Équipe : négatif = pénalité déduite du БАНК 3000 ; positif = ajustement direct de paie / В команде: отрицательное — штраф из БАНК 3000; положительное — сразу в зп"
-                                  : "Hors équipe : ajustement direct de paie, pas de БАНК 3000 / Вне команды: сразу влияет на зп, БАНК 3000 не участвует"
+                                ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
+                                : extrasTooltip(
+                                    "БАНК 3000",
+                                    `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
+                                    "БАНК 3000",
+                                    `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
+                                  )
                             }
-                          />
-                          {raisonButton(e.id, "penaliteRaison", line.penaliteRaison, "Raison du Штраф", "Причина штрафа", "bg-warning-500 text-white")}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-2">
-                        <div className="relative">
-                          <input
-                            type="number"
-                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                            value={line.penaliteDirecteMontant}
-                            onChange={(ev) => updateInput(e.id, "penaliteDirecteMontant", ev.target.value)}
-                            title="Amende directe (excès de vitesse, casse de matériel…) — toujours retirée directement de la paie, pour tout employé, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, для любого сотрудника, БАНК 3000 не участвует"
-                          />
-                          {raisonButton(e.id, "penaliteDirecteRaison", line.penaliteDirecteRaison, "Raison du Штраф (прочее)", "Причина штрафа (прочее)", "bg-warning-500 text-white")}
-                        </div>
-                      </td>
-                      <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          title="Jours de congés payés accumulés, saisis depuis le bulletin de paie / Дней отпускных, из билютеня, вручную"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.congesJours}
-                          onChange={(ev) => updateInput(e.id, "congesJours", ev.target.value)}
-                        />
-                      </td>
-                      <td className="py-2 pr-2">
+                          >
+                            {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
+                          </td>
+                          <td
+                            className={
+                              bureauOrControl
+                                ? "py-2 px-2 text-center text-stone-300"
+                                : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                            }
+                            title={
+                              bureauOrControl
+                                ? "Non applicable — pas de Bonus qualité pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет Bonus qualité"
+                                : extrasTooltip(
+                                    "Bonus qualité",
+                                    `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
+                                    "Бонус качества",
+                                    `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`
+                                  )
+                            }
+                          >
+                            {bureauOrControl ? "—" : `${(c?.bonusQualite ?? 0).toFixed(2)} €`}
+                          </td>
+                          <td className="py-2 pr-2">
+                            <input
+                              type="number"
+                              title="Jours de congés payés accumulés, saisis depuis le bulletin de paie / Дней отпускных, из билютеня, вручную"
+                              className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                              value={line.congesJours}
+                              onChange={(ev) => updateInput(e.id, "congesJours", ev.target.value)}
+                            />
+                          </td>
+                        </>
+                      )}
+                      <td className={detailsCollapsed ? "py-2 pl-3 pr-2 border-l-2 border-l-stone-200" : "py-2 pr-2"}>
                         <input
                           type="number"
                           title="Jours de vacance, saisis à la main / Дней вакансов, вручную"
@@ -16356,44 +16448,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           value={line.vacanceJours}
                           onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
                         />
-                      </td>
-                      <td
-                        className={
-                          bureauOrControl
-                            ? "py-2 px-2 text-center text-stone-300"
-                            : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        }
-                        title={
-                          bureauOrControl
-                            ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
-                            : extrasTooltip(
-                                "БАНК 3000",
-                                `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
-                                "БАНК 3000",
-                                `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
-                              )
-                        }
-                      >
-                        {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
-                      </td>
-                      <td
-                        className={
-                          bureauOrControl
-                            ? "py-2 px-2 text-center text-stone-300"
-                            : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                        }
-                        title={
-                          bureauOrControl
-                            ? "Non applicable — pas de Bonus qualité pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет Bonus qualité"
-                            : extrasTooltip(
-                                "Bonus qualité",
-                                `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
-                                "Бонус качества",
-                                `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`
-                              )
-                        }
-                      >
-                        {bureauOrControl ? "—" : `${(c?.bonusQualite ?? 0).toFixed(2)} €`}
                       </td>
                       <td
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
@@ -16412,7 +16466,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={13 + dayColumns.length} className="py-6 text-center text-stone-400">
+                  <td colSpan={2 + dayColumns.length + visibleColDefs.length} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
