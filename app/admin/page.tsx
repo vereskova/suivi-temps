@@ -13591,7 +13591,7 @@ function PaieEmployeeName({
   );
 }
 
-const RAISON_POPOVER_WIDTH = 224; // w-56
+const RAISON_POPOVER_WIDTH = 380;
 
 /** Bulle de commentaire multi-lignes ancrée sous son bouton déclencheur, en
  *  portail vers document.body (position: fixed, calculée depuis le bouton).
@@ -13650,7 +13650,7 @@ function RaisonButton({
               </p>
               <textarea
                 autoFocus
-                rows={3}
+                rows={8}
                 className="input w-full text-xs px-2 py-1.5 resize-y bg-white"
                 value={value}
                 onChange={(ev) => onChange(ev.target.value)}
