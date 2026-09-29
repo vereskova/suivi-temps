@@ -15823,12 +15823,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             style={{
               borderSpacing: 0,
               tableLayout: "fixed",
-              width: `${170 + 45 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
+              width: `${170 + 60 + dayColumns.length * 20 + EXTRAS_COL_DEFS.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
             }}
           >
             <colgroup>
               <col style={{ width: "170px" }} />
-              <col style={{ width: "45px" }} />
+              <col style={{ width: "60px" }} />
               {dayColumns.map((d) => (
                 <col key={d} style={{ width: "20px" }} />
               ))}
