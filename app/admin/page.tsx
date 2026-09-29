@@ -15675,11 +15675,10 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
-                <th className="py-2 pr-2 text-stone-500 border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
+                <th className="py-2 pr-2 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
                   const isWeekend = dow === 0 || dow === 6;
-                  const isMonday = dow === 1;
                   return (
                     <th
                       key={d}
@@ -15687,7 +15686,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       className="text-center text-[10px] font-normal border-r border-stone-200"
                       style={{
                         backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
-                        boxShadow: isMonday ? "inset 2px 0 0 0 #a8a29e" : undefined,
                       }}
                     >
                       {Number(d.slice(8, 10))}
@@ -15800,7 +15798,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       <td className="py-2 pr-4 font-semibold truncate" title={employeeName(e)}>
                         <PaieEmployeeName employee={e} />
                       </td>
-                      <td className="py-2 pr-2 text-stone-500 border-r-2 border-stone-200">{jours}</td>
+                      <td className="py-2 pr-2 text-stone-500 text-center border-r-2 border-stone-200">{jours}</td>
                       {dayColumns.map((d) => {
                         const outsideEmployment = (e.hire_date && d < e.hire_date) || (e.end_date && d > e.end_date);
                         if (outsideEmployment) {
@@ -15821,14 +15819,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         const selectValue = worked ? "present" : absenceCode ? `abs:${absenceCode}` : "absent";
                         const dow = new Date(d + "T00:00:00Z").getUTCDay();
                         const isWeekend = dow === 0 || dow === 6;
-                        const isMonday = dow === 1;
                         return (
                           <td
                             key={d}
                             className="text-center p-0 border-r border-stone-200"
                             style={{
                               backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
-                              boxShadow: isMonday ? "inset 2px 0 0 0 #a8a29e" : undefined,
                             }}
                           >
                             <select
