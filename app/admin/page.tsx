@@ -15468,7 +15468,6 @@ const QUALITY_BANK_CONTROLLER_EMPLOYEE_ID = "878a6357-4f00-4571-8fee-5b5081716dc
  *  CDI VLADIS, voir dashIsStagiaire — pas les 30 jours du badge "Essai",
  *  qui est une approximation d'affichage différente). */
 const NEW_HIRE_RATE_CUTOFF = "2026-09-28";
-const PROBATION_RATE = 81;
 const STANDARD_RATE = 90;
 const CHEF_RATE_NO_FRENCH = 105;
 const CHEF_RATE_FRENCH = 115;
@@ -15778,23 +15777,30 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   // celle d'essai (81) — signale qu'il faut passer à 90/105/115. Disparaît
   // tout seul dès que la Ставка est changée, pas besoin de "confirmer" à part.
   const rateReviewCandidates = useMemo(() => {
-    const todayIso = today();
+    // Comparé à la fin du mois AFFICHÉ, pas à la date réelle du jour — sinon
+    // naviguer vers un mois futur (ex. novembre, alors qu'on est en
+    // septembre) ne montrait jamais l'alerte alors que l'essai y sera déjà
+    // terminé (confirmé avec l'utilisatrice, 29/09/2026).
+    const { end: monthEnd } = monthRange(year, month);
     return employees
       .filter((e) => {
         if (isFopContractor(e)) return false;
         if (e.category !== "chantier" || !e.hire_date) return false;
         if (e.hire_date < NEW_HIRE_RATE_CUTOFF) return false;
         const trialEnd = addMonthsIso(e.hire_date, 2);
-        if (trialEnd > todayIso) return false;
+        if (trialEnd > monthEnd) return false;
+        // Pas encore graduée (81, vide, ou n'importe quelle autre valeur non
+        // conforme aux paliers) — pas seulement "toujours 81 pile", au cas
+        // où le mois affiché n'a jamais été saisi/enregistré du tout.
         const currentRate = Number(inputs[e.id]?.tauxJournalier) || 0;
-        return currentRate === PROBATION_RATE;
+        return currentRate !== STANDARD_RATE && currentRate !== CHEF_RATE_NO_FRENCH && currentRate !== CHEF_RATE_FRENCH;
       })
       .map((e) => ({
         employee: e,
         trialEnd: addMonthsIso(e.hire_date!, 2),
         isChef: !!e.team_id && e.teams?.chef_employee_id === e.id,
       }));
-  }, [employees, inputs]);
+  }, [employees, inputs, year, month]);
 
   async function save() {
     if (!runId) return;
