@@ -15155,6 +15155,7 @@ type ExtrasLineInput = {
   penaliteMontant: string;
   penaliteRaison: string;
   vacanceJours: string;
+  vacanceTauxJournalier: string;
   km: string;
   peage: string;
   controle1: string;
@@ -15169,6 +15170,7 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   penaliteMontant: "",
   penaliteRaison: "",
   vacanceJours: "",
+  vacanceTauxJournalier: "",
   km: "",
   peage: "",
   controle1: "",
@@ -15299,16 +15301,20 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
       const prevDate = new Date(Date.UTC(year, month - 2, 1));
       const prevMonthIso = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}-01`;
       const { data: prevRun } = await supabase.from("payroll_runs").select("id").eq("month", prevMonthIso).maybeSingle();
-      const prevByEmployee = new Map<string, { banque_qualite_fin: number; taux_journalier: number }>();
+      const prevByEmployee = new Map<
+        string,
+        { banque_qualite_fin: number; taux_journalier: number; vacance_taux_journalier: number }
+      >();
       if (prevRun?.id) {
         const { data: prevLines } = await supabase
           .from("payroll_extras")
-          .select("employee_id, banque_qualite_fin, taux_journalier")
+          .select("employee_id, banque_qualite_fin, taux_journalier, vacance_taux_journalier")
           .eq("run_id", prevRun.id);
         (prevLines ?? []).forEach((l) =>
           prevByEmployee.set(l.employee_id, {
             banque_qualite_fin: Number(l.banque_qualite_fin) || 0,
             taux_journalier: Number(l.taux_journalier) || 0,
+            vacance_taux_journalier: Number(l.vacance_taux_journalier) || 0,
           })
         );
       }
@@ -15329,6 +15335,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
             penaliteRaison: l?.penalite_raison ?? "",
             vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
+            vacanceTauxJournalier: l
+              ? String(l.vacance_taux_journalier ?? 55)
+              : String(prev?.vacance_taux_journalier || 55),
             km: l?.km ? String(l.km) : "",
             peage: l?.peage ? String(l.peage) : "",
             controle1: l?.controle_1 ? String(l.controle_1) : "",
@@ -15359,6 +15368,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         bonusEquipe: Number(line.bonusEquipe) || 0,
         penaliteMontant: Number(line.penaliteMontant) || 0,
         vacanceJours: Number(line.vacanceJours) || 0,
+        vacanceTauxJournalier: Number(line.vacanceTauxJournalier) || 55,
         km: Number(line.km) || 0,
         peage: Number(line.peage) || 0,
         controle1: Number(line.controle1) || 0,
@@ -15392,6 +15402,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           penalite_montant: Number(line.penaliteMontant) || 0,
           penalite_raison: line.penaliteRaison || null,
           vacance_jours: Number(line.vacanceJours) || 0,
+          vacance_taux_journalier: Number(line.vacanceTauxJournalier) || 55,
           km: Number(line.km) || 0,
           peage: Number(line.peage) || 0,
           controle_1: Number(line.controle1) || 0,
@@ -15725,6 +15736,12 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.bonusEquipe}
                           onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
+                          title={extrasTooltip(
+                            "Bonus équipe",
+                            `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
+                            "Бонус команды",
+                            `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
+                          )}
                         />
                       </td>
                       <td className="py-2 pr-2">
@@ -15769,20 +15786,31 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         {(c?.congesPayes ?? 0).toFixed(2)} €
                       </td>
                       <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.vacanceJours}
-                          onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
-                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            title="Jours de vacance / Дней отпуска"
+                            className="input bg-warning-50/60 w-14 px-1.5 py-1.5 text-xs"
+                            value={line.vacanceJours}
+                            onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
+                          />
+                          <span className="text-stone-300 text-xs">×</span>
+                          <input
+                            type="number"
+                            title="Taux par jour de vacance, propre à ce salarié / Ставка за день отпуска, у каждого своя"
+                            className="input bg-warning-50/60 w-14 px-1.5 py-1.5 text-xs"
+                            value={line.vacanceTauxJournalier}
+                            onChange={(ev) => updateInput(e.id, "vacanceTauxJournalier", ev.target.value)}
+                          />
+                        </div>
                       </td>
                       <td
                         className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "Vacance pay",
-                          `${Number(line.vacanceJours) || 0}j × 55€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`,
+                          `${Number(line.vacanceJours) || 0}j × ${Number(line.vacanceTauxJournalier) || 55}€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`,
                           "Оплата отпуска",
-                          `${Number(line.vacanceJours) || 0}дн × 55€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`
+                          `${Number(line.vacanceJours) || 0}дн × ${Number(line.vacanceTauxJournalier) || 55}€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`
                         )}
                       >
                         {(c?.vacancePay ?? 0).toFixed(2)} €
@@ -15842,9 +15870,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "БАНК qualité",
-                          `max(0, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
+                          `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
                           "БАНК качества",
-                          `макс(0, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
+                          `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
                         )}
                       >
                         {(c?.banqueQualiteFin ?? 0).toFixed(2)} €

@@ -180,30 +180,40 @@ export function computeNightPremium(heuresNuit: number, classification: string |
 }
 
 /**
- * Port de "часы работы.numbers" — logique confirmée avec l'utilisatrice sur
- * le mois d'août 2026 (le mois de référence considéré fiable) :
+ * Port de "часы работы.numbers" — logique reconfirmée sur septembre 2026
+ * (août avait masqué deux points : vacance_taux_journalier et le dépôt en
+ * banque ci-dessous, tous deux invisibles quand ils valent 0/vide) :
  *
  *   Ставка за дни = Jours × Ставка + Штраф        (Штраф est un montant
  *     signé — positif = ajustement, négatif = pénalité, comme dans la
  *     feuille d'origine ; jamais une pénalité "positive" implicite)
  *   Congés payés  = Jours × 9,9 %
- *   Vacance pay   = jours de vacances × 55 €
+ *   Vacance pay   = jours de vacances × taux de vacance PROPRE au salarié
+ *     (55 à 120 €/jour selon la personne dans la feuille d'origine — pas un
+ *     taux unique, exactement comme le taux journalier)
  *   Km cost       = km × 0,30 € + péage
  *   Штрафы от контроля = Контроль 1 + 2 + 3
- *   БАНК qualité (fin de mois) = MAX(0, БАНК qualité début − Штрафы от контроля)
+ *   Dépôt banque = MIN(MAX(0, BONUS équipe × 30 %), MAX(0, 3000 − БАНК début))
+ *     — une partie du BONUS d'équipe (jusqu'à 30 %, plafonnée pour que le
+ *     БАНК ne dépasse jamais 3000) part dans le БАНК qualité au lieu d'être
+ *     payée directement ce mois-ci.
+ *   Bonus équipe payé = BONUS équipe − Dépôt banque
+ *   БАНК qualité (fin de mois) = MAX(0, MIN(3000, БАНК début + Dépôt banque) − Штрафы от контроля)
  *     — le "début" reprend automatiquement la fin du mois précédent pour ce
  *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
  *   Bonus qualité = БАНК qualité (fin) × 80 %
- *   À payer (cette table) = Ставка_за_дни + BONUS équipe + Congés payés +
+ *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Congés payés +
  *     Vacance pay + Km cost + Bonus qualité
  *
- * Le BONUS d'équipe lui-même est calculé ailleurs (plusieurs facteurs, pas
- * une formule de cette feuille) — saisi ici tel quel, jamais recalculé.
+ * Le BONUS d'équipe lui-même (avant dépôt banque) est calculé ailleurs
+ * (plusieurs facteurs, pas une formule de cette feuille) — saisi ici tel
+ * quel, jamais recalculé.
  */
 export const CONGES_PAYES_RATE = 0.099;
-export const VACANCE_JOUR_RATE = 55;
 export const KM_RATE = 0.3;
 export const BANQUE_QUALITE_RATE = 0.8;
+export const BANQUE_QUALITE_PLAFOND = 3000;
+export const BANQUE_DEPOT_TAUX = 0.3;
 
 export type PayrollExtrasInput = {
   jours: number;
@@ -211,6 +221,8 @@ export type PayrollExtrasInput = {
   bonusEquipe: number;
   penaliteMontant: number;
   vacanceJours: number;
+  /** Propre à chaque salarié, comme tauxJournalier — pas un taux global (55 à 120 €/jour selon la personne). */
+  vacanceTauxJournalier: number;
   km: number;
   peage: number;
   controle1: number;
@@ -229,6 +241,8 @@ export type PayrollExtrasResult = {
   kmCost: number;
   penalitesControle: number;
   banqueQualiteDebut: number;
+  banqueDepot: number;
+  bonusEquipePaye: number;
   banqueQualiteFin: number;
   bonusQualite: number;
   aPayer: number;
@@ -237,14 +251,22 @@ export type PayrollExtrasResult = {
 export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasResult {
   const salaireJours = input.jours * input.tauxJournalier + input.penaliteMontant;
   const congesPayes = Math.round(input.jours * CONGES_PAYES_RATE * 100) / 100;
-  const vacancePay = Math.round(input.vacanceJours * VACANCE_JOUR_RATE * 100) / 100;
+  const vacancePay = Math.round(input.vacanceJours * input.vacanceTauxJournalier * 100) / 100;
   const kmCost = Math.round((input.km * KM_RATE + input.peage) * 100) / 100;
   const penalitesControle = input.controle1 + input.controle2 + input.controle3;
   const banqueQualiteDebut = input.banqueAjustementManuel ?? input.banqueQualitePrecedente ?? 0;
-  const banqueQualiteFin = Math.max(0, banqueQualiteDebut - penalitesControle);
+  const banqueDepot = Math.min(
+    Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX),
+    Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut)
+  );
+  const bonusEquipePaye = input.bonusEquipe - banqueDepot;
+  const banqueQualiteFin = Math.max(
+    0,
+    Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle
+  );
   const bonusQualite = Math.round(banqueQualiteFin * BANQUE_QUALITE_RATE * 100) / 100;
   const aPayer =
-    Math.round((salaireJours + input.bonusEquipe + congesPayes + vacancePay + kmCost + bonusQualite) * 100) / 100;
+    Math.round((salaireJours + bonusEquipePaye + congesPayes + vacancePay + kmCost + bonusQualite) * 100) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
@@ -253,6 +275,8 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     kmCost,
     penalitesControle,
     banqueQualiteDebut,
+    banqueDepot: Math.round(banqueDepot * 100) / 100,
+    bonusEquipePaye: Math.round(bonusEquipePaye * 100) / 100,
     banqueQualiteFin,
     bonusQualite,
     aPayer,
