@@ -15699,7 +15699,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     <th
                       key={def.key}
                       className={`relative py-2 px-1 leading-tight align-bottom text-center font-bold border-r border-stone-200 ${
-                        i === 0 ? "border-l-2 border-l-stone-200" : ""
+                        i === 0 ? "border-l-2 border-l-stone-200 pl-3" : ""
                       }`}
                       title={editMode ? undefined : def.title}
                       style={{ fontSize: s.fontSize, color: s.color || undefined, backgroundColor: s.bg || undefined }}
@@ -15859,7 +15859,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           </td>
                         );
                       })}
-                      <td className="py-2 pr-2">
+                      <td className="py-2 pl-3 pr-2">
                         <input
                           type="number"
                           className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
