@@ -187,7 +187,14 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  * en simples compteurs de jours saisis à la main depuis le bulletin de paie
  * (la RH ne calcule ni ne verse ces montants — le comptable s'en charge à
  * part) ; Km/Péage ont été retirés (pas utilisés) ; Contrôle 1/2/3 ont été
- * fusionnés dans le seul champ Штраф.
+ * fusionnés dans le seul champ Штраф ; Bonus qualité (БАНК 3000 × 80 %,
+ * versé chaque mois sans jamais réduire le БАНК) a été retiré le 29/09/2026
+ * — c'était un reliquat de la feuille d'origine que l'utilisatrice n'avait
+ * jamais confirmé explicitement, et qu'elle a fini par juger faux en le
+ * voyant appliqué en vrai : "Bonus qualité убрать вовсе". Le БАНК 3000
+ * s'accumule maintenant SANS aucune sortie automatique — seul un ajustement
+ * manuel (banqueAjustementManuel, voir plus bas) peut le faire baisser,
+ * pour une vraie remise en main propre décidée par l'utilisatrice.
  *
  * DEUX banques distinctes, à ne pas confondre :
  *   1. Le БАНК (plafond 3000) ci-dessous — propre à CHAQUE salarié d'équipe,
@@ -241,12 +248,13 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *     БАНК ne dépasse jamais 3000) part dans le БАНК qualité au lieu d'être
  *     payée directement ce mois-ci.
  *   Bonus équipe payé = BONUS équipe − Dépôt banque
- *   БАНК qualité (fin de mois) = MAX(0, MIN(3000, БАНК début + Dépôt banque) − pénalité contrôleur)
+ *   БАНК 3000 (fin de mois) = MAX(0, MIN(3000, БАНК début + Dépôt banque) − pénalité contrôleur)
  *     — le "début" reprend automatiquement la fin du mois précédent pour ce
  *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
- *   Bonus qualité = БАНК qualité (fin) × 80 %
+ *     Pure accumulation, aucune sortie automatique — voir la note en tête de
+ *     fichier.
  *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus direct
- *     + Bonus qualité + part contrôleur + prime Банк качества
+ *     + part contrôleur + prime Банк качества
  *     — Congés payés et Vacance jours sont de simples compteurs de jours,
  *     affichés à titre indicatif, jamais inclus dans ce total (le montant
  *     réel est calculé et versé par la comptabilité, pas ici).
@@ -255,7 +263,6 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  * (plusieurs facteurs, pas une formule de cette feuille) — saisi ici tel
  * quel, jamais recalculé.
  */
-export const BANQUE_QUALITE_RATE = 0.8;
 export const BANQUE_QUALITE_PLAFOND = 3000;
 export const BANQUE_DEPOT_TAUX = 0.3;
 
@@ -289,7 +296,6 @@ export type PayrollExtrasResult = {
   bonusEquipePaye: number;
   bonusDirect: number;
   banqueQualiteFin: number;
-  bonusQualite: number;
   controleBonusRecu: number;
   banqueQualitePrime: number;
   aPayer: number;
@@ -310,14 +316,11 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     0,
     Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle
   );
-  const bonusQualite = Math.round(banqueQualiteFin * BANQUE_QUALITE_RATE * 100) / 100;
   const bonusDirect = Math.round((input.bonusDirect || 0) * 100) / 100;
   const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
   const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
   const aPayer =
-    Math.round(
-      (salaireJours + bonusEquipePaye + bonusDirect + bonusQualite + controleBonusRecu + banqueQualitePrime) * 100
-    ) / 100;
+    Math.round((salaireJours + bonusEquipePaye + bonusDirect + controleBonusRecu + banqueQualitePrime) * 100) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
@@ -327,7 +330,6 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     bonusEquipePaye: Math.round(bonusEquipePaye * 100) / 100,
     bonusDirect,
     banqueQualiteFin,
-    bonusQualite,
     controleBonusRecu,
     banqueQualitePrime,
     aPayer,

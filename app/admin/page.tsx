@@ -15348,7 +15348,6 @@ const EXTRAS_COLOR_MONTH_HEADER = "#F9CAA5"; // en-tête du mois
 const EXTRAS_COLOR_PENALTY_HEADER = "#FF0000"; // Штраф контроль
 const EXTRAS_COLOR_PENALTY_DIRECTE_HEADER = "#EA580C"; // Штраф direct — orange, distinct du rouge du Штраф контроль
 const EXTRAS_COLOR_BANK_HEADER = "#EDFF00"; // БАНК качества
-const EXTRAS_COLOR_BANK2_HEADER = "#FC847A"; // Бонус qualité
 const EXTRAS_COLOR_WEEKEND = "#FFFF0B"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil, sur toute la hauteur de la colonne
 const EXTRAS_COLOR_HORS_EMPLOI = "#E7E5E4"; // jour hors période d'emploi (avant l'embauche / après la sortie)
 
@@ -15367,7 +15366,6 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) — toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
   { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
-  { key: "bonusQual", lines: ["Bonus", "qualité €"], title: "Bonus qualité € / Бонус качества €", defaultStyle: { width: 80, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK2_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 85, fontSize: 11, color: "#44403c", bg: "" } },
@@ -15376,8 +15374,8 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
 const EXTRAS_COL_STYLES_STORAGE_KEY = "vladis_payroll_extras_col_styles_v1";
 
 /** Colonnes repliables ensemble via le bouton "Условие/Детали" (Ставка →
- *  БАНК 3000/Bonus qualité) — Congés payés, Vacance (j) et À payer restent
- *  toujours visibles. */
+ *  БАНК 3000) — Congés payés, Vacance (j) et À payer restent toujours
+ *  visibles. */
 const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "taux",
   "salaire",
@@ -15386,7 +15384,6 @@ const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "penalite",
   "penaliteDirecte",
   "banque",
-  "bonusQual",
 ]);
 const EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY = "vladis_payroll_extras_details_collapsed_v1";
 
@@ -16059,7 +16056,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 "Перенос логики из старой таблицы «часы работы» — но с одной версией правил на все месяцы (в старой таблице формула менялась почти каждый месяц), а Jours берётся из реальных отметок присутствия (Par jour), а не вводится руками.\n\n" +
                 "Ставка за дни = Jours × Ставка + Штраф контроль (для команды: только положительный; отрицательный уходит в БАНК 3000, не сюда — см. подсказку у поля) + Штраф прочее (всегда сразу сюда, для любого сотрудника — превышение скорости, поломка инструментов и т.п., БАНК 3000 не участвует).\n" +
                 "Congés payés и Vacance — просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
-                "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф контроль (отрицательный), не ниже 0 и не выше 3000. Бонус качества = БАНК 3000 × 80% (не уменьшает сам БАНК 3000).\n" +
+                "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф контроль (отрицательный), не ниже 0 и не выше 3000. Просто копится, никакой автоматической выплаты из него нет — только карандашик, чтобы задать/поправить баланс вручную.\n" +
                 "BONUS équipe — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом. Bonus прочее — разовый бонус для любого сотрудника (в т.ч. Bureau/Contrôle & Formation), не связан с BONUS équipe/БАНК 3000.\n\n" +
                 "Итог (Jours) автоматически передаётся в раздел «Paie»."
               }
@@ -16552,25 +16549,6 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                             )}
                             {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
                           </td>
-                          <td
-                            className={
-                              bureauOrControl
-                                ? "py-2 px-2 text-center text-stone-300"
-                                : "py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
-                            }
-                            title={
-                              bureauOrControl
-                                ? "Non applicable — pas de Bonus qualité pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет Bonus qualité"
-                                : extrasTooltip(
-                                    "Bonus qualité",
-                                    `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
-                                    "Бонус качества",
-                                    `БАНК 3000(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`
-                                  )
-                            }
-                          >
-                            {bureauOrControl ? "—" : `${(c?.bonusQualite ?? 0).toFixed(2)} €`}
-                          </td>
                         </>
                       )}
                       <td className={detailsCollapsed ? "py-2 pl-3 pr-2 border-l-2 border-l-stone-200" : "py-2 pr-2"}>
@@ -16595,9 +16573,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
                         title={extrasTooltip(
                           "À payer",
-                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${bureauOrControl ? "" : ` + Bonus qualité(${(c?.bonusQualite ?? 0).toFixed(2)}€)`}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${bureauOrControl ? "" : ` + бонус качества(${(c?.bonusQualite ?? 0).toFixed(2)}€)`}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
