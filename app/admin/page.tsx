@@ -15380,6 +15380,21 @@ const EXTRAS_ABSENCE_LEGEND: { code: string; label: string; labelRu: string; bg:
  *  il y en a plus d'un. */
 const QUALITY_BANK_CONTROLLER_EMPLOYEE_ID = "878a6357-4f00-4571-8fee-5b5081716dc4";
 
+/** Nouveaux tarifs chantier confirmés avec l'utilisatrice le 29/09/2026,
+ *  applicables SEULEMENT aux salariés embauchés à partir de cette date (pas
+ *  de recalcul rétroactif) : 81 €/j (≈1700 €/mois) en période d'essai, 90
+ *  pour un monteur confirmé, 105 pour un chef d'équipe sans français, 115
+ *  avec français — cette dernière distinction n'étant pas stockée en base,
+ *  elle reste à trancher par l'utilisatrice au moment de la notification.
+ *  Période d'essai = 2 mois depuis hire_date (durée réelle des contrats
+ *  CDI VLADIS, voir dashIsStagiaire — pas les 30 jours du badge "Essai",
+ *  qui est une approximation d'affichage différente). */
+const NEW_HIRE_RATE_CUTOFF = "2026-09-28";
+const PROBATION_RATE = 81;
+const STANDARD_RATE = 90;
+const CHEF_RATE_NO_FRENCH = 105;
+const CHEF_RATE_FRENCH = 115;
+
 /** Port de "часы работы.numbers" — même grille visuelle (jours du mois en
  *  colonnes, mêmes couleurs mesurées dans le fichier d'origine) mais avec
  *  un БАНК qualité qui se reporte tout seul d'un mois sur l'autre, et les
@@ -15679,6 +15694,29 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
   const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
   const absenceTypeIdByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.id])), [absenceTypes]);
   const absenceTypeLabelByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.label])), [absenceTypes]);
+
+  // Salariés chantier embauchés depuis le 28/09/2026 dont la période d'essai
+  // (2 mois) est terminée mais dont la Ставка affichée ici est toujours
+  // celle d'essai (81) — signale qu'il faut passer à 90/105/115. Disparaît
+  // tout seul dès que la Ставка est changée, pas besoin de "confirmer" à part.
+  const rateReviewCandidates = useMemo(() => {
+    const todayIso = today();
+    return employees
+      .filter((e) => {
+        if (isFopContractor(e)) return false;
+        if (e.category !== "chantier" || !e.hire_date) return false;
+        if (e.hire_date < NEW_HIRE_RATE_CUTOFF) return false;
+        const trialEnd = addMonthsIso(e.hire_date, 2);
+        if (trialEnd > todayIso) return false;
+        const currentRate = Number(inputs[e.id]?.tauxJournalier) || 0;
+        return currentRate === PROBATION_RATE;
+      })
+      .map((e) => ({
+        employee: e,
+        trialEnd: addMonthsIso(e.hire_date!, 2),
+        isChef: !!e.team_id && e.teams?.chef_employee_id === e.id,
+      }));
+  }, [employees, inputs]);
 
   async function save() {
     if (!runId) return;
@@ -15985,6 +16023,30 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         </div>
         <p className="text-xs text-stone-400 mt-2 capitalize">{monthLabel}</p>
       </div>
+
+      {rateReviewCandidates.length > 0 && (
+        <div className="card mb-4 border-l-4 border-warning-400 bg-warning-50/40">
+          <p className="text-sm font-bold text-warning-700 mb-2">
+            <Bi
+              fr={`Fin de période d'essai — vérifier la Ставка (${rateReviewCandidates.length})`}
+              ru={`Испытательный срок закончился — проверь Ставку (${rateReviewCandidates.length})`}
+            />
+          </p>
+          <ul className="space-y-1 text-xs text-stone-600">
+            {rateReviewCandidates.map(({ employee: rEmp, trialEnd, isChef }) => (
+              <li key={rEmp.id} className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-stone-700">{employeeName(rEmp)}</span>
+                <span className="text-stone-400">Essai / Испыт. до {formatDateShortDMY(trialEnd)}</span>
+                <span>
+                  {isChef
+                    ? `→ Бригадир: ${CHEF_RATE_NO_FRENCH} без франц. / ${CHEF_RATE_FRENCH} с франц.`
+                    : `→ Обычный сотрудник: ${STANDARD_RATE}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {loading ? (
         <div className="card">
