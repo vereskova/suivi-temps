@@ -225,6 +225,14 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  * direct sur la paie, pour TOUT employé (équipe ou non) — ne touche JAMAIS
  * le БАНК 3000 ni le contrôleur/Банк качества.
  *
+ * Bonus direct (nouveau, 29/09/2026, même logique symétrique que Штраф
+ * direct — confirmé avec l'utilisatrice : "BONUS équipe мб сделать
+ * аналогично бонус прочее чтоб он был доступен для именно сотрудников не
+ * команд") — un bonus ponctuel indépendant du BONUS d'équipe/БАНК 3000,
+ * pour TOUT employé (équipe ou non), notamment utile à Bureau / Contrôle &
+ * Formation qui n'ont pas de BONUS équipe. Toujours ajouté tel quel à
+ * l'À payer, jamais de dépôt en БАНК.
+ *
  *   Ставка за дни = Jours × Ставка + (ajustement direct du Штраф контроль, voir ci-dessus) + Штраф direct
  *   Dépôt banque = équipe chantier uniquement (Bureau / Contrôle & Formation
  *     / sans équipe : toujours 0, tout le BONUS est payé directement) :
@@ -237,8 +245,8 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *     — le "début" reprend automatiquement la fin du mois précédent pour ce
  *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
  *   Bonus qualité = БАНК qualité (fin) × 80 %
- *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus qualité
- *     + part contrôleur + prime Банк качества
+ *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus direct
+ *     + Bonus qualité + part contrôleur + prime Банк качества
  *     — Congés payés et Vacance jours sont de simples compteurs de jours,
  *     affichés à titre indicatif, jamais inclus dans ce total (le montant
  *     réel est calculé et versé par la comptabilité, pas ici).
@@ -259,6 +267,8 @@ export type PayrollExtrasInput = {
   penaliteMontant: number;
   /** Montant signé, ajusté directement sur la paie pour TOUT employé — excès de vitesse, casse de matériel, etc. Jamais lié au БАНК 3000 ni au contrôleur/Банк качества, contrairement à penaliteMontant. Voir la note en tête de fichier. */
   penaliteDirecte: number;
+  /** Bonus ponctuel ajouté tel quel à l'À payer pour TOUT employé — indépendant du BONUS équipe/БАНК 3000, notamment pour Bureau/Contrôle & Formation qui n'ont pas de BONUS équipe. Voir la note en tête de fichier. */
+  bonusDirect: number;
   /** Fin de БАНК qualité du mois précédent pour ce même employé, ou null s'il n'y en a pas (premier mois). */
   banqueQualitePrecedente: number | null;
   /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ — sinon laisser null. */
@@ -277,6 +287,7 @@ export type PayrollExtrasResult = {
   banqueQualiteDebut: number;
   banqueDepot: number;
   bonusEquipePaye: number;
+  bonusDirect: number;
   banqueQualiteFin: number;
   bonusQualite: number;
   controleBonusRecu: number;
@@ -300,10 +311,13 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle
   );
   const bonusQualite = Math.round(banqueQualiteFin * BANQUE_QUALITE_RATE * 100) / 100;
+  const bonusDirect = Math.round((input.bonusDirect || 0) * 100) / 100;
   const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
   const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
   const aPayer =
-    Math.round((salaireJours + bonusEquipePaye + bonusQualite + controleBonusRecu + banqueQualitePrime) * 100) / 100;
+    Math.round(
+      (salaireJours + bonusEquipePaye + bonusDirect + bonusQualite + controleBonusRecu + banqueQualitePrime) * 100
+    ) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
@@ -311,6 +325,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     banqueQualiteDebut,
     banqueDepot: Math.round(banqueDepot * 100) / 100,
     bonusEquipePaye: Math.round(bonusEquipePaye * 100) / 100,
+    bonusDirect,
     banqueQualiteFin,
     bonusQualite,
     controleBonusRecu,

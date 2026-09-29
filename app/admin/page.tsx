@@ -15235,6 +15235,8 @@ type ExtrasLineInput = {
   tauxJournalier: string;
   bonusEquipe: string;
   bonusRaison: string;
+  bonusDirectMontant: string;
+  bonusDirectRaison: string;
   penaliteMontant: string;
   penaliteRaison: string;
   penaliteDirecteMontant: string;
@@ -15248,6 +15250,8 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   tauxJournalier: "",
   bonusEquipe: "",
   bonusRaison: "",
+  bonusDirectMontant: "",
+  bonusDirectRaison: "",
   penaliteMontant: "",
   penaliteRaison: "",
   penaliteDirecteMontant: "",
@@ -15285,6 +15289,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 85, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 90, fontSize: 11, color: "#0369a1", bg: "" } },
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel — indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус — не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
   { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) — toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
@@ -15539,6 +15544,8 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
             tauxJournalier: l ? String(l.taux_journalier ?? "") : prev?.taux_journalier ? String(prev.taux_journalier) : "",
             bonusEquipe: l?.bonus_equipe ? String(l.bonus_equipe) : "",
             bonusRaison: l?.bonus_raison ?? "",
+            bonusDirectMontant: l?.bonus_direct ? String(l.bonus_direct) : "",
+            bonusDirectRaison: l?.bonus_direct_raison ?? "",
             penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
             penaliteRaison: l?.penalite_raison ?? "",
             penaliteDirecteMontant: l?.penalite_directe ? String(l.penalite_directe) : "",
@@ -15565,7 +15572,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
    *  positionné qui déborde verticalement de la carte. */
   function raisonButton(
     employeeId: string,
-    field: "bonusRaison" | "penaliteRaison" | "penaliteDirecteRaison",
+    field: "bonusRaison" | "bonusDirectRaison" | "penaliteRaison" | "penaliteDirecteRaison",
     value: string,
     labelFr: string,
     labelRu: string,
@@ -15611,6 +15618,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
         jours: joursByEmployee[e.id] ?? 0,
         tauxJournalier: Number(line.tauxJournalier) || 0,
         bonusEquipe: Number(line.bonusEquipe) || 0,
+        bonusDirect: Number(line.bonusDirectMontant) || 0,
         penaliteMontant: Number(line.penaliteMontant) || 0,
         penaliteDirecte: Number(line.penaliteDirecteMontant) || 0,
         banqueQualitePrecedente: banquePrecedenteByEmployee[e.id] ?? null,
@@ -15645,6 +15653,8 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           taux_journalier: Number(line.tauxJournalier) || 0,
           bonus_equipe: Number(line.bonusEquipe) || 0,
           bonus_raison: line.bonusRaison || null,
+          bonus_direct: Number(line.bonusDirectMontant) || 0,
+          bonus_direct_raison: line.bonusDirectRaison || null,
           penalite_montant: Number(line.penaliteMontant) || 0,
           penalite_raison: line.penaliteRaison || null,
           penalite_directe: Number(line.penaliteDirecteMontant) || 0,
@@ -15896,7 +15906,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 "Ставка за дни = Jours × Ставка + Штраф контроль (для команды: только положительный; отрицательный уходит в БАНК 3000, не сюда — см. подсказку у поля) + Штраф прочее (всегда сразу сюда, для любого сотрудника — превышение скорости, поломка инструментов и т.п., БАНК 3000 не участвует).\n" +
                 "Congés payés и Vacance — просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
                 "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф контроль (отрицательный), не ниже 0 и не выше 3000. Бонус качества = БАНК 3000 × 80% (не уменьшает сам БАНК 3000).\n" +
-                "BONUS — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом.\n\n" +
+                "BONUS équipe — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом. Bonus прочее — разовый бонус для любого сотрудника (в т.ч. Bureau/Contrôle & Formation), не связан с BONUS équipe/БАНК 3000.\n\n" +
                 "Итог (Jours) автоматически передаётся в раздел «Paie»."
               }
             />
@@ -16026,7 +16036,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 >
                   {monthLabel}
                 </th>
-                <th colSpan={10} />
+                <th colSpan={11} />
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
                 <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
@@ -16151,7 +16161,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                   <Fragment key={e.id}>
                     {showGroupHeader && (
                       <tr>
-                        <td colSpan={12 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+                        <td colSpan={13 + dayColumns.length} className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
                           {row.groupLabel}
                         </td>
                       </tr>
@@ -16288,6 +16298,18 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         <div className="relative">
                           <input
                             type="number"
+                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                            value={line.bonusDirectMontant}
+                            onChange={(ev) => updateInput(e.id, "bonusDirectMontant", ev.target.value)}
+                            title="Bonus ponctuel, indépendant du BONUS équipe/БАНК 3000 — disponible pour tout employé, notamment Bureau/Contrôle & Formation / Разовый бонус, не связан с BONUS équipe/БАНК 3000 — доступен любому сотруднику, в т.ч. Bureau/Contrôle & Formation"
+                          />
+                          {raisonButton(e.id, "bonusDirectRaison", line.bonusDirectRaison, "Raison du Bonus (прочее)", "Причина бонуса (прочее)", "bg-success-500 text-white")}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-2">
+                        <div className="relative">
+                          <input
+                            type="number"
                             placeholder={bureauOrControl ? "—" : undefined}
                             className={`input w-full px-1.5 py-1.5 text-xs ${
                               bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
@@ -16377,9 +16399,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
                         title={extrasTooltip(
                           "À payer",
-                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${bureauOrControl ? "" : ` + Bonus qualité(${(c?.bonusQualite ?? 0).toFixed(2)}€)`}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${bureauOrControl ? "" : ` + Bonus qualité(${(c?.bonusQualite ?? 0).toFixed(2)}€)`}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${bureauOrControl ? "" : ` + бонус качества(${(c?.bonusQualite ?? 0).toFixed(2)}€)`}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${bureauOrControl ? "" : ` + бонус качества(${(c?.bonusQualite ?? 0).toFixed(2)}€)`}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
@@ -16390,7 +16412,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={12 + dayColumns.length} className="py-6 text-center text-stone-400">
+                  <td colSpan={13 + dayColumns.length} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
