@@ -15868,7 +15868,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         />
                       </td>
                       <td
-                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "Salaire jours",
                           `${jours}j × ${Number(line.tauxJournalier) || 0}€ + Штраф(${Number(line.penaliteMontant) || 0}€) = ${(c?.salaireJours ?? 0).toFixed(2)}€`,
@@ -15945,7 +15945,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         </div>
                       </td>
                       <td
-                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "Congés payés",
                           `${jours}j × 9,9% = ${(c?.congesPayes ?? 0).toFixed(2)}€`,
@@ -15975,7 +15975,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         </div>
                       </td>
                       <td
-                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "Vacance pay",
                           `${Number(line.vacanceJours) || 0}j × ${Number(line.vacanceTauxJournalier) || 55}€ = ${(c?.vacancePay ?? 0).toFixed(2)}€`,
@@ -16002,7 +16002,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         />
                       </td>
                       <td
-                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "Km cost",
                           `${Number(line.km) || 0}km × 0,30€ + péage(${Number(line.peage) || 0}€) = ${(c?.kmCost ?? 0).toFixed(2)}€`,
@@ -16037,7 +16037,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         />
                       </td>
                       <td
-                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "БАНК qualité",
                           `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
@@ -16048,7 +16048,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         {(c?.banqueQualiteFin ?? 0).toFixed(2)} €
                       </td>
                       <td
-                        className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                        className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                         title={extrasTooltip(
                           "Bonus qualité",
                           `БАНК качества(${(c?.banqueQualiteFin ?? 0).toFixed(2)}€) × 80% = ${(c?.bonusQualite ?? 0).toFixed(2)}€`,
@@ -16058,7 +16058,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       >
                         {(c?.bonusQualite ?? 0).toFixed(2)} €
                       </td>
-                      <td className="py-2 pr-4 font-bold text-stone-700">{(c?.aPayer ?? 0).toFixed(2)} €</td>
+                      <td className="py-2 px-2 text-center font-bold text-stone-700">{(c?.aPayer ?? 0).toFixed(2)} €</td>
                     </tr>
                   </Fragment>
                 );
