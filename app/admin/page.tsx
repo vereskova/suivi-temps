@@ -15302,7 +15302,8 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
 const EXTRAS_COL_STYLES_STORAGE_KEY = "vladis_payroll_extras_col_styles_v1";
 
 /** Colonnes repliables ensemble via le bouton "Условие/Детали" (Ставка →
- *  Congés payés) — Vacance (j) et À payer restent toujours visibles. */
+ *  БАНК 3000/Bonus qualité) — Congés payés, Vacance (j) et À payer restent
+ *  toujours visibles. */
 const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "taux",
   "salaire",
@@ -15312,7 +15313,6 @@ const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "penaliteDirecte",
   "banque",
   "bonusQual",
-  "conges",
 ]);
 const EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY = "vladis_payroll_extras_details_collapsed_v1";
 
@@ -16429,18 +16429,18 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                           >
                             {bureauOrControl ? "—" : `${(c?.bonusQualite ?? 0).toFixed(2)} €`}
                           </td>
-                          <td className="py-2 pr-2">
-                            <input
-                              type="number"
-                              title="Jours de congés payés accumulés, saisis depuis le bulletin de paie / Дней отпускных, из билютеня, вручную"
-                              className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                              value={line.congesJours}
-                              onChange={(ev) => updateInput(e.id, "congesJours", ev.target.value)}
-                            />
-                          </td>
                         </>
                       )}
                       <td className={detailsCollapsed ? "py-2 pl-3 pr-2 border-l-2 border-l-stone-200" : "py-2 pr-2"}>
+                        <input
+                          type="number"
+                          title="Jours de congés payés accumulés, saisis depuis le bulletin de paie / Дней отпускных, из билютеня, вручную"
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                          value={line.congesJours}
+                          onChange={(ev) => updateInput(e.id, "congesJours", ev.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
                         <input
                           type="number"
                           title="Jours de vacance, saisis à la main / Дней вакансов, вручную"
