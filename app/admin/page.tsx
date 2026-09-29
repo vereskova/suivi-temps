@@ -15152,6 +15152,7 @@ function PaieView({
 type ExtrasLineInput = {
   tauxJournalier: string;
   bonusEquipe: string;
+  bonusRaison: string;
   penaliteMontant: string;
   penaliteRaison: string;
   vacanceJours: string;
@@ -15167,6 +15168,7 @@ type ExtrasLineInput = {
 const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   tauxJournalier: "",
   bonusEquipe: "",
+  bonusRaison: "",
   penaliteMontant: "",
   penaliteRaison: "",
   vacanceJours: "",
@@ -15332,6 +15334,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           map[e.id] = {
             tauxJournalier: l ? String(l.taux_journalier ?? "") : prev?.taux_journalier ? String(prev.taux_journalier) : "",
             bonusEquipe: l?.bonus_equipe ? String(l.bonus_equipe) : "",
+            bonusRaison: l?.bonus_raison ?? "",
             penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
             penaliteRaison: l?.penalite_raison ?? "",
             vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
@@ -15399,6 +15402,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
           employee_id: e.id,
           taux_journalier: Number(line.tauxJournalier) || 0,
           bonus_equipe: Number(line.bonusEquipe) || 0,
+          bonus_raison: line.bonusRaison || null,
           penalite_montant: Number(line.penaliteMontant) || 0,
           penalite_raison: line.penaliteRaison || null,
           vacance_jours: Number(line.vacanceJours) || 0,
@@ -15610,21 +15614,29 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                   <Bi fr="Штраф €" ru="Штраф €" />
                 </th>
                 <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Congés payés €" ru="Отпускные €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
-                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Km" ru="Км" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Péage €" ru="Дорога €" /></th>
-                <th className="py-2 pr-2 text-primary-600 truncate"><Bi fr="Km cost €" ru="Стоимость км €" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Contrôle 1" ru="Контроль 1" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Contrôle 2" ru="Контроль 2" /></th>
-                <th className="py-2 pr-2 text-warning-700 truncate"><Bi fr="Contrôle 3" ru="Контроль 3" /></th>
-                <th className="py-2 pr-2 font-bold truncate" style={{ backgroundColor: EXTRAS_COLOR_BANK_HEADER }}>
+                <th className="py-2 pr-2 text-warning-700 truncate" title="Vacance j / Отпуск дн"><Bi fr="Vacance j" ru="Отпуск дн" /></th>
+                <th className="py-2 pr-2 text-primary-600 truncate" title="Vacance pay € / Оплата отпуска €"><Bi fr="Vacance pay €" ru="Оплата отпуска €" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate" title="Km / Км"><Bi fr="Km" ru="Км" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate" title="Péage € / Дорога €"><Bi fr="Péage €" ru="Дорога €" /></th>
+                <th className="py-2 pr-2 text-primary-600 truncate" title="Km cost € / Стоимость км €"><Bi fr="Km cost €" ru="Стоимость км €" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate" title="Contrôle 1 / Контроль 1"><Bi fr="Contrôle 1" ru="Контроль 1" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate" title="Contrôle 2 / Контроль 2"><Bi fr="Contrôle 2" ru="Контроль 2" /></th>
+                <th className="py-2 pr-2 text-warning-700 truncate" title="Contrôle 3 / Контроль 3"><Bi fr="Contrôle 3" ru="Контроль 3" /></th>
+                <th
+                  className="py-2 pr-2 font-bold truncate"
+                  title="БАНК qualité € / БАНК качества €"
+                  style={{ backgroundColor: EXTRAS_COLOR_BANK_HEADER }}
+                >
                   <Bi fr="БАНК qualité €" ru="БАНК качества €" />
                 </th>
-                <th className="py-2 pr-4 font-bold" style={{ backgroundColor: EXTRAS_COLOR_BANK2_HEADER }}>
+                <th
+                  className="py-2 pr-4 font-bold truncate"
+                  title="Bonus qualité € / Бонус качества €"
+                  style={{ backgroundColor: EXTRAS_COLOR_BANK2_HEADER }}
+                >
                   <Bi fr="Bonus qualité €" ru="Бонус качества €" />
                 </th>
-                <th className="py-2 pr-4 font-bold text-stone-700"><Bi fr="À payer €" ru="К оплате €" /></th>
+                <th className="py-2 pr-4 font-bold text-stone-700 truncate" title="À payer € / К оплате €"><Bi fr="À payer €" ru="К оплате €" /></th>
               </tr>
             </thead>
             <tbody>
@@ -15731,18 +15743,40 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                         {(c?.salaireJours ?? 0).toFixed(2)} €
                       </td>
                       <td className="py-2 pr-2">
-                        <input
-                          type="number"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
-                          value={line.bonusEquipe}
-                          onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
-                          title={extrasTooltip(
-                            "Bonus équipe",
-                            `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
-                            "Бонус команды",
-                            `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
-                          )}
-                        />
+                        <div className="relative">
+                          <input
+                            type="number"
+                            className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                            value={line.bonusEquipe}
+                            onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
+                            title={extrasTooltip(
+                              "Bonus équipe",
+                              `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
+                              "Бонус команды",
+                              `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − депозит в банк(${(c?.banqueDepot ?? 0).toFixed(2)}€) = выплачено ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`
+                            )}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const raison = window.prompt(
+                                "Raison du BONUS / Причина бонуса :",
+                                line.bonusRaison
+                              );
+                              if (raison !== null) updateInput(e.id, "bonusRaison", raison);
+                            }}
+                            title={
+                              line.bonusRaison
+                                ? `Причина: ${line.bonusRaison}`
+                                : "Ajouter une raison / Добавить причину"
+                            }
+                            className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${
+                              line.bonusRaison ? "bg-success-500 text-white" : "bg-stone-200 text-stone-500"
+                            }`}
+                          >
+                            <MessageSquare size={10} />
+                          </button>
+                        </div>
                       </td>
                       <td className="py-2 pr-2">
                         <div className="relative">
