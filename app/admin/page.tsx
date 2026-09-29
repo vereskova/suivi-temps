@@ -15817,6 +15817,56 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
     }
   }
 
+  /** Remplit en masse les jours ouvrés (lun-ven) "présent" pour les employés
+   *  donnés — ne touche JAMAIS un jour déjà saisi (présent ou absent), pour
+   *  ne jamais écraser une absence déjà notée. Un seul upsert groupé au lieu
+   *  d'un aller-retour par case — bien plus rapide que cliquer chaque jour
+   *  un par un (demandé par l'utilisatrice, 29/09/2026). */
+  async function fillWeekdaysPresent(targetEmployees: PaieEmployee[]) {
+    const rows: { work_date: string; team_id: string | null; employee_id: string; is_absent: boolean }[] = [];
+    const filledByEmployee: Record<string, string[]> = {};
+    targetEmployees.forEach((emp) => {
+      dayColumns.forEach((d) => {
+        const dow = new Date(d + "T00:00:00Z").getUTCDay();
+        if (dow === 0 || dow === 6) return;
+        const outsideEmployment = (emp.hire_date && d < emp.hire_date) || (emp.end_date && d > emp.end_date);
+        if (outsideEmployment) return;
+        if (attendanceByEmployee[emp.id]?.[d]) return;
+        rows.push({ work_date: d, team_id: emp.team_id ?? null, employee_id: emp.id, is_absent: false });
+        (filledByEmployee[emp.id] ??= []).push(d);
+      });
+    });
+    if (rows.length === 0) {
+      toast.success("Rien à remplir, tout est déjà saisi / Нечего заполнять, всё уже отмечено");
+      return;
+    }
+
+    setAttendanceByEmployee((prev) => {
+      const next = { ...prev };
+      Object.entries(filledByEmployee).forEach(([empId, days]) => {
+        next[empId] = { ...(next[empId] ?? {}) };
+        days.forEach((d) => {
+          next[empId][d] = { worked: true, absenceCode: null };
+        });
+      });
+      return next;
+    });
+    setJoursByEmployee((prev) => {
+      const next = { ...prev };
+      Object.entries(filledByEmployee).forEach(([empId, days]) => {
+        next[empId] = (next[empId] ?? 0) + days.length;
+      });
+      return next;
+    });
+
+    const { error } = await supabase.from("pointage_entries").upsert(rows, { onConflict: "work_date,employee_id" });
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    toast.success(`${rows.length} jour(s) marqué(s) présent / ${rows.length} дней отмечено`);
+  }
+
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
     month: "long",
     year: "numeric",
@@ -15832,9 +15882,9 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
               title="Primes & Bonus"
               text={
                 "Перенос логики из старой таблицы «часы работы» — но с одной версией правил на все месяцы (в старой таблице формула менялась почти каждый месяц), а Jours берётся из реальных отметок присутствия (Par jour), а не вводится руками.\n\n" +
-                "Ставка за дни = Jours × Ставка + Штраф (Штраф — со знаком: минус для вычета, плюс для доплаты).\n" +
-                "Congés payés = Jours × 9,9%. Vacance pay = дни отпуска × 55€. Km cost = км × 0,30€ + дорожные расходы.\n" +
-                "Штрафы от контроля = сумма Контроль 1+2+3. БАНК качества = прошлый банк (переносится сам с прошлого месяца) минус эти штрафы, не ниже 0. Бонус за качество = БАНК качества × 80%.\n" +
+                "Ставка за дни = Jours × Ставка + Штраф (для команды: только положительный Штраф; отрицательный уходит в БАНК, не сюда — см. подсказку у поля Штраф).\n" +
+                "Congés payés и Vacance — просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
+                "БАНК качества = прошлый банк (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф (отрицательный), не ниже 0 и не выше 3000. Бонус качества = БАНК качества × 80%.\n" +
                 "BONUS — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом.\n\n" +
                 "Итог (Jours) автоматически передаётся в раздел «Paie»."
               }
@@ -15855,6 +15905,16 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
+              disabled={loading}
+              onClick={() => fillWeekdaysPresent(employees.filter((e) => !isFopContractor(e)))}
+              title="Remplit les jours ouvrés vides en présent, pour tout le monde — ne touche jamais un jour déjà saisi / Заполняет пустые будни как «присутствовал», для всех — уже отмеченные дни не трогает"
+            >
+              <ClipboardCheck size={14} />
+              <Bi fr="Remplir les jours vides" ru="Заполнить пустые дни" />
+            </button>
             <button className="btn btn-primary text-sm" disabled={saving || loading} onClick={save}>
               {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
             </button>
@@ -16082,8 +16142,20 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                       </tr>
                     )}
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
-                      <td className="py-2 pr-4 font-semibold truncate" title={employeeName(e)}>
-                        <PaieEmployeeName employee={e} />
+                      <td className="py-2 pr-4 font-semibold">
+                        <div className="flex items-center gap-1">
+                          <span className="truncate" title={employeeName(e)}>
+                            <PaieEmployeeName employee={e} />
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => fillWeekdaysPresent([e])}
+                            title="Remplir les jours ouvrés vides de ce salarié en présent / Заполнить пустые будни этого сотрудника как «присутствовал»"
+                            className="shrink-0 rounded p-0.5 text-stone-300 hover:bg-success-50 hover:text-success-600"
+                          >
+                            <SquareCheck size={13} />
+                          </button>
+                        </div>
                       </td>
                       <td className="py-2 pr-4 text-stone-500 text-center border-r-2 border-stone-200">{jours}</td>
                       {dayColumns.map((d) => {
