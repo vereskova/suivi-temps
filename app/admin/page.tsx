@@ -15683,7 +15683,7 @@ function PayrollExtrasView({ supabase }: { supabase: ReturnType<typeof createCli
                     <th
                       key={d}
                       title={weekdayLabelFr(d)}
-                      className="text-center text-[10px] font-normal border-r border-stone-200"
+                      className="text-center align-middle text-[10px] font-normal border-r border-stone-200"
                       style={{
                         backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
                       }}
