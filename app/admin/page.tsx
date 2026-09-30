@@ -13784,6 +13784,114 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
   );
 }
 
+/** Commentaire libre sur un jour de la grille "Primes & Bonus" + montant
+ *  optionnel (week-end uniquement — voir showAmount) qui alimente BONUS
+ *  équipe. Icône très petite (les cases jour font 20px de large) — grise
+ *  quand vide, colorée dès qu'un commentaire ou un montant existe. Même
+ *  portail que RaisonButton/BanqueAdjustButton. Sauvegarde seulement à la
+ *  fermeture (pas à chaque frappe), pour éviter d'écrire en base à chaque
+ *  caractère tapé. */
+function DayNoteButton({
+  comment,
+  amount,
+  showAmount,
+  onSave,
+}: {
+  comment: string;
+  amount: number | null;
+  showAmount: boolean;
+  onSave: (comment: string, amount: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [draftComment, setDraftComment] = useState(comment);
+  const [draftAmount, setDraftAmount] = useState(amount != null ? String(amount) : "");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const POPOVER_WIDTH = 240;
+  const hasContent = !!comment || amount != null;
+
+  function open() {
+    setDraftComment(comment);
+    setDraftAmount(amount != null ? String(amount) : "");
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 4, left: Math.max(4, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 4)) });
+    }
+    setIsOpen(true);
+  }
+
+  function close() {
+    setIsOpen(false);
+    if (draftComment !== comment || draftAmount !== (amount != null ? String(amount) : "")) {
+      onSave(draftComment, draftAmount);
+    }
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(ev) => {
+          ev.stopPropagation();
+          if (isOpen) close();
+          else open();
+        }}
+        title={
+          hasContent
+            ? `${comment}${amount != null ? ` (${amount}€)` : ""}`
+            : "Ajouter un commentaire / Добавить комментарий"
+        }
+        className={`absolute top-0 right-0 z-10 leading-none ${hasContent ? "text-primary-600" : "text-stone-300"}`}
+        style={{ fontSize: 7 }}
+      >
+        <MessageSquare size={7} />
+      </button>
+      {isOpen &&
+        pos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={close} />
+            <div
+              className="fixed z-50 rounded-xl border border-stone-200 bg-white p-2.5 shadow-lg text-left"
+              style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <p className="mb-1.5 text-xs font-semibold text-stone-500">
+                <Bi fr="Commentaire du jour" ru="Комментарий дня" />
+              </p>
+              <textarea
+                autoFocus
+                rows={3}
+                className="input w-full text-xs px-2 py-1.5 resize-y bg-white"
+                value={draftComment}
+                onChange={(ev) => setDraftComment(ev.target.value)}
+              />
+              {showAmount && (
+                <label className="mt-1.5 block text-[10px] font-semibold text-stone-400">
+                  <Bi fr="Montant € (→ BONUS équipe)" ru="Сумма € (→ BONUS équipe)" />
+                  <input
+                    type="number"
+                    className="input w-full text-xs px-2 py-1.5 mt-0.5 bg-white"
+                    value={draftAmount}
+                    onChange={(ev) => setDraftAmount(ev.target.value)}
+                  />
+                </label>
+              )}
+              <div className="mt-1.5 flex justify-end">
+                <button type="button" className="btn btn-primary text-xs px-2 py-1" onClick={close}>
+                  <Bi fr="OK" ru="ОК" />
+                </button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  );
+}
+
 function isFopContractor(e: PaieEmployee): boolean {
   return e.contract_type === "FOP";
 }
@@ -15557,6 +15665,13 @@ function PayrollExtrasView({
   const [attendanceByEmployee, setAttendanceByEmployee] = useState<
     Record<string, Record<string, { worked: boolean; absenceCode: string | null }>>
   >({});
+  // Annotation par jour, indépendante de pointage_entries — commentaire
+  // libre sur n'importe quel jour + montant optionnel sur les week-ends, qui
+  // alimente automatiquement BONUS équipe pour les salariés d'équipe (voir
+  // saveDayNote plus bas). Demandé par l'utilisatrice, 30/09/2026.
+  const [dayNotesByEmployee, setDayNotesByEmployee] = useState<
+    Record<string, Record<string, { comment: string; amount: number | null }>>
+  >({});
   const [dayColumns, setDayColumns] = useState<string[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<{ id: string; code: string; label: string }[]>([]);
 
@@ -15683,6 +15798,20 @@ function PayrollExtrasView({
       });
       setJoursByEmployee(jours);
       setAttendanceByEmployee(attendance);
+
+      const { data: dayNotes } = await supabase
+        .from("payroll_day_notes")
+        .select("employee_id, work_date, comment, amount")
+        .gte("work_date", monthStart)
+        .lte("work_date", monthEnd);
+      const notesByEmployee: Record<string, Record<string, { comment: string; amount: number | null }>> = {};
+      (dayNotes ?? []).forEach((n) => {
+        (notesByEmployee[n.employee_id] ?? (notesByEmployee[n.employee_id] = {}))[n.work_date] = {
+          comment: n.comment ?? "",
+          amount: n.amount,
+        };
+      });
+      setDayNotesByEmployee(notesByEmployee);
 
       let { data: run } = await supabase.from("payroll_runs").select("id").eq("month", monthIso).maybeSingle();
       if (!run) {
@@ -16051,6 +16180,34 @@ function PayrollExtrasView({
         if (day === 0 || day === 6 || previous.worked === worked) return prev;
         return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (worked ? -1 : 1) };
       });
+    }
+  }
+
+  /** Commentaire libre sur un jour + montant optionnel (week-end uniquement,
+   *  voir DayNoteButton) — écrit tout de suite (comme setDayStatus), pas
+   *  besoin du bouton "Enregistrer". Le montant sur un jour de week-end
+   *  alimente automatiquement BONUS équipe pour ce salarié, uniquement s'il
+   *  fait partie d'une équipe chantier — demandé par l'utilisatrice,
+   *  30/09/2026 : "суммы за выходные... в бонус экип для команд". */
+  async function saveDayNote(employee: PaieEmployee, dateIso: string, comment: string, amountStr: string) {
+    const amount = amountStr === "" ? null : Number(amountStr) || 0;
+    const { error } = await supabase
+      .from("payroll_day_notes")
+      .upsert(
+        { employee_id: employee.id, work_date: dateIso, comment: comment || null, amount },
+        { onConflict: "employee_id,work_date" }
+      );
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    const nextNotesForEmployee = { ...(dayNotesByEmployee[employee.id] ?? {}), [dateIso]: { comment, amount } };
+    setDayNotesByEmployee((prev) => ({ ...prev, [employee.id]: nextNotesForEmployee }));
+
+    const faitPartieEquipe = employee.category === "chantier" && !!employee.team_id && !!employee.teams?.name;
+    if (faitPartieEquipe) {
+      const weekendSum = Object.values(nextNotesForEmployee).reduce((sum, n) => sum + (Number(n.amount) || 0), 0);
+      updateInput(employee.id, "bonusEquipe", weekendSum ? String(weekendSum) : "");
     }
   }
 
@@ -16462,10 +16619,11 @@ function PayrollExtrasView({
                         const dow = new Date(d + "T00:00:00Z").getUTCDay();
                         const isWeekend = dow === 0 || dow === 6;
                         const cellBg = absenceCellBg(worked, absenceCode) || (isWeekend ? EXTRAS_COLOR_WEEKEND : undefined);
+                        const note = dayNotesByEmployee[e.id]?.[d];
                         return (
                           <td
                             key={d}
-                            className="text-center p-0 border-r border-stone-200"
+                            className="relative text-center p-0 border-r border-stone-200"
                             style={{ backgroundColor: cellBg }}
                           >
                             <select
@@ -16497,6 +16655,12 @@ function PayrollExtrasView({
                                 ✕
                               </option>
                             </select>
+                            <DayNoteButton
+                              comment={note?.comment ?? ""}
+                              amount={note?.amount ?? null}
+                              showAmount={isWeekend}
+                              onSave={(comment, amount) => saveDayNote(e, d, comment, amount)}
+                            />
                           </td>
                         );
                       })}
