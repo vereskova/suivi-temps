@@ -15552,6 +15552,7 @@ type ExtrasLineInput = {
   penaliteDirecteRaison: string;
   vacanceJours: string;
   congesJours: string;
+  avance: string;
   banqueAjustementManuel: string;
 };
 
@@ -15568,6 +15569,7 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   penaliteDirecteRaison: "",
   vacanceJours: "",
   congesJours: "",
+  avance: "",
   banqueAjustementManuel: "",
 };
 
@@ -15608,6 +15610,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 90, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "avance", lines: ["Аванс", "€"], title: "Аванс — pour information seulement, jamais inclus dans À payer / Аванс — только для справки, в À payer не входит", defaultStyle: { width: 80, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 90, fontSize: 11, color: "#44403c", bg: "" } },
 ];
 
@@ -15988,6 +15991,7 @@ function PayrollExtrasView({
             penaliteDirecteRaison: l?.penalite_directe_raison ?? "",
             vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
             congesJours: l?.conges_jours ? String(l.conges_jours) : "",
+            avance: l?.avance ? String(l.avance) : "",
             banqueAjustementManuel: l?.banque_ajustement_manuel != null ? String(l.banque_ajustement_manuel) : "",
           };
         });
@@ -16199,6 +16203,7 @@ function PayrollExtrasView({
           penalite_directe_raison_at: penaliteDirecteMeta.at,
           vacance_jours: Number(line.vacanceJours) || 0,
           conges_jours: line.congesJours === "" ? null : Number(line.congesJours),
+          avance: line.avance === "" ? null : Number(line.avance),
           banque_ajustement_manuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
           banque_qualite_fin: c?.banqueQualiteFin ?? 0,
           controle_bonus_recu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0,
@@ -16577,7 +16582,7 @@ function PayrollExtrasView({
           <SkeletonRows rows={6} cols={4} />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <div className="card">
           {companyQualityBank && (
             <div className="mb-3 flex items-center gap-3 flex-wrap">
               <span className="text-xs font-bold text-stone-500 shrink-0">
@@ -16649,6 +16654,11 @@ function PayrollExtrasView({
               grille purement consultative (rh_readonly), au lieu de passer readOnly
               à chaque champ individuellement. display:contents pour ne rien changer
               à la mise en page (table/colgroup ont besoin d'un parent transparent). */}
+          {/* Ce div doit défiler réellement lui-même (hauteur bornée +
+              overflow-auto sur les deux axes) pour que position:sticky
+              fonctionne — sinon c'est la page qui défilait verticalement,
+              pas ce conteneur, et le sticky top ne s'accrochait jamais. */}
+          <div className="overflow-auto max-h-[75vh]">
           <fieldset disabled={readOnly} style={{ display: "contents" }}>
           <table
             className="text-sm border-separate extras-grid"
@@ -17054,13 +17064,22 @@ function PayrollExtrasView({
                           onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
                         />
                       </td>
+                      <td className="py-2 pr-2">
+                        <input
+                          type="number"
+                          title="Аванс — для справки, в À payer не входит / Аванс — pour information, jamais dans À payer"
+                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                          value={line.avance}
+                          onChange={(ev) => updateInput(e.id, "avance", ev.target.value)}
+                        />
+                      </td>
                       <td
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
                         title={extrasTooltip(
                           "À payer",
-                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + Coût route(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + Coût route(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés, Vacance jours et Аванс sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные, дни вакансов и аванс — только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
@@ -17079,6 +17098,7 @@ function PayrollExtrasView({
             </tbody>
           </table>
           </fieldset>
+          </div>
         </div>
       )}
     </div>
