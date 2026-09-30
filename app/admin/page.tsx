@@ -16223,9 +16223,13 @@ function PayrollExtrasView({
   /** Commentaire libre sur un jour + montant optionnel (week-end uniquement,
    *  voir DayNoteButton) — écrit tout de suite (comme setDayStatus), pas
    *  besoin du bouton "Enregistrer". Le montant sur un jour de week-end
-   *  alimente automatiquement BONUS équipe pour ce salarié, uniquement s'il
-   *  fait partie d'une équipe chantier — demandé par l'utilisatrice,
-   *  30/09/2026 : "суммы за выходные... в бонус экип для команд". */
+   *  s'AJOUTE à BONUS équipe pour ce salarié (delta entre l'ancien et le
+   *  nouveau montant de ce jour précis, jamais un total qui remplace tout),
+   *  uniquement s'il fait partie d'une équipe chantier — demandé par
+   *  l'utilisatrice, 30/09/2026 : d'abord "суммы за выходные... в бонус
+   *  экип для команд", puis précisé "нужно конечно складывать с уже
+   *  вписанными бонусами" après avoir vu que ça écrasait sa saisie
+   *  manuelle. */
   async function saveDayNote(employee: PaieEmployee, dateIso: string, comment: string, amountStr: string) {
     const amount = amountStr === "" ? null : Number(amountStr) || 0;
     const { error } = await supabase
@@ -16238,13 +16242,20 @@ function PayrollExtrasView({
       toast.error("Erreur : " + error.message);
       return;
     }
-    const nextNotesForEmployee = { ...(dayNotesByEmployee[employee.id] ?? {}), [dateIso]: { comment, amount } };
-    setDayNotesByEmployee((prev) => ({ ...prev, [employee.id]: nextNotesForEmployee }));
+    const oldAmount = dayNotesByEmployee[employee.id]?.[dateIso]?.amount ?? 0;
+    setDayNotesByEmployee((prev) => ({
+      ...prev,
+      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { comment, amount } },
+    }));
 
     const faitPartieEquipe = employee.category === "chantier" && !!employee.team_id && !!employee.teams?.name;
-    if (faitPartieEquipe) {
-      const weekendSum = Object.values(nextNotesForEmployee).reduce((sum, n) => sum + (Number(n.amount) || 0), 0);
-      updateInput(employee.id, "bonusEquipe", weekendSum ? String(weekendSum) : "");
+    const delta = (amount ?? 0) - (oldAmount ?? 0);
+    if (faitPartieEquipe && delta !== 0) {
+      setInputs((prev) => {
+        const prevLine = prev[employee.id] ?? EMPTY_EXTRAS_LINE;
+        const newBonus = Math.round(((Number(prevLine.bonusEquipe) || 0) + delta) * 100) / 100;
+        return { ...prev, [employee.id]: { ...prevLine, bonusEquipe: String(newBonus) } };
+      });
     }
   }
 
