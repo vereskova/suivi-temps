@@ -13786,67 +13786,104 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
 
 /** Commentaire libre sur un jour de la grille "Primes & Bonus" + montant
  *  optionnel (week-end uniquement — voir showAmount) qui alimente BONUS
- *  équipe. Icône très petite (les cases jour font 20px de large) — grise
- *  quand vide, colorée dès qu'un commentaire ou un montant existe. Même
- *  portail que RaisonButton/BanqueAdjustButton. Sauvegarde seulement à la
- *  fermeture (pas à chaque frappe), pour éviter d'écrire en base à chaque
- *  caractère tapé. */
-function DayNoteButton({
+ *  équipe. Pas d'icône permanente (jugée "sale" visuellement sur ~30
+ *  colonnes) — clic droit n'importe où dans la case pour ouvrir, un simple
+ *  petit triangle en coin indique qu'un commentaire/montant existe déjà.
+ *  Sauvegarde seulement à la fermeture (pas à chaque frappe). */
+function DayCell({
+  cellBg,
+  selectValue,
+  worked,
+  absenceCode,
+  absenceTypes,
+  absenceTypeLabel,
+  onStatusChange,
   comment,
   amount,
   showAmount,
-  onSave,
+  onSaveNote,
+  readOnly = false,
 }: {
+  cellBg: string | undefined;
+  selectValue: string;
+  worked: boolean;
+  absenceCode: string | null;
+  absenceTypes: { id: string; code: string; label: string }[];
+  absenceTypeLabel: string;
+  onStatusChange: (value: string) => void;
   comment: string;
   amount: number | null;
   showAmount: boolean;
-  onSave: (comment: string, amount: string) => void;
+  onSaveNote: (comment: string, amount: string) => void;
+  /** Le <select> est déjà bloqué par le <fieldset disabled> ambiant (voir
+   *  PayrollExtrasView), mais le clic droit n'est PAS un contrôle de
+   *  formulaire natif — fieldset ne le désactive pas, ni le portail de la
+   *  popover (hors de l'arbre DOM du fieldset). Doit donc être coupé
+   *  explicitement ici pour rh_readonly. */
+  readOnly?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [draftComment, setDraftComment] = useState(comment);
   const [draftAmount, setDraftAmount] = useState(amount != null ? String(amount) : "");
-  const btnRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const POPOVER_WIDTH = 240;
   const hasContent = !!comment || amount != null;
 
-  function open() {
+  function openMenu(ev: React.MouseEvent) {
+    ev.preventDefault();
+    if (readOnly) return;
     setDraftComment(comment);
     setDraftAmount(amount != null ? String(amount) : "");
-    if (btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: Math.max(4, Math.min(rect.left, window.innerWidth - POPOVER_WIDTH - 4)) });
-    }
+    setPos({ top: ev.clientY + 4, left: Math.max(4, Math.min(ev.clientX, window.innerWidth - POPOVER_WIDTH - 4)) });
     setIsOpen(true);
   }
 
   function close() {
     setIsOpen(false);
     if (draftComment !== comment || draftAmount !== (amount != null ? String(amount) : "")) {
-      onSave(draftComment, draftAmount);
+      onSaveNote(draftComment, draftAmount);
     }
   }
 
   return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={(ev) => {
-          ev.stopPropagation();
-          if (isOpen) close();
-          else open();
-        }}
+    <td
+      className="relative text-center p-0 border-r border-stone-200"
+      style={{ backgroundColor: cellBg }}
+      onContextMenu={openMenu}
+    >
+      <select
+        value={selectValue}
+        onChange={(ev) => onStatusChange(ev.target.value)}
         title={
           hasContent
-            ? `${comment}${amount != null ? ` (${amount}€)` : ""}`
-            : "Ajouter un commentaire / Добавить комментарий"
+            ? `${worked ? "Présent" : absenceCode ? absenceTypeLabel : "Absent"} — 💬 ${comment}${amount != null ? ` (${amount}€)` : ""} (clic droit pour modifier)`
+            : worked
+              ? "Présent (clic droit : commentaire)"
+              : absenceCode
+                ? `${absenceTypeLabel} (clic droit : commentaire)`
+                : "Absent (clic droit : commentaire)"
         }
-        className={`absolute top-0 right-0 z-10 leading-none ${hasContent ? "text-primary-600" : "text-stone-300"}`}
-        style={{ fontSize: 7 }}
+        className={`w-full appearance-none border-0 bg-transparent py-2 text-center text-[10px] cursor-pointer ${
+          worked ? "font-bold text-success-800" : absenceCode ? "font-bold text-stone-700" : "text-stone-300"
+        }`}
       >
-        <MessageSquare size={7} />
-      </button>
+        <option value="present">1</option>
+        <option value="absent">0</option>
+        {absenceTypes.map((t) => (
+          <option key={t.id} value={`abs:${t.code}`} title={t.label}>
+            {absenceShortCode(t.code)}
+          </option>
+        ))}
+        <option value="depart" title="Fin de contrat ce jour / Увольнение с этого дня">
+          ✕
+        </option>
+      </select>
+      {hasContent && (
+        <span
+          className="pointer-events-none absolute top-0 right-0 border-t-[6px] border-t-primary-500 border-l-[6px] border-l-transparent"
+          style={{ width: 0, height: 0 }}
+        />
+      )}
       {isOpen &&
         pos &&
         typeof document !== "undefined" &&
@@ -13888,7 +13925,7 @@ function DayNoteButton({
           </>,
           document.body
         )}
-    </>
+    </td>
   );
 }
 
@@ -16621,47 +16658,21 @@ function PayrollExtrasView({
                         const cellBg = absenceCellBg(worked, absenceCode) || (isWeekend ? EXTRAS_COLOR_WEEKEND : undefined);
                         const note = dayNotesByEmployee[e.id]?.[d];
                         return (
-                          <td
+                          <DayCell
                             key={d}
-                            className="relative text-center p-0 border-r border-stone-200"
-                            style={{ backgroundColor: cellBg }}
-                          >
-                            <select
-                              value={selectValue}
-                              onChange={(ev) => setDayStatus(e, d, ev.target.value)}
-                              title={
-                                worked
-                                  ? "Présent"
-                                  : absenceCode
-                                    ? (absenceTypeLabelByCode.get(absenceCode) ?? absenceCode)
-                                    : "Absent"
-                              }
-                              className={`w-full appearance-none border-0 bg-transparent py-2 text-center text-[10px] cursor-pointer ${
-                                worked
-                                  ? "font-bold text-success-800"
-                                  : absenceCode
-                                    ? "font-bold text-stone-700"
-                                    : "text-stone-300"
-                              }`}
-                            >
-                              <option value="present">1</option>
-                              <option value="absent">0</option>
-                              {absenceTypes.map((t) => (
-                                <option key={t.id} value={`abs:${t.code}`} title={t.label}>
-                                  {absenceShortCode(t.code)}
-                                </option>
-                              ))}
-                              <option value="depart" title="Fin de contrat ce jour / Увольнение с этого дня">
-                                ✕
-                              </option>
-                            </select>
-                            <DayNoteButton
-                              comment={note?.comment ?? ""}
-                              amount={note?.amount ?? null}
-                              showAmount={isWeekend}
-                              onSave={(comment, amount) => saveDayNote(e, d, comment, amount)}
-                            />
-                          </td>
+                            cellBg={cellBg}
+                            selectValue={selectValue}
+                            worked={worked}
+                            absenceCode={absenceCode}
+                            absenceTypes={absenceTypes}
+                            absenceTypeLabel={absenceCode ? absenceTypeLabelByCode.get(absenceCode) ?? absenceCode : ""}
+                            onStatusChange={(value) => setDayStatus(e, d, value)}
+                            comment={note?.comment ?? ""}
+                            amount={note?.amount ?? null}
+                            showAmount={isWeekend}
+                            onSaveNote={(comment, amount) => saveDayNote(e, d, comment, amount)}
+                            readOnly={readOnly}
+                          />
                         );
                       })}
                       {!detailsCollapsed && (
