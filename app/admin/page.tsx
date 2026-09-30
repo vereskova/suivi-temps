@@ -16428,14 +16428,14 @@ function PayrollExtrasView({
             style={{
               borderSpacing: 0,
               tableLayout: "fixed",
-              width: `${220 + 60 + dayColumns.length * 20 + visibleColDefs.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
+              width: `${220 + 60 + dayColumns.length * 26 + visibleColDefs.reduce((sum, d) => sum + extrasColStyle(d.key).width, 0)}px`,
             }}
           >
             <colgroup>
               <col style={{ width: "220px" }} />
               <col style={{ width: "60px" }} />
               {dayColumns.map((d) => (
-                <col key={d} style={{ width: "20px" }} />
+                <col key={d} style={{ width: "26px" }} />
               ))}
               {visibleColDefs.map((d) => (
                 <col key={d.key} style={{ width: `${extrasColStyle(d.key).width}px` }} />
