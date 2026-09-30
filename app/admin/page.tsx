@@ -16628,20 +16628,20 @@ function PayrollExtrasView({
               ))}
             </colgroup>
             <thead>
-              <tr>
-                <th colSpan={2} />
+              <tr className="h-8">
+                <th colSpan={2} className="sticky top-0 z-30 bg-white" />
                 <th
                   colSpan={dayColumns.length}
-                  className="text-center font-bold py-1"
+                  className="sticky top-0 z-30 text-center font-bold py-1"
                   style={{ backgroundColor: EXTRAS_COLOR_MONTH_HEADER }}
                 >
                   {monthLabel}
                 </th>
-                <th colSpan={visibleColDefs.length} />
+                <th colSpan={visibleColDefs.length} className="sticky top-0 z-30 bg-white" />
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
-                <th className="sticky left-0 z-20 bg-white py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
-                <th className="py-2 pl-2 pr-4 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
+                <th className="sticky top-8 left-0 z-40 bg-white py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="sticky top-8 z-20 bg-white py-2 pl-2 pr-4 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
                   const isWeekend = dow === 0 || dow === 6;
@@ -16649,9 +16649,9 @@ function PayrollExtrasView({
                     <th
                       key={d}
                       title={weekdayLabelFr(d)}
-                      className="p-0 text-center align-middle text-[10px] font-normal border-r border-stone-200"
+                      className="sticky top-8 z-20 p-0 text-center align-middle text-[10px] font-normal border-r border-stone-200"
                       style={{
-                        backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : undefined,
+                        backgroundColor: isWeekend ? EXTRAS_COLOR_WEEKEND : "#ffffff",
                       }}
                     >
                       {Number(d.slice(8, 10))}
@@ -16664,11 +16664,11 @@ function PayrollExtrasView({
                   return (
                     <th
                       key={def.key}
-                      className={`relative py-2 px-1 leading-tight align-bottom text-center font-bold border-r border-stone-200 ${
+                      className={`sticky top-8 z-20 py-2 px-1 leading-tight align-bottom text-center font-bold border-r border-stone-200 ${
                         i === 0 ? "border-l-2 border-l-stone-200 pl-3" : ""
                       }`}
                       title={editMode ? undefined : def.title}
-                      style={{ fontSize: s.fontSize, color: s.color || undefined, backgroundColor: s.bg || undefined }}
+                      style={{ fontSize: s.fontSize, color: s.color || undefined, backgroundColor: s.bg || "#ffffff" }}
                     >
                       {def.lines.map((line, i) => (
                         <span key={i} className="block">
