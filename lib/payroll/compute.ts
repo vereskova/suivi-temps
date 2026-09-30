@@ -253,8 +253,16 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
  *     Pure accumulation, aucune sortie automatique — voir la note en tête de
  *     fichier.
+ * Heures route (nouveau, 30/09/2026) — heures de trajet saisies à la main,
+ * payées à un taux horaire différent selon que le salarié est chauffeur ou
+ * non (voir isChauffeur sur l'employé, pas sur cette table — c'est un
+ * attribut durable, pas mensuel) : 90/8 = 11,25 €/h pour un chauffeur (90 =
+ * le tarif journalier standard, voir NEW_HIRE_RATE_CUTOFF côté page.tsx,
+ * ÷ 8h) ; sinon 9,61 €/h, le SMIC net horaire (12,31 €/h brut ×
+ * (1 − 21,97 %), déjà utilisé dans Paie). Toujours ajouté à l'À payer.
+ *
  *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus direct
- *     + part contrôleur + prime Банк качества
+ *     + Coût route + part contrôleur + prime Банк качества
  *     — Congés payés et Vacance jours sont de simples compteurs de jours,
  *     affichés à titre indicatif, jamais inclus dans ce total (le montant
  *     réel est calculé et versé par la comptabilité, pas ici).
@@ -265,6 +273,8 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  */
 export const BANQUE_QUALITE_PLAFOND = 3000;
 export const BANQUE_DEPOT_TAUX = 0.3;
+export const TRAVEL_RATE_DRIVER = 90 / 8;
+export const TRAVEL_RATE_NON_DRIVER = 9.61;
 
 export type PayrollExtrasInput = {
   jours: number;
@@ -286,6 +296,10 @@ export type PayrollExtrasInput = {
   controleBonusRecu: number;
   /** Prime reçue lors d'une distribution du БАНК qualité (compagnie) à 10000 — 0 la plupart des mois. Calculée ailleurs, jamais recalculée ici. */
   banqueQualitePrime: number;
+  /** Heures de trajet saisies à la main ce mois-ci — toujours positives, jamais liées au БАНК 3000. */
+  heuresRoute: number;
+  /** Attribut durable du salarié (pas mensuel) — détermine le taux horaire appliqué à heuresRoute. Voir la note en tête de fichier. */
+  estChauffeur: boolean;
 };
 
 export type PayrollExtrasResult = {
@@ -298,6 +312,7 @@ export type PayrollExtrasResult = {
   banqueQualiteFin: number;
   controleBonusRecu: number;
   banqueQualitePrime: number;
+  coutRoute: number;
   aPayer: number;
 };
 
@@ -319,8 +334,14 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
   const bonusDirect = Math.round((input.bonusDirect || 0) * 100) / 100;
   const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
   const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
+  const coutRoute =
+    Math.round(
+      Math.max(0, input.heuresRoute || 0) * (input.estChauffeur ? TRAVEL_RATE_DRIVER : TRAVEL_RATE_NON_DRIVER) * 100
+    ) / 100;
   const aPayer =
-    Math.round((salaireJours + bonusEquipePaye + bonusDirect + controleBonusRecu + banqueQualitePrime) * 100) / 100;
+    Math.round(
+      (salaireJours + bonusEquipePaye + bonusDirect + coutRoute + controleBonusRecu + banqueQualitePrime) * 100
+    ) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
@@ -332,6 +353,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     banqueQualiteFin,
     controleBonusRecu,
     banqueQualitePrime,
+    coutRoute,
     aPayer,
   };
 }

@@ -13611,6 +13611,7 @@ type PaieEmployee = {
   end_date: string | null;
   salaire_base_net: number | null;
   classification: string | null;
+  is_driver?: boolean;
 };
 
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
@@ -13627,6 +13628,11 @@ function PaieEmployeeName({
   return (
     <span className="inline-flex items-center gap-1.5">
       {isChef && <Crown size={12} className="shrink-0 fill-current text-success-600" />}
+      {e.is_driver && (
+        <span title="Chauffeur / Водитель" className="shrink-0 inline-flex">
+          <Car size={12} className="text-primary-600" />
+        </span>
+      )}
       {employeeName(e)}
       {canOpenDossier && <OpenDossierButton employeeId={e.id} className="text-stone-300 hover:text-stone-600" />}
     </span>
@@ -15525,6 +15531,7 @@ function PaieView({
 
 type ExtrasLineInput = {
   tauxJournalier: string;
+  heuresRoute: string;
   bonusEquipe: string;
   bonusRaison: string;
   bonusDirectMontant: string;
@@ -15540,6 +15547,7 @@ type ExtrasLineInput = {
 
 const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   tauxJournalier: "",
+  heuresRoute: "",
   bonusEquipe: "",
   bonusRaison: "",
   bonusDirectMontant: "",
@@ -15579,6 +15587,9 @@ type ExtrasColDef = { key: string; lines: string[]; title: string; defaultStyle:
 const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 85, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 90, fontSize: 11, color: "#0369a1", bg: "" } },
+  { key: "isDriver", lines: ["🚗", "Водитель"], title: "Chauffeur — change le tarif de Часы в дороге (90/8 = 11,25 €/h au lieu de 9,61 €/h) / Водитель — меняет ставку часов в дороге (90/8 = 11,25 €/ч вместо 9,61 €/ч)", defaultStyle: { width: 60, fontSize: 10, color: "#a8a29e", bg: "" } },
+  { key: "heuresRoute", lines: ["Часы в", "дороге"], title: "Heures de trajet, saisies à la main / Часы в дороге, вручную", defaultStyle: { width: 80, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "coutRoute", lines: ["Coût", "route €"], title: "Часы в дороге × 11,25€/ч (водитель) или 9,61€/ч (остальные) / Heures route × 11,25€/h (chauffeur) ou 9,61€/h (sinon)", defaultStyle: { width: 85, fontSize: 11, color: "#0369a1", bg: "" } },
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel — indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус — не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
@@ -15598,6 +15609,9 @@ const EXTRAS_COL_STYLES_STORAGE_KEY = "vladis_payroll_extras_col_styles_v1";
 const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "taux",
   "salaire",
+  "isDriver",
+  "heuresRoute",
+  "coutRoute",
   "bonus",
   "bonusDirect",
   "penalite",
@@ -15854,7 +15868,7 @@ function PayrollExtrasView({
       const { data: emp } = await supabase
         .from("employees")
         .select(
-          "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net, classification"
+          "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net, classification, is_driver"
         )
         .or(
           `status.eq.active,` +
@@ -15953,6 +15967,7 @@ function PayrollExtrasView({
           const prev = prevByEmployee.get(e.id);
           map[e.id] = {
             tauxJournalier: l ? String(l.taux_journalier ?? "") : prev?.taux_journalier ? String(prev.taux_journalier) : "",
+            heuresRoute: l?.heures_route ? String(l.heures_route) : "",
             bonusEquipe: l?.bonus_equipe ? String(l.bonus_equipe) : "",
             bonusRaison: l?.bonus_raison ?? "",
             bonusDirectMontant: l?.bonus_direct ? String(l.bonus_direct) : "",
@@ -16051,6 +16066,8 @@ function PayrollExtrasView({
       const extrasInput: PayrollExtrasInput = {
         jours: joursByEmployee[e.id] ?? 0,
         tauxJournalier: Number(line.tauxJournalier) || 0,
+        heuresRoute: Number(line.heuresRoute) || 0,
+        estChauffeur: e.is_driver ?? false,
         bonusEquipe: Number(line.bonusEquipe) || 0,
         bonusDirect: Number(line.bonusDirectMontant) || 0,
         penaliteMontant: Number(line.penaliteMontant) || 0,
@@ -16153,6 +16170,7 @@ function PayrollExtrasView({
           run_id: runId,
           employee_id: e.id,
           taux_journalier: Number(line.tauxJournalier) || 0,
+          heures_route: Number(line.heuresRoute) || 0,
           bonus_equipe: Number(line.bonusEquipe) || 0,
           bonus_raison: line.bonusRaison || null,
           bonus_raison_by: bonusMeta.by,
@@ -16397,6 +16415,18 @@ function PayrollExtrasView({
     }
   }
 
+  /** Attribut durable du salarié (comme chef d'équipe), pas mensuel — écrit
+   *  tout de suite dans employees, pas besoin du bouton "Enregistrer". */
+  async function toggleDriver(employee: PaieEmployee) {
+    const next = !employee.is_driver;
+    setEmployees((prev) => prev.map((e) => (e.id === employee.id ? { ...e, is_driver: next } : e)));
+    const { error } = await supabase.from("employees").update({ is_driver: next }).eq("id", employee.id);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      setEmployees((prev) => prev.map((e) => (e.id === employee.id ? { ...e, is_driver: !next } : e)));
+    }
+  }
+
   /** Remplit en masse les jours ouvrés (lun-ven) "présent" pour les employés
    *  donnés — ne touche JAMAIS un jour déjà saisi (présent ou absent), pour
    *  ne jamais écraser une absence déjà notée. Un seul upsert groupé au lieu
@@ -16465,7 +16495,8 @@ function PayrollExtrasView({
                 "Ставка за дни = Jours × Ставка + Штраф контроль (для команды: только положительный; отрицательный уходит в БАНК 3000, не сюда — см. подсказку у поля) + Штраф прочее (всегда сразу сюда, для любого сотрудника — превышение скорости, поломка инструментов и т.п., БАНК 3000 не участвует).\n" +
                 "Congés payés и Vacance — просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
                 "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф контроль (отрицательный), не ниже 0 и не выше 3000. Просто копится, никакой автоматической выплаты из него нет — только карандашик, чтобы задать/поправить баланс вручную.\n" +
-                "BONUS équipe — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом. Bonus прочее — разовый бонус для любого сотрудника (в т.ч. Bureau/Contrôle & Formation), не связан с BONUS équipe/БАНК 3000.\n\n" +
+                "BONUS équipe — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом. Bonus прочее — разовый бонус для любого сотрудника (в т.ч. Bureau/Contrôle & Formation), не связан с BONUS équipe/БАНК 3000.\n" +
+                "Часы в дороге — вручную, галочка «Водитель» меняет ставку: 11,25€/ч (90/8) водителю, иначе 9,61€/ч (SMIC net). Входит в À payer.\n\n" +
                 "Итог (Jours) автоматически передаётся в раздел «Paie»."
               }
             />
@@ -16856,6 +16887,35 @@ function PayrollExtrasView({
                           >
                             {(c?.salaireJours ?? 0).toFixed(2)} €
                           </td>
+                          <td className="py-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={!!e.is_driver}
+                              onChange={() => toggleDriver(e)}
+                              title="Chauffeur — change le tarif de Часы в дороге / Водитель — меняет ставку часов в дороге"
+                              className="h-3.5 w-3.5 cursor-pointer accent-primary-600"
+                            />
+                          </td>
+                          <td className="py-2 pr-2">
+                            <input
+                              type="number"
+                              className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                              value={line.heuresRoute}
+                              onChange={(ev) => updateInput(e.id, "heuresRoute", ev.target.value)}
+                              title="Heures de trajet, saisies à la main / Часы в дороге, вручную"
+                            />
+                          </td>
+                          <td
+                            className="py-2 px-2 text-center font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
+                            title={extrasTooltip(
+                              "Coût route",
+                              `${Number(line.heuresRoute) || 0}h × ${e.is_driver ? "11,25€ (chauffeur)" : "9,61€"} = ${(c?.coutRoute ?? 0).toFixed(2)}€`,
+                              "Часы в дороге",
+                              `${Number(line.heuresRoute) || 0}ч × ${e.is_driver ? "11,25€ (водитель)" : "9,61€"} = ${(c?.coutRoute ?? 0).toFixed(2)}€`
+                            )}
+                          >
+                            {(c?.coutRoute ?? 0).toFixed(2)} €
+                          </td>
                           <td className="py-2 pr-2">
                             <div className="relative">
                               <input
@@ -16988,9 +17048,9 @@ function PayrollExtrasView({
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
                         title={extrasTooltip(
                           "À payer",
-                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + Coût route(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés et Vacance jours sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные и дни вакансов — только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
