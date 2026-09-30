@@ -13639,6 +13639,16 @@ const RAISON_POPOVER_WIDTH = 380;
  *  portail vers document.body (position: fixed, calculée depuis le bouton).
  *  Nécessaire car ses appelants vivent dans un conteneur overflow-x-auto qui
  *  coupe court tout enfant absolute positionné débordant verticalement. */
+/** "2026-09-30T14:13:00Z" -> "30/09 14:13". */
+function formatDateTimeShort(iso: string): string {
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}/${mm} ${hh}:${mi}`;
+}
+
 function RaisonButton({
   value,
   labelFr,
@@ -13647,6 +13657,8 @@ function RaisonButton({
   isOpen,
   onToggle,
   onChange,
+  authorBy,
+  authorAt,
 }: {
   value: string;
   labelFr: string;
@@ -13655,9 +13667,12 @@ function RaisonButton({
   isOpen: boolean;
   onToggle: () => void;
   onChange: (value: string) => void;
+  authorBy?: string | null;
+  authorAt?: string | null;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const authorLine = authorBy && authorAt ? `${authorBy} · ${formatDateTimeShort(authorAt)}` : null;
 
   useEffect(() => {
     if (!isOpen || !btnRef.current) return;
@@ -13671,7 +13686,11 @@ function RaisonButton({
         ref={btnRef}
         type="button"
         onClick={onToggle}
-        title={value ? `Причина: ${value}` : "Ajouter une raison / Добавить причину"}
+        title={
+          value
+            ? `Причина: ${value}${authorLine ? `\n— ${authorLine}` : ""}`
+            : "Ajouter une raison / Добавить причину"
+        }
         className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${value ? activeColorClass : "bg-stone-200 text-stone-500"}`}
       >
         <MessageSquare size={10} />
@@ -13697,6 +13716,7 @@ function RaisonButton({
                 value={value}
                 onChange={(ev) => onChange(ev.target.value)}
               />
+              {authorLine && <p className="mt-1 text-[10px] text-stone-400">{authorLine}</p>}
               <div className="mt-1.5 flex justify-end">
                 <button type="button" className="btn btn-secondary text-xs px-2 py-1" onClick={onToggle}>
                   <Bi fr="Fermer" ru="Закрыть" />
@@ -13800,6 +13820,8 @@ function DayCell({
   onStatusChange,
   comment,
   amount,
+  commentBy,
+  commentAt,
   showAmount,
   onSaveNote,
   readOnly = false,
@@ -13813,6 +13835,8 @@ function DayCell({
   onStatusChange: (value: string) => void;
   comment: string;
   amount: number | null;
+  commentBy?: string | null;
+  commentAt?: string | null;
   showAmount: boolean;
   onSaveNote: (comment: string, amount: string) => void;
   /** Le <select> est déjà bloqué par le <fieldset disabled> ambiant (voir
@@ -13828,6 +13852,7 @@ function DayCell({
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const POPOVER_WIDTH = 240;
   const hasContent = !!comment || amount != null;
+  const authorLine = commentBy && commentAt ? `${commentBy} · ${formatDateTimeShort(commentAt)}` : null;
 
   function openMenu(ev: React.MouseEvent) {
     ev.preventDefault();
@@ -13856,7 +13881,7 @@ function DayCell({
         onChange={(ev) => onStatusChange(ev.target.value)}
         title={
           hasContent
-            ? `${worked ? "Présent" : absenceCode ? absenceTypeLabel : "Absent"} — 💬 ${comment}${amount != null ? ` (${amount}€)` : ""} (clic droit pour modifier)`
+            ? `${worked ? "Présent" : absenceCode ? absenceTypeLabel : "Absent"} — 💬 ${comment}${amount != null ? ` (${amount}€)` : ""}${authorLine ? ` [${authorLine}]` : ""} (clic droit pour modifier)`
             : worked
               ? "Présent (clic droit : commentaire)"
               : absenceCode
@@ -13916,6 +13941,7 @@ function DayCell({
                   />
                 </label>
               )}
+              {authorLine && <p className="mt-1 text-[10px] text-stone-400">{authorLine}</p>}
               <div className="mt-1.5 flex justify-end">
                 <button type="button" className="btn btn-primary text-xs px-2 py-1" onClick={close}>
                   <Bi fr="OK" ru="ОК" />
@@ -15707,7 +15733,7 @@ function PayrollExtrasView({
   // alimente automatiquement BONUS équipe pour les salariés d'équipe (voir
   // saveDayNote plus bas). Demandé par l'utilisatrice, 30/09/2026.
   const [dayNotesByEmployee, setDayNotesByEmployee] = useState<
-    Record<string, Record<string, { comment: string; amount: number | null }>>
+    Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>>
   >({});
   const [dayColumns, setDayColumns] = useState<string[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<{ id: string; code: string; label: string }[]>([]);
@@ -15729,8 +15755,36 @@ function PayrollExtrasView({
   // Bulle de commentaire multi-lignes (BONUS/Штраф), ancrée sous le bouton —
   // remplace window.prompt (une seule ligne, fenêtre séparée bloquante), sur
   // le modèle de la bulle de commentaire "часы работы.numbers" (auteur/date/
-  // multi-lignes) — ici sans auteur/historique, juste le texte multi-lignes.
+  // multi-lignes) — auteur/date ajoutés le 30/09/2026, voir raisonMetaByEmployee.
   const [openRaisonFor, setOpenRaisonFor] = useState<string | null>(null);
+  // Email du compte connecté — sert à tamponner "qui a écrit ce commentaire".
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUserEmail(data.user?.email ?? null));
+  }, [supabase]);
+  // Snapshot "tel que chargé" des 4 champs raison + leur auteur/date — sert
+  // à savoir, au moment de save(), quels champs ont réellement changé (pour
+  // ne tamponner que ceux-là) et à reporter l'auteur/date des autres tels
+  // quels plutôt que les effacer à chaque sauvegarde.
+  const [raisonMetaByEmployee, setRaisonMetaByEmployee] = useState<
+    Record<
+      string,
+      {
+        bonusRaison: string;
+        bonusRaisonBy: string | null;
+        bonusRaisonAt: string | null;
+        penaliteRaison: string;
+        penaliteRaisonBy: string | null;
+        penaliteRaisonAt: string | null;
+        penaliteDirecteRaison: string;
+        penaliteDirecteRaisonBy: string | null;
+        penaliteDirecteRaisonAt: string | null;
+        bonusDirectRaison: string;
+        bonusDirectRaisonBy: string | null;
+        bonusDirectRaisonAt: string | null;
+      }
+    >
+  >({});
   // Replier Ставка → Congés payés d'un coup (demandé par l'utilisatrice,
   // 29/09/2026) — préférence d'affichage par navigateur, comme colStyles.
   const [detailsCollapsed, setDetailsCollapsed] = useState(() => {
@@ -15838,14 +15892,19 @@ function PayrollExtrasView({
 
       const { data: dayNotes } = await supabase
         .from("payroll_day_notes")
-        .select("employee_id, work_date, comment, amount")
+        .select("employee_id, work_date, comment, amount, comment_by, comment_at")
         .gte("work_date", monthStart)
         .lte("work_date", monthEnd);
-      const notesByEmployee: Record<string, Record<string, { comment: string; amount: number | null }>> = {};
+      const notesByEmployee: Record<
+        string,
+        Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>
+      > = {};
       (dayNotes ?? []).forEach((n) => {
         (notesByEmployee[n.employee_id] ?? (notesByEmployee[n.employee_id] = {}))[n.work_date] = {
           comment: n.comment ?? "",
           amount: n.amount,
+          by: n.comment_by ?? null,
+          at: n.comment_at ?? null,
         };
       });
       setDayNotesByEmployee(notesByEmployee);
@@ -15908,6 +15967,26 @@ function PayrollExtrasView({
           };
         });
         setInputs(map);
+
+        const metaMap: typeof raisonMetaByEmployee = {};
+        (emp ?? []).forEach((e) => {
+          const l = savedByEmployee.get(e.id);
+          metaMap[e.id] = {
+            bonusRaison: l?.bonus_raison ?? "",
+            bonusRaisonBy: l?.bonus_raison_by ?? null,
+            bonusRaisonAt: l?.bonus_raison_at ?? null,
+            penaliteRaison: l?.penalite_raison ?? "",
+            penaliteRaisonBy: l?.penalite_raison_by ?? null,
+            penaliteRaisonAt: l?.penalite_raison_at ?? null,
+            penaliteDirecteRaison: l?.penalite_directe_raison ?? "",
+            penaliteDirecteRaisonBy: l?.penalite_directe_raison_by ?? null,
+            penaliteDirecteRaisonAt: l?.penalite_directe_raison_at ?? null,
+            bonusDirectRaison: l?.bonus_direct_raison ?? "",
+            bonusDirectRaisonBy: l?.bonus_direct_raison_by ?? null,
+            bonusDirectRaisonAt: l?.bonus_direct_raison_at ?? null,
+          };
+        });
+        setRaisonMetaByEmployee(metaMap);
       }
       setLoading(false);
     }
@@ -15931,6 +16010,7 @@ function PayrollExtrasView({
     activeColorClass: string
   ) {
     const key = `${employeeId}:${field}`;
+    const meta = raisonMetaByEmployee[employeeId];
     return (
       <RaisonButton
         value={value}
@@ -15940,6 +16020,8 @@ function PayrollExtrasView({
         isOpen={openRaisonFor === key}
         onToggle={() => setOpenRaisonFor(openRaisonFor === key ? null : key)}
         onChange={(v) => updateInput(employeeId, field, v)}
+        authorBy={meta?.[`${field}By` as const] ?? null}
+        authorAt={meta?.[`${field}At` as const] ?? null}
       />
     );
   }
@@ -16024,23 +16106,69 @@ function PayrollExtrasView({
     if (!runId) return;
     setSaving(true);
 
+    // Ne tamponne auteur/date que sur les 4 champs raison qui ont RÉELLEMENT
+    // changé depuis le chargement — les autres reportent tels quels leur
+    // auteur/date déjà en base (pas question de les effacer à chaque
+    // "Enregistrer" juste parce que le formulaire entier est renvoyé).
+    function raisonMeta(
+      employeeId: string,
+      field: "bonusRaison" | "penaliteRaison" | "penaliteDirecteRaison" | "bonusDirectRaison",
+      currentText: string
+    ): { by: string | null; at: string | null } {
+      const loaded = raisonMetaByEmployee[employeeId];
+      const loadedText = loaded?.[field] ?? "";
+      const loadedBy = loaded?.[`${field}By` as const] ?? null;
+      const loadedAt = loaded?.[`${field}At` as const] ?? null;
+      if (currentText === loadedText) return { by: loadedBy, at: loadedAt };
+      if (!currentText) return { by: null, at: null };
+      return { by: currentUserEmail, at: new Date().toISOString() };
+    }
+
+    const nextRaisonMetaByEmployee: typeof raisonMetaByEmployee = { ...raisonMetaByEmployee };
+
     const rows = employees
       .filter((e) => !isFopContractor(e))
       .map((e) => {
         const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
         const c = computed[e.id];
+        const bonusMeta = raisonMeta(e.id, "bonusRaison", line.bonusRaison);
+        const penaliteMeta = raisonMeta(e.id, "penaliteRaison", line.penaliteRaison);
+        const penaliteDirecteMeta = raisonMeta(e.id, "penaliteDirecteRaison", line.penaliteDirecteRaison);
+        const bonusDirectMeta = raisonMeta(e.id, "bonusDirectRaison", line.bonusDirectRaison);
+        nextRaisonMetaByEmployee[e.id] = {
+          bonusRaison: line.bonusRaison,
+          bonusRaisonBy: bonusMeta.by,
+          bonusRaisonAt: bonusMeta.at,
+          penaliteRaison: line.penaliteRaison,
+          penaliteRaisonBy: penaliteMeta.by,
+          penaliteRaisonAt: penaliteMeta.at,
+          penaliteDirecteRaison: line.penaliteDirecteRaison,
+          penaliteDirecteRaisonBy: penaliteDirecteMeta.by,
+          penaliteDirecteRaisonAt: penaliteDirecteMeta.at,
+          bonusDirectRaison: line.bonusDirectRaison,
+          bonusDirectRaisonBy: bonusDirectMeta.by,
+          bonusDirectRaisonAt: bonusDirectMeta.at,
+        };
         return {
           run_id: runId,
           employee_id: e.id,
           taux_journalier: Number(line.tauxJournalier) || 0,
           bonus_equipe: Number(line.bonusEquipe) || 0,
           bonus_raison: line.bonusRaison || null,
+          bonus_raison_by: bonusMeta.by,
+          bonus_raison_at: bonusMeta.at,
           bonus_direct: Number(line.bonusDirectMontant) || 0,
           bonus_direct_raison: line.bonusDirectRaison || null,
+          bonus_direct_raison_by: bonusDirectMeta.by,
+          bonus_direct_raison_at: bonusDirectMeta.at,
           penalite_montant: Number(line.penaliteMontant) || 0,
           penalite_raison: line.penaliteRaison || null,
+          penalite_raison_by: penaliteMeta.by,
+          penalite_raison_at: penaliteMeta.at,
           penalite_directe: Number(line.penaliteDirecteMontant) || 0,
           penalite_directe_raison: line.penaliteDirecteRaison || null,
+          penalite_directe_raison_by: penaliteDirecteMeta.by,
+          penalite_directe_raison_at: penaliteDirecteMeta.at,
           vacance_jours: Number(line.vacanceJours) || 0,
           conges_jours: line.congesJours === "" ? null : Number(line.congesJours),
           banque_ajustement_manuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
@@ -16145,6 +16273,7 @@ function PayrollExtrasView({
       toast.error("Erreur : " + error.message);
       return;
     }
+    setRaisonMetaByEmployee(nextRaisonMetaByEmployee);
     toast.success("Primes & Bonus enregistré — Jours mis à jour dans Paie");
   }
 
@@ -16232,10 +16361,19 @@ function PayrollExtrasView({
    *  manuelle. */
   async function saveDayNote(employee: PaieEmployee, dateIso: string, comment: string, amountStr: string) {
     const amount = amountStr === "" ? null : Number(amountStr) || 0;
+    const commentBy = comment ? currentUserEmail : null;
+    const commentAt = comment ? new Date().toISOString() : null;
     const { error } = await supabase
       .from("payroll_day_notes")
       .upsert(
-        { employee_id: employee.id, work_date: dateIso, comment: comment || null, amount },
+        {
+          employee_id: employee.id,
+          work_date: dateIso,
+          comment: comment || null,
+          amount,
+          comment_by: commentBy,
+          comment_at: commentAt,
+        },
         { onConflict: "employee_id,work_date" }
       );
     if (error) {
@@ -16245,7 +16383,7 @@ function PayrollExtrasView({
     const oldAmount = dayNotesByEmployee[employee.id]?.[dateIso]?.amount ?? 0;
     setDayNotesByEmployee((prev) => ({
       ...prev,
-      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { comment, amount } },
+      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { comment, amount, by: commentBy, at: commentAt } },
     }));
 
     const faitPartieEquipe = employee.category === "chantier" && !!employee.team_id && !!employee.teams?.name;
@@ -16502,7 +16640,7 @@ function PayrollExtrasView({
                 <th colSpan={visibleColDefs.length} />
               </tr>
               <tr className="text-left text-stone-400 align-bottom">
-                <th className="py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
+                <th className="sticky left-0 z-20 bg-white py-2 pr-4 truncate whitespace-nowrap"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pl-2 pr-4 text-stone-500 text-center border-r-2 border-stone-200"><Bi fr="Jours" ru="Дней" /></th>
                 {dayColumns.map((d) => {
                   const dow = new Date(d + "T00:00:00Z").getUTCDay();
@@ -16630,7 +16768,7 @@ function PayrollExtrasView({
                       </tr>
                     )}
                     <tr className={`border-t border-stone-100 ${row.colorClass}`}>
-                      <td className="py-2 pr-4 font-semibold">
+                      <td className={`sticky left-0 z-10 py-2 pr-4 font-semibold ${row.colorClass || "bg-white"}`}>
                         <div className="flex items-center gap-1">
                           <span className="truncate" title={employeeName(e)}>
                             <PaieEmployeeName employee={e} />
@@ -16680,6 +16818,8 @@ function PayrollExtrasView({
                             onStatusChange={(value) => setDayStatus(e, d, value)}
                             comment={note?.comment ?? ""}
                             amount={note?.amount ?? null}
+                            commentBy={note?.by ?? null}
+                            commentAt={note?.at ?? null}
                             showAmount={isWeekend}
                             onSaveNote={(comment, amount) => saveDayNote(e, d, comment, amount)}
                             readOnly={readOnly}
