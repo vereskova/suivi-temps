@@ -13276,7 +13276,7 @@ function OrgColumn({
         {headerRu && <span className="block truncate text-[0.6rem] font-medium normal-case opacity-60">{headerRu}</span>}
       </div>
       {employees.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-error-300 bg-error-50 px-2.5 py-2 text-center text-xs font-semibold text-error-500">
+        <div className="rounded-lg border-2 border-error-600 bg-error-600 px-2.5 py-2 text-center text-xs font-bold text-white">
           —
         </div>
       ) : (
