@@ -527,7 +527,7 @@ const ROLE_LABELS: Record<string, { fr: string; ru: string }> = {
   rh: { fr: "RH", ru: "HR" },
   comptable: { fr: "Comptable", ru: "Бухгалтер" },
   commercial: { fr: "Commercial", ru: "Коммерция" },
-  rh_readonly: { fr: "Employés (lecture)", ru: "Сотрудники (просмотр)" },
+  rh_readonly: { fr: "Employés (édition, sans confidentiel)", ru: "Сотрудники (редактирование, без конфиденциальных данных)" },
   commercial_rh: { fr: "Commercial + Employés", ru: "Коммерция + сотрудники" },
 };
 
@@ -1079,9 +1079,13 @@ export default function AdminPage() {
     );
   }
 
-  // rh_readonly: Employés only, same restricted (read-only, RIB-only) view
-  // as comptable's Employés tab — for accounts that need to look someone up
-  // without full rh-level edit/confidential access.
+  // rh_readonly (nom conservé, mais plus vraiment "readonly" depuis le
+  // 30/09/2026) : Employés + Organigramme + Primes & Bonus, tous en édition
+  // complète comme rh_admin — SAUF les données confidentielles (salaire,
+  // sécu sociale, nationalité...) sur Employés, qui restent RIB-only comme
+  // pour comptable. Confirmé avec l'utilisatrice : "везде где ему даны
+  // доступы, чтоб они даны были на редактирование тоже... только не к
+  // личным данным".
   if (role === "rh_readonly") {
     const rhReadonlyNavItems = (
       <SidebarSection title="">
@@ -1182,13 +1186,12 @@ export default function AdminPage() {
                   teams={teams}
                   onChanged={() => {}}
                   onToggleChef={() => {}}
-                  readOnly
                   confidentialMode="rib_only"
                 />
               ) : rhReadonlyView === "paie_extras" ? (
-                <PayrollExtrasView supabase={supabase} readOnly />
+                <PayrollExtrasView supabase={supabase} />
               ) : (
-                <OrganigrammeView supabase={supabase} readOnly />
+                <OrganigrammeView supabase={supabase} />
               )}
             </div>
           </div>
@@ -4342,12 +4345,19 @@ function EmployeeDetailPanel({
       .from("employees")
       .update(profile)
       .eq("id", employeeId);
-    const { error: confError } = await supabase
-      .from("employee_confidential")
-      .upsert(
-        { ...confidential, employee_id: employeeId },
-        { onConflict: "employee_id" }
-      );
+    // rib_only ne charge JAMAIS le reste de employee_confidential (salaire,
+    // sécu sociale, nationalité...) — un upsert direct de `confidential` ici
+    // écraserait ces champs avec les valeurs vides de EMPTY_CONFIDENTIAL.
+    // set_employee_rib() ne touche QUE la colonne rib, en SECURITY DEFINER,
+    // pour rester utilisable par les rôles qui n'ont pas accès en écriture
+    // à employee_confidential dans son ensemble.
+    const { error: confError } =
+      confidentialMode === "rib_only"
+        ? await supabase.rpc("set_employee_rib", { p_employee_id: employeeId, p_rib: confidential.rib })
+        : await supabase.from("employee_confidential").upsert(
+            { ...confidential, employee_id: employeeId },
+            { onConflict: "employee_id" }
+          );
     setSaving(false);
 
     if (profileError || confError) {
