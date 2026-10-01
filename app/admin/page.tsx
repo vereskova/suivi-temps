@@ -15918,8 +15918,8 @@ function PayrollExtrasView({
           halfDay: !p.is_absent && !!p.half_day,
         };
         if (p.is_absent) return;
-        const day = new Date(p.work_date + "T00:00:00Z").getUTCDay();
-        if (day === 0 || day === 6) return;
+        // Même le week-end : si c'est explicitement marqué présent/demi-journée,
+        // ça compte comme un jour normal (demandé par l'utilisatrice, 01/10/2026).
         jours[p.employee_id] = (jours[p.employee_id] ?? 0) + (p.half_day ? 0.5 : 1);
       });
       setJoursByEmployee(jours);
@@ -16360,9 +16360,9 @@ function PayrollExtrasView({
       [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { worked, absenceCode, halfDay } },
     }));
     setJoursByEmployee((prev) => {
-      const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
+      // Même le week-end : présent/demi-journée compte comme un jour normal.
       const delta = dayValue(worked, halfDay) - dayValue(previous.worked, previous.halfDay);
-      if (day === 0 || day === 6 || delta === 0) return prev;
+      if (delta === 0) return prev;
       return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
     });
 
@@ -16387,9 +16387,8 @@ function PayrollExtrasView({
         [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: previous },
       }));
       setJoursByEmployee((prev) => {
-        const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
         const delta = dayValue(previous.worked, previous.halfDay) - dayValue(worked, halfDay);
-        if (day === 0 || day === 6 || delta === 0) return prev;
+        if (delta === 0) return prev;
         return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
       });
     }
