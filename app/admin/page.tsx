@@ -13830,6 +13830,7 @@ function DayCell({
   cellBg,
   selectValue,
   worked,
+  halfDay,
   absenceCode,
   absenceTypes,
   absenceTypeLabel,
@@ -13845,6 +13846,7 @@ function DayCell({
   cellBg: string | undefined;
   selectValue: string;
   worked: boolean;
+  halfDay: boolean;
   absenceCode: string | null;
   absenceTypes: { id: string; code: string; label: string }[];
   absenceTypeLabel: string;
@@ -13897,9 +13899,11 @@ function DayCell({
         onChange={(ev) => onStatusChange(ev.target.value)}
         title={
           hasContent
-            ? `${worked ? "Présent" : absenceCode ? absenceTypeLabel : "Absent"} — 💬 ${comment}${amount != null ? ` (${amount}€)` : ""}${authorLine ? ` [${authorLine}]` : ""} (clic droit pour modifier)`
+            ? `${worked ? (halfDay ? "Demi-journée" : "Présent") : absenceCode ? absenceTypeLabel : "Absent"} — 💬 ${comment}${amount != null ? ` (${amount}€)` : ""}${authorLine ? ` [${authorLine}]` : ""} (clic droit pour modifier)`
             : worked
-              ? "Présent (clic droit : commentaire)"
+              ? halfDay
+                ? "Demi-journée / Полдня (clic droit : commentaire)"
+                : "Présent (clic droit : commentaire)"
               : absenceCode
                 ? `${absenceTypeLabel} (clic droit : commentaire)`
                 : "Absent (clic droit : commentaire)"
@@ -13909,6 +13913,7 @@ function DayCell({
         }`}
       >
         <option value="present">1</option>
+        <option value="half" title="Demi-journée / Полдня">0,5</option>
         <option value="absent">0</option>
         {absenceTypes.map((t) => (
           <option key={t.id} value={`abs:${t.code}`} title={t.label}>
@@ -15586,6 +15591,7 @@ const EXTRAS_COLOR_MONTH_HEADER = "#F9CAA5"; // en-tête du mois
 const EXTRAS_COLOR_PENALTY_HEADER = "#FF0000"; // Штраф контроль
 const EXTRAS_COLOR_PENALTY_DIRECTE_HEADER = "#EA580C"; // Штраф direct — orange, distinct du rouge du Штраф контроль
 const EXTRAS_COLOR_BANK_HEADER = "#EDFF00"; // БАНК качества
+const EXTRAS_COLOR_AVANCE_HEADER = "#00E676"; // Аванс — vert vif, comme dans "часы работы.numbers"
 const EXTRAS_COLOR_WEEKEND = "#FFFF0B"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil, sur toute la hauteur de la colonne
 const EXTRAS_COLOR_HORS_EMPLOI = "#E7E5E4"; // jour hors période d'emploi (avant l'embauche / après la sortie)
 
@@ -15610,7 +15616,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 90, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "avance", lines: ["Аванс", "€"], title: "Аванс — pour information seulement, jamais inclus dans À payer / Аванс — только для справки, в À payer не входит", defaultStyle: { width: 80, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "avance", lines: ["Avance", "Аванс €"], title: "Avance — pour information seulement, jamais incluse dans À payer / Аванс — только для справки, в À payer не входит", defaultStyle: { width: 80, fontSize: 11, color: "#065f46", bg: EXTRAS_COLOR_AVANCE_HEADER } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 90, fontSize: 11, color: "#44403c", bg: "" } },
 ];
 
@@ -15660,8 +15666,8 @@ function absenceShortCode(code: string): string {
  *  une seule fois en haut du tableau plutôt que sur chaque case. Classes
  *  Tailwind écrites en toutes lettres (jamais construites dynamiquement) —
  *  sinon le build ne les inclut pas. */
-function absenceCellBg(worked: boolean, absenceCode: string | null): string {
-  if (worked) return "#dcfce7"; // success-100 — présent
+function absenceCellBg(worked: boolean, absenceCode: string | null, halfDay?: boolean): string {
+  if (worked) return halfDay ? "#ecfccb" : "#dcfce7"; // lime-100 (demi-journée) / success-100 (présent)
   switch (absenceCode) {
     case "maladie":
       return "#ffe4e6"; // rose-100
@@ -15682,6 +15688,7 @@ function absenceCellBg(worked: boolean, absenceCode: string | null): string {
 
 const EXTRAS_ABSENCE_LEGEND: { code: string; label: string; labelRu: string; bg: string }[] = [
   { code: "1", label: "Présent", labelRu: "Присутствовал", bg: "#dcfce7" },
+  { code: "0,5", label: "Demi-journée", labelRu: "Полдня", bg: "#ecfccb" },
   { code: "0", label: "Absent (motif non précisé)", labelRu: "Отсутствовал (без причины)", bg: "" },
   { code: "M", label: "Arrêt maladie", labelRu: "Больничный", bg: "#ffe4e6" },
   { code: "CP", label: "Congé payé", labelRu: "Оплачиваемый отпуск", bg: "#e0f2fe" },
@@ -15753,7 +15760,7 @@ function PayrollExtrasView({
   // modifiable directement ici (choix dans chaque case : présent, absent,
   // ou un type précis — maladie, congé payé, etc.).
   const [attendanceByEmployee, setAttendanceByEmployee] = useState<
-    Record<string, Record<string, { worked: boolean; absenceCode: string | null }>>
+    Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>>
   >({});
   // Annotation par jour, indépendante de pointage_entries — commentaire
   // libre sur n'importe quel jour + montant optionnel sur les week-ends, qui
@@ -15899,20 +15906,21 @@ function PayrollExtrasView({
       // Jours = vrai pointage, pas une case à cocher — jours ouvrés (lun-ven) non absents.
       const { data: pointage } = await supabase
         .from("pointage_entries")
-        .select("employee_id, work_date, is_absent, absence_type_id")
+        .select("employee_id, work_date, is_absent, absence_type_id, half_day")
         .gte("work_date", monthStart)
         .lte("work_date", monthEnd);
       const jours: Record<string, number> = {};
-      const attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null }>> = {};
+      const attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>> = {};
       (pointage ?? []).forEach((p) => {
         (attendance[p.employee_id] ?? (attendance[p.employee_id] = {}))[p.work_date] = {
           worked: !p.is_absent,
           absenceCode: p.is_absent ? (absenceCodeById.get(p.absence_type_id ?? "") ?? null) : null,
+          halfDay: !p.is_absent && !!p.half_day,
         };
         if (p.is_absent) return;
         const day = new Date(p.work_date + "T00:00:00Z").getUTCDay();
         if (day === 0 || day === 6) return;
-        jours[p.employee_id] = (jours[p.employee_id] ?? 0) + 1;
+        jours[p.employee_id] = (jours[p.employee_id] ?? 0) + (p.half_day ? 0.5 : 1);
       });
       setJoursByEmployee(jours);
       setAttendanceByEmployee(attendance);
@@ -16340,19 +16348,22 @@ function PayrollExtrasView({
       return;
     }
 
-    const worked = value === "present";
+    const worked = value === "present" || value === "half";
+    const halfDay = value === "half";
     const absenceCode = value.startsWith("abs:") ? value.slice(4) : null;
     const absenceTypeId = absenceCode ? absenceTypeIdByCode.get(absenceCode) ?? null : null;
-    const previous = attendanceByEmployee[employee.id]?.[dateIso] ?? { worked: false, absenceCode: null };
+    const previous = attendanceByEmployee[employee.id]?.[dateIso] ?? { worked: false, absenceCode: null, halfDay: false };
+    const dayValue = (w: boolean, h: boolean) => (!w ? 0 : h ? 0.5 : 1);
 
     setAttendanceByEmployee((prev) => ({
       ...prev,
-      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { worked, absenceCode } },
+      [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { worked, absenceCode, halfDay } },
     }));
     setJoursByEmployee((prev) => {
       const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
-      if (day === 0 || day === 6 || previous.worked === worked) return prev;
-      return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (worked ? 1 : -1) };
+      const delta = dayValue(worked, halfDay) - dayValue(previous.worked, previous.halfDay);
+      if (day === 0 || day === 6 || delta === 0) return prev;
+      return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
     });
 
     const { error } = await supabase
@@ -16364,6 +16375,7 @@ function PayrollExtrasView({
           employee_id: employee.id,
           is_absent: !worked,
           absence_type_id: absenceTypeId,
+          half_day: halfDay,
         },
         { onConflict: "work_date,employee_id" }
       );
@@ -16376,8 +16388,9 @@ function PayrollExtrasView({
       }));
       setJoursByEmployee((prev) => {
         const day = new Date(dateIso + "T00:00:00Z").getUTCDay();
-        if (day === 0 || day === 6 || previous.worked === worked) return prev;
-        return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + (worked ? -1 : 1) };
+        const delta = dayValue(previous.worked, previous.halfDay) - dayValue(worked, halfDay);
+        if (day === 0 || day === 6 || delta === 0) return prev;
+        return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
       });
     }
   }
@@ -16471,7 +16484,7 @@ function PayrollExtrasView({
       Object.entries(filledByEmployee).forEach(([empId, days]) => {
         next[empId] = { ...(next[empId] ?? {}) };
         days.forEach((d) => {
-          next[empId][d] = { worked: true, absenceCode: null };
+          next[empId][d] = { worked: true, absenceCode: null, halfDay: false };
         });
       });
       return next;
@@ -16852,10 +16865,11 @@ function PayrollExtrasView({
                         const cell = attendanceByEmployee[e.id]?.[d];
                         const worked = cell?.worked ?? false;
                         const absenceCode = cell?.absenceCode ?? null;
-                        const selectValue = worked ? "present" : absenceCode ? `abs:${absenceCode}` : "absent";
+                        const halfDay = cell?.halfDay ?? false;
+                        const selectValue = worked ? (halfDay ? "half" : "present") : absenceCode ? `abs:${absenceCode}` : "absent";
                         const dow = new Date(d + "T00:00:00Z").getUTCDay();
                         const isWeekend = dow === 0 || dow === 6;
-                        const cellBg = absenceCellBg(worked, absenceCode) || (isWeekend ? EXTRAS_COLOR_WEEKEND : undefined);
+                        const cellBg = absenceCellBg(worked, absenceCode, halfDay) || (isWeekend ? EXTRAS_COLOR_WEEKEND : undefined);
                         const note = dayNotesByEmployee[e.id]?.[d];
                         return (
                           <DayCell
@@ -16863,6 +16877,7 @@ function PayrollExtrasView({
                             cellBg={cellBg}
                             selectValue={selectValue}
                             worked={worked}
+                            halfDay={halfDay}
                             absenceCode={absenceCode}
                             absenceTypes={absenceTypes}
                             absenceTypeLabel={absenceCode ? absenceTypeLabelByCode.get(absenceCode) ?? absenceCode : ""}
@@ -17067,8 +17082,8 @@ function PayrollExtrasView({
                       <td className="py-2 pr-2">
                         <input
                           type="number"
-                          title="Аванс — для справки, в À payer не входит / Аванс — pour information, jamais dans À payer"
-                          className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
+                          title="Avance — pour information, jamais dans À payer / Аванс — для справки, в À payer не входит"
+                          className="input bg-green-100 w-full px-1.5 py-1.5 text-xs"
                           value={line.avance}
                           onChange={(ev) => updateInput(e.id, "avance", ev.target.value)}
                         />
