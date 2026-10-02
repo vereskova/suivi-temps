@@ -17465,6 +17465,9 @@ function DossierView({
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [search, setSearch] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  // Mêmes champs que "Contact" dans la fiche Employés (employees.phone /
+  // phone_pro / email) — une seule source, modifiable depuis les deux écrans.
+  const [contact, setContact] = useState<{ phone: string; phone_pro: string; email: string } | null>(null);
 
   // "Adjusting state when a prop changes" (React docs) rather than an
   // effect — initialEmployeeId only ever changes when another view sends
@@ -17612,6 +17615,36 @@ function DossierView({
     }
     loadDetail();
   }, [supabase, selectedEmployeeId]);
+
+  useEffect(() => {
+    if (!selectedEmployeeId) return;
+    let cancelled = false;
+    supabase
+      .from("employees")
+      .select("phone, phone_pro, email")
+      .eq("id", selectedEmployeeId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setContact({ phone: data?.phone ?? "", phone_pro: data?.phone_pro ?? "", email: data?.email ?? "" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, selectedEmployeeId]);
+
+  async function saveContactField(field: "phone" | "phone_pro" | "email", value: string) {
+    if (!selectedEmployeeId) return;
+    const trimmed = value.trim();
+    if ((contact?.[field] ?? "") === trimmed) return;
+    setContact((prev) => ({ phone: "", phone_pro: "", email: "", ...prev, [field]: trimmed }));
+    const { error } = await supabase
+      .from("employees")
+      .update({ [field]: trimmed || null })
+      .eq("id", selectedEmployeeId);
+    if (error) toast.error("Erreur : " + error.message);
+    else toast.success("Contact enregistré / Контакт сохранён");
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -17973,6 +18006,34 @@ function DossierView({
               <SkeletonRows rows={4} cols={3} />
             ) : (
               <div className="space-y-4">
+                <div className="rounded-xl border border-stone-100 p-3">
+                  <p className="mb-2 text-sm font-bold">
+                    <Bi fr="Contacts" ru="Контакты" />
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {(
+                      [
+                        { field: "phone", label: "Téléphone", labelRu: "Телефон", type: "tel" },
+                        { field: "phone_pro", label: "Téléphone professionnel", labelRu: "Рабочий телефон", type: "tel" },
+                        { field: "email", label: "Email", labelRu: "Эл. почта", type: "email" },
+                      ] as const
+                    ).map((f) => {
+                      const current = contact?.[f.field] ?? "";
+                      return (
+                        <label key={f.field} className="block text-[10px] font-bold uppercase text-stone-400">
+                          <Bi fr={f.label} ru={f.labelRu} />
+                          <input
+                            type={f.type}
+                            className="input mt-1 normal-case"
+                            defaultValue={current}
+                            key={`${selectedEmployeeId}-${f.field}-${current}`}
+                            onBlur={(ev) => saveContactField(f.field, ev.target.value)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
                 {visibleCategories.map((cat) => {
                   const Icon = DOSSIER_CATEGORY_ICONS[cat.code] ?? FileText;
 
