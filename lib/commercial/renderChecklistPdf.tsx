@@ -1,5 +1,6 @@
 import path from "path";
 import React from "react";
+import { formatDateShort } from "../documents/helpers";
 import { Circle, Document, Font, Page, Path, Rect, StyleSheet, Svg, Text, View, pdf } from "@react-pdf/renderer";
 
 /**
@@ -330,13 +331,13 @@ function TeamWorkOrderDocument({
               {caseInfo.desiredStartDate && (
                 <View>
                   <Text style={styles.infoLabel}>Début / Начало</Text>
-                  <Text style={styles.infoValue}>{caseInfo.desiredStartDate}</Text>
+                  <Text style={styles.infoValue}>{formatDateShort(caseInfo.desiredStartDate)}</Text>
                 </View>
               )}
               {caseInfo.desiredEndDate && (
                 <View>
                   <Text style={styles.infoLabel}>Fin / Окончание</Text>
-                  <Text style={styles.infoValue}>{caseInfo.desiredEndDate}</Text>
+                  <Text style={styles.infoValue}>{formatDateShort(caseInfo.desiredEndDate)}</Text>
                 </View>
               )}
             </View>

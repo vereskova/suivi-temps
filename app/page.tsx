@@ -7,6 +7,7 @@ import { formatLive, normalizeTime, timeToMinutes } from "@/lib/time";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/StateMessage";
+import DateInput from "@/components/DateInput";
 
 type Team = { id: string; name: string };
 type AbsenceType = { id: string; code: string; label: string };
@@ -283,8 +284,7 @@ export default function Home() {
             <span className="block text-xs font-medium text-stone-400">Дата</span>
           </label>
 
-          <input
-            type="date"
+          <DateInput
             className="input mt-2"
             value={date}
             onChange={(e) => setDate(e.target.value)}

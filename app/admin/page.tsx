@@ -138,6 +138,7 @@ import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
 import { toast } from "@/components/Toast";
 import { Modal } from "@/components/Modal";
+import DateInput, { isoToDmy } from "@/components/DateInput";
 import { EmptyState } from "@/components/StateMessage";
 
 type Employee = {
@@ -305,7 +306,7 @@ function TrialBadge({ hireDate }: { hireDate: string | null }) {
   return (
     <span
       className="badge badge-warning text-[0.65rem] px-1.5 py-0.5"
-      title={`Сотрудник находится на испытательном сроке. До: ${trial.endsAt}`}
+      title={`Сотрудник находится на испытательном сроке. До: ${fmtDate(trial.endsAt)}`}
     >
       Essai
     </span>
@@ -1833,8 +1834,7 @@ function JourView({
       <div className="card mb-4 flex flex-wrap items-end gap-3">
         <label className="font-bold text-sm">
           <Bi fr="Date" ru="Дата" />
-          <input
-            type="date"
+          <DateInput
             className="input mt-2"
             value={date}
             onChange={(e) => setDate(e.target.value)}
@@ -2927,6 +2927,9 @@ function parseTimeCell(v: unknown): string | null {
 function parseDateCell(v: unknown): string | null {
   if (v instanceof Date) return v.toISOString().split("T")[0];
   if (typeof v === "string") {
+    // jj/mm/aaaa (format de l'export) — new Date() l'interpréterait en mm/jj.
+    const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());
+    if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
     const d = new Date(v);
     return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
   }
@@ -2995,7 +2998,7 @@ function ExportImportView({
     const exportRows: ExportRow[] = ((data as unknown as ExportSourceRow[]) ?? []).map(
       (r) => ({
         employee_id: r.employee_id,
-        Date: r.work_date,
+        Date: fmtDate(r.work_date, ""),
         Équipe: r.employees?.teams?.name ?? "",
         Nom: r.employees?.last_name ?? "",
         Prénom: r.employees?.first_name ?? "",
@@ -3128,8 +3131,7 @@ function ExportImportView({
         <div className="flex flex-wrap items-end gap-4">
           <label className="font-bold text-sm">
             <Bi fr="Du" ru="С" />
-            <input
-              type="date"
+            <DateInput
               className="input mt-2"
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
@@ -3137,8 +3139,7 @@ function ExportImportView({
           </label>
           <label className="font-bold text-sm">
             <Bi fr="Au" ru="По" />
-            <input
-              type="date"
+            <DateInput
               className="input mt-2"
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
@@ -3795,8 +3796,7 @@ function EmployeesView({
                           ) : (
                             <Bi fr="Dernier contact connu" ru="Последний известный контакт" />
                           )}
-                          <input
-                            type="date"
+                          <DateInput
                             className="input text-sm mt-1"
                             value={editForm.endDate}
                             onChange={(ev) => setEditForm({ ...editForm, endDate: ev.target.value })}
@@ -3831,7 +3831,7 @@ function EmployeesView({
                         }`}
                       >
                         {STATUS_LABELS[e.status]}
-                        {e.end_date && <span className="ml-1 font-normal text-stone-400">— {e.end_date}</span>}
+                        {e.end_date && <span className="ml-1 font-normal text-stone-400">— {fmtDate(e.end_date)}</span>}
                       </p>
                     </div>
                   )}
@@ -3970,8 +3970,7 @@ function EmployeesView({
                           {(editForm.status === "terminated" ||
                             editForm.status === "on_leave" ||
                             editForm.status === "unclear") && (
-                            <input
-                              type="date"
+                            <DateInput
                               className="input text-sm px-2 py-1"
                               value={editForm.endDate}
                               onChange={(ev) =>
@@ -4015,7 +4014,7 @@ function EmployeesView({
                           {STATUS_LABELS[e.status]}
                         </td>
                         <td className="py-2 pr-4 text-stone-500">
-                          {e.end_date ?? "—"}
+                          {fmtDate(e.end_date)}
                         </td>
                         <td className="py-2 whitespace-nowrap">
                           {!readOnly && e.team_id && (
@@ -4734,6 +4733,8 @@ function DetailField({
           key={`${label}-${value ?? ""}`}
           onBlur={(e) => onChange(e.target.value.trim().replace(",", "."))}
         />
+      ) : type === "date" ? (
+        <DateInput value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
       ) : (
         <input
           type={type}
@@ -5719,8 +5720,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   Prénom: row.employee.first_name,
                   Équipe: row.employee.teams?.name ?? "",
                   Statut: MEDICAL_STATUS_LABELS[row.status].fr,
-                  "Dernière visite": row.visit?.last_visit_date ?? "",
-                  "Prochaine visite": row.visit?.next_visit_date ?? "",
+                  "Dernière visite": fmtDate(row.visit?.last_visit_date, ""),
+                  "Prochaine visite": fmtDate(row.visit?.next_visit_date, ""),
                   Heure: row.visit?.next_visit_time?.slice(0, 5) ?? "",
                 }));
                 const sheet = XLSX.utils.json_to_sheet(exportRows);
@@ -6079,8 +6080,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   </option>
                 ))}
               </select>
-              <input
-                type="date"
+              <DateInput
                 className="input"
                 value={newRequest.requestedAt}
                 onChange={(e) => setNewRequest({ ...newRequest, requestedAt: e.target.value })}
@@ -6239,8 +6239,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   <div className="space-y-2">
                     <label className="block text-xs font-bold text-stone-400">
                       <Bi fr="Dernière visite" ru="Последний визит" />
-                      <input
-                        type="date"
+                      <DateInput
                         className="input text-sm mt-1"
                         value={editForm.last}
                         onChange={(e) => setEditForm({ ...editForm, last: e.target.value })}
@@ -6249,8 +6248,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     <label className="block text-xs font-bold text-stone-400">
                       <Bi fr="Prochaine visite" ru="Следующий визит" />
                       <div className="flex gap-1 mt-1">
-                        <input
-                          type="date"
+                        <DateInput
                           className="input text-sm"
                           value={editForm.next}
                           onChange={(e) => setEditForm({ ...editForm, next: e.target.value })}
@@ -6350,8 +6348,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       <>
                         <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "—"}</td>
                         <td className="py-2 pr-4">
-                          <input
-                            type="date"
+                          <DateInput
                             className="input text-sm px-2 py-1"
                             value={editForm.last}
                             onChange={(e) => setEditForm({ ...editForm, last: e.target.value })}
@@ -6359,8 +6356,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         </td>
                         <td className="py-2 pr-4">
                           <div className="flex gap-1">
-                            <input
-                              type="date"
+                            <DateInput
                               className="input text-sm px-2 py-1"
                               value={editForm.next}
                               onChange={(e) => setEditForm({ ...editForm, next: e.target.value })}
@@ -8287,7 +8283,7 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             {
                               label: "Date de notification / début préavis",
                               labelRu: "Дата уведомления",
-                              value: result.notificationDate ?? "—",
+                              value: fmtDate(result.notificationDate),
                             },
                           ]),
                     ]}
@@ -8312,37 +8308,37 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         {
                           label: "Convocation — au plus tard",
                           labelRu: "Приглашение на встречу — не позднее",
-                          value: result.rc.convocationDeadline,
+                          value: fmtDate(result.rc.convocationDeadline),
                         },
                         {
                           label: "Entretien + signature — au plus tard",
                           labelRu: "Собеседование + подпись — не позднее",
-                          value: result.rc.entretienSignatureDeadline,
+                          value: fmtDate(result.rc.entretienSignatureDeadline),
                         },
                         {
                           label: "Fin du délai de rétractation",
                           labelRu: "Конец срока отзыва",
-                          value: result.rc.finRetractation,
+                          value: fmtDate(result.rc.finRetractation),
                         },
                         {
                           label: "Dépôt auprès de la DREETS",
                           labelRu: "Подача в DREETS",
-                          value: result.rc.depotDreets,
+                          value: fmtDate(result.rc.depotDreets),
                         },
                         {
                           label: "Début du délai d'instruction DREETS",
                           labelRu: "Начало срока рассмотрения",
-                          value: result.rc.debutInstruction,
+                          value: fmtDate(result.rc.debutInstruction),
                         },
                         {
                           label: "Validation tacite DREETS",
                           labelRu: "Молчаливое одобрение DREETS",
-                          value: result.rc.validationTacite,
+                          value: fmtDate(result.rc.validationTacite),
                         },
                         {
                           label: "Rupture effective du contrat",
                           labelRu: "Фактическая дата расторжения",
-                          value: result.rc.ruptureEffective,
+                          value: fmtDate(result.rc.ruptureEffective),
                         },
                       ]}
                     />
@@ -10085,8 +10081,7 @@ function CommercialView({
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <label className="text-[10px] font-bold uppercase text-stone-400">Début souhaité</label>
                   {editingCaseDate ? (
-                    <input
-                      type="date"
+                    <DateInput
                       autoFocus
                       className="input text-xs py-0.5 px-1.5 w-auto"
                       defaultValue={selectedCase?.desired_start_date ?? ""}
@@ -10723,7 +10718,7 @@ function CommercialView({
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Début souhaité</label>
-            <input type="date" className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
+            <DateInput className="input" value={newStart} onChange={(e) => setNewStart(e.target.value)} />
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">Puissance (kWc)</label>
@@ -11763,7 +11758,7 @@ function DashEmployeeRow({ e, todayIso }: { e: DashEmployee; todayIso: string })
       </td>
       <td className="py-1.5 pr-4">{formatYearsMonths(tenureMonths)}</td>
       <td className="py-1.5 pr-4">{ageMonths !== null ? Math.floor(ageMonths / 12) : "—"}</td>
-      <td className="py-1.5 pr-4">{e.hire_date ?? "—"}</td>
+      <td className="py-1.5 pr-4">{fmtDate(e.hire_date)}</td>
       <td className="py-1.5 pr-4">
         <Bi fr={STATUS_LABELS[e.status]} ru={STATUS_LABELS_RU[e.status]} />
       </td>
@@ -12011,7 +12006,7 @@ function DashboardsView({
     if (periodMode === "quarter" && periodQuarter) return `T${periodQuarter.quarter} ${periodQuarter.year}`;
     if (periodMode === "all") return "Tout / Всё время";
     if (periodMode === "custom" && appliedCustomRange) {
-      return `${appliedCustomRange.startIso.slice(0, 7)} — ${appliedCustomRange.endIso.slice(0, 7)}`;
+      return `${isoToDmy(appliedCustomRange.startIso.slice(0, 7) + "-01").slice(3)} — ${isoToDmy(appliedCustomRange.endIso.slice(0, 7) + "-01").slice(3)}`;
     }
     return "12 mois / 12 мес.";
   }, [periodMode, periodYear, periodQuarter, appliedCustomRange]);
@@ -12624,9 +12619,9 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
     const exportRows = filtered.map((r) => ({
       "N°": r.numero,
       "Nom Prénom": r.nom_prenom,
-      "Date d'entrée": r.date_entree,
+      "Date d'entrée": fmtDate(r.date_entree, ""),
       Nationalité: r.nationalite,
-      "Date de naissance": r.date_naissance,
+      "Date de naissance": fmtDate(r.date_naissance, ""),
       Sexe: r.sexe,
       Emploi: r.emploi,
       Qualification: r.qualification,
@@ -12634,7 +12629,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
       "N° du titre": r.numero_titre,
       "Type de contrat": r.type_contrat,
       "Temps partiel": r.temps_partiel,
-      "Date de sortie": r.date_sortie,
+      "Date de sortie": fmtDate(r.date_sortie, ""),
     }));
     const sheet = XLSX.utils.json_to_sheet(exportRows);
     const workbook = XLSX.utils.book_new();
@@ -12776,6 +12771,12 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                         </option>
                       ))}
                     </select>
+                  ) : f.type === "date" ? (
+                    <DateInput
+                      className="input mt-1"
+                      value={editForm[f.key]}
+                      onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                    />
                   ) : (
                     <input
                       className="input mt-1"
@@ -12836,10 +12837,10 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm mt-2">
-                    <p><span className="text-stone-400">Entrée: </span>{r.date_entree ?? "—"}</p>
-                    <p><span className="text-stone-400">Sortie: </span>{r.date_sortie ?? "—"}</p>
+                    <p><span className="text-stone-400">Entrée: </span>{fmtDate(r.date_entree)}</p>
+                    <p><span className="text-stone-400">Sortie: </span>{fmtDate(r.date_sortie)}</p>
                     <p><span className="text-stone-400">Nationalité: </span>{r.nationalite ?? "—"}</p>
-                    <p><span className="text-stone-400">Naissance: </span>{r.date_naissance ?? "—"}</p>
+                    <p><span className="text-stone-400">Naissance: </span>{fmtDate(r.date_naissance)}</p>
                     <p><span className="text-stone-400">Sexe: </span>{r.sexe ?? "—"}</p>
                     <p><span className="text-stone-400">Contrat: </span>{r.type_contrat ?? "—"}</p>
                     <p className="col-span-2"><span className="text-stone-400">Emploi: </span>{r.emploi ?? "—"}</p>
@@ -12878,9 +12879,9 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     >
                       <td className="py-2 pr-4 text-stone-400 whitespace-nowrap">{r.numero ?? "—"}</td>
                       <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.date_entree ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{fmtDate(r.date_entree)}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.date_naissance ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{fmtDate(r.date_naissance)}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "—"}</td>
                       <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "—"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{r.qualification ?? "—"}</td>
@@ -12888,7 +12889,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                       <td className="py-2 pr-4 whitespace-nowrap">{r.numero_titre ?? "—"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{r.type_contrat ?? "—"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.date_sortie ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{fmtDate(r.date_sortie)}</td>
                       <td className="py-2 pr-2 whitespace-nowrap">
                         {r.employee_id && (
                           <RowAction
@@ -13601,6 +13602,12 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
   );
 }
 
+/** Null-safe jj/mm/aaaa for display — falls back to the raw text if it isn't an ISO date. */
+function fmtDate(iso: string | null | undefined, fallback = "—"): string {
+  if (!iso) return fallback;
+  return isoToDmy(iso) || iso;
+}
+
 function formatDateShortDMY(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
@@ -13655,14 +13662,14 @@ const RAISON_POPOVER_WIDTH = 380;
  *  portail vers document.body (position: fixed, calculée depuis le bouton).
  *  Nécessaire car ses appelants vivent dans un conteneur overflow-x-auto qui
  *  coupe court tout enfant absolute positionné débordant verticalement. */
-/** "2026-09-30T14:13:00Z" -> "30/09 14:13". */
+/** "2026-09-30T14:13:00Z" -> "30/09/2026 14:13". */
 function formatDateTimeShort(iso: string): string {
   const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const hh = String(d.getHours()).padStart(2, "0");
   const mi = String(d.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm} ${hh}:${mi}`;
+  return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
 }
 
 function RaisonButton({
@@ -16329,7 +16336,7 @@ function PayrollExtrasView({
   async function setDayStatus(employee: PaieEmployee, dateIso: string, value: string) {
     if (value === "depart") {
       const ok = window.confirm(
-        `Marquer ${employee.first_name} ${employee.last_name} comme sorti(e) à partir du ${dateIso} ?\n` +
+        `Marquer ${employee.first_name} ${employee.last_name} comme sorti(e) à partir du ${fmtDate(dateIso)} ?\n` +
           `Отметить как уволенного с этой даты?`
       );
       if (!ok) return;
@@ -18167,7 +18174,7 @@ function DossierView({
                                   <span className="flex items-center gap-2 flex-wrap">
                                     {doc.file_name}
                                     {doc.valid_until && (
-                                      <span className="text-xs text-stone-400">expire le {doc.valid_until}</span>
+                                      <span className="text-xs text-stone-400">expire le {fmtDate(doc.valid_until)}</span>
                                     )}
                                     {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
                                   </span>
@@ -18307,8 +18314,7 @@ function DossierView({
                   <div className="mb-3">
                     <label className="text-xs font-bold text-stone-500 block">
                       <Bi fr="Date de délivrance / création" ru="Дата выдачи / создания" />
-                      <input
-                        type="date"
+                      <DateInput
                         className="input mt-1"
                         value={issueDate}
                         disabled={noIssueDate}
@@ -18332,8 +18338,7 @@ function DossierView({
                   <div>
                     <label className="text-xs font-bold text-stone-500 block">
                       <Bi fr="Date d'expiration" ru="Дата истечения" />
-                      <input
-                        type="date"
+                      <DateInput
                         className="input mt-1"
                         value={expiryDate}
                         disabled={noExpiryDate}
@@ -18413,8 +18418,7 @@ function DossierView({
                   — {"non renseignée dans le Registre du personnel"}
                 </span>
               )}
-              <input
-                type="date"
+              <DateInput
                 className="input text-sm mt-1"
                 value={contractModal.hireDate ?? ""}
                 onChange={(e) => setContractModal({ ...contractModal, hireDate: e.target.value || null })}
@@ -19728,8 +19732,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                   <div className="mb-3">
                     <label className="text-xs font-bold text-stone-500 block">
                       <Bi fr="Date de délivrance / création" ru="Дата выдачи / создания" />
-                      <input
-                        type="date"
+                      <DateInput
                         className="input mt-1"
                         value={issueDate}
                         disabled={noIssueDate}
@@ -19753,8 +19756,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                   <div>
                     <label className="text-xs font-bold text-stone-500 block">
                       <Bi fr="Date d'expiration" ru="Дата истечения" />
-                      <input
-                        type="date"
+                      <DateInput
                         className="input mt-1"
                         value={expiryDate}
                         disabled={noExpiryDate}
@@ -19826,8 +19828,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
               {!contractModal.hireDate && (
                 <span className="text-error-600 font-normal"> — {"non renseignée dans le Registre du personnel"}</span>
               )}
-              <input
-                type="date"
+              <DateInput
                 className="input text-sm mt-1"
                 value={contractModal.hireDate ?? ""}
                 onChange={(e) => setContractModal({ ...contractModal, hireDate: e.target.value || null })}
@@ -20367,8 +20368,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   </label>
                   <label className="font-bold">
                     Contrôle technique <span className="text-xs font-normal text-stone-400 block">Техосмотр — срок</span>
-                    <input
-                      type="date"
+                    <DateInput
                       className="input mt-1"
                       value={selectedVehicle.ct_due_date ?? ""}
                       onChange={(e) => updateVehicleField("ct_due_date", e.target.value || null)}
@@ -20394,8 +20394,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   </label>
                   <label className="font-bold">
                     Assurance — échéance <span className="text-xs font-normal text-stone-400 block">Страховка — срок</span>
-                    <input
-                      type="date"
+                    <DateInput
                       className="input mt-1"
                       value={selectedVehicle.insurance_end_date ?? ""}
                       onChange={(e) => updateVehicleField("insurance_end_date", e.target.value || null)}
@@ -20436,8 +20435,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   </label>
                   <label className="font-bold">
                     Leasing — échéance <span className="text-xs font-normal text-stone-400 block">Лизинг — срок</span>
-                    <input
-                      type="date"
+                    <DateInput
                       className="input mt-1"
                       value={selectedVehicle.leasing_end_date ?? ""}
                       onChange={(e) => updateVehicleField("leasing_end_date", e.target.value || null)}
@@ -20495,7 +20493,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                         <div key={visit.id} className="rounded-xl border border-stone-100 p-3">
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-semibold">
-                              {visit.visit_date}
+                              {fmtDate(visit.visit_date)}
                               {visit.mileage_km != null && <span className="text-stone-400"> · {visit.mileage_km} km</span>}
                               {visit.provider && <span className="text-stone-400"> · {visit.provider}</span>}
                             </p>
@@ -20622,7 +20620,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
         <div className="grid grid-cols-2 gap-3 mb-3">
           <label className="text-sm font-bold">
             Date
-            <input type="date" className="input mt-1" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
+            <DateInput className="input mt-1" value={visitDate} onChange={(e) => setVisitDate(e.target.value)} />
           </label>
           <label className="text-sm font-bold">
             Kilométrage
