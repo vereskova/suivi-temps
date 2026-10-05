@@ -16613,6 +16613,36 @@ function PayrollExtrasView({
         </div>
       )}
 
+      {(() => {
+        const overflow = employees.filter((e) => (computed[e.id]?.penaliteSurPaie ?? 0) > 0);
+        if (overflow.length === 0) return null;
+        return (
+          <div className="card mb-4 border-l-4 border-error-400 bg-error-50/40">
+            <p className="text-sm font-bold text-error-600 mb-2">
+              <Bi
+                fr={`Штраф сверх БАНК 3000 — la différence est retenue sur la paie (${overflow.length})`}
+                ru={`Штраф больше, чем в БАНК 3000 — разница вычтена из зарплаты (${overflow.length})`}
+              />
+            </p>
+            <ul className="space-y-1 text-xs text-stone-600">
+              {overflow.map((e) => {
+                const c = computed[e.id];
+                const penalty = Math.max(0, -(Number(inputs[e.id]?.penaliteMontant) || 0));
+                return (
+                  <li key={e.id} className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-stone-700">{employeeName(e)}</span>
+                    <span>
+                      Штраф / Pénalité {penalty.toFixed(2)} € → БАНК {(penalty - c.penaliteSurPaie).toFixed(2)} € + зарплата / paie{" "}
+                      <span className="font-bold text-error-600">−{c.penaliteSurPaie.toFixed(2)} €</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
+
       {loading ? (
         <div className="card">
           <SkeletonRows rows={6} cols={4} />
@@ -17074,9 +17104,9 @@ function PayrollExtrasView({
                                 ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
                                 : extrasTooltip(
                                     "БАНК 3000",
-                                    `min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ (peut être négatif)`,
+                                    `min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ — jamais négatif : l'excédent d'une pénalité est retenu sur la paie`,
                                     "БАНК 3000",
-                                    `мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ (может быть отрицательным)`
+                                    `мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ — не уходит в минус: превышение штрафа вычитается из зарплаты`
                                   )
                             }
                           >
@@ -17115,9 +17145,9 @@ function PayrollExtrasView({
                         className="py-2 px-2 text-center font-bold text-stone-700 cursor-help"
                         title={extrasTooltip(
                           "À payer",
-                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + Coût route(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés, Vacance jours et Аванс sont indicatifs, calculés/versés par la comptabilité)`,
+                          `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + Coût route(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""}${(c?.penaliteSurPaie ?? 0) ? ` − Pénalité au-delà du БАНК(${(c?.penaliteSurPaie ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés, Vacance jours et Аванс sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные, дни вакансов и аванс — только для справки, считает и платит бухгалтерия)`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""}${(c?.penaliteSurPaie ?? 0) ? ` − штраф сверх БАНКа(${(c?.penaliteSurPaie ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные, дни вакансов и аванс — только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €

@@ -310,6 +310,8 @@ export type PayrollExtrasResult = {
   bonusEquipePaye: number;
   bonusDirect: number;
   banqueQualiteFin: number;
+  /** Part d'une pénalité contrôleur qui dépasse le БАНК disponible — retenue sur la paie du mois. */
+  penaliteSurPaie: number;
   controleBonusRecu: number;
   banqueQualitePrime: number;
   coutRoute: number;
@@ -327,11 +329,13 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     ? Math.min(Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX), Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut))
     : 0;
   const bonusEquipePaye = input.bonusEquipe - banqueDepot;
-  // Peut devenir négatif : une pénalité plus grande que le solde disponible
-  // laisse le БАНК en négatif (reporté au mois suivant, remboursé par les
-  // prochains dépôts) au lieu de "perdre" la différence — demandé par
-  // l'utilisatrice, 05/10/2026 (pénalité 320 € pour 300 € en banque).
-  const banqueQualiteFin = Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle;
+  // Le БАНК ne devient jamais négatif : la part d'une pénalité qui dépasse le
+  // solde disponible est retenue sur la paie du mois (penaliteSurPaie) —
+  // demandé par l'utilisatrice, 05/10/2026 (pénalité 320 € pour 300 € en banque
+  // → 300 € du БАНК + 20 € de la paie, avec un message dans le tableau).
+  const banqueDisponible = Math.max(0, Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot));
+  const banqueQualiteFin = Math.max(0, banqueDisponible - penalitesControle);
+  const penaliteSurPaie = Math.max(0, penalitesControle - banqueDisponible);
   const bonusDirect = Math.round((input.bonusDirect || 0) * 100) / 100;
   const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
   const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
@@ -341,7 +345,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     ) / 100;
   const aPayer =
     Math.round(
-      (salaireJours + bonusEquipePaye + bonusDirect + coutRoute + controleBonusRecu + banqueQualitePrime) * 100
+      (salaireJours + bonusEquipePaye + bonusDirect + coutRoute + controleBonusRecu + banqueQualitePrime - penaliteSurPaie) * 100
     ) / 100;
 
   return {
@@ -352,6 +356,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     bonusEquipePaye: Math.round(bonusEquipePaye * 100) / 100,
     bonusDirect,
     banqueQualiteFin,
+    penaliteSurPaie: Math.round(penaliteSurPaie * 100) / 100,
     controleBonusRecu,
     banqueQualitePrime,
     coutRoute,
