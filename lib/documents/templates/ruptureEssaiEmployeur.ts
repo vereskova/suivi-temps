@@ -1,10 +1,10 @@
 import { Block, CompanyDoc, EmployeeDoc, DocContent, para, rightAligned, rule, closing } from "../types";
-import { formatDateFr, daysBetweenIso } from "../helpers";
-import { computeDelaiPrevenanceEssai } from "../preavis";
+import { formatDateFr } from "../helpers";
+import { letterDateForTrialEnd } from "../preavis";
 import { civility, salarieLabel } from "../gender";
 
 export type RuptureEssaiEmployeurParams = {
-  letterDate: string; // ISO — date of the letter / remise
+  lastDay: string; // ISO — last day of presence; the letter date is computed backwards from it
   deliveryMethod: "recommande" | "main_propre" | "email";
   recommandeNumber?: string;
   signingCity: string;
@@ -21,9 +21,9 @@ export function ruptureEssaiEmployeur(
   const fullName = `${employee.lastName.toUpperCase()} ${employee.firstName}`;
   const sex = employee.sex;
 
-  const joursPresence = employee.hireDate ? daysBetweenIso(employee.hireDate, params.letterDate) : 0;
-  const delai = computeDelaiPrevenanceEssai(joursPresence);
-  const endDate = delai.endDateFromIso(params.letterDate);
+  const { letterDateIso, joursPresence, delai } = letterDateForTrialEnd(employee.hireDate, params.lastDay);
+  const letterDate = letterDateIso;
+  const endDate = params.lastDay;
 
   const deliveryLine =
     params.deliveryMethod === "main_propre"
@@ -44,7 +44,7 @@ export function ruptureEssaiEmployeur(
     rightAligned(employee.address ?? "____________"),
     { type: "spacer" },
     para(deliveryLine),
-    rightAligned(`À ${params.signingCity}, le ${formatDateFr(params.letterDate)}`),
+    rightAligned(`À ${params.signingCity}, le ${formatDateFr(letterDate)}`),
     { type: "spacer" },
     para("Objet : Rupture de la période d'essai"),
     { type: "spacer" },
@@ -78,7 +78,7 @@ export function ruptureEssaiEmployeur(
   if (params.deliveryMethod === "main_propre") {
     blocks.push(
       closing(
-        `Fait en deux exemplaires à ${params.signingCity} le ${formatDateFr(params.letterDate)}`,
+        `Fait en deux exemplaires à ${params.signingCity} le ${formatDateFr(letterDate)}`,
         { label: "L'employeur", lines: [company.representativeName, company.representativeTitle] },
         { label: salarieLabel(sex), lines: [fullName] }
       )

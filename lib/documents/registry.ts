@@ -1,5 +1,6 @@
 import { CompanyDoc, DocContent, EmployeeDoc } from "./types";
-import { todayIso } from "./helpers";
+import { todayIso, formatDateShort } from "./helpers";
+import { letterDateForTrialEnd } from "./preavis";
 import { contratChantier } from "./templates/contratChantier";
 import { contratBureau } from "./templates/contratBureau";
 import { nda } from "./templates/nda";
@@ -26,6 +27,8 @@ export type FieldSchema = {
   defaultValue?: (employee: EmployeeDoc, company: CompanyDoc) => string | number | boolean | null;
   help?: string;
   helpRu?: string;
+  /** Live read-only line shown under the field, computed from the current form values. */
+  derived?: (values: Record<string, unknown>, employee: EmployeeDoc) => { fr: string; ru: string } | null;
   /** Options for type "select". */
   options?: { value: string; label: string; labelRu?: string }[];
 };
@@ -521,14 +524,28 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     legalRisk: true,
     fields: [
       {
-        key: "letterDate",
-        label: "Date de la lettre",
-        labelRu: "Дата письма",
+        key: "lastDay",
+        label: "Dernier jour de présence (fin de contrat)",
+        labelRu: "Последний день работы (дата ухода)",
         type: "date",
         required: true,
-        defaultValue: () => todayIso(),
-        help: "Le délai de prévenance et la date de fin de contrat sont calculés à partir de cette date.",
-        helpRu: "Срок уведомления и дата окончания договора рассчитываются от этой даты.",
+        help: "La date de la lettre (date de notification) est calculée automatiquement pour que le délai de prévenance se termine exactement ce jour-là.",
+        helpRu: "Дата письма (дата уведомления) рассчитывается автоматически так, чтобы срок уведомления закончился именно в этот день.",
+        derived: (values, employee) => {
+          const lastDay = String(values.lastDay ?? "");
+          if (!lastDay) return null;
+          const hire = String(values.hireDate ?? "") || employee.hireDate;
+          const r = letterDateForTrialEnd(hire || null, lastDay);
+          const when = formatDateShort(r.letterDateIso);
+          return {
+            fr: `Date de la lettre : ${when} — délai de prévenance ${r.delai.label} (${r.joursPresence} j de présence)${
+              r.exact ? "" : " — durée réelle supérieure au minimum (cas limite)"
+            }`,
+            ru: `Дата письма: ${when} — срок уведомления ${r.delai.label} (${r.joursPresence} дн. стажа)${
+              r.exact ? "" : " — фактический срок больше минимального (пограничный случай)"
+            }`,
+          };
+        },
       },
       {
         key: "deliveryMethod",

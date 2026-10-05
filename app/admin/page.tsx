@@ -7921,16 +7921,33 @@ function DocumentsForm({
                       }));
                     }}
                   />
+                ) : f.type === "date" ? (
+                  <DateInput
+                    className="input mt-2"
+                    value={String(formValues[f.key] ?? "")}
+                    onChange={(ev) =>
+                      setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
+                    }
+                  />
                 ) : (
                   <input
                     className="input mt-2"
-                    type={f.type === "date" ? "date" : "text"}
+                    type="text"
                     value={String(formValues[f.key] ?? "")}
                     onChange={(ev) =>
                       setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
                     }
                   />
                 )}
+                {(() => {
+                  const d = f.derived?.(formValues, employeeDoc);
+                  return d ? (
+                    <span className="mt-1 block rounded-lg bg-primary-50 px-2 py-1 text-xs font-semibold text-primary-700">
+                      {d.fr}
+                      <span className="block font-normal opacity-70">{d.ru}</span>
+                    </span>
+                  ) : null;
+                })()}
                 {f.help && (
                   <span className="block text-xs font-normal text-stone-400 mt-1">
                     {f.help}

@@ -12,7 +12,7 @@
  * returned `note`.
  */
 
-import { addDaysIso, addMonthsIso as addMonthsIsoHelper } from "./helpers";
+import { addDaysIso, addMonthsIso as addMonthsIsoHelper, daysBetweenIso } from "./helpers";
 
 export type PreavisType = "demission" | "licenciement";
 
@@ -106,4 +106,33 @@ export function computeDelaiPrevenanceEssai(joursPresence: number): DelaiPrevena
     return { label: "2 semaines", endDateFromIso: (iso) => addDaysIso(iso, 14) };
   }
   return { label: "1 mois", endDateFromIso: (iso) => addMonthsIsoHelper(iso, 1) };
+}
+
+/**
+ * Works backwards from the employee's last day of presence to the date the
+ * rupture letter must be notified. The délai de prévenance depends on the jours
+ * de présence AT the notification date, so we look for the LATEST notification
+ * date whose minimum délai ends on or before the last day. Usually that is
+ * exact (`exact: true`: the délai ends precisely on the last day). Around a
+ * tier boundary no date can end exactly then (e.g. 89 days of presence = 2
+ * weeks but 90 = 1 month), so the letter goes out earlier and the real period
+ * is longer than the minimum — still compliant, since a longer notice is
+ * allowed — and `exact` is false so the form can say so.
+ */
+export function letterDateForTrialEnd(
+  hireIso: string | null,
+  lastDayIso: string
+): { letterDateIso: string; joursPresence: number; delai: DelaiPrevenanceEssai; exact: boolean } {
+  for (let k = 1; k <= 62; k++) {
+    const letter = addDaysIso(lastDayIso, -k);
+    const jours = hireIso ? daysBetweenIso(hireIso, letter) : 0;
+    const delai = computeDelaiPrevenanceEssai(jours);
+    const end = delai.endDateFromIso(letter);
+    if (end <= lastDayIso) {
+      return { letterDateIso: letter, joursPresence: jours, delai, exact: end === lastDayIso };
+    }
+  }
+  const letter = addMonthsIsoHelper(lastDayIso, -1);
+  const jours = hireIso ? daysBetweenIso(hireIso, letter) : 0;
+  return { letterDateIso: letter, joursPresence: jours, delai: computeDelaiPrevenanceEssai(jours), exact: false };
 }
