@@ -16410,27 +16410,44 @@ function PayrollExtrasView({
     // ajouter. S'il franchit 10000, on partage tout de suite (pas de bouton
     // séparé — confirmé avec l'utilisatrice : automatisation complète).
     if (companyQualityBank) {
-      // Ajoute seulement la DIFFÉRENCE avec ce que ce même mois avait déjà
-      // versé lors d'un "Enregistrer" précédent — sinon chaque nouvel
-      // enregistrement du même mois recompterait tout (bug constaté le
-      // 05/10/2026 : 3 enregistrements → 3 × 1377 = 4131 au lieu de 1377).
-      const { data: savedLines } = await supabase
-        .from("payroll_extras")
-        .select("employee_id, penalite_montant")
-        .eq("run_id", runId);
-      const previouslySavedPenalites = (savedLines ?? []).reduce((sum, l) => {
-        const emp = employees.find((e) => e.id === l.employee_id);
-        if (!emp || !(emp.category === "chantier" && !!emp.team_id && !!emp.teams?.name)) return sum;
-        return sum + Math.max(0, -(Number(l.penalite_montant) || 0));
-      }, 0);
-      const alreadyContributed = computeControllerSplit(previouslySavedPenalites).bankShare;
-      const newTotal =
-        Math.round((companyQualityBank.current_total + controllerSplit.bankShare - alreadyContributed) * 100) / 100;
+      // Le total est RECALCULÉ à chaque enregistrement à partir des pénalités
+      // enregistrées (75 % de tous les mois depuis le début de la période + ce
+      // mois-ci), au lieu d'ajouter au total précédent : plusieurs
+      // enregistrements du même mois, une page ouverte avec un ancien total ou
+      // plusieurs utilisateurs en même temps ne peuvent plus le gonfler (bug
+      // constaté le 05/10/2026 : 1377 devenu 4131 puis 6885).
+      const periodMonth = `${companyQualityBank.period_start.slice(0, 7)}-01`;
+      const isTeamMember = (employeeId: string) => {
+        const emp = employees.find((e) => e.id === employeeId);
+        return !!emp && emp.category === "chantier" && !!emp.team_id && !!emp.teams?.name;
+      };
+      const { data: runsSincePeriod } = await supabase
+        .from("payroll_runs")
+        .select("id")
+        .gte("month", periodMonth)
+        .neq("id", runId);
+      const otherRunIds = (runsSincePeriod ?? []).map((r) => r.id);
+      let otherPenalites = 0;
+      if (otherRunIds.length > 0) {
+        const { data: otherLines } = await supabase
+          .from("payroll_extras")
+          .select("employee_id, penalite_montant")
+          .in("run_id", otherRunIds);
+        otherPenalites = (otherLines ?? []).reduce(
+          (sum, l) => (isTeamMember(l.employee_id) ? sum + Math.max(0, -(Number(l.penalite_montant) || 0)) : sum),
+          0
+        );
+      }
+      const thisRunPenalites = rows.reduce(
+        (sum, r) => (isTeamMember(r.employee_id) ? sum + Math.max(0, -(Number(r.penalite_montant) || 0)) : sum),
+        0
+      );
+      const newTotal = computeControllerSplit(otherPenalites + thisRunPenalites).bankShare;
       if (newTotal >= QUALITY_BANK_TARGET) {
         const { data: pastRuns } = await supabase
           .from("payroll_runs")
           .select("id")
-          .gte("month", companyQualityBank.period_start)
+          .gte("month", periodMonth)
           .neq("id", runId);
         const pastRunIds = (pastRuns ?? []).map((r) => r.id);
 
