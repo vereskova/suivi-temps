@@ -15750,6 +15750,44 @@ const CHEF_RATE_FRENCH = 115;
  *  forme chaque mois. Les cases de présence se cliquent directement ici —
  *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
  *  jour", pas une copie). Alimente Jours dans Paie. */
+/** Total du Банк качества commun, TOUJOURS recalculé depuis les pénalités
+ *  enregistrées (75 % des Штраф négatifs des salariés d'équipe, tous les mois
+ *  depuis le début de la période) — jamais lu depuis company_quality_bank.
+ *  current_total, que d'anciens onglets ouverts peuvent réécrire avec une
+ *  valeur périmée (constaté le 05/10/2026). `override` remplace les lignes
+ *  de ce mois par celles en cours d'enregistrement. */
+async function computeCompanyBankTotal(
+  supabase: ReturnType<typeof createClient>,
+  periodStart: string,
+  override?: { runId: string; lines: { employee_id: string; penalite_montant: number }[] }
+): Promise<number> {
+  const periodMonth = `${periodStart.slice(0, 7)}-01`;
+  const { data: runs } = await supabase.from("payroll_runs").select("id").gte("month", periodMonth);
+  const runIds = (runs ?? []).map((r) => r.id).filter((id) => id !== override?.runId);
+  let lines: { employee_id: string; penalite_montant: number }[] = [];
+  if (runIds.length > 0) {
+    const { data } = await supabase.from("payroll_extras").select("employee_id, penalite_montant").in("run_id", runIds);
+    lines = data ?? [];
+  }
+  if (override) lines = lines.concat(override.lines);
+  const ids = Array.from(new Set(lines.filter((l) => Number(l.penalite_montant) < 0).map((l) => l.employee_id)));
+  if (ids.length === 0) return 0;
+  const { data: emps } = await supabase
+    .from("employees")
+    .select("id, category, team_id, teams!employees_team_id_fkey(name)")
+    .in("id", ids);
+  const inTeam = new Set(
+    ((emps ?? []) as unknown as { id: string; category: string; team_id: string | null; teams: { name: string } | null }[])
+      .filter((e) => e.category === "chantier" && !!e.team_id && !!e.teams?.name)
+      .map((e) => e.id)
+  );
+  const penalites = lines.reduce(
+    (sum, l) => (inTeam.has(l.employee_id) ? sum + Math.max(0, -(Number(l.penalite_montant) || 0)) : sum),
+    0
+  );
+  return computeControllerSplit(penalites).bankShare;
+}
+
 /** Données 100 % fictives pour enregistrer une vidéo de démonstration —
  *  jamais lues ni écrites en base. Le contrôleur reprend l'id réel du
  *  contrôleur désigné pour que sa part (25 % des pénalités d'équipe) se calcule
@@ -16157,7 +16195,9 @@ function PayrollExtrasView({
       );
 
       const { data: bank } = await supabase.from("company_quality_bank").select("id, current_total, period_start").limit(1).maybeSingle();
-      setCompanyQualityBank(bank ?? null);
+      setCompanyQualityBank(
+        bank ? { ...bank, current_total: await computeCompanyBankTotal(supabase, bank.period_start) } : null
+      );
 
       if (run?.id) {
         const { data: lines } = await supabase.from("payroll_extras").select("*").eq("run_id", run.id);
@@ -16417,32 +16457,10 @@ function PayrollExtrasView({
       // plusieurs utilisateurs en même temps ne peuvent plus le gonfler (bug
       // constaté le 05/10/2026 : 1377 devenu 4131 puis 6885).
       const periodMonth = `${companyQualityBank.period_start.slice(0, 7)}-01`;
-      const isTeamMember = (employeeId: string) => {
-        const emp = employees.find((e) => e.id === employeeId);
-        return !!emp && emp.category === "chantier" && !!emp.team_id && !!emp.teams?.name;
-      };
-      const { data: runsSincePeriod } = await supabase
-        .from("payroll_runs")
-        .select("id")
-        .gte("month", periodMonth)
-        .neq("id", runId);
-      const otherRunIds = (runsSincePeriod ?? []).map((r) => r.id);
-      let otherPenalites = 0;
-      if (otherRunIds.length > 0) {
-        const { data: otherLines } = await supabase
-          .from("payroll_extras")
-          .select("employee_id, penalite_montant")
-          .in("run_id", otherRunIds);
-        otherPenalites = (otherLines ?? []).reduce(
-          (sum, l) => (isTeamMember(l.employee_id) ? sum + Math.max(0, -(Number(l.penalite_montant) || 0)) : sum),
-          0
-        );
-      }
-      const thisRunPenalites = rows.reduce(
-        (sum, r) => (isTeamMember(r.employee_id) ? sum + Math.max(0, -(Number(r.penalite_montant) || 0)) : sum),
-        0
-      );
-      const newTotal = computeControllerSplit(otherPenalites + thisRunPenalites).bankShare;
+      const newTotal = await computeCompanyBankTotal(supabase, companyQualityBank.period_start, {
+        runId,
+        lines: rows.map((r) => ({ employee_id: r.employee_id, penalite_montant: Number(r.penalite_montant) || 0 })),
+      });
       if (newTotal >= QUALITY_BANK_TARGET) {
         const { data: pastRuns } = await supabase
           .from("payroll_runs")
