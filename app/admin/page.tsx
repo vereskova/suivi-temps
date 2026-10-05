@@ -15750,6 +15750,146 @@ const CHEF_RATE_FRENCH = 115;
  *  forme chaque mois. Les cases de présence se cliquent directement ici —
  *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
  *  jour", pas une copie). Alimente Jours dans Paie. */
+/** Données 100 % fictives pour enregistrer une vidéo de démonstration —
+ *  jamais lues ni écrites en base. Le contrôleur reprend l'id réel du
+ *  contrôleur désigné pour que sa part (25 % des pénalités d'équipe) se calcule
+ *  comme en vrai. Les scénarios couvrent : chef d'équipe/chauffeur, БАНК 3000
+ *  alimenté, pénalité plus grande que le БАНК (retenue sur la paie), bonus et
+ *  pénalité directs, demi-journée, week-end travaillé, absences typées. */
+function buildDemoPayrollData(year: number, month: number) {
+  const { start, daysInMonth } = monthRange(year, month);
+  const dayColumns = Array.from({ length: daysInMonth }, (_, i) => `${start.slice(0, 8)}${String(i + 1).padStart(2, "0")}`);
+  const teamOne = { name: "Equipe 1", chef_employee_id: "demo-riviere" };
+  const teamTwo = { name: "Equipe 2", chef_employee_id: "demo-fontaine" };
+  const mk = (
+    id: string,
+    first_name: string,
+    last_name: string,
+    category: "chantier" | "bureau",
+    extra: Partial<PaieEmployee> = {}
+  ): PaieEmployee => ({
+    id,
+    first_name,
+    last_name,
+    category,
+    bureau_role: null,
+    team_id: null,
+    teams: null,
+    contract_type: "CDI",
+    status: "active",
+    hire_date: "2025-01-06",
+    end_date: null,
+    salaire_base_net: null,
+    classification: null,
+    is_driver: false,
+    ...extra,
+  });
+  const employees: PaieEmployee[] = [
+    mk("demo-dupont", "Camille", "DUPONT", "bureau", { bureau_role: "assistant" }),
+    mk("demo-leroy", "Julien", "LEROY", "bureau", { bureau_role: "planning" }),
+    mk(QUALITY_BANK_CONTROLLER_EMPLOYEE_ID, "Valério", "DEMO-CONTRÔLEUR", "bureau", { bureau_role: "control" }),
+    mk("demo-riviere", "Marc", "RIVIERE", "chantier", { team_id: "demo-t1", teams: teamOne, is_driver: true }),
+    mk("demo-lambert", "Paul", "LAMBERT", "chantier", { team_id: "demo-t1", teams: teamOne }),
+    mk("demo-gauthier", "Luc", "GAUTHIER", "chantier", { team_id: "demo-t1", teams: teamOne }),
+    mk("demo-fontaine", "Hugo", "FONTAINE", "chantier", { team_id: "demo-t2", teams: teamTwo }),
+    mk("demo-moreau", "Théo", "MOREAU", "chantier", { team_id: "demo-t2", teams: teamTwo }),
+    mk("demo-bertrand", "Léo", "BERTRAND", "chantier", { team_id: "demo-t2", teams: teamTwo }),
+    mk("demo-simon", "Jules", "SIMON", "chantier"),
+  ];
+  const line = (o: Partial<ExtrasLineInput>): ExtrasLineInput => ({ ...EMPTY_EXTRAS_LINE, ...o });
+  const inputs: Record<string, ExtrasLineInput> = {
+    "demo-dupont": line({ tauxJournalier: "110", bonusDirectMontant: "200", bonusDirectRaison: "Prime de fin de projet", avance: "300" }),
+    "demo-leroy": line({ tauxJournalier: "105", penaliteDirecteMontant: "-50", penaliteDirecteRaison: "Retard répété" }),
+    [QUALITY_BANK_CONTROLLER_EMPLOYEE_ID]: line({ tauxJournalier: "115" }),
+    "demo-riviere": line({ tauxJournalier: "115", bonusEquipe: "600", heuresRoute: "5" }),
+    "demo-lambert": line({ tauxJournalier: "90", bonusEquipe: "600", penaliteMontant: "-292", penaliteRaison: "Câblage non conforme" }),
+    "demo-gauthier": line({ tauxJournalier: "90", penaliteMontant: "-320", penaliteRaison: "Contrôle qualité raté" }),
+    "demo-fontaine": line({ tauxJournalier: "115", bonusEquipe: "1000" }),
+    "demo-moreau": line({ tauxJournalier: "90", bonusEquipe: "1000", penaliteMontant: "-320", penaliteRaison: "Chantier non nettoyé" }),
+    "demo-bertrand": line({ tauxJournalier: "90", bonusEquipe: "1000", congesJours: "2", vacanceJours: "1" }),
+    "demo-simon": line({ tauxJournalier: "90", bonusDirectMontant: "150", penaliteDirecteMontant: "-50", penaliteDirecteRaison: "Excès de vitesse" }),
+  };
+  const banquePrecedenteByEmployee: Record<string, number> = {
+    "demo-riviere": 1200,
+    "demo-lambert": 800,
+    "demo-gauthier": 300,
+    "demo-fontaine": 2500,
+    "demo-moreau": 800,
+    "demo-bertrand": 0,
+  };
+
+  const absenceTypes = [
+    { id: "demo-abs-maladie", code: "maladie", label: "Arrêt maladie" },
+    { id: "demo-abs-cp", code: "cp", label: "Congé payé" },
+    { id: "demo-abs-rtt", code: "rtt", label: "RTT" },
+    { id: "demo-abs-sans_solde", code: "sans_solde", label: "Absence sans solde" },
+    { id: "demo-abs-ferie", code: "ferie", label: "Jour férié" },
+    { id: "demo-abs-autre", code: "autre", label: "Autre" },
+  ];
+
+  const attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>> = {};
+  const jours: Record<string, number> = {};
+  const weekdays = dayColumns.filter((d) => {
+    const dow = new Date(d + "T00:00:00Z").getUTCDay();
+    return dow !== 0 && dow !== 6;
+  });
+  const saturdays = dayColumns.filter((d) => new Date(d + "T00:00:00Z").getUTCDay() === 6);
+  employees.forEach((e) => {
+    attendance[e.id] = {};
+    jours[e.id] = 0;
+    weekdays.forEach((d) => {
+      attendance[e.id][d] = { worked: true, absenceCode: null, halfDay: false };
+      jours[e.id] += 1;
+    });
+  });
+  const mark = (id: string, idx: number, patch: { worked: boolean; absenceCode?: string | null; halfDay?: boolean }) => {
+    const d = weekdays[idx];
+    if (!d) return;
+    const prev = attendance[id][d];
+    const prevValue = prev.worked ? (prev.halfDay ? 0.5 : 1) : 0;
+    const next = { worked: patch.worked, absenceCode: patch.absenceCode ?? null, halfDay: !!patch.halfDay };
+    attendance[id][d] = next;
+    jours[id] += (next.worked ? (next.halfDay ? 0.5 : 1) : 0) - prevValue;
+  };
+  mark("demo-leroy", 2, { worked: false, absenceCode: "maladie" });
+  mark("demo-leroy", 3, { worked: false, absenceCode: "maladie" });
+  mark("demo-dupont", 9, { worked: false, absenceCode: "cp" });
+  mark("demo-lambert", 4, { worked: true, halfDay: true });
+  mark("demo-bertrand", 6, { worked: true, halfDay: true });
+  mark("demo-bertrand", 13, { worked: false, absenceCode: "cp" });
+  mark("demo-bertrand", 14, { worked: false, absenceCode: "cp" });
+  mark("demo-simon", 11, { worked: false, absenceCode: "sans_solde" });
+  if (saturdays[0]) {
+    attendance["demo-riviere"][saturdays[0]] = { worked: true, absenceCode: null, halfDay: false };
+    jours["demo-riviere"] += 1;
+  }
+
+  const dayNotes: Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>> = {};
+  if (saturdays[0]) {
+    dayNotes["demo-riviere"] = {
+      [saturdays[0]]: { comment: "Samedi travaillé — chantier urgent", amount: 80, by: "demo@vladis.fr", at: `${saturdays[0]}T10:00:00Z` },
+    };
+    inputs["demo-riviere"].bonusEquipe = String(600 + 80);
+  }
+  if (weekdays[2]) {
+    dayNotes["demo-leroy"] = {
+      [weekdays[2]]: { comment: "Certificat médical reçu", amount: null, by: "demo@vladis.fr", at: `${weekdays[2]}T09:00:00Z` },
+    };
+  }
+
+  return {
+    dayColumns,
+    employees,
+    inputs,
+    banquePrecedenteByEmployee,
+    absenceTypes,
+    attendance,
+    jours,
+    dayNotes,
+    companyQualityBank: { id: "demo-bank", current_total: 4200, period_start: `${year}-01-01` },
+  };
+}
+
 function PayrollExtrasView({
   supabase,
   readOnly = false,
@@ -15766,6 +15906,8 @@ function PayrollExtrasView({
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Mode démo : employés fictifs, aucune lecture/écriture en base (voir buildDemoPayrollData).
+  const [demo, setDemo] = useState(false);
   const [employees, setEmployees] = useState<PaieEmployee[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
@@ -15904,6 +16046,23 @@ function PayrollExtrasView({
   useEffect(() => {
     async function load() {
       setLoading(true);
+      if (demo) {
+        const d = buildDemoPayrollData(year, month);
+        setDayColumns(d.dayColumns);
+        setEmployees(d.employees);
+        setAbsenceTypes(d.absenceTypes);
+        setAttendanceByEmployee(d.attendance);
+        setJoursByEmployee(d.jours);
+        setDayNotesByEmployee(d.dayNotes);
+        setInputs(d.inputs);
+        setBanquePrecedenteByEmployee(d.banquePrecedenteByEmployee);
+        setBanqueQualitePrimeByEmployee({});
+        setRaisonMetaByEmployee({});
+        setCompanyQualityBank(d.companyQualityBank);
+        setRunId(null);
+        setLoading(false);
+        return;
+      }
       const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
       const { start: monthStart, end: monthEnd, daysInMonth } = monthRange(year, month);
       const days = Array.from({ length: daysInMonth }, (_, i) => `${monthStart.slice(0, 8)}${String(i + 1).padStart(2, "0")}`);
@@ -16052,7 +16211,7 @@ function PayrollExtrasView({
       setLoading(false);
     }
     load();
-  }, [supabase, year, month]);
+  }, [supabase, year, month, demo]);
 
   function updateInput(employeeId: string, field: keyof ExtrasLineInput, value: string) {
     setInputs((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_EXTRAS_LINE), [field]: value } }));
@@ -16166,6 +16325,10 @@ function PayrollExtrasView({
   }, [employees, inputs, year, month]);
 
   async function save() {
+    if (demo) {
+      toast.success("Démo — rien n'est enregistré / Демо — ничего не сохраняется");
+      return;
+    }
     if (!runId) return;
     setSaving(true);
 
@@ -16351,6 +16514,7 @@ function PayrollExtrasView({
    *  directement plutôt que pointage_entries, ce qui grise automatiquement
    *  ce jour et tous les suivants via `outsideEmployment`). */
   async function setDayStatus(employee: PaieEmployee, dateIso: string, value: string) {
+    if (demo && value === "depart") return;
     if (value === "depart") {
       const ok = window.confirm(
         `Marquer ${employee.first_name} ${employee.last_name} comme sorti(e) à partir du ${fmtDate(dateIso)} ?\n` +
@@ -16390,6 +16554,7 @@ function PayrollExtrasView({
       return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
     });
 
+    if (demo) return;
     const { error } = await supabase
       .from("pointage_entries")
       .upsert(
@@ -16432,7 +16597,9 @@ function PayrollExtrasView({
     const amount = amountStr === "" ? null : Number(amountStr) || 0;
     const commentBy = comment ? currentUserEmail : null;
     const commentAt = comment ? new Date().toISOString() : null;
-    const { error } = await supabase
+    const { error } = demo
+      ? { error: null }
+      : await supabase
       .from("payroll_day_notes")
       .upsert(
         {
@@ -16471,7 +16638,7 @@ function PayrollExtrasView({
   async function toggleDriver(employee: PaieEmployee) {
     const next = !employee.is_driver;
     setEmployees((prev) => prev.map((e) => (e.id === employee.id ? { ...e, is_driver: next } : e)));
-    const { error } = await supabase.from("employees").update({ is_driver: next }).eq("id", employee.id);
+    const { error } = demo ? { error: null } : await supabase.from("employees").update({ is_driver: next }).eq("id", employee.id);
     if (error) {
       toast.error("Erreur : " + error.message);
       setEmployees((prev) => prev.map((e) => (e.id === employee.id ? { ...e, is_driver: !next } : e)));
@@ -16520,7 +16687,7 @@ function PayrollExtrasView({
       return next;
     });
 
-    const { error } = await supabase.from("pointage_entries").upsert(rows, { onConflict: "work_date,employee_id" });
+    const { error } = demo ? { error: null } : await supabase.from("pointage_entries").upsert(rows, { onConflict: "work_date,employee_id" });
     if (error) {
       toast.error("Erreur : " + error.message);
       return;
@@ -16588,6 +16755,17 @@ function PayrollExtrasView({
         </div>
         <p className="text-xs text-stone-400 mt-2 capitalize">{monthLabel}</p>
       </div>
+
+      {demo && (
+        <div className="card mb-4 border-l-4 border-primary-500 bg-primary-50/40">
+          <p className="text-sm font-bold text-primary-700">
+            <Bi
+              fr="Mode démo — employés fictifs, rien n'est lu ni enregistré en base. Modifie les cases librement pour simuler."
+              ru="Демо-режим — вымышленные сотрудники, ничего не читается и не сохраняется в базе. Меняй любые ячейки для симуляции."
+            />
+          </p>
+        </div>
+      )}
 
       {rateReviewCandidates.length > 0 && (
         <div className="card mb-4 border-l-4 border-warning-400 bg-warning-50/40">
@@ -16688,6 +16866,14 @@ function PayrollExtrasView({
                 </span>
               ))}
             </div>
+            <button
+              className={`btn text-xs px-2.5 py-1.5 ${demo ? "btn-primary" : "btn-secondary"}`}
+              onClick={() => setDemo((v) => !v)}
+              title="Mode démo : employés fictifs, rien n'est enregistré / Демо-режим: вымышленные сотрудники, ничего не сохраняется"
+            >
+              <Eye size={13} />
+              <Bi fr={demo ? "Quitter la démo" : "Mode démo"} ru={demo ? "Выйти из демо" : "Демо-режим"} />
+            </button>
             <button
               className={`btn text-xs px-2.5 py-1.5 ${detailsCollapsed ? "btn-primary" : "btn-secondary"}`}
               onClick={toggleDetailsCollapsed}
