@@ -16410,7 +16410,22 @@ function PayrollExtrasView({
     // ajouter. S'il franchit 10000, on partage tout de suite (pas de bouton
     // séparé — confirmé avec l'utilisatrice : automatisation complète).
     if (companyQualityBank) {
-      const newTotal = Math.round((companyQualityBank.current_total + controllerSplit.bankShare) * 100) / 100;
+      // Ajoute seulement la DIFFÉRENCE avec ce que ce même mois avait déjà
+      // versé lors d'un "Enregistrer" précédent — sinon chaque nouvel
+      // enregistrement du même mois recompterait tout (bug constaté le
+      // 05/10/2026 : 3 enregistrements → 3 × 1377 = 4131 au lieu de 1377).
+      const { data: savedLines } = await supabase
+        .from("payroll_extras")
+        .select("employee_id, penalite_montant")
+        .eq("run_id", runId);
+      const previouslySavedPenalites = (savedLines ?? []).reduce((sum, l) => {
+        const emp = employees.find((e) => e.id === l.employee_id);
+        if (!emp || !(emp.category === "chantier" && !!emp.team_id && !!emp.teams?.name)) return sum;
+        return sum + Math.max(0, -(Number(l.penalite_montant) || 0));
+      }, 0);
+      const alreadyContributed = computeControllerSplit(previouslySavedPenalites).bankShare;
+      const newTotal =
+        Math.round((companyQualityBank.current_total + controllerSplit.bankShare - alreadyContributed) * 100) / 100;
       if (newTotal >= QUALITY_BANK_TARGET) {
         const { data: pastRuns } = await supabase
           .from("payroll_runs")
