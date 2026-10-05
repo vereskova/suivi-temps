@@ -16638,8 +16638,8 @@ function PayrollExtrasView({
                 title="Contrôleur désigné qui reçoit 25% des pénalités chaque mois / Назначенный контролёр, получающий 25% штрафов каждый месяц"
               >
                 <Bi
-                  fr={`Contrôleur : ${employeeName(employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID) ?? { first_name: "", last_name: "?" })}`}
-                  ru="Контролёр"
+                  fr={`Contrôleur : ${employeeName(employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID) ?? { first_name: "", last_name: "?" })} — part du mois : ${controllerSplit.controllerShare.toFixed(2)} € (25 % de ${totalPenalitesThisMonth.toFixed(2)} €)`}
+                  ru={`Контролёр — доля за месяц: ${controllerSplit.controllerShare.toFixed(2)} € (25 % от штрафов ${totalPenalitesThisMonth.toFixed(2)} €)`}
                 />
               </span>
             </div>
@@ -17074,9 +17074,9 @@ function PayrollExtrasView({
                                 ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
                                 : extrasTooltip(
                                     "БАНК 3000",
-                                    `max(0, min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`,
+                                    `min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ (peut être négatif)`,
                                     "БАНК 3000",
-                                    `макс(0, мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€)) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€`
+                                    `мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ (может быть отрицательным)`
                                   )
                             }
                           >

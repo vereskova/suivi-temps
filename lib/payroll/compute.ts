@@ -327,10 +327,11 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     ? Math.min(Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX), Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut))
     : 0;
   const bonusEquipePaye = input.bonusEquipe - banqueDepot;
-  const banqueQualiteFin = Math.max(
-    0,
-    Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle
-  );
+  // Peut devenir négatif : une pénalité plus grande que le solde disponible
+  // laisse le БАНК en négatif (reporté au mois suivant, remboursé par les
+  // prochains dépôts) au lieu de "perdre" la différence — demandé par
+  // l'utilisatrice, 05/10/2026 (pénalité 320 € pour 300 € en banque).
+  const banqueQualiteFin = Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot) - penalitesControle;
   const bonusDirect = Math.round((input.bonusDirect || 0) * 100) / 100;
   const controleBonusRecu = Math.round((input.controleBonusRecu || 0) * 100) / 100;
   const banqueQualitePrime = Math.round((input.banqueQualitePrime || 0) * 100) / 100;
