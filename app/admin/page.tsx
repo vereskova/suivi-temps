@@ -55,6 +55,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  Phone,
   Plane,
   Plus,
   RefreshCw,
@@ -426,6 +427,7 @@ type ViewKey =
   | "export"
   | "planning"
   | "effectif"
+  | "phones"
   | "medical"
   | "formations"
   | "tailles"
@@ -464,6 +466,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "Effectif",
     items: [
       { key: "effectif", label: "Employés", labelRu: "Сотрудники", icon: Users },
+      { key: "phones", label: "Téléphones pro", labelRu: "Рабочие телефоны", icon: Phone },
       { key: "medical", label: "Médical", labelRu: "Медицина", icon: HeartPulse },
       { key: "planning", label: "Planning chantiers", labelRu: "План по объектам", icon: CalendarRange },
       { key: "formations", label: "Formations", labelRu: "Обучение", icon: GraduationCap },
@@ -545,6 +548,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   mois: ["rh_admin"],
   export: ["rh_admin"],
   effectif: ["rh_admin", "rh", "comptable", "rh_readonly", "commercial_rh"],
+  phones: ["rh_admin", "rh", "comptable", "commercial", "rh_readonly", "commercial_rh"],
   medical: ["rh_admin", "rh"],
   formations: ["rh_admin", "rh"],
   tailles: ["rh_admin", "rh"],
@@ -698,17 +702,21 @@ export default function AdminPage() {
     setDossierTargetEmployeeId(employeeId);
     setView("dossier");
   }
-  const [comptableView, setComptableView] = usePersistedView<"paie" | "paie_extras" | "employees">(
+  const [comptableView, setComptableView] = usePersistedView<"paie" | "paie_extras" | "employees" | "phones">(
     "admin_comptable_view",
     "paie"
   );
-  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme">(
+  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme" | "phones">(
     "admin_commercial_rh_view",
     "commercial"
   );
-  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "organigramme">(
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "organigramme" | "phones">(
     "admin_rh_readonly_view",
     "employees"
+  );
+  const [commercialOnlyView, setCommercialOnlyView] = usePersistedView<"commercial" | "phones">(
+    "admin_commercial_only_view",
+    "commercial"
   );
   const [navCollapsed, setNavCollapsed] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -998,6 +1006,16 @@ export default function AdminPage() {
             setMobileNavOpen(false);
           }}
         />
+        <SidebarLink
+          icon={Phone}
+          active={comptableView === "phones"}
+          label="Téléphones pro"
+          labelRu="Рабочие телефоны"
+          onClick={() => {
+            setComptableView("phones");
+            setMobileNavOpen(false);
+          }}
+        />
       </SidebarSection>
     );
     return (
@@ -1063,6 +1081,8 @@ export default function AdminPage() {
                 <PaieView supabase={supabase} />
               ) : comptableView === "paie_extras" ? (
                 <PayrollExtrasView supabase={supabase} />
+              ) : comptableView === "phones" ? (
+                <PhoneDirectoryView supabase={supabase} />
               ) : (
                 <EmployeesView
                   supabase={supabase}
@@ -1117,6 +1137,16 @@ export default function AdminPage() {
           labelRu="Структура"
           onClick={() => {
             setRhReadonlyView("organigramme");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Phone}
+          active={rhReadonlyView === "phones"}
+          label="Téléphones pro"
+          labelRu="Рабочие телефоны"
+          onClick={() => {
+            setRhReadonlyView("phones");
             setMobileNavOpen(false);
           }}
         />
@@ -1191,6 +1221,8 @@ export default function AdminPage() {
                 />
               ) : rhReadonlyView === "paie_extras" ? (
                 <PayrollExtrasView supabase={supabase} />
+              ) : rhReadonlyView === "phones" ? (
+                <PhoneDirectoryView supabase={supabase} />
               ) : (
                 <OrganigrammeView supabase={supabase} />
               )}
@@ -1233,6 +1265,16 @@ export default function AdminPage() {
           labelRu="Структура"
           onClick={() => {
             setCommercialRhView("organigramme");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Phone}
+          active={commercialRhView === "phones"}
+          label="Téléphones pro"
+          labelRu="Рабочие телефоны"
+          onClick={() => {
+            setCommercialRhView("phones");
             setMobileNavOpen(false);
           }}
         />
@@ -1308,6 +1350,8 @@ export default function AdminPage() {
                   readOnly
                   confidentialMode="rib_only"
                 />
+              ) : commercialRhView === "phones" ? (
+                <PhoneDirectoryView supabase={supabase} />
               ) : (
                 <OrganigrammeView supabase={supabase} readOnly />
               )}
@@ -1350,12 +1394,29 @@ export default function AdminPage() {
             <aside className="hidden lg:block w-60 shrink-0">
               <nav className="card p-3 space-y-4 sticky top-4">
                 <SidebarSection title="">
-                  <SidebarLink icon={Briefcase} active label="Commercial" labelRu="Коммерция" />
+                  <SidebarLink
+                    icon={Briefcase}
+                    active={commercialOnlyView === "commercial"}
+                    label="Commercial"
+                    labelRu="Коммерция"
+                    onClick={() => setCommercialOnlyView("commercial")}
+                  />
+                  <SidebarLink
+                    icon={Phone}
+                    active={commercialOnlyView === "phones"}
+                    label="Téléphones pro"
+                    labelRu="Рабочие телефоны"
+                    onClick={() => setCommercialOnlyView("phones")}
+                  />
                 </SidebarSection>
               </nav>
             </aside>
             <div className="flex-1 min-w-0">
-              <CommercialSection supabase={supabase} />
+              {commercialOnlyView === "phones" ? (
+                <PhoneDirectoryView supabase={supabase} />
+              ) : (
+                <CommercialSection supabase={supabase} />
+              )}
             </div>
           </div>
         </div>
@@ -1543,6 +1604,7 @@ export default function AdminPage() {
                 onToggleDismissed={toggleNotificationDismissed}
               />
             )}
+            {view === "phones" && <PhoneDirectoryView supabase={supabase} />}
             {view === "registre" && <RegistreView supabase={supabase} />}
             {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
             {view === "francais" && <FrancaisView supabase={supabase} />}
@@ -10873,6 +10935,140 @@ function CommercialView({
           </button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+// ── Vue "Téléphones pro" — annuaire visible par tous les rôles ──
+type PhoneDirectoryRow = {
+  kind: "employee" | "shared";
+  first_name: string | null;
+  last_name: string | null;
+  category: string | null;
+  bureau_role: string | null;
+  job_title: string | null;
+  team_name: string | null;
+  is_chef: boolean;
+  phone: string;
+  role_label: string | null;
+};
+
+function phoneDirectoryGroup(r: PhoneDirectoryRow): string {
+  if (r.kind === "shared") {
+    return r.team_name ?? (r.role_label?.startsWith("Equipe") ? r.role_label : "Autres");
+  }
+  if (r.category === "bureau") {
+    return r.bureau_role === "control" || r.bureau_role === "formation_officer" ? "Contrôle & Formation" : "Bureau";
+  }
+  return r.team_name ?? "Sans équipe";
+}
+
+function phoneDirectoryOrder(g: string): [number, number, string] {
+  if (g === "Bureau") return [0, 0, ""];
+  if (g === "Contrôle & Formation") return [1, 0, ""];
+  if (g.startsWith("Equipe")) return [2, parseInt(g.replace(/\D/g, ""), 10) || 0, g];
+  if (g === "Sans équipe") return [3, 0, ""];
+  return [4, 0, g];
+}
+
+function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [rows, setRows] = useState<PhoneDirectoryRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("work_phone_directory").then(({ data, error: rpcError }) => {
+      if (cancelled) return;
+      if (rpcError) setError(rpcError.message);
+      else setRows((data as PhoneDirectoryRow[]) ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  const groups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const map = new Map<string, PhoneDirectoryRow[]>();
+    (rows ?? []).forEach((r) => {
+      const label = r.kind === "shared" ? (r.team_name ?? r.role_label ?? "") : `${r.last_name} ${r.first_name}`;
+      const hay = `${label} ${r.job_title ?? ""} ${r.phone} ${r.role_label ?? ""}`.toLowerCase();
+      if (q && !hay.includes(q)) return;
+      const g = phoneDirectoryGroup(r);
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(r);
+    });
+    return Array.from(map.entries())
+      .map(([g, list]) => ({
+        group: g,
+        list: list.sort((a, b) => {
+          if (a.is_chef !== b.is_chef) return a.is_chef ? -1 : 1;
+          if ((a.kind === "shared") !== (b.kind === "shared")) return a.kind === "shared" ? 1 : -1;
+          return `${a.last_name ?? a.role_label}`.localeCompare(`${b.last_name ?? b.role_label}`);
+        }),
+      }))
+      .sort((a, b) => {
+        const [a0, a1, a2] = phoneDirectoryOrder(a.group);
+        const [b0, b1, b2] = phoneDirectoryOrder(b.group);
+        return a0 - b0 || a1 - b1 || a2.localeCompare(b2);
+      });
+  }, [rows, search]);
+
+  return (
+    <div>
+      <div className="card mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="font-bold">
+            <Bi fr="Téléphones professionnels" ru="Рабочие телефоны" />
+          </div>
+          <input
+            className="input max-w-xs"
+            placeholder="Rechercher / Поиск"
+            value={search}
+            onChange={(ev) => setSearch(ev.target.value)}
+          />
+        </div>
+      </div>
+      {error ? (
+        <div className="card text-sm text-error-600">
+          Erreur / Ошибка : {error}
+        </div>
+      ) : rows === null ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={3} />
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="card text-sm text-stone-400">
+          <Bi fr="Aucun numéro trouvé." ru="Номера не найдены." />
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {groups.map(({ group, list }) => (
+            <div key={group} className="card">
+              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-stone-400">{group}</p>
+              <ul className="space-y-1.5 text-sm">
+                {list.map((r, i) => (
+                  <li key={`${r.phone}-${i}`} className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="inline-flex items-center gap-1 font-semibold text-stone-800">
+                        {r.is_chef && <Crown size={12} className="shrink-0 fill-current text-success-600" />}
+                        {r.kind === "shared"
+                          ? r.role_label?.startsWith("Equipe")
+                            ? `Téléphone de ${r.role_label}`
+                            : r.role_label
+                          : `${r.last_name} ${r.first_name}`}
+                      </span>
+                      {r.job_title && <span className="block truncate text-[11px] text-stone-400">{r.job_title}</span>}
+                    </span>
+                    <span className="shrink-0 font-mono text-stone-700">{r.phone}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
