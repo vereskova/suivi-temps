@@ -13995,9 +13995,13 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
             ? `Стартовый баланс переопределён вручную: ${value}€ / Solde de départ forcé : ${value}€`
             : "Задать/исправить стартовый баланс БАНК 3000 / Saisir/corriger le solde de départ du БАНК 3000"
         }
-        className={`absolute -top-1.5 -left-1.5 rounded-full p-0.5 ${value ? "bg-primary-500 text-white" : "bg-stone-200 text-stone-500"}`}
+        className={`absolute right-0.5 top-0.5 z-10 rounded-full p-1 shadow-sm ${
+          value
+            ? "bg-primary-500 text-white"
+            : "border border-primary-300 bg-white text-primary-600 hover:bg-primary-50"
+        }`}
       >
-        <Pencil size={9} />
+        <Pencil size={10} />
       </button>
       {isOpen &&
         pos &&
