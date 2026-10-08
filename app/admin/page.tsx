@@ -14627,15 +14627,14 @@ function PaieView({
 
       const { data: pointageForJours } = await supabase
         .from("pointage_entries")
-        .select("employee_id, work_date, is_absent")
+        .select("employee_id, work_date, is_absent, half_day")
         .gte("work_date", monthStart)
         .lte("work_date", monthEnd);
+      // Même règle que Primes & Bonus : demi-journée = 0,5, week-end travaillé compte.
       const joursReels: Record<string, number> = {};
       (pointageForJours ?? []).forEach((p) => {
         if (p.is_absent) return;
-        const day = new Date(p.work_date + "T00:00:00Z").getUTCDay();
-        if (day === 0 || day === 6) return;
-        joursReels[p.employee_id] = (joursReels[p.employee_id] ?? 0) + 1;
+        joursReels[p.employee_id] = (joursReels[p.employee_id] ?? 0) + (p.half_day ? 0.5 : 1);
       });
       setJoursReelsByEmployee(joursReels);
 
@@ -14702,7 +14701,11 @@ function PaieView({
             // over an old saved value, since it's a hard rule, not just a
             // suggested default. Otherwise: no saved line yet this month →
             // suggest a prorated day count instead of leaving it blank.
-            joursTravailles: isOfficeCore(employee) ? "0" : l ? String(l.jours_travailles ?? 0) : defaultJours(employee),
+            joursTravailles: l
+              ? String(l.jours_travailles ?? 0)
+              : isOfficeCore(employee)
+                ? "0"
+                : defaultJours(employee),
           };
         });
         setInputs(map);
@@ -15295,7 +15298,7 @@ function PaieView({
             value={joursTravaillesSelection}
             onChange={(e) => setJoursTravaillesSelection(e.target.value)}
           >
-            {Array.from({ length: daysInMonth + 1 }, (_, n) => n).map((n) => (
+            {Array.from({ length: daysInMonth * 2 + 1 }, (_, i) => i / 2).map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
@@ -15550,7 +15553,7 @@ function PaieView({
                           onChange={(ev) => updateInput(e.id, "joursTravailles", ev.target.value)}
                         >
                           <option value="">0</option>
-                          {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((n) => (
+                          {Array.from({ length: daysInMonth * 2 }, (_, i) => (i + 1) / 2).map((n) => (
                             <option key={n} value={n}>
                               {n}
                             </option>
@@ -15729,7 +15732,7 @@ function PaieView({
                         onChange={(ev) => updateInput(e.id, "joursTravailles", ev.target.value)}
                       >
                         <option value="">0</option>
-                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((n) => (
+                        {Array.from({ length: daysInMonth * 2 }, (_, i) => (i + 1) / 2).map((n) => (
                           <option key={n} value={n}>
                             {n}
                           </option>
@@ -17364,31 +17367,51 @@ function PayrollExtrasView({
     const monthName = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
     const all = employees
       .filter((e) => !isFopContractor(e))
-      .map((e) => ({ employee: e, amount: Math.round((computed[e.id]?.aPayer ?? 0) * 100) / 100 }));
-    const toSend = all.filter((r) => r.amount > 0);
-    const skipped = all.length - toSend.length;
-    if (toSend.length === 0) {
+      .map((e) => ({
+        employee: e,
+        amount: Math.round((computed[e.id]?.aPayer ?? 0) * 100) / 100,
+        jours: joursByEmployee[e.id] ?? 0,
+      }));
+    const amountsToSend = all.filter((r) => r.amount > 0);
+    const joursToSend = all.filter((r) => r.jours > 0);
+    if (amountsToSend.length === 0 && joursToSend.length === 0) {
       toast.warning("Aucun montant à envoyer / Нечего отправлять");
       return;
     }
     const ok = window.confirm(
-      `Envoyer « À payer » de ${monthName} vers Paie (Net souhaité) pour ${toSend.length} salarié(s) ?\n` +
-        `Le Net souhaité actuel de ces salariés dans Paie sera remplacé.` +
-        (skipped > 0 ? `\n${skipped} salarié(s) à 0 € ou en négatif : ignoré(s), leur Paie reste inchangée.` : "") +
-        `\n\nОтправить «К оплате» за ${monthName} в Paie («Желаемый нетто») для ${toSend.length} сотрудников?\n` +
-        `Текущий «Желаемый нетто» у них в Paie будет заменён.` +
-        (skipped > 0 ? `\n${skipped} с 0 € или минусом — пропущены, в Paie без изменений.` : "")
+      `Envoyer vers Paie (${monthName}) :\n` +
+        `• « À payer » → Net souhaité : ${amountsToSend.length} salarié(s)\n` +
+        `• Jours travaillés (demi-journées comprises) : ${joursToSend.length} salarié(s)\n` +
+        `Les valeurs actuelles de ces salariés dans Paie seront remplacées ; ceux à 0 / négatif sont ignorés.\n\n` +
+        `Отправить в Paie (${monthName}):\n` +
+        `• «К оплате» → «Желаемый нетто»: ${amountsToSend.length} сотр.\n` +
+        `• Отработанные дни (с половинками): ${joursToSend.length} сотр.\n` +
+        `Текущие значения у этих сотрудников в Paie будут заменены; с нулём/минусом — пропущены.`
     );
     if (!ok) return;
-    const { error } = await supabase.from("payroll_line_items").upsert(
-      toSend.map((r) => ({ run_id: runId, employee_id: r.employee.id, net_souhaite: r.amount })),
-      { onConflict: "run_id,employee_id" }
-    );
-    if (error) {
-      toast.error("Erreur : " + error.message);
-      return;
+    if (amountsToSend.length > 0) {
+      const { error } = await supabase.from("payroll_line_items").upsert(
+        amountsToSend.map((r) => ({ run_id: runId, employee_id: r.employee.id, net_souhaite: r.amount })),
+        { onConflict: "run_id,employee_id" }
+      );
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
     }
-    toast.success(`${toSend.length} montant(s) envoyé(s) vers Paie / ${toSend.length} сумм отправлено в Paie`);
+    if (joursToSend.length > 0) {
+      const { error } = await supabase.from("payroll_line_items").upsert(
+        joursToSend.map((r) => ({ run_id: runId, employee_id: r.employee.id, jours_travailles: r.jours })),
+        { onConflict: "run_id,employee_id" }
+      );
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return;
+      }
+    }
+    toast.success(
+      `Paie : ${amountsToSend.length} montant(s) et ${joursToSend.length} nombre(s) de jours envoyé(s) / в Paie отправлено: ${amountsToSend.length} сумм, ${joursToSend.length} значений дней`
+    );
   }
 
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
@@ -17447,7 +17470,7 @@ function PayrollExtrasView({
                   className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
                   disabled={loading}
                   onClick={sendToPaie}
-                  title="Envoie « À payer » de ce mois vers Paie (Net souhaité) / Отправляет «К оплате» за этот месяц в Paie («Желаемый нетто»)"
+                  title="Envoie « À payer » (Net souhaité) et les jours travaillés de ce mois vers Paie / Отправляет «К оплате» («Желаемый нетто») и отработанные дни за этот месяц в Paie"
                 >
                   <Wallet size={14} />
                   <Bi fr="Envoyer vers Paie" ru="Отправить в Paie" />
