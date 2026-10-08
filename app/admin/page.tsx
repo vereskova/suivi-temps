@@ -10945,6 +10945,8 @@ type PhoneDirectoryRow = {
   phone: string | null;
   has_work_phone: boolean;
   has_new_sim: boolean;
+  is_suspended: boolean;
+  note: string | null;
 };
 
 const PHONE_DIRECTORY_ORDER = [
@@ -11047,7 +11049,12 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                 return (
                   <tr key={r.role_label} className={`border-t border-stone-100 ${noPhone ? "bg-red-100" : ""}`}>
                     <td className="py-2 pr-4 text-stone-400">{i + 1}</td>
-                    <td className="py-2 pr-4 font-semibold">{r.role_label}</td>
+                    <td className="py-2 pr-4 font-semibold">
+                      {r.role_label}
+                      {r.note && r.note.toLowerCase() !== r.role_label.toLowerCase() && (
+                        <span className="block text-[11px] font-normal text-stone-400">{r.note}</span>
+                      )}
+                    </td>
                     <td className="py-2 pr-4">
                       {r.has_work_phone ? (
                         <span className="rounded-md bg-success-100 px-2 py-0.5 text-xs font-semibold text-success-700">
@@ -11062,7 +11069,14 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                         </span>
                       ) : null}
                     </td>
-                    <td className="py-2 font-mono text-stone-800">{r.phone ?? ""}</td>
+                    <td className="py-2 font-mono text-stone-800">
+                      {r.phone ?? ""}
+                      {r.is_suspended && (
+                        <span className="ml-2 rounded-md bg-error-100 px-2 py-0.5 font-sans text-xs font-semibold text-error-700">
+                          линия приостановлена
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
