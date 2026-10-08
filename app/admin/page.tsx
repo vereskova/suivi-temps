@@ -16101,27 +16101,25 @@ const CHEF_RATE_FRENCH = 115;
  *  forme chaque mois. Les cases de présence se cliquent directement ici —
  *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
  *  jour", pas une copie). Alimente Jours dans Paie. */
-/** Total du Банк качества commun, TOUJOURS recalculé depuis les pénalités
- *  enregistrées (75 % des Штраф négatifs des salariés d'équipe, tous les mois
- *  depuis le début de la période) — jamais lu depuis company_quality_bank.
- *  current_total, que d'anciens onglets ouverts peuvent réécrire avec une
- *  valeur périmée (constaté le 05/10/2026). `override` remplace les lignes
- *  de ce mois par celles en cours d'enregistrement. */
-async function computeCompanyBankTotal(
+/** Somme des Штраф négatifs des salariés d'équipe sur tous les mois de la
+ *  période du Банк качества commun SAUF `excludeRunId` (le mois affiché, dont
+ *  les valeurs en direct viennent de l'écran). Toujours lue depuis les
+ *  pénalités enregistrées — jamais depuis company_quality_bank.current_total,
+ *  qu'un ancien onglet pouvait réécrire avec une valeur périmée (05/10/2026). */
+async function loadBankOtherPenalites(
   supabase: ReturnType<typeof createClient>,
   periodStart: string,
-  override?: { runId: string; lines: { employee_id: string; penalite_montant: number }[] }
+  excludeRunId: string | null
 ): Promise<number> {
   const periodMonth = `${periodStart.slice(0, 7)}-01`;
   const { data: runs } = await supabase.from("payroll_runs").select("id").gte("month", periodMonth);
-  const runIds = (runs ?? []).map((r) => r.id).filter((id) => id !== override?.runId);
-  let lines: { employee_id: string; penalite_montant: number }[] = [];
-  if (runIds.length > 0) {
-    const { data } = await supabase.from("payroll_extras").select("employee_id, penalite_montant").in("run_id", runIds);
-    lines = data ?? [];
-  }
-  if (override) lines = lines.concat(override.lines);
-  const ids = Array.from(new Set(lines.filter((l) => Number(l.penalite_montant) < 0).map((l) => l.employee_id)));
+  const runIds = (runs ?? []).map((r) => r.id).filter((id) => id !== excludeRunId);
+  if (runIds.length === 0) return 0;
+  const { data: lines } = await supabase
+    .from("payroll_extras")
+    .select("employee_id, penalite_montant")
+    .in("run_id", runIds);
+  const ids = Array.from(new Set((lines ?? []).filter((l) => Number(l.penalite_montant) < 0).map((l) => l.employee_id)));
   if (ids.length === 0) return 0;
   const { data: emps } = await supabase
     .from("employees")
@@ -16132,11 +16130,84 @@ async function computeCompanyBankTotal(
       .filter((e) => e.category === "chantier" && !!e.team_id && !!e.teams?.name)
       .map((e) => e.id)
   );
-  const penalites = lines.reduce(
+  return (lines ?? []).reduce(
     (sum, l) => (inTeam.has(l.employee_id) ? sum + Math.max(0, -(Number(l.penalite_montant) || 0)) : sum),
     0
   );
-  return computeControllerSplit(penalites).bankShare;
+}
+
+/** Colonnes payroll_extras écrites quand UNE case est modifiée (sauvegarde
+ *  case par case, comme Numbers) — jamais toute la ligne, sinon deux
+ *  personnes qui éditent la même ligne s'écraseraient. */
+function extrasFieldColumns(
+  field: keyof ExtrasLineInput,
+  line: ExtrasLineInput,
+  meta: { by: string | null; at: string | null }
+): Record<string, unknown> {
+  const num = (v: string) => Number(v) || 0;
+  const numOrNull = (v: string) => (v === "" ? null : Number(v));
+  switch (field) {
+    case "tauxJournalier":
+      return { taux_journalier: num(line.tauxJournalier) };
+    case "heuresRoute":
+      return { heures_route: num(line.heuresRoute) };
+    case "bonusEquipe":
+      return { bonus_equipe: num(line.bonusEquipe) };
+    case "bonusRaison":
+      return { bonus_raison: line.bonusRaison || null, bonus_raison_by: meta.by, bonus_raison_at: meta.at };
+    case "bonusDirectMontant":
+      return { bonus_direct: num(line.bonusDirectMontant) };
+    case "bonusDirectRaison":
+      return { bonus_direct_raison: line.bonusDirectRaison || null, bonus_direct_raison_by: meta.by, bonus_direct_raison_at: meta.at };
+    case "penaliteMontant":
+      return { penalite_montant: num(line.penaliteMontant) };
+    case "penaliteRaison":
+      return { penalite_raison: line.penaliteRaison || null, penalite_raison_by: meta.by, penalite_raison_at: meta.at };
+    case "penaliteDirecteMontant":
+      return { penalite_directe: num(line.penaliteDirecteMontant) };
+    case "penaliteDirecteRaison":
+      return {
+        penalite_directe_raison: line.penaliteDirecteRaison || null,
+        penalite_directe_raison_by: meta.by,
+        penalite_directe_raison_at: meta.at,
+      };
+    case "vacanceJours":
+      return { vacance_jours: num(line.vacanceJours) };
+    case "congesJours":
+      return { conges_jours: numOrNull(line.congesJours) };
+    case "avance":
+      return { avance: numOrNull(line.avance) };
+    case "banqueAjustementManuel":
+      return { banque_ajustement_manuel: numOrNull(line.banqueAjustementManuel) };
+  }
+}
+
+/** Ligne payroll_extras (base ou temps réel) -> champs de saisie de l'écran. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extrasLineFromRow(l: any): ExtrasLineInput {
+  return {
+    tauxJournalier: String(l.taux_journalier ?? ""),
+    heuresRoute: l.heures_route ? String(l.heures_route) : "",
+    bonusEquipe: l.bonus_equipe ? String(l.bonus_equipe) : "",
+    bonusRaison: l.bonus_raison ?? "",
+    bonusDirectMontant: l.bonus_direct ? String(l.bonus_direct) : "",
+    bonusDirectRaison: l.bonus_direct_raison ?? "",
+    penaliteMontant: l.penalite_montant ? String(l.penalite_montant) : "",
+    penaliteRaison: l.penalite_raison ?? "",
+    penaliteDirecteMontant: l.penalite_directe ? String(l.penalite_directe) : "",
+    penaliteDirecteRaison: l.penalite_directe_raison ?? "",
+    vacanceJours: l.vacance_jours ? String(l.vacance_jours) : "",
+    congesJours: l.conges_jours ? String(l.conges_jours) : "",
+    avance: l.avance ? String(l.avance) : "",
+    banqueAjustementManuel: l.banque_ajustement_manuel != null ? String(l.banque_ajustement_manuel) : "",
+  };
+}
+
+const EXTRAS_PEER_COLORS = ["#2563eb", "#db2777", "#059669", "#d97706", "#7c3aed", "#0891b2"];
+function extrasPeerColor(email: string): string {
+  let h = 0;
+  for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0;
+  return EXTRAS_PEER_COLORS[h % EXTRAS_PEER_COLORS.length];
 }
 
 /** Données 100 % fictives pour enregistrer une vidéo de démonstration —
@@ -16294,13 +16365,13 @@ function PayrollExtrasView({
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // Sauvegarde case par case (comme Numbers) : plus de bouton "Enregistrer".
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   // Mode démo : employés fictifs, aucune lecture/écriture en base (voir buildDemoPayrollData).
   const [demo, setDemo] = useState(false);
   const [employees, setEmployees] = useState<PaieEmployee[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
-  const [joursByEmployee, setJoursByEmployee] = useState<Record<string, number>>({});
   const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
   // Банк качества commun à l'entreprise (pas par équipe) — confirmé avec
   // l'utilisatrice. Un seul contrôleur pour l'instant, en dur : CIOBANU
@@ -16311,6 +16382,9 @@ function PayrollExtrasView({
     null
   );
   const [banqueQualitePrimeByEmployee, setBanqueQualitePrimeByEmployee] = useState<Record<string, number>>({});
+  // Pénalités d'équipe des AUTRES mois de la période du Банк качества — le mois
+  // affiché vient de l'écran en direct (voir bankTotalLive).
+  const [bankOtherPenalites, setBankOtherPenalites] = useState(0);
   // Présence par jour — même table que "Par jour" (pointage_entries),
   // modifiable directement ici (choix dans chaque case : présent, absent,
   // ou un type précis — maladie, congé payé, etc.).
@@ -16321,6 +16395,15 @@ function PayrollExtrasView({
   // libre sur n'importe quel jour + montant optionnel sur les week-ends, qui
   // alimente automatiquement BONUS équipe pour les salariés d'équipe (voir
   // saveDayNote plus bas). Demandé par l'utilisatrice, 30/09/2026.
+  // Jours = somme des présences (1 / 0,5) du mois, week-end compris — dérivé
+  // des cases, donc toujours à jour quand une autre personne coche un jour.
+  const joursByEmployee = useMemo(() => {
+    const out: Record<string, number> = {};
+    Object.entries(attendanceByEmployee).forEach(([empId, days]) => {
+      out[empId] = Object.values(days).reduce((sum, c) => sum + (c.worked ? (c.halfDay ? 0.5 : 1) : 0), 0);
+    });
+    return out;
+  }, [attendanceByEmployee]);
   const [dayNotesByEmployee, setDayNotesByEmployee] = useState<
     Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>>
   >({});
@@ -16441,13 +16524,13 @@ function PayrollExtrasView({
         setEmployees(d.employees);
         setAbsenceTypes(d.absenceTypes);
         setAttendanceByEmployee(d.attendance);
-        setJoursByEmployee(d.jours);
         setDayNotesByEmployee(d.dayNotes);
         setInputs(d.inputs);
         setBanquePrecedenteByEmployee(d.banquePrecedenteByEmployee);
         setBanqueQualitePrimeByEmployee({});
         setRaisonMetaByEmployee({});
         setCompanyQualityBank(d.companyQualityBank);
+        setBankOtherPenalites(0);
         setRunId(null);
         setLoading(false);
         return;
@@ -16481,7 +16564,6 @@ function PayrollExtrasView({
         .select("employee_id, work_date, is_absent, absence_type_id, half_day")
         .gte("work_date", monthStart)
         .lte("work_date", monthEnd);
-      const jours: Record<string, number> = {};
       const attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>> = {};
       (pointage ?? []).forEach((p) => {
         (attendance[p.employee_id] ?? (attendance[p.employee_id] = {}))[p.work_date] = {
@@ -16489,12 +16571,7 @@ function PayrollExtrasView({
           absenceCode: p.is_absent ? (absenceCodeById.get(p.absence_type_id ?? "") ?? null) : null,
           halfDay: !p.is_absent && !!p.half_day,
         };
-        if (p.is_absent) return;
-        // Même le week-end : si c'est explicitement marqué présent/demi-journée,
-        // ça compte comme un jour normal (demandé par l'utilisatrice, 01/10/2026).
-        jours[p.employee_id] = (jours[p.employee_id] ?? 0) + (p.half_day ? 0.5 : 1);
       });
-      setJoursByEmployee(jours);
       setAttendanceByEmployee(attendance);
 
       const { data: dayNotes } = await supabase
@@ -16546,13 +16623,18 @@ function PayrollExtrasView({
       );
 
       const { data: bank } = await supabase.from("company_quality_bank").select("id, current_total, period_start").limit(1).maybeSingle();
-      setCompanyQualityBank(
-        bank ? { ...bank, current_total: await computeCompanyBankTotal(supabase, bank.period_start) } : null
-      );
+      setCompanyQualityBank(bank ?? null);
+      setBankOtherPenalites(bank ? await loadBankOtherPenalites(supabase, bank.period_start, run?.id ?? null) : 0);
 
       if (run?.id) {
         const { data: lines } = await supabase.from("payroll_extras").select("*").eq("run_id", run.id);
         const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
+        snapshotsRef.current = new Map(
+          (lines ?? []).map((l) => [
+            l.employee_id as string,
+            { fin: Number(l.banque_qualite_fin) || 0, ctrl: Number(l.controle_bonus_recu) || 0 },
+          ])
+        );
         setBanqueQualitePrimeByEmployee(
           Object.fromEntries((lines ?? []).map((l) => [l.employee_id, Number(l.banque_qualite_prime) || 0]))
         );
@@ -16606,6 +16688,7 @@ function PayrollExtrasView({
 
   function updateInput(employeeId: string, field: keyof ExtrasLineInput, value: string) {
     setInputs((prev) => ({ ...prev, [employeeId]: { ...(prev[employeeId] ?? EMPTY_EXTRAS_LINE), [field]: value } }));
+    scheduleFieldSave(employeeId, field);
   }
 
   /** Bouton + bulle de commentaire multi-lignes pour BONUS/Штраф — remplace
@@ -16715,111 +16798,315 @@ function PayrollExtrasView({
       }));
   }, [employees, inputs, year, month]);
 
-  async function save() {
-    if (demo) {
-      toast.success("Démo — rien n'est enregistré / Демо — ничего не сохраняется");
+  // ── Sauvegarde case par case + temps réel (demandé le 06/10/2026 : "как в
+  //    Numbers", après qu'une saisie de la comptable ait été écrasée) ──────────
+  const inputsRef = useRef(inputs);
+  const raisonMetaRef = useRef(raisonMetaByEmployee);
+  useEffect(() => {
+    inputsRef.current = inputs;
+    raisonMetaRef.current = raisonMetaByEmployee;
+  }, [inputs, raisonMetaByEmployee]);
+  const pendingRef = useRef(new Set<string>());
+  const timersRef = useRef(new Map<string, number>());
+  const focusedRef = useRef<string | null>(null);
+  const presenceRef = useRef<ReturnType<ReturnType<typeof createClient>["channel"]> | null>(null);
+  const snapshotsRef = useRef(new Map<string, { fin: number; ctrl: number }>());
+  const [peers, setPeers] = useState<{ email: string; focus: string | null }[]>([]);
+  const [flashCells, setFlashCells] = useState<string[]>([]);
+
+  const canWrite = !demo && !readOnly && !!runId;
+
+  async function flushField(employeeId: string, field: keyof ExtrasLineInput) {
+    const key = `${employeeId}:${field}`;
+    timersRef.current.delete(key);
+    if (!canWrite) {
+      pendingRef.current.delete(key);
       return;
     }
-    if (!runId) return;
-    setSaving(true);
-
-    // Ne tamponne auteur/date que sur les 4 champs raison qui ont RÉELLEMENT
-    // changé depuis le chargement — les autres reportent tels quels leur
-    // auteur/date déjà en base (pas question de les effacer à chaque
-    // "Enregistrer" juste parce que le formulaire entier est renvoyé).
-    function raisonMeta(
-      employeeId: string,
-      field: "bonusRaison" | "penaliteRaison" | "penaliteDirecteRaison" | "bonusDirectRaison",
-      currentText: string
-    ): { by: string | null; at: string | null } {
-      const loaded = raisonMetaByEmployee[employeeId];
-      const loadedText = loaded?.[field] ?? "";
-      const loadedBy = loaded?.[`${field}By` as const] ?? null;
-      const loadedAt = loaded?.[`${field}At` as const] ?? null;
-      if (currentText === loadedText) return { by: loadedBy, at: loadedAt };
-      if (!currentText) return { by: null, at: null };
-      return { by: currentUserEmail, at: new Date().toISOString() };
+    const line = inputsRef.current[employeeId] ?? EMPTY_EXTRAS_LINE;
+    const raisonFields = ["bonusRaison", "bonusDirectRaison", "penaliteRaison", "penaliteDirecteRaison"];
+    const stamp = {
+      by: line[field] ? currentUserEmail : null,
+      at: line[field] ? new Date().toISOString() : null,
+    };
+    setSaveState("saving");
+    // Première écriture pour ce salarié ce mois-ci : on inscrit aussi la
+    // Ставка affichée (reprise du mois précédent), sinon la ligne naîtrait à 0
+    // et l'écho temps réel remplacerait la Ставка à l'écran par 0.
+    const isNewRow = !snapshotsRef.current.has(employeeId);
+    const { error } = await supabase.from("payroll_extras").upsert(
+      {
+        run_id: runId,
+        employee_id: employeeId,
+        ...(isNewRow ? { taux_journalier: Number(line.tauxJournalier) || 0 } : {}),
+        ...extrasFieldColumns(field, line, stamp),
+      },
+      { onConflict: "run_id,employee_id" }
+    );
+    if (!error && isNewRow) snapshotsRef.current.set(employeeId, { fin: 0, ctrl: 0 });
+    // Une nouvelle frappe pendant l'envoi a reprogrammé un timer : la case reste "en attente".
+    if (!timersRef.current.has(key)) pendingRef.current.delete(key);
+    if (error) {
+      setSaveState("error");
+      toast.error("Erreur : " + error.message);
+      return;
     }
-
-    const nextRaisonMetaByEmployee: typeof raisonMetaByEmployee = { ...raisonMetaByEmployee };
-
-    const rows = employees
-      .filter((e) => !isFopContractor(e))
-      .map((e) => {
-        const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
-        const c = computed[e.id];
-        const bonusMeta = raisonMeta(e.id, "bonusRaison", line.bonusRaison);
-        const penaliteMeta = raisonMeta(e.id, "penaliteRaison", line.penaliteRaison);
-        const penaliteDirecteMeta = raisonMeta(e.id, "penaliteDirecteRaison", line.penaliteDirecteRaison);
-        const bonusDirectMeta = raisonMeta(e.id, "bonusDirectRaison", line.bonusDirectRaison);
-        nextRaisonMetaByEmployee[e.id] = {
-          bonusRaison: line.bonusRaison,
-          bonusRaisonBy: bonusMeta.by,
-          bonusRaisonAt: bonusMeta.at,
-          penaliteRaison: line.penaliteRaison,
-          penaliteRaisonBy: penaliteMeta.by,
-          penaliteRaisonAt: penaliteMeta.at,
-          penaliteDirecteRaison: line.penaliteDirecteRaison,
-          penaliteDirecteRaisonBy: penaliteDirecteMeta.by,
-          penaliteDirecteRaisonAt: penaliteDirecteMeta.at,
-          bonusDirectRaison: line.bonusDirectRaison,
-          bonusDirectRaisonBy: bonusDirectMeta.by,
-          bonusDirectRaisonAt: bonusDirectMeta.at,
-        };
+    if (raisonFields.includes(field)) {
+      setRaisonMetaByEmployee((prev) => {
+        const cur = prev[employeeId];
         return {
-          run_id: runId,
-          employee_id: e.id,
-          taux_journalier: Number(line.tauxJournalier) || 0,
-          heures_route: Number(line.heuresRoute) || 0,
-          bonus_equipe: Number(line.bonusEquipe) || 0,
-          bonus_raison: line.bonusRaison || null,
-          bonus_raison_by: bonusMeta.by,
-          bonus_raison_at: bonusMeta.at,
-          bonus_direct: Number(line.bonusDirectMontant) || 0,
-          bonus_direct_raison: line.bonusDirectRaison || null,
-          bonus_direct_raison_by: bonusDirectMeta.by,
-          bonus_direct_raison_at: bonusDirectMeta.at,
-          penalite_montant: Number(line.penaliteMontant) || 0,
-          penalite_raison: line.penaliteRaison || null,
-          penalite_raison_by: penaliteMeta.by,
-          penalite_raison_at: penaliteMeta.at,
-          penalite_directe: Number(line.penaliteDirecteMontant) || 0,
-          penalite_directe_raison: line.penaliteDirecteRaison || null,
-          penalite_directe_raison_by: penaliteDirecteMeta.by,
-          penalite_directe_raison_at: penaliteDirecteMeta.at,
-          vacance_jours: Number(line.vacanceJours) || 0,
-          conges_jours: line.congesJours === "" ? null : Number(line.congesJours),
-          avance: line.avance === "" ? null : Number(line.avance),
-          banque_ajustement_manuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
-          banque_qualite_fin: c?.banqueQualiteFin ?? 0,
-          controle_bonus_recu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0,
-          banque_qualite_prime: banqueQualitePrimeByEmployee[e.id] ?? 0,
+          ...prev,
+          [employeeId]: {
+            ...(cur ?? ({} as NonNullable<typeof cur>)),
+            [field]: line[field],
+            [`${field}By`]: stamp.by,
+            [`${field}At`]: stamp.at,
+          },
         };
       });
+    }
+    setSaveState("saved");
+  }
 
-    // Банк качества commun : 75 % du total pénalités de ce mois vient s'y
-    // ajouter. S'il franchit 10000, on partage tout de suite (pas de bouton
-    // séparé — confirmé avec l'utilisatrice : automatisation complète).
-    if (companyQualityBank) {
-      // Le total est RECALCULÉ à chaque enregistrement à partir des pénalités
-      // enregistrées (75 % de tous les mois depuis le début de la période + ce
-      // mois-ci), au lieu d'ajouter au total précédent : plusieurs
-      // enregistrements du même mois, une page ouverte avec un ancien total ou
-      // plusieurs utilisateurs en même temps ne peuvent plus le gonfler (bug
-      // constaté le 05/10/2026 : 1377 devenu 4131 puis 6885).
-      const periodMonth = `${companyQualityBank.period_start.slice(0, 7)}-01`;
-      const newTotal = await computeCompanyBankTotal(supabase, companyQualityBank.period_start, {
-        runId,
-        lines: rows.map((r) => ({ employee_id: r.employee_id, penalite_montant: Number(r.penalite_montant) || 0 })),
+  function scheduleFieldSave(employeeId: string, field: keyof ExtrasLineInput) {
+    if (!canWrite) return;
+    const key = `${employeeId}:${field}`;
+    pendingRef.current.add(key);
+    const old = timersRef.current.get(key);
+    if (old) window.clearTimeout(old);
+    timersRef.current.set(
+      key,
+      window.setTimeout(() => {
+        void flushField(employeeId, field);
+      }, 600)
+    );
+    setSaveState("saving");
+  }
+
+  // En quittant la page / en changeant de mois : on envoie tout de suite ce qui
+  // attend encore (frappe < 600 ms), et on prévient si l'onglet se ferme avant.
+  useEffect(() => {
+    const timers = timersRef.current;
+    const pending = pendingRef.current;
+    const beforeUnload = (ev: BeforeUnloadEvent) => {
+      if (pending.size > 0) ev.preventDefault();
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      Array.from(timers.keys()).forEach((key) => {
+        window.clearTimeout(timers.get(key));
+        const [employeeId, field] = key.split(":");
+        void flushField(employeeId, field as keyof ExtrasLineInput);
       });
-      if (newTotal >= QUALITY_BANK_TARGET) {
-        const { data: pastRuns } = await supabase
-          .from("payroll_runs")
-          .select("id")
-          .gte("month", periodMonth)
-          .neq("id", runId);
-        const pastRunIds = (pastRuns ?? []).map((r) => r.id);
+      timers.clear();
+      pending.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId]);
 
+  // Changements des autres utilisateurs, en direct.
+  useEffect(() => {
+    if (demo || !runId) return;
+    const monthPrefix = `${year}-${String(month).padStart(2, "0")}`;
+    const channel = supabase
+      .channel(`extras-db-${runId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "payroll_extras", filter: `run_id=eq.${runId}` },
+        (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const row = payload.new as any;
+          if (!row?.employee_id) return;
+          snapshotsRef.current.set(row.employee_id, {
+            fin: Number(row.banque_qualite_fin) || 0,
+            ctrl: Number(row.controle_bonus_recu) || 0,
+          });
+          const incoming = extrasLineFromRow(row);
+          const current = inputsRef.current[row.employee_id] ?? EMPTY_EXTRAS_LINE;
+          const patch: Partial<ExtrasLineInput> = {};
+          const changed: string[] = [];
+          (Object.keys(incoming) as (keyof ExtrasLineInput)[]).forEach((f) => {
+            const key = `${row.employee_id}:${f}`;
+            // Ma propre frappe en cours (ou la case où je suis) l'emporte sur l'écho.
+            if (pendingRef.current.has(key) || focusedRef.current === key) return;
+            patch[f] = incoming[f];
+            if (current[f] !== incoming[f]) changed.push(key);
+          });
+          setInputs((prev) => ({
+            ...prev,
+            [row.employee_id]: { ...(prev[row.employee_id] ?? EMPTY_EXTRAS_LINE), ...patch },
+          }));
+          setRaisonMetaByEmployee((prev) => ({
+            ...prev,
+            [row.employee_id]: {
+              bonusRaison: row.bonus_raison ?? "",
+              bonusRaisonBy: row.bonus_raison_by ?? null,
+              bonusRaisonAt: row.bonus_raison_at ?? null,
+              penaliteRaison: row.penalite_raison ?? "",
+              penaliteRaisonBy: row.penalite_raison_by ?? null,
+              penaliteRaisonAt: row.penalite_raison_at ?? null,
+              penaliteDirecteRaison: row.penalite_directe_raison ?? "",
+              penaliteDirecteRaisonBy: row.penalite_directe_raison_by ?? null,
+              penaliteDirecteRaisonAt: row.penalite_directe_raison_at ?? null,
+              bonusDirectRaison: row.bonus_direct_raison ?? "",
+              bonusDirectRaisonBy: row.bonus_direct_raison_by ?? null,
+              bonusDirectRaisonAt: row.bonus_direct_raison_at ?? null,
+            },
+          }));
+          setBanqueQualitePrimeByEmployee((prev) => ({
+            ...prev,
+            [row.employee_id]: Number(row.banque_qualite_prime) || 0,
+          }));
+          if (changed.length > 0) {
+            setFlashCells((prev) => [...prev, ...changed]);
+            window.setTimeout(() => setFlashCells((prev) => prev.filter((c) => !changed.includes(c))), 2500);
+          }
+        }
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "pointage_entries" }, (payload) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = payload.new as any;
+        if (!row?.employee_id || typeof row.work_date !== "string" || !row.work_date.startsWith(monthPrefix)) return;
+        const code = absenceTypes.find((t) => t.id === row.absence_type_id)?.code ?? null;
+        setAttendanceByEmployee((prev) => ({
+          ...prev,
+          [row.employee_id]: {
+            ...(prev[row.employee_id] ?? {}),
+            [row.work_date]: {
+              worked: !row.is_absent,
+              absenceCode: row.is_absent ? code : null,
+              halfDay: !row.is_absent && !!row.half_day,
+            },
+          },
+        }));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "payroll_day_notes" }, (payload) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = payload.new as any;
+        if (!row?.employee_id || typeof row.work_date !== "string" || !row.work_date.startsWith(monthPrefix)) return;
+        setDayNotesByEmployee((prev) => ({
+          ...prev,
+          [row.employee_id]: {
+            ...(prev[row.employee_id] ?? {}),
+            [row.work_date]: {
+              comment: row.comment ?? "",
+              amount: row.amount != null ? Number(row.amount) : null,
+              by: row.comment_by ?? null,
+              at: row.comment_at ?? null,
+            },
+          },
+        }));
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, demo, runId, year, month, absenceTypes]);
+
+  // Qui est sur cette page, et dans quelle case.
+  useEffect(() => {
+    if (demo || !currentUserEmail) return;
+    const channel = supabase.channel(`extras-presence-${year}-${month}`, { config: { presence: { key: currentUserEmail } } });
+    presenceRef.current = channel;
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState() as Record<string, { focus?: string | null }[]>;
+        setPeers(Object.entries(state).map(([email, metas]) => ({ email, focus: metas[0]?.focus ?? null })));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") await channel.track({ focus: null });
+      });
+    return () => {
+      presenceRef.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, demo, currentUserEmail, year, month]);
+
+  function trackFocus(cell: string | null) {
+    focusedRef.current = cell;
+    void presenceRef.current?.track({ focus: cell });
+  }
+
+  // Valeurs dérivées enregistrées (БАНК fin du mois, part du contrôleur) :
+  // recalculées en local, écrites seulement si elles diffèrent de la base.
+  // Une ligne manquante (mois courant ou passé) est créée ici, pour que le
+  // БАНК 3000 se reporte aussi pour les salariés qu'on n'a pas touchés.
+  useEffect(() => {
+    if (!canWrite || loading) return;
+    const timer = window.setTimeout(async () => {
+      const now = new Date();
+      const isFutureMonth = year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1);
+      const toInsert: Record<string, unknown>[] = [];
+      const toUpdate: Record<string, unknown>[] = [];
+      employees.forEach((e) => {
+        if (isFopContractor(e)) return;
+        const c = computed[e.id];
+        if (!c) return;
+        const fin = Math.round(c.banqueQualiteFin * 100) / 100;
+        const ctrl = e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0;
+        const snap = snapshotsRef.current.get(e.id);
+        if (!snap) {
+          if (isFutureMonth) return;
+          const line = inputsRef.current[e.id] ?? EMPTY_EXTRAS_LINE;
+          toInsert.push({
+            run_id: runId,
+            employee_id: e.id,
+            taux_journalier: Number(line.tauxJournalier) || 0,
+            banque_qualite_fin: fin,
+            controle_bonus_recu: ctrl,
+          });
+          snapshotsRef.current.set(e.id, { fin, ctrl });
+        } else if (Math.abs(snap.fin - fin) > 0.004 || Math.abs(snap.ctrl - ctrl) > 0.004) {
+          toUpdate.push({ run_id: runId, employee_id: e.id, banque_qualite_fin: fin, controle_bonus_recu: ctrl });
+          snapshotsRef.current.set(e.id, { fin, ctrl });
+        }
+      });
+      if (toInsert.length > 0) {
+        await supabase.from("payroll_extras").upsert(toInsert, { onConflict: "run_id,employee_id", ignoreDuplicates: true });
+      }
+      if (toUpdate.length > 0) {
+        const { error } = await supabase.from("payroll_extras").upsert(toUpdate, { onConflict: "run_id,employee_id" });
+        if (error) toast.error("Erreur : " + error.message);
+      }
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [computed, controllerSplit, canWrite, loading, year, month, employees, runId, supabase]);
+
+  // Total du Банк качества en direct : pénalités des autres mois de la
+  // période + ce mois-ci tel qu'affiché (seulement si ce mois fait partie de
+  // la période en cours).
+  const bankTotalLive = useMemo(() => {
+    if (!companyQualityBank) return 0;
+    const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
+    const periodMonth = `${companyQualityBank.period_start.slice(0, 7)}-01`;
+    const thisMonth = monthIso >= periodMonth ? totalPenalitesThisMonth : 0;
+    return computeControllerSplit(bankOtherPenalites + thisMonth).bankShare;
+  }, [companyQualityBank, year, month, totalPenalitesThisMonth, bankOtherPenalites]);
+
+  // Distribution du Банк качества à 10000 : une seule personne la déclenche
+  // (mise à jour conditionnelle de period_start), les autres reçoivent le
+  // résultat en direct.
+  const distributingRef = useRef(false);
+  useEffect(() => {
+    if (!canWrite || loading || !companyQualityBank || bankTotalLive < QUALITY_BANK_TARGET) return;
+    if (distributingRef.current) return;
+    distributingRef.current = true;
+    (async () => {
+      try {
+        const bank = companyQualityBank;
+        const nextPeriodStart = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+        const { data: claimed } = await supabase
+          .from("company_quality_bank")
+          .update({ current_total: 0, period_start: nextPeriodStart })
+          .eq("id", bank.id)
+          .eq("period_start", bank.period_start)
+          .select("id");
+        if (!claimed || claimed.length === 0) return; // un autre utilisateur l'a déjà fait
+
+        const periodMonth = `${bank.period_start.slice(0, 7)}-01`;
+        const { data: pastRuns } = await supabase.from("payroll_runs").select("id").gte("month", periodMonth).neq("id", runId!);
+        const pastRunIds = (pastRuns ?? []).map((r) => r.id);
         let pastLines: { employee_id: string; penalite_montant: number; bonus_equipe: number }[] = [];
         if (pastRunIds.length > 0) {
           const { data } = await supabase
@@ -16828,10 +17115,6 @@ function PayrollExtrasView({
             .in("run_id", pastRunIds);
           pastLines = data ?? [];
         }
-
-        // Штраф négatif = pénalité contrôleur — uniquement pour les équipes
-        // chantier (basé sur le statut d'équipe ACTUEL de l'employé, comme
-        // pour totalPenalitesThisMonth ci-dessus).
         const faitPartieEquipeById = new Map(
           employees.map((e) => [e.id, e.category === "chantier" && !!e.team_id && !!e.teams?.name])
         );
@@ -16846,65 +17129,55 @@ function PayrollExtrasView({
           if (!faitPartieEquipeById.get(l.employee_id)) return;
           addToCumulative(l.employee_id, Math.max(0, -(Number(l.penalite_montant) || 0)), Number(l.bonus_equipe) || 0);
         });
-        rows.forEach((r) => {
-          if (!faitPartieEquipeById.get(r.employee_id)) return;
-          addToCumulative(r.employee_id, Math.max(0, -r.penalite_montant), r.bonus_equipe);
+        Object.entries(inputsRef.current).forEach(([empId, l]) => {
+          if (!faitPartieEquipeById.get(empId)) return;
+          addToCumulative(empId, Math.max(0, -(Number(l.penaliteMontant) || 0)), Number(l.bonusEquipe) || 0);
         });
 
-        const winners = rankQualityBankWinners(Array.from(cumulative.values()), newTotal);
+        const winners = rankQualityBankWinners(Array.from(cumulative.values()), bankTotalLive);
         const periodEnd = `${year}-${String(month).padStart(2, "0")}-01`;
         const { data: payout, error: payoutError } = await supabase
           .from("quality_bank_payouts")
-          .insert({ total_distributed: newTotal, period_start: companyQualityBank.period_start, period_end: periodEnd })
+          .insert({ total_distributed: bankTotalLive, period_start: bank.period_start, period_end: periodEnd })
           .select("id")
           .single();
-
         if (payoutError || !payout?.id) {
           toast.error("Erreur БАНК качества : " + (payoutError?.message ?? "inconnue"));
-        } else {
-          await supabase.from("quality_bank_payout_winners").insert(
-            winners.map((w) => ({
-              payout_id: payout.id,
-              employee_id: w.employeeId,
-              rank: w.rank,
-              share_pct: w.sharePct,
-              amount: w.amount,
-              total_penalites: w.totalPenalites,
-              total_bonus: w.totalBonus,
-            }))
-          );
-          winners.forEach((w) => {
-            const row = rows.find((r) => r.employee_id === w.employeeId);
-            if (row) row.banque_qualite_prime = Math.round(((row.banque_qualite_prime || 0) + w.amount) * 100) / 100;
-          });
-
-          const nextPeriodStart = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
-          await supabase
-            .from("company_quality_bank")
-            .update({ current_total: 0, period_start: nextPeriodStart })
-            .eq("id", companyQualityBank.id);
-          setCompanyQualityBank({ id: companyQualityBank.id, current_total: 0, period_start: nextPeriodStart });
-
-          const winnersText = winners
-            .map((w) => `${w.rank}. ${employeeName(employees.find((e) => e.id === w.employeeId) ?? { first_name: "", last_name: w.employeeId })} — ${w.amount.toFixed(0)}€`)
-            .join(", ");
-          toast.success(`🏆 Банк качества достиг ${newTotal.toFixed(0)}€ — распределено: ${winnersText}`);
+          return;
         }
-      } else {
-        await supabase.from("company_quality_bank").update({ current_total: newTotal }).eq("id", companyQualityBank.id);
-        setCompanyQualityBank({ ...companyQualityBank, current_total: newTotal });
+        await supabase.from("quality_bank_payout_winners").insert(
+          winners.map((w) => ({
+            payout_id: payout.id,
+            employee_id: w.employeeId,
+            rank: w.rank,
+            share_pct: w.sharePct,
+            amount: w.amount,
+            total_penalites: w.totalPenalites,
+            total_bonus: w.totalBonus,
+          }))
+        );
+        const primeRows = winners.map((w) => ({
+          run_id: runId,
+          employee_id: w.employeeId,
+          banque_qualite_prime: Math.round(((banqueQualitePrimeByEmployee[w.employeeId] || 0) + w.amount) * 100) / 100,
+        }));
+        await supabase.from("payroll_extras").upsert(primeRows, { onConflict: "run_id,employee_id" });
+        setBanqueQualitePrimeByEmployee((prev) => ({
+          ...prev,
+          ...Object.fromEntries(primeRows.map((r) => [r.employee_id, r.banque_qualite_prime])),
+        }));
+        setCompanyQualityBank({ id: bank.id, current_total: 0, period_start: nextPeriodStart });
+        setBankOtherPenalites(0);
+        const winnersText = winners
+          .map((w) => `${w.rank}. ${employeeName(employees.find((e) => e.id === w.employeeId) ?? { first_name: "", last_name: w.employeeId })} — ${w.amount.toFixed(0)}€`)
+          .join(", ");
+        toast.success(`🏆 Банк качества достиг ${bankTotalLive.toFixed(0)}€ — распределено: ${winnersText}`);
+      } finally {
+        distributingRef.current = false;
       }
-    }
-
-    const { error } = await supabase.from("payroll_extras").upsert(rows, { onConflict: "run_id,employee_id" });
-    setSaving(false);
-    if (error) {
-      toast.error("Erreur : " + error.message);
-      return;
-    }
-    setRaisonMetaByEmployee(nextRaisonMetaByEmployee);
-    toast.success("Primes & Bonus enregistré — Jours mis à jour dans Paie");
-  }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bankTotalLive, canWrite, loading, companyQualityBank]);
 
   /** Change le statut d'un jour directement dans cette grille — écrit dans
    *  pointage_entries tout de suite (pas besoin du bouton "Enregistrer", qui
@@ -16942,18 +17215,11 @@ function PayrollExtrasView({
     const absenceCode = value.startsWith("abs:") ? value.slice(4) : null;
     const absenceTypeId = absenceCode ? absenceTypeIdByCode.get(absenceCode) ?? null : null;
     const previous = attendanceByEmployee[employee.id]?.[dateIso] ?? { worked: false, absenceCode: null, halfDay: false };
-    const dayValue = (w: boolean, h: boolean) => (!w ? 0 : h ? 0.5 : 1);
 
     setAttendanceByEmployee((prev) => ({
       ...prev,
       [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: { worked, absenceCode, halfDay } },
     }));
-    setJoursByEmployee((prev) => {
-      // Même le week-end : présent/demi-journée compte comme un jour normal.
-      const delta = dayValue(worked, halfDay) - dayValue(previous.worked, previous.halfDay);
-      if (delta === 0) return prev;
-      return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
-    });
 
     if (demo) return;
     const { error } = await supabase
@@ -16976,11 +17242,6 @@ function PayrollExtrasView({
         ...prev,
         [employee.id]: { ...(prev[employee.id] ?? {}), [dateIso]: previous },
       }));
-      setJoursByEmployee((prev) => {
-        const delta = dayValue(previous.worked, previous.halfDay) - dayValue(worked, halfDay);
-        if (delta === 0) return prev;
-        return { ...prev, [employee.id]: (prev[employee.id] ?? 0) + delta };
-      });
     }
   }
 
@@ -17031,6 +17292,7 @@ function PayrollExtrasView({
         const newBonus = Math.round(((Number(prevLine.bonusEquipe) || 0) + delta) * 100) / 100;
         return { ...prev, [employee.id]: { ...prevLine, bonusEquipe: String(newBonus) } };
       });
+      scheduleFieldSave(employee.id, "bonusEquipe");
     }
   }
 
@@ -17077,13 +17339,6 @@ function PayrollExtrasView({
         days.forEach((d) => {
           next[empId][d] = { worked: true, absenceCode: null, halfDay: false };
         });
-      });
-      return next;
-    });
-    setJoursByEmployee((prev) => {
-      const next = { ...prev };
-      Object.entries(filledByEmployee).forEach(([empId, days]) => {
-        next[empId] = (next[empId] ?? 0) + days.length;
       });
       return next;
     });
@@ -17197,14 +17452,47 @@ function PayrollExtrasView({
                   <Wallet size={14} />
                   <Bi fr="Envoyer vers Paie" ru="Отправить в Paie" />
                 </button>
-                <button className="btn btn-primary text-sm" disabled={saving || loading} onClick={save}>
-                  {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
-                </button>
+                <span
+                  className={`text-xs font-semibold ${
+                    saveState === "error" ? "text-error-600" : saveState === "saving" ? "text-warning-600" : "text-success-600"
+                  }`}
+                  title="Chaque case est enregistrée toute seule / Каждая ячейка сохраняется автоматически"
+                >
+                  {demo ? (
+                    <Bi fr="Démo — rien n'est enregistré" ru="Демо — ничего не сохраняется" />
+                  ) : saveState === "saving" ? (
+                    <Bi fr="Enregistrement…" ru="Сохранение…" />
+                  ) : saveState === "error" ? (
+                    <Bi fr="Erreur d'enregistrement" ru="Ошибка сохранения" />
+                  ) : (
+                    <Bi fr="Enregistré automatiquement" ru="Сохраняется автоматически" />
+                  )}
+                </span>
               </>
             )}
           </div>
         </div>
-        <p className="text-xs text-stone-400 mt-2 capitalize">{monthLabel}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <p className="text-xs text-stone-400 capitalize">{monthLabel}</p>
+          {!demo &&
+            peers.map((p) => {
+              const color = extrasPeerColor(p.email);
+              const cell = p.focus ? p.focus.split(":") : null;
+              const who = cell ? employees.find((e) => e.id === cell[0]) : null;
+              return (
+                <span
+                  key={p.email}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
+                  style={{ backgroundColor: color }}
+                  title={p.focus ? `${p.email} — ${who ? employeeName(who) : ""} / ${cell?.[1]}` : p.email}
+                >
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                  {p.email.split("@")[0]}
+                  {p.email === currentUserEmail ? " (vous / вы)" : who ? ` → ${who.last_name}` : ""}
+                </span>
+              );
+            })}
+        </div>
       </div>
 
       {demo && (
@@ -17286,11 +17574,11 @@ function PayrollExtrasView({
               <div className="flex-1 min-w-[160px] max-w-xs h-3 rounded-full bg-stone-100 overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-amber-300 to-amber-500"
-                  style={{ width: `${Math.min(100, (companyQualityBank.current_total / QUALITY_BANK_TARGET) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (bankTotalLive / QUALITY_BANK_TARGET) * 100)}%` }}
                 />
               </div>
               <span className="text-xs font-semibold text-stone-600 shrink-0">
-                {companyQualityBank.current_total.toFixed(0)} / {QUALITY_BANK_TARGET} €
+                {bankTotalLive.toFixed(0)} / {QUALITY_BANK_TARGET} €
               </span>
               <span
                 className="text-[11px] text-stone-400 shrink-0"
@@ -17349,6 +17637,11 @@ function PayrollExtrasView({
               simple et fiable ici qu'ajouter une bordure à chacune des dizaines de <td>
               individuelles ci-dessous, dont plusieurs ont déjà leur propre style ponctuel. */}
           <style>{`
+            ${peers
+              .filter((p) => p.email !== currentUserEmail && p.focus)
+              .map((p) => `[data-cell="${p.focus}"] { outline: 2px solid ${extrasPeerColor(p.email)}; outline-offset: 1px; }`)
+              .join("\n")}
+            ${flashCells.map((c) => `[data-cell="${c}"] { background-color: #bfdbfe !important; transition: background-color 0.4s; }`).join("\n")}
             .extras-grid td, .extras-grid th { border-right: 1px solid #e7e5e4; }
             .extras-grid td:last-child, .extras-grid th:last-child { border-right: none; }
           `}</style>
@@ -17362,7 +17655,17 @@ function PayrollExtrasView({
               fonctionne — sinon c'est la page qui défilait verticalement,
               pas ce conteneur, et le sticky top ne s'accrochait jamais. */}
           <div className="overflow-auto max-h-[75vh]">
-          <fieldset disabled={readOnly} style={{ display: "contents" }}>
+          <fieldset
+            disabled={readOnly}
+            style={{ display: "contents" }}
+            onFocusCapture={(ev) => {
+              const cell = (ev.target as HTMLElement).dataset?.cell;
+              if (cell) trackFocus(cell);
+            }}
+            onBlurCapture={(ev) => {
+              if ((ev.target as HTMLElement).dataset?.cell) trackFocus(null);
+            }}
+          >
           <table
             className="text-sm border-separate extras-grid"
             style={{
@@ -17590,6 +17893,7 @@ function PayrollExtrasView({
                               className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                               value={line.tauxJournalier}
                               onChange={(ev) => updateInput(e.id, "tauxJournalier", ev.target.value)}
+                              data-cell={`${e.id}:tauxJournalier`}
                             />
                           </td>
                           <td
@@ -17627,6 +17931,7 @@ function PayrollExtrasView({
                               className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                               value={line.heuresRoute}
                               onChange={(ev) => updateInput(e.id, "heuresRoute", ev.target.value)}
+                              data-cell={`${e.id}:heuresRoute`}
                               title="Heures de trajet, saisies à la main / Часы в дороге, вручную"
                             />
                           </td>
@@ -17651,6 +17956,7 @@ function PayrollExtrasView({
                                 }`}
                                 value={line.bonusEquipe}
                                 onChange={(ev) => updateInput(e.id, "bonusEquipe", ev.target.value)}
+                              data-cell={`${e.id}:bonusEquipe`}
                                 title={
                                   bureauOrControl
                                     ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de BONUS équipe (cas rare : reste saisissable) / Не применимо — у Bureau / Contrôle & Formation нет BONUS équipe (редкий случай: поле всё ещё доступно)"
@@ -17672,6 +17978,7 @@ function PayrollExtrasView({
                                 className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                                 value={line.bonusDirectMontant}
                                 onChange={(ev) => updateInput(e.id, "bonusDirectMontant", ev.target.value)}
+                              data-cell={`${e.id}:bonusDirectMontant`}
                                 title="Bonus ponctuel, indépendant du BONUS équipe/БАНК 3000 — disponible pour tout employé, notamment Bureau/Contrôle & Formation / Разовый бонус, не связан с BONUS équipe/БАНК 3000 — доступен любому сотруднику, в т.ч. Bureau/Contrôle & Formation"
                               />
                               {raisonButton(e.id, "bonusDirectRaison", line.bonusDirectRaison, "Raison du Bonus (прочее)", "Причина бонуса (прочее)", "bg-success-500 text-white")}
@@ -17687,6 +17994,7 @@ function PayrollExtrasView({
                                 }`}
                                 value={line.penaliteMontant}
                                 onChange={(ev) => updateInput(e.id, "penaliteMontant", ev.target.value)}
+                              data-cell={`${e.id}:penaliteMontant`}
                                 title={
                                   bureauOrControl
                                     ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de contrôle qualité chantier (cas rare : reste saisissable, ajustement direct de paie) / Не применимо — у Bureau / Contrôle & Formation нет контроля качества на объекте (редкий случай: поле всё ещё доступно, сразу влияет на зп)"
@@ -17705,6 +18013,7 @@ function PayrollExtrasView({
                                 className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                                 value={line.penaliteDirecteMontant}
                                 onChange={(ev) => updateInput(e.id, "penaliteDirecteMontant", ev.target.value)}
+                              data-cell={`${e.id}:penaliteDirecteMontant`}
                                 title="Amende directe (excès de vitesse, casse de matériel…) — toujours retirée directement de la paie, pour tout employé, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, для любого сотрудника, БАНК 3000 не участвует"
                               />
                               {raisonButton(e.id, "penaliteDirecteRaison", line.penaliteDirecteRaison, "Raison du Штраф (прочее)", "Причина штрафа (прочее)", "bg-warning-500 text-white")}
@@ -17758,6 +18067,7 @@ function PayrollExtrasView({
                           className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.congesJours}
                           onChange={(ev) => updateInput(e.id, "congesJours", ev.target.value)}
+                              data-cell={`${e.id}:congesJours`}
                         />
                       </td>
                       <td className="py-2 pr-2">
@@ -17767,6 +18077,7 @@ function PayrollExtrasView({
                           className="input bg-warning-50/60 w-full px-1.5 py-1.5 text-xs"
                           value={line.vacanceJours}
                           onChange={(ev) => updateInput(e.id, "vacanceJours", ev.target.value)}
+                              data-cell={`${e.id}:vacanceJours`}
                         />
                       </td>
                       <td className="py-2 pr-2">
@@ -17776,6 +18087,7 @@ function PayrollExtrasView({
                           className="input bg-green-100 w-full px-1.5 py-1.5 text-xs"
                           value={line.avance}
                           onChange={(ev) => updateInput(e.id, "avance", ev.target.value)}
+                              data-cell={`${e.id}:avance`}
                         />
                       </td>
                       <td
