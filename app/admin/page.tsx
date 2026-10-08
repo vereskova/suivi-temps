@@ -13656,9 +13656,22 @@ function OrgCandidatesSection({
             Сбросить к текущему{movedCount > 0 ? ` (${movedCount})` : ""}
           </button>
         </div>
-        {(["Резерв", "Офис", "Бригады"] as const).map((groupName) => (
-        <div key={groupName} className="mb-3">
-        <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-wide text-stone-400">{groupName}</p>
+        {(["Офис", "Бригады", "Резерв"] as const).map((groupName) => (
+        <div
+          key={groupName}
+          className={
+            groupName === "Резерв"
+              ? "mt-5 rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 p-3"
+              : "mb-3"
+          }
+        >
+        <p
+          className={`mb-1 text-[0.65rem] font-bold uppercase tracking-wide ${
+            groupName === "Резерв" ? "text-primary-600" : "text-stone-400"
+          }`}
+        >
+          {groupName === "Резерв" ? "Резерв и кандидаты — сюда можно убрать человека или взять оттуда" : groupName}
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {planColumns.filter((col) => col.group === groupName).map((col) => {
             const here = planCards.filter((c) => placeOf(c) === col.key);
@@ -13674,10 +13687,18 @@ function OrgCandidatesSection({
                 onDragLeave={() => setOverColumn((cur) => (cur === col.key ? null : cur))}
                 onDrop={() => dropOn(col.key)}
                 className={`flex min-h-24 min-w-0 flex-col gap-1.5 rounded-xl p-1.5 transition-colors ${
-                  overColumn === col.key ? "bg-primary-50 ring-2 ring-primary-300" : "bg-stone-50/60"
+                  overColumn === col.key
+                    ? "bg-primary-50 ring-2 ring-primary-300"
+                    : col.group === "Резерв"
+                      ? "bg-white/70"
+                      : "bg-stone-50/60"
                 }`}
               >
-                <div className="truncate rounded-lg bg-stone-800 px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white">
+                <div
+                  className={`truncate rounded-lg px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white ${
+                    col.group === "Резерв" ? "bg-primary-600" : "bg-stone-800"
+                  }`}
+                >
                   {col.label}{" "}
                   <span className="font-normal opacity-70">
                     {here.length}
