@@ -10947,6 +10947,7 @@ type PhoneDirectoryRow = {
   has_new_sim: boolean;
   is_suspended: boolean;
   note: string | null;
+  holder_name: string | null;
 };
 
 const PHONE_DIRECTORY_ORDER = [
@@ -11045,12 +11046,13 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
             </thead>
             <tbody>
               {sorted.map((r, i) => {
-                const noPhone = !r.phone && !r.has_work_phone;
+                const notIssued = !r.has_work_phone && !r.has_new_sim;
                 return (
-                  <tr key={r.role_label} className={`border-t border-stone-100 ${noPhone ? "bg-red-100" : ""}`}>
+                  <tr key={r.role_label} className={`border-t border-stone-100 ${notIssued ? "bg-red-100" : ""}`}>
                     <td className="py-2 pr-4 text-stone-400">{i + 1}</td>
                     <td className="py-2 pr-4 font-semibold">
                       {r.role_label}
+                      <span className="block text-[12px] font-medium text-stone-700">{r.holder_name ?? "—"}</span>
                       {r.note && r.note.toLowerCase() !== r.role_label.toLowerCase() && (
                         <span className="block text-[11px] font-normal text-stone-400">{r.note}</span>
                       )}
@@ -11059,6 +11061,10 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                       {r.has_work_phone ? (
                         <span className="rounded-md bg-success-100 px-2 py-0.5 text-xs font-semibold text-success-700">
                           есть
+                        </span>
+                      ) : notIssued ? (
+                        <span className="rounded-md bg-error-100 px-2 py-0.5 text-xs font-semibold text-error-700">
+                          не выдан
                         </span>
                       ) : null}
                     </td>
