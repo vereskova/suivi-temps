@@ -13340,14 +13340,15 @@ function buildOrgGrid(
 }
 
 // ── Organigramme : candidats / prévisions d'embauche, par poste ──
-type CandidateStatus = "considering" | "interview" | "offered" | "confirmed" | "arrived" | "rejected";
+type CandidateStatus = string; // valeurs prédéfinies ci-dessous, ou un statut ajouté par les RH
 
 type OrgCandidate = {
   id: string;
   full_name: string | null;
   position_label: string;
-  category: "bureau" | "chantier";
+  category: string; // "chantier" | "bureau" | type ajouté par les RH
   team_id: string | null;
+  team_label: string | null; // équipe prévue pas encore créée
   status: CandidateStatus;
   interview_date: string | null;
   arrival_date: string | null;
@@ -13359,7 +13360,7 @@ type OrgCandidate = {
 
 type OrgCandidateField = { id: string; label: string; field_type: "text" | "number" | "date"; sort_order: number };
 
-const CANDIDATE_STATUS_LABELS: Record<CandidateStatus, { fr: string; ru: string; badge: string }> = {
+const CANDIDATE_STATUS_LABELS: Record<string, { fr: string; ru: string; badge: string }> = {
   considering: { fr: "На рассмотрении", ru: "На рассмотрении", badge: "badge-warning" },
   interview: { fr: "Собеседование", ru: "Собеседование", badge: "badge-warning" },
   offered: { fr: "Предложение сделано", ru: "Предложение сделано", badge: "badge-success" },
@@ -13369,6 +13370,71 @@ const CANDIDATE_STATUS_LABELS: Record<CandidateStatus, { fr: string; ru: string;
 };
 
 const CANDIDATE_OTHER = "__other__";
+const CANDIDATE_NEW = "__new__";
+
+function candidateStatusInfo(status: string): { ru: string; badge: string } {
+  return CANDIDATE_STATUS_LABELS[status] ?? { ru: status, badge: "badge-warning" };
+}
+
+/** Liste déroulante avec une dernière option "+ Новый вариант…" qui ouvre un
+ *  champ de saisie : la valeur tapée devient la valeur du champ (et apparaît
+ *  ensuite comme option, car elle est conservée sur la ligne). */
+function SelectWithNew({
+  value,
+  options,
+  onChange,
+  newLabel,
+  className = "input mt-1 normal-case",
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+  newLabel: string;
+  className?: string;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [text, setText] = useState("");
+  const all = options.some((o) => o.value === value) || value === "" ? options : [...options, { value, label: value }];
+  if (adding) {
+    const commit = () => {
+      const v = text.trim();
+      setAdding(false);
+      setText("");
+      if (v) onChange(v);
+    };
+    return (
+      <input
+        autoFocus
+        className={className}
+        placeholder={newLabel}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setAdding(false);
+            setText("");
+          }
+        }}
+      />
+    );
+  }
+  return (
+    <select
+      className={className}
+      value={value}
+      onChange={(e) => (e.target.value === CANDIDATE_NEW ? setAdding(true) : onChange(e.target.value))}
+    >
+      {all.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+      <option value={CANDIDATE_NEW}>+ {newLabel}</option>
+    </select>
+  );
+}
 
 function OrgCandidatesSection({
   supabase,
@@ -13397,8 +13463,8 @@ function OrgCandidatesSection({
     full_name: "",
     positionChoice: "",
     positionCustom: "",
-    category: "chantier" as "bureau" | "chantier",
-    team_id: "",
+    category: "chantier" as string,
+    team_id: "", // id d'équipe existante, ou "label:Nom" pour une équipe prévue
     status: "considering" as CandidateStatus,
     interview_date: "",
     arrival_date: "",
@@ -13461,7 +13527,8 @@ function OrgCandidatesSection({
         full_name: draft.full_name.trim() || null,
         position_label: position,
         category: draft.category,
-        team_id: draft.category === "chantier" && draft.team_id ? draft.team_id : null,
+        team_id: draft.category !== "bureau" && draft.team_id && !draft.team_id.startsWith("label:") ? draft.team_id : null,
+        team_label: draft.category !== "bureau" && draft.team_id.startsWith("label:") ? draft.team_id.slice(6) : null,
         status: draft.status,
         interview_date: draft.interview_date || null,
         arrival_date: draft.arrival_date || null,
@@ -13556,7 +13623,45 @@ function OrgCandidatesSection({
     return <input type={inputType} className="input text-xs" value={value} onChange={(ev) => onChange(ev.target.value)} />;
   }
 
+  const categoryOptions = useMemo(
+    () => [
+      { value: "chantier", label: "Стройка" },
+      { value: "bureau", label: "Офис" },
+      ...Array.from(new Set(candidates.map((c) => c.category)))
+        .filter((c) => c !== "chantier" && c !== "bureau")
+        .map((c) => ({ value: c, label: c })),
+    ],
+    [candidates]
+  );
+  const statusOptions = useMemo(
+    () => [
+      ...Object.entries(CANDIDATE_STATUS_LABELS).map(([value, v]) => ({ value, label: v.ru })),
+      ...Array.from(new Set(candidates.map((c) => c.status)))
+        .filter((st) => !CANDIDATE_STATUS_LABELS[st])
+        .map((st) => ({ value: st, label: st })),
+    ],
+    [candidates]
+  );
+  const teamOptions = useMemo(
+    () => [
+      { value: "", label: "—" },
+      ...chantierTeams.map((t) => ({ value: t.id, label: t.name })),
+      ...Array.from(new Set(candidates.map((c) => c.team_label).filter((l): l is string => !!l))).map((l) => ({
+        value: `label:${l}`,
+        label: `${l} (новая)`,
+      })),
+    ],
+    [candidates, chantierTeams]
+  );
+  const teamValueOf = (c: OrgCandidate) => (c.team_id ?? (c.team_label ? `label:${c.team_label}` : ""));
+  const teamPatchFrom = (v: string): Partial<OrgCandidate> =>
+    v.startsWith("label:") ? { team_id: null, team_label: v.slice(6) } : { team_id: v || null, team_label: null };
+
   // ── Расстановка (песочница) ──
+  const plannedTeamLabels = useMemo(
+    () => Array.from(new Set(candidates.map((c) => c.team_label).filter((l): l is string => !!l))),
+    [candidates]
+  );
   const planColumns = useMemo(
     () => [
       { key: "pool", label: "Кандидаты без места", group: "Резерв" },
@@ -13566,8 +13671,9 @@ function OrgCandidatesSection({
       ...[...teams]
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
         .map((t) => ({ key: t.id, label: t.name, group: "Бригады" })),
+      ...plannedTeamLabels.map((l) => ({ key: `label:${l}`, label: `${l} (новая)`, group: "Бригады" })),
     ],
-    [teams]
+    [teams, plannedTeamLabels]
   );
   const planCards = useMemo(() => {
     const cards: { key: string; initial: string; kind: "employee" | "candidate"; employee?: OrgEmployee; candidate?: OrgCandidate }[] = [];
@@ -13586,7 +13692,12 @@ function OrgCandidatesSection({
         const role = roleByLabel.get(c.position_label.trim().toLowerCase());
         cards.push({
           key: `c:${c.id}`,
-          initial: c.category === "bureau" ? (role ? `role:${role}` : "office") : c.team_id ?? "pool",
+          initial:
+            c.category === "bureau"
+              ? role
+                ? `role:${role}`
+                : "office"
+              : c.team_id ?? (c.team_label ? `label:${c.team_label}` : "pool"),
           kind: "candidate",
           candidate: c,
         });
@@ -13638,7 +13749,7 @@ function OrgCandidatesSection({
         </p>
       )}
 
-      <div className="mb-5 rounded-xl border border-stone-100 p-3">
+      <div className="mb-5 rounded-xl border-2 border-violet-200 bg-violet-50 p-3">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-bold">
             Расстановка «что если»{" "}
@@ -13661,7 +13772,7 @@ function OrgCandidatesSection({
           key={groupName}
           className={
             groupName === "Резерв"
-              ? "mt-5 rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 p-3"
+              ? "mt-5 rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/70 p-3"
               : "mb-3"
           }
         >
@@ -13691,7 +13802,7 @@ function OrgCandidatesSection({
                     ? "bg-primary-50 ring-2 ring-primary-300"
                     : col.group === "Резерв"
                       ? "bg-white/70"
-                      : "bg-stone-50/60"
+                      : "bg-white/60"
                 }`}
               >
                 <div
@@ -13744,7 +13855,7 @@ function OrgCandidatesSection({
                           setDragKey(null);
                           setOverColumn(null);
                         }}
-                        title={[c.position_label, CANDIDATE_STATUS_LABELS[c.status].ru, c.arrival_date ? `приезд ${fmtDate(c.arrival_date)}` : ""].filter(Boolean).join(" · ")}
+                        title={[c.position_label, candidateStatusInfo(c.status).ru, c.arrival_date ? `приезд ${fmtDate(c.arrival_date)}` : ""].filter(Boolean).join(" · ")}
                         className={`cursor-grab rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/50 px-2.5 py-2 text-xs active:cursor-grabbing ${
                           moved ? "ring-2 ring-primary-400" : ""
                         }`}
@@ -13752,7 +13863,7 @@ function OrgCandidatesSection({
                         <p className="truncate font-bold text-primary-800">{c.full_name || "Кандидат"}</p>
                         <p className="truncate text-[0.65rem] text-stone-500">{c.position_label}</p>
                         <p className="truncate text-[0.6rem] text-primary-600">
-                          {CANDIDATE_STATUS_LABELS[c.status].ru}
+                          {candidateStatusInfo(c.status).ru}
                           {c.arrival_date ? ` · ${fmtDate(c.arrival_date)}` : ""}
                         </p>
                       </div>
@@ -13791,33 +13902,32 @@ function OrgCandidatesSection({
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
               Тип
-              <select className="input mt-1 normal-case" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as "bureau" | "chantier" })}>
-                <option value="chantier">Стройка</option>
-                <option value="bureau">Офис</option>
-              </select>
+              <SelectWithNew
+                value={draft.category}
+                options={categoryOptions}
+                newLabel="Новый тип…"
+                onChange={(v) => setDraft({ ...draft, category: v })}
+              />
             </label>
-            {draft.category === "chantier" && (
+            {draft.category !== "bureau" && (
               <label className="text-[10px] font-bold uppercase text-stone-400">
                 Планируемая бригада
-                <select className="input mt-1 normal-case" value={draft.team_id} onChange={(e) => setDraft({ ...draft, team_id: e.target.value })}>
-                  <option value="">—</option>
-                  {chantierTeams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                <SelectWithNew
+                  value={draft.team_id}
+                  options={teamOptions}
+                  newLabel="Новая бригада…"
+                  onChange={(v) => setDraft({ ...draft, team_id: /^[0-9a-f-]{36}$/i.test(v) || v === "" || v.startsWith("label:") ? v : `label:${v}` })}
+                />
               </label>
             )}
             <label className="text-[10px] font-bold uppercase text-stone-400">
               Статус
-              <select className="input mt-1 normal-case" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as CandidateStatus })}>
-                {(Object.keys(CANDIDATE_STATUS_LABELS) as CandidateStatus[]).map((st) => (
-                  <option key={st} value={st}>
-                    {CANDIDATE_STATUS_LABELS[st].ru}
-                  </option>
-                ))}
-              </select>
+              <SelectWithNew
+                value={draft.status}
+                options={statusOptions}
+                newLabel="Новый статус…"
+                onChange={(v) => setDraft({ ...draft, status: v })}
+              />
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
               Собеседование
@@ -13876,6 +13986,7 @@ function OrgCandidatesSection({
                     <tr className="text-left text-stone-400">
                       <th className="py-1 pr-2">Имя</th>
                       <th className="py-1 pr-2">Статус</th>
+                      <th className="py-1 pr-2">Тип</th>
                       <th className="py-1 pr-2">Бригада</th>
                       <th className="py-1 pr-2">Собес.</th>
                       <th className="py-1 pr-2">Приезд</th>
@@ -13901,29 +14012,41 @@ function OrgCandidatesSection({
                         </td>
                         <td className="py-1.5 pr-2">
                           {readOnly ? (
-                            <span className={`badge ${CANDIDATE_STATUS_LABELS[c.status].badge}`}>{CANDIDATE_STATUS_LABELS[c.status].ru}</span>
+                            <span className={`badge ${candidateStatusInfo(c.status).badge}`}>{candidateStatusInfo(c.status).ru}</span>
                           ) : (
-                            <select className="input text-xs" value={c.status} onChange={(e) => updateCandidate(c.id, { status: e.target.value as CandidateStatus })}>
-                              {(Object.keys(CANDIDATE_STATUS_LABELS) as CandidateStatus[]).map((st) => (
-                                <option key={st} value={st}>
-                                  {CANDIDATE_STATUS_LABELS[st].ru}
-                                </option>
-                              ))}
-                            </select>
+                            <SelectWithNew
+                              className="input text-xs"
+                              value={c.status}
+                              options={statusOptions}
+                              newLabel="Новый статус…"
+                              onChange={(v) => updateCandidate(c.id, { status: v })}
+                            />
                           )}
                         </td>
                         <td className="py-1.5 pr-2 whitespace-nowrap">
                           {readOnly ? (
-                            teamName(c.team_id) || "—"
+                            categoryOptions.find((o) => o.value === c.category)?.label ?? c.category
                           ) : (
-                            <select className="input text-xs" value={c.team_id ?? ""} onChange={(e) => updateCandidate(c.id, { team_id: e.target.value || null })}>
-                              <option value="">—</option>
-                              {chantierTeams.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name}
-                                </option>
-                              ))}
-                            </select>
+                            <SelectWithNew
+                              className="input text-xs"
+                              value={c.category}
+                              options={categoryOptions}
+                              newLabel="Новый тип…"
+                              onChange={(v) => updateCandidate(c.id, { category: v })}
+                            />
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2 whitespace-nowrap">
+                          {readOnly ? (
+                            teamName(c.team_id) || c.team_label || "—"
+                          ) : (
+                            <SelectWithNew
+                              className="input text-xs"
+                              value={teamValueOf(c)}
+                              options={teamOptions}
+                              newLabel="Новая бригада…"
+                              onChange={(v) => updateCandidate(c.id, teamPatchFrom(/^[0-9a-f-]{36}$/i.test(v) || v === "" || v.startsWith("label:") ? v : `label:${v}`))}
+                            />
                           )}
                         </td>
                         {(["interview_date", "arrival_date", "start_date"] as const).map((k) => (
