@@ -13373,10 +13373,12 @@ const CANDIDATE_OTHER = "__other__";
 function OrgCandidatesSection({
   supabase,
   teams,
+  employees,
   readOnly,
 }: {
   supabase: ReturnType<typeof createClient>;
   teams: OrgTeam[];
+  employees: OrgEmployee[];
   readOnly: boolean;
 }) {
   const [candidates, setCandidates] = useState<OrgCandidate[]>([]);
@@ -13384,6 +13386,11 @@ function OrgCandidatesSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
+  // Расстановка "что если": только на экране, ничего не пишется в базу. Хранятся
+  // лишь перемещения относительно текущего положения; сброс = очистить их.
+  const [moves, setMoves] = useState<Record<string, string>>({});
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overColumn, setOverColumn] = useState<string | null>(null);
   const [newFieldLabel, setNewFieldLabel] = useState("");
   const [newFieldType, setNewFieldType] = useState<"text" | "number" | "date">("text");
   const [draft, setDraft] = useState({
@@ -13549,6 +13556,61 @@ function OrgCandidatesSection({
     return <input type={inputType} className="input text-xs" value={value} onChange={(ev) => onChange(ev.target.value)} />;
   }
 
+  // ── Расстановка (песочница) ──
+  const planColumns = useMemo(
+    () => [
+      { key: "pool", label: "Кандидаты без места", group: "Резерв" },
+      { key: "park", label: "Резерв / без места", group: "Резерв" },
+      { key: "office", label: "Офис (кандидаты)", group: "Резерв" },
+      ...BUREAU_ROLE_ORDER.map((role) => ({ key: `role:${role}`, label: BUREAU_ROLE_LABELS[role], group: "Офис" })),
+      ...[...teams]
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((t) => ({ key: t.id, label: t.name, group: "Бригады" })),
+    ],
+    [teams]
+  );
+  const planCards = useMemo(() => {
+    const cards: { key: string; initial: string; kind: "employee" | "candidate"; employee?: OrgEmployee; candidate?: OrgCandidate }[] = [];
+    employees.forEach((e) =>
+      cards.push({
+        key: `e:${e.id}`,
+        initial: e.category === "bureau" ? (e.bureau_role ? `role:${e.bureau_role}` : "park") : e.team_id ?? "park",
+        kind: "employee",
+        employee: e,
+      })
+    );
+    const roleByLabel = new Map(BUREAU_ROLE_ORDER.map((role) => [BUREAU_ROLE_LABELS[role].toLowerCase(), role]));
+    candidates
+      .filter((c) => c.status !== "rejected" && c.status !== "arrived")
+      .forEach((c) => {
+        const role = roleByLabel.get(c.position_label.trim().toLowerCase());
+        cards.push({
+          key: `c:${c.id}`,
+          initial: c.category === "bureau" ? (role ? `role:${role}` : "office") : c.team_id ?? "pool",
+          kind: "candidate",
+          candidate: c,
+        });
+      });
+    return cards;
+  }, [employees, candidates]);
+  const placeOf = (card: { key: string; initial: string }) => moves[card.key] ?? card.initial;
+  const movedCount = Object.keys(moves).length;
+  const chefOfTeam = useMemo(() => new Map(teams.map((t) => [t.id, t.chef_employee_id])), [teams]);
+
+  function dropOn(columnKey: string) {
+    if (!dragKey) return;
+    const card = planCards.find((c) => c.key === dragKey);
+    setDragKey(null);
+    setOverColumn(null);
+    if (!card) return;
+    setMoves((prev) => {
+      const next = { ...prev };
+      if (columnKey === card.initial) delete next[card.key];
+      else next[card.key] = columnKey;
+      return next;
+    });
+  }
+
   const teamName = (id: string | null) => teams.find((t) => t.id === id)?.name ?? "";
   const activeCount = candidates.filter((c) => c.status !== "rejected" && c.status !== "arrived").length;
 
@@ -13575,6 +13637,114 @@ function OrgCandidatesSection({
           Ошибка: {error}
         </p>
       )}
+
+      <div className="mb-5 rounded-xl border border-stone-100 p-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-bold">
+            Расстановка «что если»{" "}
+            <span className="text-xs font-normal text-stone-400">
+              — перетаскивайте карточки между бригадами, чтобы прикинуть замены. Ничего не сохраняется.
+            </span>
+          </p>
+          <button
+            className="btn btn-secondary text-xs px-2.5 py-1.5"
+            disabled={movedCount === 0}
+            onClick={() => setMoves({})}
+            title="Вернуть всех на текущие места"
+          >
+            <RefreshCw size={13} />
+            Сбросить к текущему{movedCount > 0 ? ` (${movedCount})` : ""}
+          </button>
+        </div>
+        {(["Резерв", "Офис", "Бригады"] as const).map((groupName) => (
+        <div key={groupName} className="mb-3">
+        <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-wide text-stone-400">{groupName}</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          {planColumns.filter((col) => col.group === groupName).map((col) => {
+            const here = planCards.filter((c) => placeOf(c) === col.key);
+            const before = planCards.filter((c) => c.initial === col.key).length;
+            const delta = here.length - before;
+            return (
+              <div
+                key={col.key}
+                onDragOver={(ev) => {
+                  ev.preventDefault();
+                  setOverColumn(col.key);
+                }}
+                onDragLeave={() => setOverColumn((cur) => (cur === col.key ? null : cur))}
+                onDrop={() => dropOn(col.key)}
+                className={`flex min-h-24 min-w-0 flex-col gap-1.5 rounded-xl p-1.5 transition-colors ${
+                  overColumn === col.key ? "bg-primary-50 ring-2 ring-primary-300" : "bg-stone-50/60"
+                }`}
+              >
+                <div className="truncate rounded-lg bg-stone-800 px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white">
+                  {col.label}{" "}
+                  <span className="font-normal opacity-70">
+                    {here.length}
+                    {delta !== 0 && (
+                      <span className={delta > 0 ? "text-success-300" : "text-error-300"}> ({delta > 0 ? "+" : ""}{delta})</span>
+                    )}
+                  </span>
+                </div>
+                {here.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-stone-300 px-2 py-2 text-center text-xs text-stone-300">—</div>
+                ) : (
+                  here.map((card) => {
+                    const moved = card.key in moves;
+                    if (card.kind === "employee") {
+                      const e = card.employee!;
+                      const isChef = e.category === "chantier" && !!e.team_id && chefOfTeam.get(e.team_id) === e.id;
+                      return (
+                        <div
+                          key={card.key}
+                          draggable
+                          onDragStart={() => setDragKey(card.key)}
+                          onDragEnd={() => {
+                            setDragKey(null);
+                            setOverColumn(null);
+                          }}
+                          className={`cursor-grab active:cursor-grabbing ${moved ? "rounded-xl ring-2 ring-primary-400" : ""}`}
+                        >
+                          <OrgTile
+                            label={orgTileLabel(e)}
+                            tone={e.bureau_role === "boss" ? "boss" : isChef ? "lead" : e.category === "bureau" ? "bureau" : "member"}
+                            trialHireDate={e.hire_date}
+                          />
+                        </div>
+                      );
+                    }
+                    const c = card.candidate!;
+                    return (
+                      <div
+                        key={card.key}
+                        draggable
+                        onDragStart={() => setDragKey(card.key)}
+                        onDragEnd={() => {
+                          setDragKey(null);
+                          setOverColumn(null);
+                        }}
+                        title={[c.position_label, CANDIDATE_STATUS_LABELS[c.status].ru, c.arrival_date ? `приезд ${fmtDate(c.arrival_date)}` : ""].filter(Boolean).join(" · ")}
+                        className={`cursor-grab rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/50 px-2.5 py-2 text-xs active:cursor-grabbing ${
+                          moved ? "ring-2 ring-primary-400" : ""
+                        }`}
+                      >
+                        <p className="truncate font-bold text-primary-800">{c.full_name || "Кандидат"}</p>
+                        <p className="truncate text-[0.65rem] text-stone-500">{c.position_label}</p>
+                        <p className="truncate text-[0.6rem] text-primary-600">
+                          {CANDIDATE_STATUS_LABELS[c.status].ru}
+                          {c.arrival_date ? ` · ${fmtDate(c.arrival_date)}` : ""}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            );
+          })}
+        </div>
+        </div>
+        ))}
+      </div>
 
       {!readOnly && (
         <div className="mb-4 rounded-xl border border-stone-100 bg-stone-50/50 p-3">
@@ -14027,7 +14197,7 @@ function OrganigrammeView({
         </div>
       )}
 
-      <OrgCandidatesSection supabase={supabase} teams={teams} readOnly={readOnly} />
+      <OrgCandidatesSection supabase={supabase} teams={teams} employees={employees} readOnly={readOnly} />
     </div>
   );
 }
