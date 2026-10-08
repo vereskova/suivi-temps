@@ -42,6 +42,8 @@ export type PayrollInput = {
   joursTravailles: number;
   /** The employee's own reference monthly net salary — null/0 until set on their profile. */
   salaireBaseNet: number | null;
+  /** Meal days typed by hand (e.g. for office staff) — replaces the computed value and the cap; the rest of the waterfall (HS, prime) then uses what is left. null/undefined = automatic. */
+  joursRepasManuel?: number | null;
 };
 
 export type PayrollResult = {
@@ -81,10 +83,10 @@ export function computePayrollLine(input: PayrollInput, params: PayrollParams): 
   const repasCap = useJoursTravailles ? Math.min(maxJoursRepas, joursTravailles) : maxJoursRepas;
 
   const remainderAfterBase = netSouhaite - baseNet - exoneration;
-  const joursRepas = Math.min(
-    repasCap,
-    Math.max(0, Math.ceil(Math.max(0, remainderAfterBase) / tarifRepas))
-  );
+  const joursRepas =
+    input.joursRepasManuel != null && Number.isFinite(input.joursRepasManuel)
+      ? Math.max(0, input.joursRepasManuel)
+      : Math.min(repasCap, Math.max(0, Math.ceil(Math.max(0, remainderAfterBase) / tarifRepas)));
   const repasNet = joursRepas * tarifRepas;
 
   const remainderAfterRepas = remainderAfterBase - repasNet;

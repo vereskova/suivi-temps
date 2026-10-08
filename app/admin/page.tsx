@@ -14397,9 +14397,17 @@ type PaieLineInput = {
   majJoursFeries: string;
   joursTravailles: string;
   heuresNuit: string;
+  /** Jours repas saisis à la main (vide = calcul automatique). */
+  joursRepasManuel: string;
 };
 
-const EMPTY_PAIE_LINE: PaieLineInput = { netSouhaite: "", majJoursFeries: "", joursTravailles: "", heuresNuit: "" };
+const EMPTY_PAIE_LINE: PaieLineInput = {
+  netSouhaite: "",
+  majJoursFeries: "",
+  joursTravailles: "",
+  heuresNuit: "",
+  joursRepasManuel: "",
+};
 
 /** Bureau core staff aren't tracked day-by-day the way chantier crews are —
  *  always 0. For chantier employees, default to the weekdays they were
@@ -14553,7 +14561,7 @@ function PaieView({
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
-          .select("employee_id, net_souhaite, maj_jours_feries, jours_travailles, heures_nuit")
+          .select("employee_id, net_souhaite, maj_jours_feries, jours_travailles, heures_nuit, jours_repas_manuel")
           .eq("run_id", run.id);
         const savedByEmployee = new Map((lines ?? []).map((l) => [l.employee_id, l]));
         const map: Record<string, PaieLineInput> = {};
@@ -14568,6 +14576,7 @@ function PaieView({
             netSouhaite: l?.net_souhaite ? String(l.net_souhaite) : "",
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
             heuresNuit: l?.heures_nuit ? String(l.heures_nuit) : "",
+            joursRepasManuel: l?.jours_repas_manuel != null ? String(l.jours_repas_manuel) : "",
             // Office core staff never worked chantier days — enforced even
             // over an old saved value, since it's a hard rule, not just a
             // suggested default. Otherwise: no saved line yet this month →
@@ -14847,6 +14856,7 @@ function PaieView({
           netSouhaite: Number(line.netSouhaite) || 0,
           joursTravailles: Number(line.joursTravailles) || 0,
           salaireBaseNet: e.salaire_base_net,
+          joursRepasManuel: line.joursRepasManuel === "" ? null : Number(line.joursRepasManuel),
         },
         params
       );
@@ -14915,6 +14925,7 @@ function PaieView({
         maj_jours_feries: Number(line.majJoursFeries) || 0,
         jours_travailles: Number(line.joursTravailles) || 0,
         jours_repas: c?.joursRepas ?? 0,
+        jours_repas_manuel: line.joursRepasManuel === "" ? null : Number(line.joursRepasManuel),
         hs25_heures: c?.hs25Heures ?? 0,
         hs50_heures: c?.hs50Heures ?? 0,
         prime_exceptionnelle: c?.primeExceptionnelle ?? 0,
@@ -15478,9 +15489,17 @@ function PaieView({
                       >
                         <Bi fr="Prime nuit" ru="Ночная надбавка" />: {(n?.amount ?? 0).toFixed(2)} €
                       </p>
-                      <p className="text-primary-700 font-semibold">
-                        <Bi fr="Jours repas" ru="Дней питания" />: {c?.joursRepas ?? 0}
-                      </p>
+                      <label className="flex items-center justify-between gap-3 text-primary-700 font-semibold">
+                        <Bi fr="Jours repas" ru="Дней питания" />
+                        <input
+                          type="number"
+                          min={0}
+                          className={`input w-24 font-semibold ${line.joursRepasManuel !== "" ? "bg-warning-50/60" : ""}`}
+                          value={line.joursRepasManuel}
+                          placeholder={String(c?.joursRepas ?? 0)}
+                          onChange={(ev) => updateInput(e.id, "joursRepasManuel", ev.target.value)}
+                        />
+                      </label>
                       <div className="flex justify-between pt-1 text-primary-700 font-semibold">
                         <span>HS+25%: {c?.hs25Heures ?? 0} h</span>
                         <span>HS+50%: {c?.hs50Heures ?? 0} h</span>
@@ -15623,7 +15642,18 @@ function PaieView({
                         ))}
                       </select>
                     </td>
-                    <td className="py-2 pr-4 font-semibold text-primary-700">{c?.joursRepas ?? 0}</td>
+                    <td className="py-2 pr-4">
+                      <input
+                        type="number"
+                        min={0}
+                        className={`input font-semibold ${line.joursRepasManuel !== "" ? "bg-warning-50/60" : "text-primary-700"}`}
+                        style={{ width: "5.5rem" }}
+                        value={line.joursRepasManuel}
+                        placeholder={String(c?.joursRepas ?? 0)}
+                        onChange={(ev) => updateInput(e.id, "joursRepasManuel", ev.target.value)}
+                        title="Vide = calcul automatique ; saisir un nombre pour le fixer à la main / Пусто — считается автоматически; введи число, чтобы задать вручную"
+                      />
+                    </td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs25Heures ?? 0} h</td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs50Heures ?? 0} h</td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">
