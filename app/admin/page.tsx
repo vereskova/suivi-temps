@@ -13360,12 +13360,12 @@ type OrgCandidate = {
 type OrgCandidateField = { id: string; label: string; field_type: "text" | "number" | "date"; sort_order: number };
 
 const CANDIDATE_STATUS_LABELS: Record<CandidateStatus, { fr: string; ru: string; badge: string }> = {
-  considering: { fr: "À l'étude", ru: "На рассмотрении", badge: "badge-warning" },
-  interview: { fr: "Entretien", ru: "Собеседование", badge: "badge-warning" },
-  offered: { fr: "Proposition faite", ru: "Предложение сделано", badge: "badge-success" },
-  confirmed: { fr: "Confirmé", ru: "Подтверждён", badge: "badge-success" },
-  arrived: { fr: "Arrivé", ru: "Приехал", badge: "badge-success" },
-  rejected: { fr: "Refusé", ru: "Отказ", badge: "badge-error" },
+  considering: { fr: "На рассмотрении", ru: "На рассмотрении", badge: "badge-warning" },
+  interview: { fr: "Собеседование", ru: "Собеседование", badge: "badge-warning" },
+  offered: { fr: "Предложение сделано", ru: "Предложение сделано", badge: "badge-success" },
+  confirmed: { fr: "Подтверждён", ru: "Подтверждён", badge: "badge-success" },
+  arrived: { fr: "Приехал", ru: "Приехал", badge: "badge-success" },
+  rejected: { fr: "Отказ", ru: "Отказ", badge: "badge-error" },
 };
 
 const CANDIDATE_OTHER = "__other__";
@@ -13444,7 +13444,7 @@ function OrgCandidatesSection({
   async function addCandidate() {
     const position = draft.positionChoice === CANDIDATE_OTHER ? draft.positionCustom.trim() : draft.positionChoice;
     if (!position) {
-      toast.error("Choisissez ou saisissez un poste / Выберите или введите должность");
+      toast.error("Выберите или введите должность");
       return;
     }
     const { data: auth } = await supabase.auth.getUser();
@@ -13467,7 +13467,7 @@ function OrgCandidatesSection({
       .select("*")
       .single();
     if (insertError || !data) {
-      toast.error("Erreur : " + (insertError?.message ?? "inconnue"));
+      toast.error("Ошибка: " + (insertError?.message ?? "неизвестная"));
       return;
     }
     setCandidates((prev) => [...prev, data as OrgCandidate]);
@@ -13481,7 +13481,7 @@ function OrgCandidatesSection({
       notes: "",
       custom_data: {},
     }));
-    toast.success("Candidat ajouté / Кандидат добавлен");
+    toast.success("Кандидат добавлен");
   }
 
   async function updateCandidate(id: string, patch: Partial<OrgCandidate>) {
@@ -13490,16 +13490,16 @@ function OrgCandidatesSection({
     setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
     const { error: updError } = await supabase.from("org_candidates").update(patch).eq("id", id);
     if (updError) {
-      toast.error("Erreur : " + updError.message);
+      toast.error("Ошибка: " + updError.message);
       setCandidates((prev) => prev.map((c) => (c.id === id ? before : c)));
     }
   }
 
   async function deleteCandidate(c: OrgCandidate) {
-    if (!window.confirm(`Supprimer ${c.full_name || "ce candidat"} ? / Удалить ${c.full_name || "этого кандидата"}?`)) return;
+    if (!window.confirm(`Удалить ${c.full_name || "этого кандидата"}?`)) return;
     const { error: delError } = await supabase.from("org_candidates").delete().eq("id", c.id);
     if (delError) {
-      toast.error("Erreur : " + delError.message);
+      toast.error("Ошибка: " + delError.message);
       return;
     }
     setCandidates((prev) => prev.filter((x) => x.id !== c.id));
@@ -13514,7 +13514,7 @@ function OrgCandidatesSection({
       .select("*")
       .single();
     if (fieldError || !data) {
-      toast.error("Erreur : " + (fieldError?.message ?? "inconnue"));
+      toast.error("Ошибка: " + (fieldError?.message ?? "неизвестная"));
       return;
     }
     setFields((prev) => [...prev, data as OrgCandidateField]);
@@ -13523,10 +13523,10 @@ function OrgCandidatesSection({
   }
 
   async function deleteField(f: OrgCandidateField) {
-    if (!window.confirm(`Supprimer le champ « ${f.label} » pour tous les candidats ? / Удалить поле «${f.label}» у всех кандидатов?`)) return;
+    if (!window.confirm(`Удалить поле «${f.label}» у всех кандидатов?`)) return;
     const { error: delError } = await supabase.from("org_candidate_fields").delete().eq("id", f.id);
     if (delError) {
-      toast.error("Erreur : " + delError.message);
+      toast.error("Ошибка: " + delError.message);
       return;
     }
     setFields((prev) => prev.filter((x) => x.id !== f.id));
@@ -13556,25 +13556,23 @@ function OrgCandidatesSection({
     <div className="card mt-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <p className="font-bold">
-          Candidats — prévisions d&apos;embauche{" "}
-          <span className="ml-1 font-normal text-stone-400">Кандидаты — планируемые сотрудники</span>{" "}
+          Кандидаты — планируемые сотрудники{" "}
           <span className="font-normal text-stone-400">({activeCount})</span>
         </p>
         {!readOnly && (
           <button className="btn btn-secondary text-xs px-2.5 py-1.5" onClick={() => setShowFieldModal(true)}>
             <Plus size={13} />
-            <Bi fr="Champ personnalisé" ru="Своё поле" />
+            Своё поле
           </button>
         )}
       </div>
       <p className="mb-3 text-xs text-stone-400">
-        Personnes envisagées, classées par poste — poste existant ou nouveau rôle, dates prévues, statut.{" "}
-        <span className="opacity-70">/ Рассматриваемые люди по должностям — существующая или новая должность, ожидаемые даты, статус.</span>
+        Рассматриваемые люди по должностям — существующая или новая должность, ожидаемые даты, статус.
       </p>
 
       {error && (
         <p className="mb-3 rounded-lg bg-error-50 px-3 py-2 text-xs text-error-600">
-          Erreur / Ошибка : {error}
+          Ошибка: {error}
         </p>
       )}
 
@@ -13582,11 +13580,11 @@ function OrgCandidatesSection({
         <div className="mb-4 rounded-xl border border-stone-100 bg-stone-50/50 p-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Nom (si connu)" ru="Имя (если известно)" />
+              Имя (если известно)
               <input className="input mt-1 normal-case" value={draft.full_name} onChange={(e) => setDraft({ ...draft, full_name: e.target.value })} />
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Poste" ru="Должность" />
+              Должность
               <select className="input mt-1 normal-case" value={draft.positionChoice} onChange={(e) => setDraft({ ...draft, positionChoice: e.target.value })}>
                 <option value="">—</option>
                 {positionOptions.map((p) => (
@@ -13594,22 +13592,22 @@ function OrgCandidatesSection({
                     {p}
                   </option>
                 ))}
-                <option value={CANDIDATE_OTHER}>+ Nouveau rôle / Новая должность…</option>
+                <option value={CANDIDATE_OTHER}>+ Новая должность…</option>
               </select>
               {draft.positionChoice === CANDIDATE_OTHER && (
-                <input className="input mt-1 normal-case" placeholder="Nouveau poste / Новая должность" value={draft.positionCustom} onChange={(e) => setDraft({ ...draft, positionCustom: e.target.value })} />
+                <input className="input mt-1 normal-case" placeholder="Новая должность" value={draft.positionCustom} onChange={(e) => setDraft({ ...draft, positionCustom: e.target.value })} />
               )}
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Type" ru="Тип" />
+              Тип
               <select className="input mt-1 normal-case" value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value as "bureau" | "chantier" })}>
-                <option value="chantier">Chantier / Стройка</option>
-                <option value="bureau">Bureau / Офис</option>
+                <option value="chantier">Стройка</option>
+                <option value="bureau">Офис</option>
               </select>
             </label>
             {draft.category === "chantier" && (
               <label className="text-[10px] font-bold uppercase text-stone-400">
-                <Bi fr="Équipe prévue" ru="Планируемая бригада" />
+                Планируемая бригада
                 <select className="input mt-1 normal-case" value={draft.team_id} onChange={(e) => setDraft({ ...draft, team_id: e.target.value })}>
                   <option value="">—</option>
                   {chantierTeams.map((t) => (
@@ -13621,33 +13619,33 @@ function OrgCandidatesSection({
               </label>
             )}
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Statut" ru="Статус" />
+              Статус
               <select className="input mt-1 normal-case" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value as CandidateStatus })}>
                 {(Object.keys(CANDIDATE_STATUS_LABELS) as CandidateStatus[]).map((st) => (
                   <option key={st} value={st}>
-                    {CANDIDATE_STATUS_LABELS[st].fr} / {CANDIDATE_STATUS_LABELS[st].ru}
+                    {CANDIDATE_STATUS_LABELS[st].ru}
                   </option>
                 ))}
               </select>
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Entretien" ru="Собеседование" />
+              Собеседование
               <DateInput className="input mt-1" value={draft.interview_date} onChange={(e) => setDraft({ ...draft, interview_date: e.target.value })} />
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Arrivée prévue" ru="Ожидаемый приезд" />
+              Ожидаемый приезд
               <DateInput className="input mt-1" value={draft.arrival_date} onChange={(e) => setDraft({ ...draft, arrival_date: e.target.value })} />
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Début prévu" ru="Ожидаемый выход на работу" />
+              Ожидаемый выход на работу
               <DateInput className="input mt-1" value={draft.start_date} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} />
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400">
-              <Bi fr="Téléphone" ru="Телефон" />
+              Телефон
               <input className="input mt-1 normal-case" value={draft.phone} onChange={(e) => setDraft({ ...draft, phone: e.target.value })} />
             </label>
             <label className="text-[10px] font-bold uppercase text-stone-400 sm:col-span-2">
-              <Bi fr="Notes" ru="Заметки" />
+              Заметки
               <input className="input mt-1 normal-case" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
             </label>
             {fields.map((f) => (
@@ -13662,7 +13660,7 @@ function OrgCandidatesSection({
           <div className="mt-3 flex justify-end">
             <button className="btn btn-primary text-sm" onClick={addCandidate}>
               <Plus size={14} />
-              <Bi fr="Ajouter" ru="Добавить" />
+              Добавить
             </button>
           </div>
         </div>
@@ -13672,7 +13670,7 @@ function OrgCandidatesSection({
         <SkeletonRows rows={3} cols={5} />
       ) : groups.length === 0 ? (
         <p className="text-sm text-stone-400">
-          <Bi fr="Aucun candidat pour l'instant." ru="Пока нет кандидатов." />
+          Пока нет кандидатов.
         </p>
       ) : (
         <div className="space-y-4">
@@ -13685,14 +13683,14 @@ function OrgCandidatesSection({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-stone-400">
-                      <th className="py-1 pr-2"><Bi fr="Nom" ru="Имя" /></th>
-                      <th className="py-1 pr-2"><Bi fr="Statut" ru="Статус" /></th>
-                      <th className="py-1 pr-2"><Bi fr="Équipe" ru="Бригада" /></th>
-                      <th className="py-1 pr-2"><Bi fr="Entretien" ru="Собес." /></th>
-                      <th className="py-1 pr-2"><Bi fr="Arrivée" ru="Приезд" /></th>
-                      <th className="py-1 pr-2"><Bi fr="Début" ru="Выход" /></th>
-                      <th className="py-1 pr-2"><Bi fr="Tél." ru="Тел." /></th>
-                      <th className="py-1 pr-2"><Bi fr="Notes" ru="Заметки" /></th>
+                      <th className="py-1 pr-2">Имя</th>
+                      <th className="py-1 pr-2">Статус</th>
+                      <th className="py-1 pr-2">Бригада</th>
+                      <th className="py-1 pr-2">Собес.</th>
+                      <th className="py-1 pr-2">Приезд</th>
+                      <th className="py-1 pr-2">Выход</th>
+                      <th className="py-1 pr-2">Тел.</th>
+                      <th className="py-1 pr-2">Заметки</th>
                       {fields.map((f) => (
                         <th key={f.id} className="py-1 pr-2">{f.label}</th>
                       ))}
@@ -13712,12 +13710,12 @@ function OrgCandidatesSection({
                         </td>
                         <td className="py-1.5 pr-2">
                           {readOnly ? (
-                            <span className={`badge ${CANDIDATE_STATUS_LABELS[c.status].badge}`}>{CANDIDATE_STATUS_LABELS[c.status].fr}</span>
+                            <span className={`badge ${CANDIDATE_STATUS_LABELS[c.status].badge}`}>{CANDIDATE_STATUS_LABELS[c.status].ru}</span>
                           ) : (
                             <select className="input text-xs" value={c.status} onChange={(e) => updateCandidate(c.id, { status: e.target.value as CandidateStatus })}>
                               {(Object.keys(CANDIDATE_STATUS_LABELS) as CandidateStatus[]).map((st) => (
                                 <option key={st} value={st}>
-                                  {CANDIDATE_STATUS_LABELS[st].fr}
+                                  {CANDIDATE_STATUS_LABELS[st].ru}
                                 </option>
                               ))}
                             </select>
@@ -13773,7 +13771,7 @@ function OrgCandidatesSection({
                         ))}
                         <td className="py-1.5 text-right">
                           {!readOnly && (
-                            <button className="p-1 text-stone-300 hover:text-error-600" onClick={() => deleteCandidate(c)} title="Supprimer / Удалить">
+                            <button className="p-1 text-stone-300 hover:text-error-600" onClick={() => deleteCandidate(c)} title="Удалить">
                               <Trash2 size={14} />
                             </button>
                           )}
@@ -13788,37 +13786,37 @@ function OrgCandidatesSection({
         </div>
       )}
 
-      <Modal open={showFieldModal} onClose={() => setShowFieldModal(false)} title="Champs personnalisés / Свои поля">
+      <Modal open={showFieldModal} onClose={() => setShowFieldModal(false)} title="Свои поля">
         <div className="space-y-3">
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex-1 text-xs font-bold text-stone-400">
-              <Bi fr="Nom du champ" ru="Название поля" />
-              <input className="input mt-1" value={newFieldLabel} onChange={(e) => setNewFieldLabel(e.target.value)} placeholder="ex. Visa, Expérience…" />
+              Название поля
+              <input className="input mt-1" value={newFieldLabel} onChange={(e) => setNewFieldLabel(e.target.value)} placeholder="напр. Виза, Опыт…" />
             </label>
             <label className="text-xs font-bold text-stone-400">
-              <Bi fr="Type" ru="Тип" />
+              Тип
               <select className="input mt-1" value={newFieldType} onChange={(e) => setNewFieldType(e.target.value as "text" | "number" | "date")}>
-                <option value="text">Texte / Текст</option>
-                <option value="number">Nombre / Число</option>
-                <option value="date">Date / Дата</option>
+                <option value="text">Текст</option>
+                <option value="number">Число</option>
+                <option value="date">Дата</option>
               </select>
             </label>
             <button className="btn btn-primary text-sm" onClick={addField}>
               <Plus size={14} />
-              <Bi fr="Ajouter" ru="Добавить" />
+              Добавить
             </button>
           </div>
           {fields.length === 0 ? (
-            <p className="text-sm text-stone-400">Aucun champ personnalisé. / Своих полей пока нет.</p>
+            <p className="text-sm text-stone-400">Своих полей пока нет.</p>
           ) : (
             <ul className="space-y-1">
               {fields.map((f) => (
                 <li key={f.id} className="flex items-center justify-between rounded-lg border border-stone-100 px-3 py-1.5 text-sm">
                   <span>
                     <span className="font-semibold">{f.label}</span>{" "}
-                    <span className="text-xs text-stone-400">{f.field_type === "text" ? "texte" : f.field_type === "number" ? "nombre" : "date"}</span>
+                    <span className="text-xs text-stone-400">{f.field_type === "text" ? "текст" : f.field_type === "number" ? "число" : "дата"}</span>
                   </span>
-                  <button className="p-1 text-stone-300 hover:text-error-600" onClick={() => deleteField(f)} title="Supprimer / Удалить">
+                  <button className="p-1 text-stone-300 hover:text-error-600" onClick={() => deleteField(f)} title="Удалить">
                     <Trash2 size={14} />
                   </button>
                 </li>
@@ -14682,7 +14680,9 @@ function DayCell({
   showAmount,
   onSaveNote,
   readOnly = false,
+  cellKey,
 }: {
+  cellKey?: string;
   cellBg: string | undefined;
   selectValue: string;
   worked: boolean;
@@ -14735,6 +14735,7 @@ function DayCell({
       onContextMenu={openMenu}
     >
       <select
+        data-cell={cellKey}
         value={selectValue}
         onChange={(ev) => onStatusChange(ev.target.value)}
         title={
@@ -18002,7 +18003,7 @@ function PayrollExtrasView({
                   key={p.email}
                   className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
                   style={{ backgroundColor: color }}
-                  title={p.focus ? `${p.email} — ${who ? employeeName(who) : ""} / ${cell?.[1]}` : p.email}
+                  title={p.focus ? `${p.email} — ${who ? employeeName(who) : ""} / ${cell?.slice(1).join(" ")}` : p.email}
                 >
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
                   {p.email.split("@")[0]}
@@ -18157,7 +18158,14 @@ function PayrollExtrasView({
           <style>{`
             ${peers
               .filter((p) => p.email !== currentUserEmail && p.focus)
-              .map((p) => `[data-cell="${p.focus}"] { outline: 2px solid ${extrasPeerColor(p.email)}; outline-offset: 1px; }`)
+              .map((p) => {
+                const color = extrasPeerColor(p.email);
+                const name = p.email.split("@")[0].replace(/[^\w.-]/g, "");
+                return (
+                  `td:has([data-cell="${p.focus}"]) { position: relative; box-shadow: inset 0 0 0 2px ${color}; background-color: ${color}33 !important; }\n` +
+                  `td:has([data-cell="${p.focus}"])::after { content: "${name}"; position: absolute; top: -9px; left: 2px; z-index: 30; padding: 0 4px; border-radius: 4px; font-size: 9px; font-weight: 700; line-height: 14px; color: #fff; background: ${color}; pointer-events: none; }`
+                );
+              })
               .join("\n")}
             ${flashCells.map((c) => `[data-cell="${c}"] { background-color: #bfdbfe !important; transition: background-color 0.4s; }`).join("\n")}
             .extras-grid td, .extras-grid th { border-right: 1px solid #e7e5e4; }
@@ -18385,6 +18393,7 @@ function PayrollExtrasView({
                         return (
                           <DayCell
                             key={d}
+                            cellKey={`${e.id}:day:${d}`}
                             cellBg={cellBg}
                             selectValue={selectValue}
                             worked={worked}
@@ -18438,6 +18447,7 @@ function PayrollExtrasView({
                             <input
                               type="checkbox"
                               checked={!!e.is_driver}
+                              data-cell={`${e.id}:isDriver`}
                               onChange={() => toggleDriver(e)}
                               title="Chauffeur — change le tarif de Часы в дороге / Водитель — меняет ставку часов в дороге"
                               className="h-3.5 w-3.5 cursor-pointer accent-primary-600"
