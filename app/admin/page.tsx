@@ -11702,7 +11702,75 @@ const AUDIT_ENTITY_LABELS: Record<string, { fr: string; ru: string }> = {
   employees: { fr: "Employé", ru: "Сотрудник" },
   registre_unique_personnel: { fr: "Registre du personnel", ru: "Реестр персонала" },
   payroll_line_items: { fr: "Ligne de paie", ru: "Строка зарплаты" },
+  payroll_extras: { fr: "Primes & Bonus", ru: "Премии и бонусы" },
+  payroll_day_notes: { fr: "Note du jour (Primes & Bonus)", ru: "Заметка дня (Премии и бонусы)" },
+  pointage_entries: { fr: "Présence (pointage)", ru: "Отметка присутствия" },
+  employee_phones: { fr: "Téléphones pro", ru: "Рабочие телефоны" },
+  company_quality_bank: { fr: "Банк качества (entreprise)", ru: "Банк качества (компания)" },
 };
+
+/** Champs lisibles pour le résumé du journal — les champs calculés/techniques
+ *  (БАНК fin, part contrôleur, auteur/date des raisons…) restent dans le détail. */
+const AUDIT_FIELD_LABELS: Record<string, string> = {
+  taux_journalier: "Ставка",
+  heures_route: "Часы в дороге",
+  bonus_equipe: "BONUS équipe",
+  bonus_raison: "Raison BONUS",
+  bonus_direct: "Bonus прочее",
+  bonus_direct_raison: "Raison Bonus прочее",
+  penalite_montant: "Штраф контроль",
+  penalite_raison: "Raison Штраф",
+  penalite_directe: "Штраф прочее",
+  penalite_directe_raison: "Raison Штраф прочее",
+  vacance_jours: "Vacance (j)",
+  conges_jours: "Congés payés (j)",
+  avance: "Аванс",
+  banque_ajustement_manuel: "БАНК 3000 (ajust.)",
+  comment: "Commentaire",
+  amount: "Montant",
+  is_absent: "Absent",
+  absence_type_id: "Type d'absence",
+  half_day: "Demi-journée",
+  start_time: "Début",
+  end_time: "Fin",
+  phone_number: "Numéro",
+  has_work_phone: "Tél. pro",
+  has_new_sim: "Nouvelle SIM",
+  current_total: "Total",
+  is_driver: "Chauffeur",
+};
+const AUDIT_HIDDEN_FIELDS = new Set(["id", "run_id", "employee_id", "work_date", "team_id", "role_label", "updated_at", "created_at"]);
+
+function auditSummary(
+  row: AuditLogRow,
+  employeeNames: Map<string, string>,
+  runMonths: Map<string, string>
+): string {
+  const data = (row.action === "delete" ? row.old_data : row.new_data) ?? {};
+  const who = typeof data.employee_id === "string" ? employeeNames.get(data.employee_id) : undefined;
+  const parts: string[] = [];
+  if (who) parts.push(who);
+  if (typeof data.role_label === "string") parts.push(data.role_label);
+  if (typeof data.work_date === "string") parts.push(fmtDate(data.work_date));
+  if (typeof data.run_id === "string" && runMonths.get(data.run_id)) {
+    parts.push(runMonths.get(data.run_id)!.slice(0, 7).split("-").reverse().join("/"));
+  }
+  let changes = "";
+  if (row.action === "update") {
+    changes = auditChangedFields(row)
+      .filter((f) => AUDIT_FIELD_LABELS[f.field])
+      .slice(0, 3)
+      .map((f) => `${AUDIT_FIELD_LABELS[f.field]} : ${auditValueText(f.before)} → ${auditValueText(f.after)}`)
+      .join(" · ");
+  } else {
+    changes = Object.entries(data)
+      .filter(([k, v]) => !AUDIT_HIDDEN_FIELDS.has(k) && AUDIT_FIELD_LABELS[k] && v !== null && v !== 0 && v !== "")
+      .slice(0, 3)
+      .map(([k, v]) => `${AUDIT_FIELD_LABELS[k]} : ${auditValueText(v)}`)
+      .join(" · ");
+  }
+  return [parts.join(" · "), changes].filter(Boolean).join(" — ");
+}
 
 const AUDIT_ACTION_LABELS: Record<AuditLogRow["action"], { fr: string; ru: string; badge: string }> = {
   insert: { fr: "Création", ru: "Создание", badge: "badge-success" },
@@ -11738,34 +11806,78 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
   const [entityFilter, setEntityFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [detailRow, setDetailRow] = useState<AuditLogRow | null>(null);
+  const [employeeNames, setEmployeeNames] = useState<Map<string, string>>(new Map());
+  const [runMonths, setRunMonths] = useState<Map<string, string>>(new Map());
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "off">("connecting");
+  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const { data } = await supabase
-        .from("audit_log")
-        .select("id, entity_type, entity_id, action, actor_email, actor_role, old_data, new_data, created_at")
-        .order("created_at", { ascending: false })
-        .limit(300);
+      const [{ data }, { data: emps }, { data: runs }] = await Promise.all([
+        supabase
+          .from("audit_log")
+          .select("id, entity_type, entity_id, action, actor_email, actor_role, old_data, new_data, created_at")
+          .order("created_at", { ascending: false })
+          .limit(300),
+        supabase.from("employees").select("id, first_name, last_name"),
+        supabase.from("payroll_runs").select("id, month"),
+      ]);
       setRows((data as AuditLogRow[]) ?? []);
+      setEmployeeNames(new Map((emps ?? []).map((e) => [e.id, `${e.last_name} ${e.first_name}`])));
+      setRunMonths(new Map((runs ?? []).map((r) => [r.id, r.month])));
       setLoading(false);
     }
     load();
+  }, [supabase]);
+
+  // Temps réel : chaque nouvelle ligne du journal apparaît en haut tout de
+  // suite (surlignée quelques secondes), sans recharger la page.
+  useEffect(() => {
+    const channel = supabase
+      .channel("audit-log-live")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "audit_log" }, (payload) => {
+        const row = payload.new as AuditLogRow;
+        setRows((prev) => (prev.some((r) => r.id === row.id) ? prev : [row, ...prev].slice(0, 300)));
+        setFreshIds((prev) => new Set(prev).add(row.id));
+        window.setTimeout(() => {
+          setFreshIds((prev) => {
+            const next = new Set(prev);
+            next.delete(row.id);
+            return next;
+          });
+        }, 8000);
+      })
+      .subscribe((status) => {
+        setLiveStatus(status === "SUBSCRIBED" ? "live" : "off");
+      });
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [supabase]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (entityFilter !== "all" && r.entity_type !== entityFilter) return false;
-      if (q && !(r.actor_email ?? "").toLowerCase().includes(q)) return false;
+      if (q && !`${r.actor_email ?? ""} ${auditSummary(r, employeeNames, runMonths)}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, entityFilter, search]);
+  }, [rows, entityFilter, search, employeeNames, runMonths]);
 
   return (
     <div>
       <div className="card mb-4">
-        <div className="font-bold mb-1 flex items-center">
+        <div className="font-bold mb-1 flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+              liveStatus === "live" ? "bg-success-100 text-success-700" : "bg-stone-100 text-stone-400"
+            }`}
+            title="Les nouvelles actions apparaissent ici en direct / Новые действия появляются здесь сразу"
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${liveStatus === "live" ? "animate-pulse bg-success-600" : "bg-stone-300"}`} />
+            {liveStatus === "live" ? "EN DIRECT / LIVE" : liveStatus === "connecting" ? "…" : "HORS LIGNE / OFFLINE"}
+          </span>
           <Bi
             fr="Journal d'audit"
             ru="Журнал аудита"
@@ -11794,7 +11906,7 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
             </label>
             <input
               className="input"
-              placeholder="Email de l'auteur…"
+              placeholder="Auteur, employé, champ… / Автор, сотрудник, поле…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -11835,14 +11947,20 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   key={r.id}
                   type="button"
                   onClick={() => setDetailRow(r)}
-                  className="w-full rounded-xl border border-stone-100 p-3 text-left"
+                  className={`w-full rounded-xl border p-3 text-left ${
+                    freshIds.has(r.id) ? "border-primary-300 bg-primary-50" : "border-stone-100"
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className={`badge ${actionInfo.badge}`}>{actionInfo.fr}</span>
-                    <span className="text-xs text-stone-400">{formatDateShortDMY(r.created_at.slice(0, 10))}</span>
+                    <span className="text-xs text-stone-400">
+                      {formatDateShortDMY(r.created_at.slice(0, 10))}{" "}
+                      {new Date(r.created_at).toLocaleTimeString("fr-FR")}
+                    </span>
                   </div>
                   <p className="text-sm font-semibold mt-1.5">{entityInfo.fr}</p>
-                  <p className="text-xs text-stone-500">{r.actor_email ?? "—"}</p>
+                  <p className="text-xs text-stone-500">{r.actor_email ?? "(système / script)"}</p>
+                  <p className="text-xs text-stone-600 mt-1">{auditSummary(r, employeeNames, runMonths)}</p>
                 </button>
               );
             })}
@@ -11856,6 +11974,7 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   <th className="pb-2 pr-4"><Bi fr="Auteur" ru="Автор" /></th>
                   <th className="pb-2 pr-4"><Bi fr="Module" ru="Раздел" /></th>
                   <th className="pb-2 pr-4"><Bi fr="Action" ru="Действие" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Détail" ru="Что изменено" /></th>
                   <th className="pb-2"></th>
                 </tr>
               </thead>
@@ -11865,17 +11984,18 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   const entityInfo = auditEntityLabel(r.entity_type);
                   const d = new Date(r.created_at);
                   return (
-                    <tr key={r.id} className="border-t border-stone-100">
+                    <tr key={r.id} className={`border-t border-stone-100 ${freshIds.has(r.id) ? "bg-primary-50" : ""}`}>
                       <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">
                         {formatDateShortDMY(r.created_at.slice(0, 10))}{" "}
-                        <span className="text-stone-400">
-                          {d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                        <span className="text-stone-400">{d.toLocaleTimeString("fr-FR")}</span>
                       </td>
-                      <td className="py-2 pr-4">{r.actor_email ?? "—"}</td>
+                      <td className="py-2 pr-4">{r.actor_email ?? "(système / script)"}</td>
                       <td className="py-2 pr-4">{entityInfo.fr}</td>
                       <td className="py-2 pr-4">
                         <span className={`badge ${actionInfo.badge}`}>{actionInfo.fr}</span>
+                      </td>
+                      <td className="py-2 pr-4 text-xs text-stone-600 max-w-[28rem]">
+                        {auditSummary(r, employeeNames, runMonths)}
                       </td>
                       <td className="py-2">
                         <button
