@@ -16945,6 +16945,46 @@ function PayrollExtrasView({
     toast.success(`${rows.length} jour(s) marqué(s) présent / ${rows.length} дней отмечено`);
   }
 
+  /** Envoie "À payer" de ce mois vers Paie ("Net souhaité" de la ligne du même
+   *  mois) en un clic — demandé le 08/10/2026. Les salariés à 0 € ou en négatif
+   *  (rien à payer / dette) sont ignorés : on n'écrase pas un Net souhaité déjà
+   *  saisi dans Paie avec un zéro. Seule la colonne net_souhaite est écrite. */
+  async function sendToPaie() {
+    if (demo) {
+      toast.success("Démo — rien n'est envoyé / Демо — ничего не отправляется");
+      return;
+    }
+    if (!runId) return;
+    const monthName = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    const all = employees
+      .filter((e) => !isFopContractor(e))
+      .map((e) => ({ employee: e, amount: Math.round((computed[e.id]?.aPayer ?? 0) * 100) / 100 }));
+    const toSend = all.filter((r) => r.amount > 0);
+    const skipped = all.length - toSend.length;
+    if (toSend.length === 0) {
+      toast.warning("Aucun montant à envoyer / Нечего отправлять");
+      return;
+    }
+    const ok = window.confirm(
+      `Envoyer « À payer » de ${monthName} vers Paie (Net souhaité) pour ${toSend.length} salarié(s) ?\n` +
+        `Le Net souhaité actuel de ces salariés dans Paie sera remplacé.` +
+        (skipped > 0 ? `\n${skipped} salarié(s) à 0 € ou en négatif : ignoré(s), leur Paie reste inchangée.` : "") +
+        `\n\nОтправить «К оплате» за ${monthName} в Paie («Желаемый нетто») для ${toSend.length} сотрудников?\n` +
+        `Текущий «Желаемый нетто» у них в Paie будет заменён.` +
+        (skipped > 0 ? `\n${skipped} с 0 € или минусом — пропущены, в Paie без изменений.` : "")
+    );
+    if (!ok) return;
+    const { error } = await supabase.from("payroll_line_items").upsert(
+      toSend.map((r) => ({ run_id: runId, employee_id: r.employee.id, net_souhaite: r.amount })),
+      { onConflict: "run_id,employee_id" }
+    );
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    toast.success(`${toSend.length} montant(s) envoyé(s) vers Paie / ${toSend.length} сумм отправлено в Paie`);
+  }
+
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
     month: "long",
     year: "numeric",
@@ -16995,6 +17035,16 @@ function PayrollExtrasView({
                 >
                   <ClipboardCheck size={14} />
                   <Bi fr="Remplir les jours vides" ru="Заполнить пустые дни" />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
+                  disabled={loading}
+                  onClick={sendToPaie}
+                  title="Envoie « À payer » de ce mois vers Paie (Net souhaité) / Отправляет «К оплате» за этот месяц в Paie («Желаемый нетто»)"
+                >
+                  <Wallet size={14} />
+                  <Bi fr="Envoyer vers Paie" ru="Отправить в Paie" />
                 </button>
                 <button className="btn btn-primary text-sm" disabled={saving || loading} onClick={save}>
                   {saving ? "Enregistrement…" : <Bi fr="Enregistrer" ru="Сохранить" />}
