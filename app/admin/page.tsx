@@ -10939,36 +10939,33 @@ function CommercialView({
   );
 }
 
-// ── Vue "Téléphones pro" — annuaire visible par tous les rôles ──
+// ── Vue "Téléphones pro" — liste officielle (feuille "telefon"), visible par tous les rôles ──
 type PhoneDirectoryRow = {
-  kind: "employee" | "shared";
-  first_name: string | null;
-  last_name: string | null;
-  category: string | null;
-  bureau_role: string | null;
-  job_title: string | null;
-  team_name: string | null;
-  is_chef: boolean;
-  phone: string;
-  role_label: string | null;
+  role_label: string;
+  phone: string | null;
+  has_work_phone: boolean;
+  has_new_sim: boolean;
 };
 
-function phoneDirectoryGroup(r: PhoneDirectoryRow): string {
-  if (r.kind === "shared") {
-    return r.team_name ?? (r.role_label?.startsWith("Equipe") ? r.role_label : "Autres");
-  }
-  if (r.category === "bureau") {
-    return r.bureau_role === "control" || r.bureau_role === "formation_officer" ? "Contrôle & Formation" : "Bureau";
-  }
-  return r.team_name ?? "Sans équipe";
-}
+const PHONE_DIRECTORY_ORDER = [
+  "BOSS",
+  "Psychopractisienne",
+  "Comptable",
+  "ASSIST",
+  "PLANNING",
+  "HOTEL",
+  "CONTROL",
+  "PRODUCTION",
+  "DEPOT",
+  "FORMATION",
+];
 
-function phoneDirectoryOrder(g: string): [number, number, string] {
-  if (g === "Bureau") return [0, 0, ""];
-  if (g === "Contrôle & Formation") return [1, 0, ""];
-  if (g.startsWith("Equipe")) return [2, parseInt(g.replace(/\D/g, ""), 10) || 0, g];
-  if (g === "Sans équipe") return [3, 0, ""];
-  return [4, 0, g];
+function phoneDirectoryRank(label: string): [number, number] {
+  const i = PHONE_DIRECTORY_ORDER.indexOf(label);
+  if (i !== -1) return [0, i];
+  const team = /^Equipe\s+(\d+)$/i.exec(label);
+  if (team) return [1, parseInt(team[1], 10)];
+  return [2, 0];
 }
 
 function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -10988,30 +10985,14 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
     };
   }, [supabase]);
 
-  const groups = useMemo(() => {
+  const sorted = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const map = new Map<string, PhoneDirectoryRow[]>();
-    (rows ?? []).forEach((r) => {
-      const label = r.kind === "shared" ? (r.team_name ?? r.role_label ?? "") : `${r.last_name} ${r.first_name}`;
-      const hay = `${label} ${r.job_title ?? ""} ${r.phone} ${r.role_label ?? ""}`.toLowerCase();
-      if (q && !hay.includes(q)) return;
-      const g = phoneDirectoryGroup(r);
-      if (!map.has(g)) map.set(g, []);
-      map.get(g)!.push(r);
-    });
-    return Array.from(map.entries())
-      .map(([g, list]) => ({
-        group: g,
-        list: list.sort((a, b) => {
-          if (a.is_chef !== b.is_chef) return a.is_chef ? -1 : 1;
-          if ((a.kind === "shared") !== (b.kind === "shared")) return a.kind === "shared" ? 1 : -1;
-          return `${a.last_name ?? a.role_label}`.localeCompare(`${b.last_name ?? b.role_label}`);
-        }),
-      }))
+    return (rows ?? [])
+      .filter((r) => !q || `${r.role_label} ${r.phone ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => {
-        const [a0, a1, a2] = phoneDirectoryOrder(a.group);
-        const [b0, b1, b2] = phoneDirectoryOrder(b.group);
-        return a0 - b0 || a1 - b1 || a2.localeCompare(b2);
+        const [a0, a1] = phoneDirectoryRank(a.role_label);
+        const [b0, b1] = phoneDirectoryRank(b.role_label);
+        return a0 - b0 || a1 - b1 || a.role_label.localeCompare(b.role_label);
       });
   }, [rows, search]);
 
@@ -11031,42 +11012,62 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
         </div>
       </div>
       {error ? (
-        <div className="card text-sm text-error-600">
-          Erreur / Ошибка : {error}
-        </div>
+        <div className="card text-sm text-error-600">Erreur / Ошибка : {error}</div>
       ) : rows === null ? (
         <div className="card">
           <SkeletonRows rows={6} cols={3} />
         </div>
-      ) : groups.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <div className="card text-sm text-stone-400">
           <Bi fr="Aucun numéro trouvé." ru="Номера не найдены." />
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {groups.map(({ group, list }) => (
-            <div key={group} className="card">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wide text-stone-400">{group}</p>
-              <ul className="space-y-1.5 text-sm">
-                {list.map((r, i) => (
-                  <li key={`${r.phone}-${i}`} className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0">
-                      <span className="inline-flex items-center gap-1 font-semibold text-stone-800">
-                        {r.is_chef && <Crown size={12} className="shrink-0 fill-current text-success-600" />}
-                        {r.kind === "shared"
-                          ? r.role_label?.startsWith("Equipe")
-                            ? `Téléphone de ${r.role_label}`
-                            : r.role_label
-                          : `${r.last_name} ${r.first_name}`}
-                      </span>
-                      {r.job_title && <span className="block truncate text-[11px] text-stone-400">{r.job_title}</span>}
-                    </span>
-                    <span className="shrink-0 font-mono text-stone-700">{r.phone}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-stone-400">
+                <th className="py-2 pr-4 w-10">№</th>
+                <th className="py-2 pr-4">
+                  <Bi fr="Poste" ru="Должность" />
+                </th>
+                <th className="py-2 pr-4">
+                  <Bi fr="Téléphone pro" ru="Рабочий телефон" />
+                </th>
+                <th className="py-2 pr-4">
+                  <Bi fr="Nouvelle SIM" ru="Новая симка" />
+                </th>
+                <th className="py-2">
+                  <Bi fr="Numéro" ru="Номер телефона" />
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r, i) => {
+                const noPhone = !r.phone && !r.has_work_phone;
+                return (
+                  <tr key={r.role_label} className={`border-t border-stone-100 ${noPhone ? "bg-red-100" : ""}`}>
+                    <td className="py-2 pr-4 text-stone-400">{i + 1}</td>
+                    <td className="py-2 pr-4 font-semibold">{r.role_label}</td>
+                    <td className="py-2 pr-4">
+                      {r.has_work_phone ? (
+                        <span className="rounded-md bg-success-100 px-2 py-0.5 text-xs font-semibold text-success-700">
+                          есть
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 pr-4">
+                      {r.has_new_sim ? (
+                        <span className="rounded-md bg-success-100 px-2 py-0.5 text-xs font-semibold text-success-700">
+                          есть
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="py-2 font-mono text-stone-800">{r.phone ?? ""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
