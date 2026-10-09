@@ -17043,6 +17043,368 @@ function extrasPeerColor(email: string): string {
   return EXTRAS_PEER_COLORS[h % EXTRAS_PEER_COLORS.length];
 }
 
+// ── Export Excel de "Primes & Bonus" (exceljs, chargé à la demande) ──
+const EXTRAS_EXPORT_TINT: Record<string, { light: string; strong: string }> = {
+  "": { light: "FFFFFFFF", strong: "FFF5F5F4" },
+  "bg-stone-50": { light: "FFFAFAF9", strong: "FFE7E5E4" },
+  "bg-emerald-50": { light: "FFECFDF5", strong: "FFA7F3D0" },
+  "bg-blue-50": { light: "FFEFF6FF", strong: "FFBFDBFE" },
+  "bg-amber-50": { light: "FFFFFBEB", strong: "FFFDE68A" },
+  "bg-purple-50": { light: "FFFAF5FF", strong: "FFE9D5FF" },
+  "bg-rose-50": { light: "FFFFF1F2", strong: "FFFECDD3" },
+  "bg-cyan-50": { light: "FFECFEFF", strong: "FFA5F3FC" },
+  "bg-orange-50": { light: "FFFFF7ED", strong: "FFFED7AA" },
+  "bg-lime-50": { light: "FFF7FEE7", strong: "FFD9F99D" },
+  "bg-fuchsia-50": { light: "FFFDF4FF", strong: "FFF5D0FE" },
+  "bg-teal-50": { light: "FFF0FDFA", strong: "FF99F6E4" },
+  "bg-indigo-50": { light: "FFEEF2FF", strong: "FFC7D2FE" },
+};
+
+type ExtrasExportRow = {
+  groupLabel: string;
+  colorClass: string;
+  name: string;
+  isDriver: boolean;
+  bureauOrControl: boolean;
+  jours: number;
+  taux: number;
+  salaire: number;
+  heuresRoute: number;
+  coutRoute: number;
+  bonus: number;
+  bonusDirect: number;
+  penalite: number;
+  penaliteDirecte: number;
+  banqueDebut: number;
+  banqueFin: number;
+  conges: number | null;
+  vacance: number;
+  avance: number | null;
+  aPayer: number;
+  employeeId: string;
+  raisons: { label: string; text: string; by: string | null; at: string | null }[];
+};
+
+async function exportExtrasExcel(data: {
+  monthTitle: string;
+  fileSuffix: string;
+  rows: ExtrasExportRow[];
+  dayColumns: string[];
+  attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>>;
+  dayNotes: Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>>;
+  bank: { total: number; target: number; controllerName: string; controllerShare: number } | null;
+  employmentOf: Record<string, { hire: string | null; end: string | null }>;
+}) {
+  const mod = await import("exceljs");
+  const ExcelJS = (mod as unknown as { default?: typeof import("exceljs") }).default ?? mod;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "VLADIS";
+  wb.created = new Date();
+
+  const FONT = "Calibri";
+  const EUR = '#,##0.00 "€";[Red]-#,##0.00 "€";"–"';
+  const thin = { style: "thin" as const, color: { argb: "FFE7E5E4" } };
+  const border = { top: thin, bottom: thin, left: thin, right: thin };
+  const solid = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
+
+  // ───────── Feuille 1 : le tableau ─────────
+  const ws = wb.addWorksheet("Primes & Bonus", {
+    views: [{ state: "frozen", xSplit: 1, ySplit: 5, showGridLines: false }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+  });
+  type Col = {
+    header: string;
+    width: number;
+    fill?: string;
+    color?: string;
+    fmt?: string;
+    value: (r: ExtrasExportRow) => string | number | null;
+    sum?: boolean;
+    office?: boolean;
+  };
+  const cols: Col[] = [
+    { header: "Nom Prénom\nФамилия Имя", width: 30, value: (r) => r.name },
+    { header: "Jours\nДней", width: 8, fmt: "0.0", value: (r) => r.jours, sum: true },
+    { header: "Ставка\n€/j", width: 10, fmt: EUR, value: (r) => r.taux },
+    { header: "Salaire\njours €", width: 13, fmt: EUR, value: (r) => r.salaire, sum: true },
+    { header: "Водитель\nChauffeur", width: 10, value: (r) => (r.isDriver ? "oui / да" : null) },
+    { header: "Часы в\nдороге", width: 9, fmt: "0.0;;\"–\"", value: (r) => r.heuresRoute, sum: true },
+    { header: "Coût\nroute €", width: 12, fmt: EUR, value: (r) => r.coutRoute, sum: true },
+    { header: "BONUS\néquipe €", width: 12, fmt: EUR, value: (r) => r.bonus, sum: true },
+    { header: "Bonus\nпрочее €", width: 12, fmt: EUR, value: (r) => r.bonusDirect, sum: true },
+    { header: "Штраф\nконтроль €", width: 13, fill: "FFFF0000", color: "FFFFFFFF", fmt: EUR, value: (r) => r.penalite, sum: true },
+    { header: "Штраф\nпрочее €", width: 13, fill: "FFEA580C", color: "FFFFFFFF", fmt: EUR, value: (r) => r.penaliteDirecte, sum: true },
+    { header: "БАНК 3000\n(пред.) €", width: 13, fmt: EUR, value: (r) => (r.bureauOrControl ? null : r.banqueDebut), office: true },
+    { header: "БАНК\n3000 €", width: 12, fill: "FFEDFF00", color: "FF1C1917", fmt: EUR, value: (r) => (r.bureauOrControl ? null : r.banqueFin), office: true },
+    { header: "Congés\npayés (j)", width: 10, fmt: "0.0;;\"–\"", value: (r) => r.conges },
+    { header: "Vacance\n(j)", width: 10, fmt: "0.0;;\"–\"", value: (r) => r.vacance || null },
+    { header: "Аванс\nAvance €", width: 12, fill: "FF00E676", color: "FF065F46", fmt: EUR, value: (r) => r.avance, sum: true },
+    { header: "À payer\nК оплате €", width: 14, fill: "FF1D4ED8", color: "FFFFFFFF", fmt: EUR, value: (r) => r.aPayer, sum: true },
+  ];
+  cols.forEach((c, i) => (ws.getColumn(i + 1).width = c.width));
+  const lastColLetter = ws.getColumn(cols.length).letter;
+
+  ws.mergeCells(`A1:${lastColLetter}1`);
+  const title = ws.getCell("A1");
+  title.value = "VLADIS — Primes & Bonus";
+  title.font = { name: FONT, size: 18, bold: true, color: { argb: "FFFFFFFF" } };
+  title.fill = solid("FF1E293B");
+  title.alignment = { vertical: "middle", indent: 1 };
+  ws.getRow(1).height = 32;
+
+  ws.mergeCells(`A2:${lastColLetter}2`);
+  const sub = ws.getCell("A2");
+  sub.value = `${data.monthTitle.charAt(0).toUpperCase()}${data.monthTitle.slice(1)}   ·   Премии и бонусы   ·   exporté le ${new Date().toLocaleDateString("fr-FR")}`;
+  sub.font = { name: FONT, size: 11, color: { argb: "FF475569" } };
+  sub.fill = solid("FFE2E8F0");
+  sub.alignment = { vertical: "middle", indent: 1 };
+  ws.getRow(2).height = 20;
+
+  ws.mergeCells(`A3:${lastColLetter}3`);
+  const bankCell = ws.getCell("A3");
+  bankCell.value = data.bank
+    ? `Банк качества (entreprise) : ${data.bank.total.toFixed(0)} / ${data.bank.target} €   ·   Contrôleur ${data.bank.controllerName} — part du mois ${data.bank.controllerShare.toFixed(2)} €`
+    : "";
+  bankCell.font = { name: FONT, size: 10, italic: true, color: { argb: "FF64748B" } };
+  bankCell.alignment = { vertical: "middle", indent: 1 };
+  ws.getRow(3).height = 18;
+  ws.getRow(4).height = 6;
+
+  const headerRow = ws.getRow(5);
+  cols.forEach((c, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = c.header;
+    cell.font = { name: FONT, size: 10, bold: true, color: { argb: c.color ?? "FFFFFFFF" } };
+    cell.fill = solid(c.fill ?? "FF334155");
+    cell.alignment = { horizontal: i === 0 ? "left" : "center", vertical: "middle", wrapText: true, indent: i === 0 ? 1 : 0 };
+    cell.border = border;
+  });
+  headerRow.height = 36;
+
+  let rowIndex = 6;
+  let currentGroup = "";
+  let firstDataRow = 0;
+  let lastDataRow = 0;
+  const totals = new Map<number, number>();
+  data.rows.forEach((r) => {
+    const tint = EXTRAS_EXPORT_TINT[r.colorClass] ?? EXTRAS_EXPORT_TINT[""];
+    if (r.groupLabel !== currentGroup) {
+      currentGroup = r.groupLabel;
+      ws.mergeCells(`A${rowIndex}:${lastColLetter}${rowIndex}`);
+      const g = ws.getCell(`A${rowIndex}`);
+      g.value = currentGroup.toUpperCase();
+      g.font = { name: FONT, size: 11, bold: true, color: { argb: "FF1E293B" } };
+      g.fill = solid(tint.strong);
+      g.alignment = { vertical: "middle", indent: 1 };
+      ws.getRow(rowIndex).height = 22;
+      rowIndex += 1;
+    }
+    const row = ws.getRow(rowIndex);
+    cols.forEach((c, i) => {
+      const cell = row.getCell(i + 1);
+      const v = c.value(r);
+      cell.value = v === null ? (c.office && r.bureauOrControl ? "—" : null) : v;
+      cell.font = { name: FONT, size: 10, bold: i === 0 || i === cols.length - 1, color: { argb: c.office && r.bureauOrControl ? "FFA8A29E" : "FF1C1917" } };
+      cell.fill = solid(tint.light);
+      cell.border = border;
+      cell.alignment = { horizontal: i === 0 ? "left" : i === 4 ? "center" : "right", vertical: "middle", indent: i === 0 ? 1 : 0 };
+      if (c.fmt && typeof v === "number") cell.numFmt = c.fmt;
+      if (c.sum && typeof v === "number") totals.set(i, (totals.get(i) ?? 0) + v);
+    });
+    row.height = 20;
+    if (!firstDataRow) firstDataRow = rowIndex;
+    lastDataRow = rowIndex;
+    rowIndex += 1;
+  });
+
+  if (firstDataRow) {
+    const totalRow = ws.getRow(rowIndex + 1);
+    cols.forEach((c, i) => {
+      const cell = totalRow.getCell(i + 1);
+      cell.font = { name: FONT, size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = solid("FF1E293B");
+      cell.border = border;
+      cell.alignment = { horizontal: i === 0 ? "left" : "right", vertical: "middle", indent: i === 0 ? 1 : 0 };
+      if (i === 0) cell.value = "TOTAL";
+      else if (c.sum) {
+        const letter = ws.getColumn(i + 1).letter;
+        cell.value = { formula: `SUM(${letter}${firstDataRow}:${letter}${lastDataRow})`, result: totals.get(i) ?? 0 };
+        if (c.fmt) cell.numFmt = c.fmt;
+      }
+    });
+    totalRow.height = 24;
+    ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5, column: cols.length } };
+    ws.pageSetup.printTitlesRow = "5:5";
+  }
+
+  // ───────── Feuille 2 : présence ─────────
+  const wp = wb.addWorksheet("Présence", {
+    views: [{ state: "frozen", xSplit: 1, ySplit: 3, showGridLines: false }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 },
+  });
+  wp.getColumn(1).width = 30;
+  data.dayColumns.forEach((_, i) => (wp.getColumn(i + 2).width = 4.6));
+  wp.getColumn(data.dayColumns.length + 2).width = 9;
+  const pLast = wp.getColumn(data.dayColumns.length + 2).letter;
+  wp.mergeCells(`A1:${pLast}1`);
+  const pt = wp.getCell("A1");
+  pt.value = `Présence — ${data.monthTitle.charAt(0).toUpperCase()}${data.monthTitle.slice(1)}`;
+  pt.font = { name: FONT, size: 16, bold: true, color: { argb: "FFFFFFFF" } };
+  pt.fill = solid("FF1E293B");
+  pt.alignment = { vertical: "middle", indent: 1 };
+  wp.getRow(1).height = 28;
+  const WD = ["D", "L", "M", "M", "J", "V", "S"];
+  const dayRow = wp.getRow(2);
+  const wdRow = wp.getRow(3);
+  [dayRow, wdRow].forEach((rw, k) => {
+    const c0 = rw.getCell(1);
+    c0.value = k === 0 ? "Nom Prénom" : "";
+    c0.font = { name: FONT, size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    c0.fill = solid("FF334155");
+    c0.alignment = { vertical: "middle", indent: 1 };
+  });
+  data.dayColumns.forEach((d, i) => {
+    const dow = new Date(d + "T00:00:00Z").getUTCDay();
+    const weekend = dow === 0 || dow === 6;
+    [[dayRow, String(Number(d.slice(8)))], [wdRow, WD[dow]]].forEach(([rw, text]) => {
+      const cell = (rw as typeof dayRow).getCell(i + 2);
+      cell.value = text as string;
+      cell.font = { name: FONT, size: 9, bold: true, color: { argb: weekend ? "FF713F12" : "FFFFFFFF" } };
+      cell.fill = solid(weekend ? "FFFDE047" : "FF334155");
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+    });
+  });
+  const totH = dayRow.getCell(data.dayColumns.length + 2);
+  totH.value = "Jours";
+  totH.font = { name: FONT, size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+  totH.fill = solid("FF334155");
+  totH.alignment = { horizontal: "center", vertical: "middle" };
+  wdRow.getCell(data.dayColumns.length + 2).fill = solid("FF334155");
+
+  const ABS_FILL: Record<string, string> = { maladie: "FFFFE4E6", cp: "FFE0F2FE", rtt: "FFF3E8FF", sans_solde: "FFFEF3C7", ferie: "FFCCFBF1", autre: "FFFCE7F3" };
+  const ABS_CODE: Record<string, string> = { maladie: "M", cp: "CP", rtt: "RTT", sans_solde: "SS", ferie: "F", autre: "A" };
+  let pr = 4;
+  let pGroup = "";
+  data.rows.forEach((r) => {
+    if (r.groupLabel !== pGroup) {
+      pGroup = r.groupLabel;
+      wp.mergeCells(`A${pr}:${pLast}${pr}`);
+      const g = wp.getCell(`A${pr}`);
+      g.value = pGroup.toUpperCase();
+      g.font = { name: FONT, size: 10, bold: true, color: { argb: "FF1E293B" } };
+      g.fill = solid((EXTRAS_EXPORT_TINT[r.colorClass] ?? EXTRAS_EXPORT_TINT[""]).strong);
+      g.alignment = { vertical: "middle", indent: 1 };
+      pr += 1;
+    }
+    const rw = wp.getRow(pr);
+    const n = rw.getCell(1);
+    n.value = r.name;
+    n.font = { name: FONT, size: 10, bold: true };
+    n.alignment = { vertical: "middle", indent: 1 };
+    n.border = border;
+    const emp = data.employmentOf[r.employeeId];
+    data.dayColumns.forEach((d, i) => {
+      const cell = rw.getCell(i + 2);
+      const dow = new Date(d + "T00:00:00Z").getUTCDay();
+      const weekend = dow === 0 || dow === 6;
+      const outside = (emp?.hire && d < emp.hire) || (emp?.end && d > emp.end);
+      const a = data.attendance[r.employeeId]?.[d];
+      let text: string | number | null = null;
+      let fill = weekend ? "FFFEF9C3" : "FFFFFFFF";
+      if (outside) {
+        text = "·";
+        fill = "FFE7E5E4";
+      } else if (a) {
+        if (a.worked) {
+          text = a.halfDay ? 0.5 : 1;
+          fill = a.halfDay ? "FFECFCCB" : "FFDCFCE7";
+        } else if (a.absenceCode) {
+          text = ABS_CODE[a.absenceCode] ?? a.absenceCode.slice(0, 2).toUpperCase();
+          fill = ABS_FILL[a.absenceCode] ?? "FFF5F5F4";
+        } else {
+          text = 0;
+        }
+      }
+      cell.value = text;
+      cell.fill = solid(fill);
+      cell.font = { name: FONT, size: 9, bold: typeof text === "string" && text !== "·", color: { argb: outside ? "FFA8A29E" : "FF1C1917" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = border;
+      if (typeof text === "number") cell.numFmt = "0.0;;0";
+    });
+    const tc = rw.getCell(data.dayColumns.length + 2);
+    tc.value = { formula: `SUM(B${pr}:${wp.getColumn(data.dayColumns.length + 1).letter}${pr})`, result: r.jours };
+    tc.numFmt = "0.0";
+    tc.font = { name: FONT, size: 10, bold: true };
+    tc.alignment = { horizontal: "center", vertical: "middle" };
+    tc.border = border;
+    pr += 1;
+  });
+  pr += 1;
+  wp.mergeCells(`A${pr}:${pLast}${pr}`);
+  wp.getCell(`A${pr}`).value =
+    "Légende : 1 présent · 0,5 demi-journée · 0 absent · M maladie · CP congé payé · RTT · SS sans solde · F férié · A autre · · hors période d'emploi";
+  wp.getCell(`A${pr}`).font = { name: FONT, size: 9, italic: true, color: { argb: "FF64748B" } };
+
+  // ───────── Feuille 3 : commentaires ─────────
+  const notes: { name: string; kind: string; day: string; amount: number | null; text: string; by: string; at: string }[] = [];
+  data.rows.forEach((r) => {
+    r.raisons.forEach((x) =>
+      notes.push({ name: r.name, kind: x.label, day: "", amount: null, text: x.text, by: x.by ?? "", at: x.at ? new Date(x.at).toLocaleString("fr-FR") : "" })
+    );
+    Object.entries(data.dayNotes[r.employeeId] ?? {})
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .forEach(([d, n]) => {
+        if (!n.comment && n.amount == null) return;
+        notes.push({
+          name: r.name,
+          kind: "Note du jour",
+          day: `${d.slice(8)}/${d.slice(5, 7)}/${d.slice(0, 4)}`,
+          amount: n.amount,
+          text: n.comment,
+          by: n.by ?? "",
+          at: n.at ? new Date(n.at).toLocaleString("fr-FR") : "",
+        });
+      });
+  });
+  if (notes.length > 0) {
+    const wc = wb.addWorksheet("Commentaires", { views: [{ state: "frozen", ySplit: 1, showGridLines: false }] });
+    const head = ["Salarié", "Type", "Jour", "Montant €", "Commentaire", "Auteur", "Date"];
+    const widths = [28, 24, 12, 12, 60, 28, 18];
+    head.forEach((h, i) => {
+      wc.getColumn(i + 1).width = widths[i];
+      const cell = wc.getRow(1).getCell(i + 1);
+      cell.value = h;
+      cell.font = { name: FONT, size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = solid("FF334155");
+      cell.alignment = { vertical: "middle", indent: i === 0 ? 1 : 0 };
+    });
+    wc.getRow(1).height = 24;
+    notes.forEach((n, k) => {
+      const rw = wc.getRow(k + 2);
+      [n.name, n.kind, n.day, n.amount, n.text, n.by, n.at].forEach((v, i) => {
+        const cell = rw.getCell(i + 1);
+        cell.value = v === "" ? null : v;
+        cell.font = { name: FONT, size: 10, bold: i === 0 };
+        cell.alignment = { vertical: "top", wrapText: i === 4, indent: i === 0 ? 1 : 0 };
+        cell.border = border;
+        if (k % 2 === 1) cell.fill = solid("FFF8FAFC");
+        if (i === 3 && typeof v === "number") cell.numFmt = EUR;
+      });
+    });
+    wc.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: head.length } };
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Primes_Bonus_${data.fileSuffix}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 /** Données 100 % fictives pour enregistrer une vidéo de démonstration —
  *  jamais lues ni écrites en base. Le contrôleur reprend l'id réel du
  *  contrôleur désigné pour que sa part (25 % des pénalités d'équipe) se calcule
@@ -17200,6 +17562,7 @@ function PayrollExtrasView({
   const [loading, setLoading] = useState(true);
   // Sauvegarde case par case (comme Numbers) : plus de bouton "Enregistrer".
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [exporting, setExporting] = useState(false);
   // Mode démo : employés fictifs, aucune lecture/écriture en base (voir buildDemoPayrollData).
   const [demo, setDemo] = useState(false);
   const [employees, setEmployees] = useState<PaieEmployee[]>([]);
@@ -18244,6 +18607,74 @@ function PayrollExtrasView({
     );
   }
 
+  async function exportExcel() {
+    setExporting(true);
+    try {
+      const num = (v: string) => Number(v) || 0;
+      const rows: ExtrasExportRow[] = groupedRows
+        .filter((row) => !isFopContractor(row.employee))
+        .map((row) => {
+          const e = row.employee;
+          const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+          const c = computed[e.id];
+          const m = raisonMetaByEmployee[e.id];
+          const raisons = [
+            { label: "BONUS équipe — raison", text: m?.bonusRaison ?? line.bonusRaison, by: m?.bonusRaisonBy ?? null, at: m?.bonusRaisonAt ?? null },
+            { label: "Bonus прочее — raison", text: m?.bonusDirectRaison ?? line.bonusDirectRaison, by: m?.bonusDirectRaisonBy ?? null, at: m?.bonusDirectRaisonAt ?? null },
+            { label: "Штраф контроль — raison", text: m?.penaliteRaison ?? line.penaliteRaison, by: m?.penaliteRaisonBy ?? null, at: m?.penaliteRaisonAt ?? null },
+            { label: "Штраф прочее — raison", text: m?.penaliteDirecteRaison ?? line.penaliteDirecteRaison, by: m?.penaliteDirecteRaisonBy ?? null, at: m?.penaliteDirecteRaisonAt ?? null },
+          ].filter((x) => x.text);
+          return {
+            groupLabel: row.groupLabel,
+            colorClass: row.colorClass,
+            name: employeeName(e),
+            isDriver: !!e.is_driver,
+            bureauOrControl: e.category === "bureau",
+            jours: joursByEmployee[e.id] ?? 0,
+            taux: num(line.tauxJournalier),
+            salaire: c?.salaireJours ?? 0,
+            heuresRoute: num(line.heuresRoute),
+            coutRoute: c?.coutRoute ?? 0,
+            bonus: num(line.bonusEquipe),
+            bonusDirect: num(line.bonusDirectMontant),
+            penalite: num(line.penaliteMontant),
+            penaliteDirecte: num(line.penaliteDirecteMontant),
+            banqueDebut: c?.banqueQualiteDebut ?? 0,
+            banqueFin: c?.banqueQualiteFin ?? 0,
+            conges: line.congesJours === "" ? null : num(line.congesJours),
+            vacance: num(line.vacanceJours),
+            avance: line.avance === "" ? null : num(line.avance),
+            aPayer: c?.aPayer ?? 0,
+            employeeId: e.id,
+            raisons,
+          };
+        });
+      const controller = employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID);
+      await exportExtrasExcel({
+        monthTitle: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", { month: "long", year: "numeric" }),
+        fileSuffix: `${year}-${String(month).padStart(2, "0")}`,
+        rows,
+        dayColumns,
+        attendance: attendanceByEmployee,
+        dayNotes: dayNotesByEmployee,
+        bank: companyQualityBank
+          ? {
+              total: bankTotalLive,
+              target: QUALITY_BANK_TARGET,
+              controllerName: controller ? employeeName(controller) : "—",
+              controllerShare: controllerSplit.controllerShare,
+            }
+          : null,
+        employmentOf: Object.fromEntries(employees.map((e) => [e.id, { hire: e.hire_date, end: e.end_date }])),
+      });
+      toast.success("Export Excel prêt / Экспорт в Excel готов");
+    } catch (err) {
+      toast.error("Erreur d'export : " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const monthLabel = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", {
     month: "long",
     year: "numeric",
@@ -18283,6 +18714,16 @@ function PayrollExtrasView({
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
+              disabled={loading || exporting}
+              onClick={exportExcel}
+              title="Exporte le tableau du mois en Excel (tableau, présence, commentaires) / Экспорт таблицы за месяц в Excel (таблица, присутствие, комментарии)"
+            >
+              <FileSpreadsheet size={14} />
+              <Bi fr={exporting ? "Export…" : "Exporter Excel"} ru={exporting ? "Экспорт…" : "Экспорт в Excel"} />
+            </button>
             {!readOnly && (
               <>
                 <button
