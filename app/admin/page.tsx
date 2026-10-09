@@ -10948,6 +10948,7 @@ type PhoneDirectoryRow = {
   is_suspended: boolean;
   note: string | null;
   holder_name: string | null;
+  apple_id: string | null;
 };
 
 const PHONE_DIRECTORY_ORDER = [
@@ -10991,13 +10992,16 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
   const sorted = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (rows ?? [])
-      .filter((r) => !q || `${r.role_label} ${r.phone ?? ""}`.toLowerCase().includes(q))
+      .filter((r) => !q || `${r.role_label} ${r.phone ?? ""} ${r.apple_id ?? ""}`.toLowerCase().includes(q))
       .sort((a, b) => {
         const [a0, a1] = phoneDirectoryRank(a.role_label);
         const [b0, b1] = phoneDirectoryRank(b.role_label);
         return a0 - b0 || a1 - b1 || a.role_label.localeCompare(b.role_label);
       });
   }, [rows, search]);
+
+  // La colonne n'apparaît que pour les rôles RH (work_phone_directory() renvoie null aux autres).
+  const hasAppleIds = (rows ?? []).some((r) => r.apple_id);
 
   return (
     <div>
@@ -11039,9 +11043,14 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                 <th className="py-2 pr-4">
                   <Bi fr="Nouvelle SIM" ru="Новая симка" />
                 </th>
-                <th className="py-2">
+                <th className="py-2 pr-4">
                   <Bi fr="Numéro" ru="Номер телефона" />
                 </th>
+                {hasAppleIds && (
+                  <th className="py-2">
+                    <Bi fr="Apple ID / iCloud" ru="Apple ID / iCloud" />
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -11075,7 +11084,7 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                         </span>
                       ) : null}
                     </td>
-                    <td className="py-2 font-mono text-stone-800">
+                    <td className="py-2 pr-4 font-mono text-stone-800">
                       {r.phone ?? ""}
                       {r.is_suspended && (
                         <span className="ml-2 rounded-md bg-error-100 px-2 py-0.5 font-sans text-xs font-semibold text-error-700">
@@ -11083,6 +11092,7 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                         </span>
                       )}
                     </td>
+                    {hasAppleIds && <td className="py-2 font-mono text-stone-800">{r.apple_id ?? ""}</td>}
                   </tr>
                 );
               })}
@@ -11090,6 +11100,97 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
           </table>
         </div>
       )}
+      <TeamAccessLinksCard supabase={supabase} />
+    </div>
+  );
+}
+
+/** Liens privés /equipe/<jeton> : chaque équipe ouvre ses lignes Primes & Bonus
+ *  (lecture seule) depuis son téléphone. Visible seulement pour rh_admin — la RLS
+ *  de team_access_links ne renvoie rien aux autres rôles, le bloc disparaît alors. */
+function TeamAccessLinksCard({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const [links, setLinks] = useState<{ team_id: string; token: string; name: string }[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("team_access_links")
+      .select("team_id, token, teams(name)")
+      .then(({ data }) => {
+        if (cancelled) return;
+        const rows = ((data ?? []) as unknown as { team_id: string; token: string; teams: { name: string } | null }[]).map((r) => ({
+          team_id: r.team_id,
+          token: r.token,
+          name: r.teams?.name ?? "—",
+        }));
+        rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        setLinks(rows);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  if (links.length === 0) return null;
+  const urlFor = (token: string) => `${window.location.origin}/equipe/${token}`;
+
+  async function copy(token: string) {
+    try {
+      await navigator.clipboard.writeText(urlFor(token));
+      toast.success("Lien copié / Ссылка скопирована");
+    } catch {
+      window.prompt("Lien / Ссылка", urlFor(token));
+    }
+  }
+
+  async function regenerate(teamId: string, name: string) {
+    if (!window.confirm(`${name} : l'ancien lien cessera de fonctionner. Continuer ?\nСтарая ссылка перестанет работать. Продолжить?`)) return;
+    setBusy(teamId);
+    const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, "");
+    const { error } = await supabase
+      .from("team_access_links")
+      .update({ token, rotated_at: new Date().toISOString() })
+      .eq("team_id", teamId);
+    setBusy(null);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setLinks((prev) => prev.map((l) => (l.team_id === teamId ? { ...l, token } : l)));
+    toast.success("Nouveau lien créé / Новая ссылка создана");
+  }
+
+  return (
+    <div className="card mt-4">
+      <div className="font-bold">
+        <Bi fr="Liens Primes & Bonus des équipes" ru="Ссылки на Primes & Bonus для бригад" />
+      </div>
+      <p className="mt-1 text-xs text-stone-400">
+        Chaque équipe ouvre sa page en lecture seule depuis son téléphone (sans mot de passe). Ne partagez le lien qu&apos;avec l&apos;équipe concernée.
+        Только просмотр, без пароля. Отправляй ссылку только своей бригаде.
+      </p>
+      <div className="mt-3 divide-y divide-stone-100">
+        {links.map((l) => (
+          <div key={l.team_id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <div className="min-w-0">
+              <div className="font-semibold">{l.name}</div>
+              <div className="truncate font-mono text-xs text-stone-400">/equipe/{l.token.slice(0, 8)}…</div>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn btn-dark" onClick={() => copy(l.token)}>
+                Copier / Копировать
+              </button>
+              <a className="btn" href={urlFor(l.token)} target="_blank" rel="noreferrer">
+                Ouvrir / Открыть
+              </a>
+              <button className="btn" disabled={busy === l.team_id} onClick={() => regenerate(l.team_id, l.name)}>
+                Régénérer / Заменить
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
