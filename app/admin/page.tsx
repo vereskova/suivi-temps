@@ -71,6 +71,7 @@ import {
   User,
   Users,
   Wallet,
+  ListChecks,
   X,
   ZoomIn,
   ZoomOut,
@@ -126,6 +127,7 @@ import {
   PayrollExtrasInput,
   QualityBankCandidate,
 } from "@/lib/payroll/compute";
+import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
 import {
   countWeekdaysBetween,
   countWorkingDaysInMonth,
@@ -15015,6 +15017,208 @@ function RaisonButton({
   );
 }
 
+const PENALTY_SEVERITY_CLASS: Record<string, string> = {
+  Критическая: "bg-error-100 text-error-700",
+  Серьёзная: "bg-warning-100 text-warning-800",
+  Средняя: "bg-primary-50 text-primary-700",
+  Малая: "bg-stone-100 text-stone-600",
+};
+
+/** Быстрый выбор штрафов контролёра из справочника (lib/payroll/penalties.ts) прямо
+ *  из ячейки « Штраф » : клик по пункту добавляет сумму ÷ 3 к ячейке и подробную строку
+ *  (код, этап, описание, расчёт) в комментарий. Окно остаётся открытым — можно отметить
+ *  несколько пунктов подряд. Тот же портал, что RaisonButton (overflow-x-auto обрезает). */
+function PenaltyPickerButton({
+  onPick,
+  disabled,
+  siteSuggestions = [],
+}: {
+  onPick: (share: number, line: string) => void;
+  disabled?: boolean;
+  /** Названия объектов этой команды из планинга (подсказки для поля « Объект »). */
+  siteSuggestions?: string[];
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [search, setSearch] = useState("");
+  const [site, setSite] = useState("");
+  const [divisor, setDivisor] = useState(String(PENALTY_DEFAULT_DIVISOR));
+  const [qty, setQty] = useState<Record<string, string>>({});
+  const [range, setRange] = useState<Record<string, string>>({});
+  const [added, setAdded] = useState<string[]>([]);
+  const [customText, setCustomText] = useState("");
+  const [customAmount, setCustomAmount] = useState("");
+  const POPOVER_WIDTH = 440;
+
+  useEffect(() => {
+    if (!isOpen || !btnRef.current) return;
+    const rect = btnRef.current.getBoundingClientRect();
+    const left = Math.min(Math.max(4, rect.left), window.innerWidth - POPOVER_WIDTH - 8);
+    setPos({ top: rect.bottom + 4, left });
+  }, [isOpen]);
+
+  const items = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return PENALTY_CATALOG.filter((c) => !q || `${c.code} ${c.stage} ${c.description}`.toLowerCase().includes(q));
+  }, [search]);
+
+  function unitText(c: PenaltyCatalogItem) {
+    if (c.unit === "range") return `${c.amount}–${c.amountMax} €`;
+    if (c.unit === "per_piece") return `${c.amount} €/шт`;
+    if (c.unit === "per_day") return `${c.amount} €/день`;
+    return `${c.amount} €`;
+  }
+
+  function add(c: PenaltyCatalogItem) {
+    const div = Number(divisor.replace(",", ".")) || PENALTY_DEFAULT_DIVISOR;
+    const q = Number((qty[c.code] ?? "1").replace(",", ".")) || 0;
+    if ((c.unit === "per_piece" || c.unit === "per_day") && q <= 0) return;
+    const r = c.unit === "range" ? Number((range[c.code] ?? String(c.amount)).replace(",", ".")) || c.amount : undefined;
+    const { share, line } = describePenaltyPick({ item: c, qty: q, rangeAmount: r, site, divisor: div });
+    onPick(share, line);
+    setAdded((prev) => [`${c.code} −${share.toFixed(2)} €`, ...prev].slice(0, 6));
+  }
+
+  function addCustom() {
+    const amount = Math.round((Number(customAmount.replace(",", ".")) || 0) * 100) / 100;
+    const text = customText.trim();
+    if (amount <= 0 || !text) return;
+    const line = `${site.trim() ? `${site.trim()} · ` : ""}${text}: −${amount.toFixed(2).replace(".", ",")} €`;
+    onPick(amount, line);
+    setAdded((prev) => [`своё −${amount.toFixed(2)} €`, ...prev].slice(0, 6));
+    setCustomText("");
+    setCustomAmount("");
+  }
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        disabled={disabled}
+        onClick={() => setIsOpen((v) => !v)}
+        title="Выбрать штрафы контролёра из списка / Choisir les pénalités du contrôleur"
+        className="absolute -bottom-1.5 -left-1.5 z-10 rounded-full border border-warning-400 bg-white p-0.5 text-warning-700 shadow-sm hover:bg-warning-50 disabled:opacity-40"
+      >
+        <ListChecks size={11} />
+      </button>
+      {isOpen &&
+        pos &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
+            <div
+              className="fixed z-50 rounded-xl border border-warning-200 bg-white p-3 shadow-xl text-left"
+              style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  className="input flex-1 text-xs px-2 py-1.5"
+                  placeholder="Поиск: код, этап, ошибка…"
+                  value={search}
+                  onChange={(ev) => setSearch(ev.target.value)}
+                />
+                <label className="flex items-center gap-1 text-[11px] text-stone-500" title="Суммы справочника — на команду из 3 человек">
+                  ÷
+                  <input className="input px-1 py-1 text-xs" style={{ width: "2.5rem" }} value={divisor} onChange={(ev) => setDivisor(ev.target.value)} />
+                </label>
+              </div>
+              <input
+                className="input mt-1.5 w-full text-xs px-2 py-1.5"
+                placeholder="Объект (необязательно — попадёт в комментарий)"
+                value={site}
+                onChange={(ev) => setSite(ev.target.value)}
+              />
+              {siteSuggestions.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1" title="Объекты команды из планинга — клик подставляет название">
+                  {siteSuggestions.slice(0, 14).map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setSite(name)}
+                      className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                        site === name ? "border-warning-500 bg-warning-100 font-semibold" : "border-stone-200 bg-stone-50 text-stone-600 hover:bg-warning-50"
+                      }`}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-stone-200">
+                {items.map((c) => (
+                  <div key={c.code} className="flex items-center gap-2 border-b border-stone-100 px-2 py-1.5 text-xs">
+                    <span className="w-8 shrink-0 font-mono text-stone-500">{c.code}</span>
+                    <span className="min-w-0 flex-1" title={c.description + (c.note ? ` — ${c.note}` : "")}>
+                      <span className="font-semibold">{c.stage}</span>
+                      {c.severity && <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold ${PENALTY_SEVERITY_CLASS[c.severity] ?? ""}`}>{c.severity}</span>}
+                      <span className="block truncate text-[11px] text-stone-500">{c.description}</span>
+                    </span>
+                    <span className="shrink-0 font-semibold text-stone-700">{unitText(c)}</span>
+                    {(c.unit === "per_piece" || c.unit === "per_day") && (
+                      <input
+                        className="input px-1 py-1 text-xs"
+                        style={{ width: "3.2rem" }}
+                        value={qty[c.code] ?? "1"}
+                        title={c.unit === "per_piece" ? "Количество штук" : "Количество дней"}
+                        onChange={(ev) => setQty((prev) => ({ ...prev, [c.code]: ev.target.value }))}
+                      />
+                    )}
+                    {c.unit === "range" && (
+                      <input
+                        className="input px-1 py-1 text-xs"
+                        style={{ width: "3.6rem" }}
+                        value={range[c.code] ?? String(c.amount)}
+                        title={c.note ?? "Сумма в диапазоне"}
+                        onChange={(ev) => setRange((prev) => ({ ...prev, [c.code]: ev.target.value }))}
+                      />
+                    )}
+                    <button type="button" className="shrink-0 rounded-md bg-warning-500 px-2 py-1 font-bold text-white hover:bg-warning-600" onClick={() => add(c)} title="Добавить к штрафу">
+                      +
+                    </button>
+                  </div>
+                ))}
+                {items.length === 0 && <p className="p-3 text-xs text-stone-400">Ничего не найдено.</p>}
+              </div>
+              <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-warning-50 p-2">
+                <input
+                  className="input min-w-0 flex-1 px-2 py-1 text-xs"
+                  placeholder="Своё: что за ошибка"
+                  value={customText}
+                  onChange={(ev) => setCustomText(ev.target.value)}
+                  onKeyDown={(ev) => ev.key === "Enter" && addCustom()}
+                />
+                <input
+                  className="input px-1.5 py-1 text-xs"
+                  style={{ width: "4.2rem" }}
+                  placeholder="€ на чел."
+                  title="Сумма сразу на одного человека (без деления)"
+                  value={customAmount}
+                  onChange={(ev) => setCustomAmount(ev.target.value)}
+                  onKeyDown={(ev) => ev.key === "Enter" && addCustom()}
+                />
+                <button type="button" className="shrink-0 rounded-md bg-warning-500 px-2 py-1 text-xs font-bold text-white hover:bg-warning-600" onClick={addCustom} title="Добавить свой штраф">
+                  +
+                </button>
+              </div>
+              <div className="mt-2 flex items-start justify-between gap-2">
+                <p className="text-[11px] text-stone-500">{added.length > 0 ? `Добавлено: ${added.join(" · ")}` : "Клик по « + » добавляет сумму в ячейку и строку в комментарий."}</p>
+                <button type="button" className="btn btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => setIsOpen(false)}>
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+    </>
+  );
+}
+
 /** Bouton + popover pour saisir/corriger manuellement le solde de départ du
  *  БАНК 3000 (banqueAjustementManuel) — sert notamment à amorcer le solde
  *  déjà accumulé avant que cette table n'existe, pour un salarié donné. Vide
@@ -18050,6 +18254,24 @@ function PayrollExtrasView({
     return map;
   }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee, controllerSplit, banqueQualitePrimeByEmployee]);
 
+  // Названия объектов из планинга по номеру команды — подсказки в окне выбора штрафов.
+  const [planningSites, setPlanningSites] = useState<Record<string, string[]>>({});
+  useEffect(() => {
+    if (demo) return;
+    let cancelled = false;
+    fetch(`/api/planning-sites?year=${year}&month=${month}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.sitesByTeam) setPlanningSites(json.sitesByTeam);
+      })
+      .catch(() => {
+        /* подсказки необязательны — без планинга можно вводить объект вручную */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [demo, year, month]);
+
   const groupedRows = useMemo(() => groupPaieEmployees(employees), [employees]);
   const absenceTypeIdByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.id])), [absenceTypes]);
   const absenceTypeLabelByCode = useMemo(() => new Map(absenceTypes.map((t) => [t.code, t.label])), [absenceTypes]);
@@ -19397,6 +19619,18 @@ function PayrollExtrasView({
                                 }
                               />
                               {raisonButton(e.id, "penaliteRaison", line.penaliteRaison, "Raison du Штраф", "Причина штрафа", "bg-warning-500 text-white")}
+                              {!readOnly && !bureauOrControl && (
+                                <PenaltyPickerButton
+                                  disabled={demo || !runId}
+                                  siteSuggestions={planningSites[(e.teams?.name ?? "").replace(/\D+/g, "")] ?? []}
+                                  onPick={(share, text) => {
+                                    const current = Number(String(inputsRef.current[e.id]?.penaliteMontant ?? "").replace(",", ".")) || 0;
+                                    const reason = inputsRef.current[e.id]?.penaliteRaison ?? "";
+                                    updateInput(e.id, "penaliteMontant", String(Math.round((current - share) * 100) / 100));
+                                    updateInput(e.id, "penaliteRaison", reason ? `${reason}\n${text}` : text);
+                                  }}
+                                />
+                              )}
                             </div>
                           </td>
                           <td className="py-2 pr-2">

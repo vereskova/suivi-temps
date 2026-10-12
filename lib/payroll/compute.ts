@@ -90,8 +90,13 @@ export function computePayrollLine(input: PayrollInput, params: PayrollParams): 
   const repasNet = joursRepas * tarifRepas;
 
   const remainderAfterRepas = remainderAfterBase - repasNet;
+  // Les 32 h à 25 % (4 semaines × 8 h) ne valent que pour un mois complet :
+  // une absence en début de mois retire la semaine concernée (la comptable les
+  // retirait à la main chaque mois, 09/2026). Approximation : 8 h par tranche
+  // de 5 jours travaillés.
+  const maxHs25Effectif = useJoursTravailles ? Math.min(maxHs25, 8 * Math.floor(joursTravailles / 5)) : maxHs25;
   const hs25Heures = Math.min(
-    maxHs25,
+    maxHs25Effectif,
     Math.max(0, Math.ceil(Math.max(0, remainderAfterRepas) / netUnit / (rate * (1 + maj25))))
   );
 
