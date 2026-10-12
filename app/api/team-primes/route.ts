@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   // Même sélection que l'écran RH, pour toute l'entreprise (nécessaire au total des pénalités).
   const { data: allEmp } = await sb
     .from("employees")
-    .select("id, first_name, last_name, category, team_id, contract_type, status, end_date, is_driver, teams!employees_team_id_fkey(name)")
+    .select("id, first_name, last_name, category, team_id, contract_type, status, hire_date, end_date, is_driver, teams!employees_team_id_fkey(name)")
     .or(
       `status.eq.active,` +
         `and(status.eq.on_leave,end_date.gte.${monthIso}),` +
@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     category: string;
     team_id: string | null;
     contract_type: string | null;
+    hire_date: string | null;
     is_driver: boolean | null;
     teams: { name: string } | null;
   };
@@ -94,6 +95,16 @@ export async function GET(request: NextRequest) {
   }
 
   const teamIds = teamEmployees.map((e) => e.id);
+  // Стаж : самая ранняя дата входа в регистре (повторные найм не обнуляют стаж), иначе hire_date.
+  const { data: regRows } = teamIds.length
+    ? await sb.from("registre_unique_personnel").select("employee_id, date_entree").in("employee_id", teamIds)
+    : { data: [] };
+  const firstEntry = new Map<string, string>();
+  (regRows ?? []).forEach((r) => {
+    if (!r.date_entree) return;
+    const cur = firstEntry.get(r.employee_id);
+    if (!cur || r.date_entree < cur) firstEntry.set(r.employee_id, r.date_entree);
+  });
   const { data: pointage } = teamIds.length
     ? await sb
         .from("pointage_entries")
@@ -151,6 +162,7 @@ export async function GET(request: NextRequest) {
         name: `${e.last_name} ${e.first_name}`,
         isChef: team?.chef_employee_id === e.id,
         isDriver: e.is_driver ?? false,
+        hireDate: firstEntry.get(e.id) ?? e.hire_date ?? null,
         jours,
         taux,
         bonusEquipe: num(l?.bonus_equipe),

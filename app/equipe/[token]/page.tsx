@@ -23,6 +23,7 @@ type Person = {
   name: string;
   isChef: boolean;
   isDriver: boolean;
+  hireDate: string | null;
   jours: number;
   taux: number;
   bonusEquipe: number;
@@ -43,6 +44,53 @@ type Payload = { team: string; year: number; month: number; hasRun: boolean; emp
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const REFRESH_MS = 20000;
+const BANK_CAP = 3000;
+
+/** « 1 г. 3 мес. » / « 8 мес. » / « меньше месяца » — стаж от первой даты входа до сегодня. */
+function tenureText(hireIso: string | null): string | null {
+  if (!hireIso) return null;
+  const from = new Date(hireIso + "T00:00:00Z");
+  const now = new Date();
+  let months = (now.getUTCFullYear() - from.getUTCFullYear()) * 12 + (now.getUTCMonth() - from.getUTCMonth());
+  if (now.getUTCDate() < from.getUTCDate()) months -= 1;
+  if (months < 1) return "меньше месяца";
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  return [y > 0 ? `${y} г.` : "", m > 0 ? `${m} мес.` : ""].filter(Boolean).join(" ");
+}
+
+/** Банка БАНК 3000 : заполнена на amount / 3000. Цвет — по уровню заполнения. */
+function BankJar({ amount, size = 44 }: { amount: number; size?: number }) {
+  const pct = Math.max(0, Math.min(1, amount / BANK_CAP));
+  const bodyTop = 14;
+  const bodyH = 38;
+  const fillH = bodyH * pct;
+  const color = pct >= 0.66 ? "#16a34a" : pct >= 0.33 ? "#f59e0b" : "#0f83e3";
+  const id = `jar-${Math.round(amount * 100)}-${size}`;
+  return (
+    <svg width={size} height={(size * 60) / 44} viewBox="0 0 44 60" role="img" aria-label={`БАНК 3000: ${Math.round(pct * 100)}%`}>
+      <defs>
+        <clipPath id={id}>
+          <path d="M8 14 h28 a4 4 0 0 1 4 4 v30 a8 8 0 0 1 -8 8 h-20 a8 8 0 0 1 -8 -8 v-30 a4 4 0 0 1 4 -4 z" />
+        </clipPath>
+      </defs>
+      <rect x="10" y="4" width="24" height="7" rx="2.5" fill="#a8a29e" />
+      <rect x="12" y="10" width="20" height="4" fill="#d6d3d1" />
+      <g clipPath={`url(#${id})`}>
+        <rect x="0" y="0" width="44" height="60" fill="#f5f5f4" />
+        <rect x="0" y={bodyTop + bodyH + 4 - fillH} width="44" height={fillH + 4} fill={color} opacity="0.92" />
+        {pct > 0 && <rect x="0" y={bodyTop + bodyH + 4 - fillH} width="44" height="2" fill="#ffffff" opacity="0.45" />}
+      </g>
+      <path
+        d="M8 14 h28 a4 4 0 0 1 4 4 v30 a8 8 0 0 1 -8 8 h-20 a8 8 0 0 1 -8 -8 v-30 a4 4 0 0 1 4 -4 z"
+        fill="none"
+        stroke="#78716c"
+        strokeWidth="1.8"
+      />
+      <path d="M13 20 v22" stroke="#ffffff" strokeWidth="2.2" strokeLinecap="round" opacity="0.55" />
+    </svg>
+  );
+}
 
 function eur(n: number) {
   return `${n.toLocaleString("fr-FR", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} €`;
@@ -61,7 +109,7 @@ function Line({
   ru: string;
   fr: string;
   value: string;
-  tone?: "plus" | "minus";
+  tone?: "plus" | "minus" | "bank";
   note?: string;
 }) {
   return (
@@ -69,11 +117,11 @@ function Line({
       <div className="min-w-0">
         <div className="text-[15px] font-medium text-stone-800">{ru}</div>
         <div className="text-[12px] text-stone-400">{fr}</div>
-        {note && <div className="mt-0.5 text-[13px] italic text-stone-600">«{note}»</div>}
+        {note && <div className="mt-0.5 whitespace-pre-line text-[13px] italic text-stone-600">«{note}»</div>}
       </div>
       <div
         className={`shrink-0 text-[17px] font-bold tabular-nums ${
-          tone === "plus" ? "text-success-700" : tone === "minus" ? "text-error-600" : "text-stone-900"
+          tone === "plus" ? "text-success-700" : tone === "minus" ? "text-error-600" : tone === "bank" ? "text-primary-700" : "text-stone-900"
         }`}
       >
         {value}
@@ -130,18 +178,26 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
   const bankRose = r.banqueQualiteFin - r.banqueQualiteDebut;
   return (
     <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
-      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-3 p-4 text-left" aria-expanded={open}>
-        <div className="min-w-0">
-          <div className="truncate text-[17px] font-bold text-stone-900">{p.name}</div>
-          <div className="mt-0.5 text-[13px] text-stone-500">
-            {p.isChef && <span className="mr-2 rounded-md bg-primary-50 px-1.5 py-0.5 text-[11px] font-semibold text-primary-700">бригадир</span>}
-            {p.isDriver && <span className="mr-2 rounded-md bg-warning-100 px-1.5 py-0.5 text-[11px] font-semibold text-warning-800">водитель</span>}
-            {num(p.jours)} дн.
-          </div>
+      <button type="button" onClick={onToggle} className="flex w-full items-start gap-3 p-4 text-left" aria-expanded={open}>
+        <div className="flex w-14 shrink-0 flex-col items-center">
+          <BankJar amount={r.banqueQualiteFin} />
+          <span className="mt-0.5 text-[11px] font-bold tabular-nums text-stone-600">{Math.round((Math.min(r.banqueQualiteFin, BANK_CAP) / BANK_CAP) * 100)} %</span>
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-[12px] text-stone-400">К выплате · À payer</div>
-          <div className="text-[22px] font-extrabold tabular-nums text-stone-900">{eur(r.aPayer)}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[17px] font-bold leading-tight text-stone-900">{p.name}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-stone-500">
+            {p.isChef && <span className="rounded-md bg-primary-50 px-1.5 py-0.5 text-[11px] font-semibold text-primary-700">бригадир</span>}
+            {p.isDriver && <span className="rounded-md bg-warning-100 px-1.5 py-0.5 text-[11px] font-semibold text-warning-800">водитель</span>}
+            <span>{num(p.jours)} дн.</span>
+            {tenureText(p.hireDate) && <span>· стаж {tenureText(p.hireDate)}</span>}
+          </div>
+          <div className="mt-1 text-[12px] text-stone-500">
+            БАНК 3000: <b className="tabular-nums text-stone-700">{eur(r.banqueQualiteFin)}</b> из {eur(BANK_CAP)}
+          </div>
+          <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-stone-100 pt-2">
+            <span className="text-[12px] text-stone-400">К выплате · À payer</span>
+            <span className="text-[22px] font-extrabold tabular-nums text-stone-900">{eur(r.aPayer)}</span>
+          </div>
         </div>
       </button>
 
@@ -151,13 +207,18 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
           <Line ru="Ставка за день" fr="Taux journalier" value={eur(p.taux)} />
           <Line ru="Зарплата за дни" fr="Salaire des jours" value={eur(r.salaireJours)} />
           {p.bonusEquipe !== 0 && (
-            <Line
-              ru="BONUS команды"
-              fr={`Bonus équipe (в банк ${eur(r.banqueDepot)})`}
-              value={`+${eur(r.bonusEquipePaye)}`}
-              tone="plus"
-              note={p.bonusRaison || undefined}
-            />
+            <>
+              <Line ru="BONUS команды (начислено)" fr="Bonus équipe" value={`${eur(p.bonusEquipe)}`} note={p.bonusRaison || undefined} />
+              {r.banqueDepot > 0 && (
+                <Line ru="Из него в БАНК 3000" fr="Dépôt banque qualité (30 %)" value={`−${eur(r.banqueDepot)}`} tone="bank" />
+              )}
+              <Line
+                ru={r.banqueDepot > 0 ? "К выплате из бонуса" : "BONUS к выплате"}
+                fr={r.banqueDepot > 0 ? `${eur(p.bonusEquipe)} − ${eur(r.banqueDepot)}` : "Bonus équipe payé"}
+                value={`+${eur(r.bonusEquipePaye)}`}
+                tone="plus"
+              />
+            </>
           )}
           {r.bonusDirect !== 0 && (
             <Line ru="Бонус" fr="Bonus direct" value={`+${eur(r.bonusDirect)}`} tone="plus" note={p.bonusDirectRaison || undefined} />
