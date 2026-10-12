@@ -22,6 +22,7 @@ type Person = {
   id: string;
   name: string;
   isChef: boolean;
+  isDriver: boolean;
   jours: number;
   taux: number;
   bonusEquipe: number;
@@ -134,6 +135,7 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
           <div className="truncate text-[17px] font-bold text-stone-900">{p.name}</div>
           <div className="mt-0.5 text-[13px] text-stone-500">
             {p.isChef && <span className="mr-2 rounded-md bg-primary-50 px-1.5 py-0.5 text-[11px] font-semibold text-primary-700">бригадир</span>}
+            {p.isDriver && <span className="mr-2 rounded-md bg-warning-100 px-1.5 py-0.5 text-[11px] font-semibold text-warning-800">водитель</span>}
             {num(p.jours)} дн.
           </div>
         </div>

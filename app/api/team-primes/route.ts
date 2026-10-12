@@ -150,6 +150,7 @@ export async function GET(request: NextRequest) {
         id: e.id,
         name: `${e.last_name} ${e.first_name}`,
         isChef: team?.chef_employee_id === e.id,
+        isDriver: e.is_driver ?? false,
         jours,
         taux,
         bonusEquipe: num(l?.bonus_equipe),
