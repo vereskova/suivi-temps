@@ -16016,7 +16016,6 @@ function PaieView({
         "Nom Prénom": employeeName(e),
         "Salaire base net €": e.salaire_base_net ?? "",
         "Jours travaillés": Number(line.joursTravailles) || 0,
-        "Base net calculée €": Math.round((c?.baseNet ?? 0) * 100) / 100,
         "Jours fériés travaillés": Number(line.majJoursFeries) || 0,
         "Jours repas": c?.joursRepas ?? 0,
         "HS+25% h": c?.hs25Heures ?? 0,
@@ -16032,7 +16031,6 @@ function PaieView({
       "Nom Prénom": "TOTAL",
       "Salaire base net €": "",
       "Jours travaillés": totals.joursTravailles,
-      "Base net calculée €": Math.round(totals.baseNet * 100) / 100,
       "Jours fériés travaillés": totals.majJoursFeries,
       "Jours repas": totals.joursRepas,
       "HS+25% h": totals.hs25Heures,
@@ -16491,9 +16489,6 @@ function PaieView({
                           ))}
                         </select>
                       </label>
-                      <p className="text-stone-500 font-semibold">
-                        <Bi fr="Base net calculée" ru="База нетто (расч.)" />: {(c?.baseNet ?? 0).toFixed(2)} €
-                      </p>
                       <label className="block">
                         <span className="text-xs font-bold text-warning-700">
                           <Bi fr="Net souhaité €" ru="Желаемый нетто €" />
@@ -16580,7 +16575,6 @@ function PaieView({
               </p>
               <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-normal">
                 <span>Jours travaillés: {totals.joursTravailles}</span>
-                <span>Base calculée: {totals.baseNet.toFixed(2)} €</span>
                 <span>Net souhaité: {totals.netSouhaite.toFixed(2)} €</span>
                 <span>Jours fériés: {totals.majJoursFeries}</span>
                 <span>Jours repas: {totals.joursRepas}</span>
@@ -16601,7 +16595,6 @@ function PaieView({
                 <th className="py-2 pr-4"><Bi fr="Nom Prénom" ru="Фамилия Имя" /></th>
                 <th className="py-2 pr-4 text-stone-500"><Bi fr="Salaire base net €" ru="База нетто €" /></th>
                 <th className="py-2 pr-4 text-stone-500"><Bi fr="Jours travaillés" ru="Дней отработано" /></th>
-                <th className="py-2 pr-4 text-stone-500"><Bi fr="Base net calculée €" ru="База нетто (расч.) €" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Net souhaité €" ru="Желаемый нетто €" /></th>
                 <th className="py-2 pr-4 text-warning-700"><Bi fr="Jours fériés travaillés" ru="Отработано праздничных дней" /></th>
                 <th className="py-2 pr-4 text-primary-600"><Bi fr="Jours repas" ru="Дней питания" /></th>
@@ -16624,7 +16617,7 @@ function PaieView({
                     {showGroupHeader && (
                       <tr>
                         <td
-                          colSpan={12}
+                          colSpan={11}
                           className="pt-4 pb-1 text-xs font-bold uppercase tracking-wide text-stone-400"
                         >
                           {row.groupLabel}
@@ -16636,7 +16629,7 @@ function PaieView({
                         <td className="py-2 pr-4 font-semibold whitespace-nowrap">
                           <PaieEmployeeName employee={e} canOpenDossier={canOpenDossier} />
                         </td>
-                        <td colSpan={9} className="py-2 pr-4 italic text-stone-500">
+                        <td colSpan={8} className="py-2 pr-4 italic text-stone-500">
                           FOP — rémunération hors paie, calcul non applicable
                         </td>
                       </tr>
@@ -16669,9 +16662,6 @@ function PaieView({
                           </option>
                         ))}
                       </select>
-                    </td>
-                    <td className="py-2 pr-4 font-semibold text-stone-500">
-                      {(c?.baseNet ?? 0).toFixed(2)} €
                     </td>
                     <td className="py-2 pr-4">
                       <input
@@ -16740,7 +16730,7 @@ function PaieView({
               })}
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-6 text-center text-stone-400">
+                  <td colSpan={11} className="py-6 text-center text-stone-400">
                     Aucun résultat. <span className="opacity-70">/ Нет результатов.</span>
                   </td>
                 </tr>
@@ -16754,7 +16744,6 @@ function PaieView({
                   </td>
                   <td className="py-2 pr-4">—</td>
                   <td className="py-2 pr-4">{totals.joursTravailles}</td>
-                  <td className="py-2 pr-4">{totals.baseNet.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.majJoursFeries}</td>
                   <td className="py-2 pr-4">{totals.joursRepas}</td>
