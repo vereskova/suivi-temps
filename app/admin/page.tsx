@@ -14958,13 +14958,18 @@ function RaisonButton({
   authorAt?: string | null;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null);
   const authorLine = authorBy && authorAt ? `${authorBy} · ${formatDateTimeShort(authorAt)}` : null;
 
   useEffect(() => {
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
-    setPos({ top: rect.bottom + 4, left: Math.max(4, rect.right - RAISON_POPOVER_WIDTH) });
+    const left = Math.max(4, rect.right - RAISON_POPOVER_WIDTH);
+    // Внизу страницы окно не помещается — открываем ВВЕРХ и ограничиваем высоту видимой областью.
+    const below = window.innerHeight - rect.bottom - 16;
+    const above = rect.top - 16;
+    if (below >= 300 || below >= above) setPos({ top: rect.bottom + 4, left, maxHeight: Math.max(180, below) });
+    else setPos({ bottom: window.innerHeight - rect.top + 4, left, maxHeight: Math.max(180, above) });
   }, [isOpen]);
 
   return (
@@ -14989,8 +14994,8 @@ function RaisonButton({
           <>
             <div className="fixed inset-0 z-40" onClick={onToggle} />
             <div
-              className="fixed z-50 rounded-xl border border-amber-200 bg-amber-50 p-2.5 shadow-lg text-left"
-              style={{ top: pos.top, left: pos.left, width: RAISON_POPOVER_WIDTH }}
+              className="fixed z-50 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50 p-2.5 shadow-lg text-left"
+              style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: RAISON_POPOVER_WIDTH, maxHeight: pos.maxHeight }}
               onClick={(ev) => ev.stopPropagation()}
             >
               <p className="mb-1.5 text-xs font-semibold text-stone-500">
@@ -15233,13 +15238,17 @@ function PenaltyPickerButton({
 function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null);
   const POPOVER_WIDTH = 260;
 
   useEffect(() => {
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
-    setPos({ top: rect.bottom + 4, left: Math.max(4, rect.left) });
+    const left = Math.min(Math.max(4, rect.left), window.innerWidth - POPOVER_WIDTH - 8);
+    const below = window.innerHeight - rect.bottom - 16;
+    const above = rect.top - 16;
+    if (below >= 200 || below >= above) setPos({ top: rect.bottom + 4, left, maxHeight: Math.max(140, below) });
+    else setPos({ bottom: window.innerHeight - rect.top + 4, left, maxHeight: Math.max(140, above) });
   }, [isOpen]);
 
   return (
@@ -15268,8 +15277,8 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
           <>
             <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
             <div
-              className="fixed z-50 rounded-xl border border-primary-200 bg-primary-50 p-2.5 shadow-lg text-left"
-              style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH }}
+              className="fixed z-50 overflow-y-auto rounded-xl border border-primary-200 bg-primary-50 p-2.5 shadow-lg text-left"
+              style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: POPOVER_WIDTH, maxHeight: pos.maxHeight }}
               onClick={(ev) => ev.stopPropagation()}
             >
               <p className="mb-1.5 text-xs font-semibold text-stone-500">
