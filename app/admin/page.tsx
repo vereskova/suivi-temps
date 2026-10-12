@@ -15040,7 +15040,7 @@ function PenaltyPickerButton({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null);
   const [search, setSearch] = useState("");
   const [site, setSite] = useState("");
   const [divisor, setDivisor] = useState(String(PENALTY_DEFAULT_DIVISOR));
@@ -15055,7 +15055,12 @@ function PenaltyPickerButton({
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const left = Math.min(Math.max(4, rect.left), window.innerWidth - POPOVER_WIDTH - 8);
-    setPos({ top: rect.bottom + 4, left });
+    // Внизу страницы окно не помещается — открываем его ВВЕРХ от кнопки и ограничиваем высоту
+    // видимой областью (с отступом от края), иначе список уезжает за экран.
+    const below = window.innerHeight - rect.bottom - 16;
+    const above = rect.top - 16;
+    if (below >= 460 || below >= above) setPos({ top: rect.bottom + 4, left, maxHeight: Math.max(240, below) });
+    else setPos({ bottom: window.innerHeight - rect.top + 4, left, maxHeight: Math.max(240, above) });
   }, [isOpen]);
 
   const items = useMemo(() => {
@@ -15110,8 +15115,8 @@ function PenaltyPickerButton({
           <>
             <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
             <div
-              className="fixed z-50 rounded-xl border border-warning-200 bg-white p-3 shadow-xl text-left"
-              style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH }}
+              className="fixed z-50 overflow-y-auto rounded-xl border border-warning-200 bg-white p-3 shadow-xl text-left"
+              style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: POPOVER_WIDTH, maxHeight: pos.maxHeight }}
               onClick={(ev) => ev.stopPropagation()}
             >
               <div className="flex items-center gap-2">
@@ -15149,7 +15154,7 @@ function PenaltyPickerButton({
                   ))}
                 </div>
               )}
-              <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-stone-200">
+              <div className="mt-2 overflow-y-auto rounded-lg border border-stone-200" style={{ maxHeight: Math.min(320, Math.max(140, pos.maxHeight - 230)) }}>
                 {items.map((c) => (
                   <div key={c.code} className="flex items-center gap-2 border-b border-stone-100 px-2 py-1.5 text-xs">
                     <span className="w-8 shrink-0 font-mono text-stone-500">{c.code}</span>
