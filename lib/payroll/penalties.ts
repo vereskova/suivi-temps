@@ -45,7 +45,7 @@ export const PENALTY_CATALOG: PenaltyCatalogItem[] = [
   { code: "2.8", stage: "Bretelle AGCP", description: "Неправильное соединение кабеля AGCP", severity: "Серьёзная", amount: 1500, unit: "fixed" },
   { code: "3.1", stage: "Фото объекта", description: "Отсутствуют фотографии выполненных работ", severity: "Малая", amount: 5, unit: "per_day" },
   { code: "3.2", stage: "Presetup", description: "Пресетапы не затянуты", severity: "Средняя", amount: 5, unit: "per_piece" },
-  { code: "3.3", stage: "Conectique non cire", description: "Конвертики не затянуты", severity: "Серьёзная", amount: 2, unit: "per_piece" },
+  { code: "3.3", stage: "Conectique non cire", description: "Конектики не затянуты", severity: "Серьёзная", amount: 2, unit: "per_piece" },
   { code: "3.4", stage: "Нет наклеек AC-DC", description: "Отсутствуют наклейки для обозначения AC и DC", severity: null, amount: 150, unit: "fixed" },
   { code: "3.5", stage: "AGCP / Rondelle crantée", description: "Не установлены или неправильно затянуты зубчатые шайбы на соединениях AGCP", severity: "Серьёзная", amount: 150, unit: "fixed" },
   { code: "3.6", stage: "Nettoyage", description: "Мусор на объекте после завершения", severity: null, amount: 100, unit: "fixed" },

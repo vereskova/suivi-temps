@@ -3285,6 +3285,7 @@ const STATUS_LABELS_RU: Record<EmployeeStatus, string> = {
 };
 
 type EmployeeEditForm = {
+  category: "chantier" | "bureau";
   teamId: string;
   bureauRole: string;
   secondaryTeamId: string;
@@ -3443,6 +3444,7 @@ function EmployeesView({
   function startEdit(e: EmployeeFull) {
     setEditingId(e.id);
     setEditForm({
+      category: e.category,
       teamId: e.team_id ?? "",
       bureauRole: e.bureau_role ?? "",
       secondaryTeamId: e.secondary_team_id ?? "",
@@ -3457,9 +3459,10 @@ function EmployeesView({
     const { error } = await supabase
       .from("employees")
       .update({
-        ...(e.category === "bureau"
-          ? { bureau_role: editForm.bureauRole || null, secondary_team_id: editForm.secondaryTeamId || null }
-          : { team_id: editForm.teamId || null }),
+        category: editForm.category,
+        ...(editForm.category === "bureau"
+          ? { bureau_role: editForm.bureauRole || null, secondary_team_id: editForm.secondaryTeamId || null, team_id: null }
+          : { team_id: editForm.teamId || null, bureau_role: null, secondary_team_id: null }),
         status: editForm.status,
         end_date:
           editForm.status === "terminated" || editForm.status === "on_leave" || editForm.status === "unclear"
@@ -3782,7 +3785,18 @@ function EmployeesView({
                   {isEditing && editForm ? (
                     <div className="space-y-2 mt-2">
                       <label className="block text-xs font-bold text-stone-400">
-                        {e.category === "bureau" ? (
+                        <Bi fr="Catégorie" ru="Категория" />
+                        <select
+                          className="input text-sm mt-1"
+                          value={editForm.category}
+                          onChange={(ev) => setEditForm({ ...editForm, category: ev.target.value as "chantier" | "bureau" })}
+                        >
+                          <option value="chantier">Chantier / Рабочий</option>
+                          <option value="bureau">Bureau / Офис</option>
+                        </select>
+                      </label>
+                      <label className="block text-xs font-bold text-stone-400">
+                        {editForm.category === "bureau" ? (
                           <>
                             <Bi fr="Poste" ru="Должность" />
                             <select
@@ -3816,7 +3830,7 @@ function EmployeesView({
                           </>
                         )}
                       </label>
-                      {e.category === "bureau" && (
+                      {editForm.category === "bureau" && (
                         <label className="block text-xs font-bold text-stone-400">
                           <Bi fr="Équipe rattachée (optionnel)" ru="Привязанная команда (опционально)" />
                           <select
@@ -3955,7 +3969,17 @@ function EmployeesView({
                     {isEditing && editForm ? (
                       <>
                         <td className="py-2 pr-4">
-                          {e.category === "bureau" ? (
+                          <select
+                            className="input mb-1 text-sm px-2 py-1"
+                            style={{ width: "auto" }}
+                            value={editForm.category}
+                            title="Catégorie / Категория"
+                            onChange={(ev) => setEditForm({ ...editForm, category: ev.target.value as "chantier" | "bureau" })}
+                          >
+                            <option value="chantier">Chantier / Рабочий</option>
+                            <option value="bureau">Bureau / Офис</option>
+                          </select>
+                          {editForm.category === "bureau" ? (
                             <div className="space-y-1">
                               <select
                                 className="input text-sm px-2 py-1"

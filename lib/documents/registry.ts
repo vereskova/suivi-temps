@@ -3,11 +3,13 @@ import { todayIso, formatDateShort } from "./helpers";
 import { letterDateForTrialEnd } from "./preavis";
 import { contratChantier } from "./templates/contratChantier";
 import { contratBureau } from "./templates/contratBureau";
+import { contratCDD, defaultCddEndDate, maxTrialDaysCDD } from "./templates/contratCDD";
 import { nda } from "./templates/nda";
 import { attestationConges } from "./templates/attestationConges";
 import { attestationHebergement } from "./templates/attestationHebergement";
 import { demandeCongesSansSolde } from "./templates/demandeCongesSansSolde";
 import { lettreDemission } from "./templates/lettreDemission";
+import { demandeTempsPartielEtudiant } from "./templates/demandeTempsPartielEtudiant";
 import { ruptureEssaiEmployeur } from "./templates/ruptureEssaiEmployeur";
 
 export type FieldType = "date" | "text" | "textarea" | "number" | "boolean" | "select";
@@ -140,6 +142,21 @@ const SALARY_FIELD = employeeField(
   "Оклад брутто в месяц (€)"
 );
 
+/** Prochain 15 du mois (aujourd'hui inclus) — date de début par défaut des CDD d'entretien/réparation des locaux. */
+function nextFifteenthIso(): string {
+  const d = new Date();
+  let y = d.getFullYear();
+  let m = d.getMonth() + 1;
+  if (d.getDate() > 15) {
+    m += 1;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+  }
+  return `${y}-${String(m).padStart(2, "0")}-15`;
+}
+
 export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
   {
     code: "contrat_chantier",
@@ -193,6 +210,115 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     generate: contratChantier,
   },
   {
+    code: "contrat_cdd",
+    label: "Contrat CDD (3 mois)",
+    labelRu: "Трудовой договор CDD (срочный)",
+    descriptionRu:
+      "Срочный трудовой договор (CDD) — например на 3 месяца для рабочих, которые ремонтируют офис. Включает основание, точную дату окончания, пробный срок, выплату зарплаты 10 числа, prime de précarité 10 %. Основание договора нужно согласовать с бухгалтером/юристом до подписания.",
+    category: "contrat",
+    legalRisk: true,
+    fields: [
+      {
+        key: "startDate",
+        label: "Date de début",
+        labelRu: "Дата начала работы",
+        type: "date",
+        required: true,
+        defaultValue: () => nextFifteenthIso(),
+      },
+      {
+        key: "endDate",
+        label: "Date de fin (terme du contrat)",
+        labelRu: "Дата окончания (последний день)",
+        type: "date",
+        required: true,
+        defaultValue: () => defaultCddEndDate(nextFifteenthIso(), 3),
+        help: "Date précise obligatoire (L.1242-12). Par défaut : 3 mois après le début — à corriger si la date de début change.",
+        helpRu: "Точная дата обязательна (L.1242-12). По умолчанию 3 месяца от начала — исправьте, если измените дату начала.",
+        derived: (values) => {
+          const s = values.startDate as string | undefined;
+          const e = values.endDate as string | undefined;
+          if (!s || !e) return null;
+          return {
+            fr: `Essai maximum autorisé : ${maxTrialDaysCDD(s, e)} jours (1 jour par semaine, 14 max).`,
+            ru: `Максимальный пробный срок: ${maxTrialDaysCDD(s, e)} дн. (1 день за неделю, максимум 14).`,
+          };
+        },
+      },
+      {
+        key: "trialDays",
+        label: "Période d'essai (jours)",
+        labelRu: "Испытательный срок (дней)",
+        type: "number",
+        required: true,
+        defaultValue: () => 13,
+        help: "1 jour par semaine de contrat, 2 semaines maximum (L.1242-10). Le contrat réduit automatiquement au maximum autorisé.",
+        helpRu: "1 день за неделю контракта, максимум 2 недели (L.1242-10). Договор автоматически ограничит до допустимого максимума.",
+      },
+      {
+        key: "motif",
+        label: "Motif du CDD (texte du contrat)",
+        labelRu: "Основание CDD (текст в договоре)",
+        type: "textarea",
+        required: true,
+        defaultValue: (_e, c) =>
+          `Le présent contrat est conclu pour faire face à un accroissement temporaire d'activité (article L.1242-2, 2° du Code du travail), lié à la réalisation de travaux de réparation et de remise en état des locaux de la société ${c.name} situés au ${c.address}.`,
+        help: "Point juridique sensible : le motif doit être précis et réel, sinon requalification en CDI. À faire valider par l'expert-comptable / l'avocat avant signature.",
+        helpRu: "Самое чувствительное место: основание должно быть точным и реальным, иначе договор переквалифицируют в CDI. Покажите бухгалтеру/юристу до подписания.",
+      },
+      {
+        key: "tasks",
+        label: "Poste de travail / tâches",
+        labelRu: "Описание работы (одна фраза)",
+        type: "text",
+        required: true,
+        defaultValue: () =>
+          "affecté aux travaux de réparation des locaux de la Société",
+      },
+      {
+        key: "paymentDay",
+        label: "Salaire versé au plus tard le … du mois suivant",
+        labelRu: "Зарплата выплачивается не позднее … числа следующего месяца",
+        type: "number",
+        required: true,
+        defaultValue: () => 10,
+      },
+      {
+        key: "renewable",
+        label: "Renouvelable une fois",
+        labelRu: "Можно продлить один раз",
+        type: "boolean",
+        defaultValue: () => false,
+        help: "Ajoute la clause de renouvellement (durée totale ≤ 18 mois). Le renouvellement lui-même se fait par avenant avant le terme.",
+        helpRu: "Добавляет пункт о продлении (всего не более 18 месяцев). Само продление оформляется допсоглашением до окончания срока.",
+      },
+      {
+        key: "signingDate",
+        label: "Date de signature",
+        labelRu: "Дата подписания",
+        type: "date",
+        required: true,
+        defaultValue: () => todayIso(),
+      },
+      {
+        key: "signingCity",
+        label: "Ville de signature",
+        labelRu: "Город подписания",
+        type: "text",
+        required: true,
+        defaultValue: (_e, c) => c.signingCity,
+      },
+      SEX_FIELD,
+      ...IDENTITY_FIELDS,
+      employeeField("jobTitle", "Intitulé du poste", "text", undefined, undefined, "Должность"),
+      CLASSIFICATION_FIELD,
+      CLASSE_FIELD,
+      WEEKLY_HOURS_FIELD,
+      SALARY_FIELD,
+    ],
+    generate: contratCDD,
+  },
+  {
     code: "contrat_bureau",
     label: "Contrat CDI — Bureau",
     labelRu: "Трудовой договор — офис",
@@ -216,8 +342,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         type: "number",
         required: true,
         defaultValue: () => 2,
-        help: "2 mois pour employés/ETAM, 3 pour agents de maîtrise selon la convention — à vérifier.",
-        helpRu: "2 месяца для служащих/ETAM, 3 месяца для агентов по надзору согласно конвенции — уточнить.",
+        help: "Art. L.1221-19 : 2 mois pour ouvriers/employés, 3 pour agents de maîtrise/techniciens, 4 pour cadres.",
+        helpRu: "Ст. L.1221-19: 2 месяца для рабочих и служащих, 3 для мастеров/техников, 4 для руководителей.",
       },
       {
         key: "signingDate",
@@ -241,6 +367,30 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         labelRu: "Неполный рабочий день",
         type: "boolean",
         defaultValue: () => false,
+      },
+      {
+        key: "isStudent",
+        label: "Salarié étudiant (< 26 ans) — durée < 24 h à sa demande",
+        labelRu: "Работник — студент (до 26 лет): меньше 24 ч по его просьбе",
+        type: "boolean",
+        defaultValue: () => false,
+        help: "Ajoute la clause de demande écrite (art. L.3123-7) — joindre la lettre « Demande de temps partiel (étudiant) ».",
+        helpRu: "Добавляет пункт о письменной просьбе работника (ст. L.3123-7) — приложите письмо «Заявление о неполном дне (студент)».",
+      },
+      {
+        key: "hoursIncreaseClause",
+        label: "Clause d'augmentation possible des heures (avenant)",
+        labelRu: "Пункт о возможности увеличить часы (допсоглашением)",
+        type: "boolean",
+        defaultValue: () => false,
+      },
+      {
+        key: "partTimeSchedule",
+        label: "Répartition des horaires (temps partiel)",
+        labelRu: "Распределение часов по дням (неполный день)",
+        type: "text",
+        help: "Ex. « lundi, mardi, jeudi de 9h à 17h » — mention obligatoire au temps partiel ; vide = espace à compléter à la main.",
+        helpRu: "Например «пн, вт, чт с 9:00 до 17:00» — обязательное условие при неполном дне; пусто — оставит пустое место для рукописного заполнения.",
       },
       {
         key: "weeklyEffectiveHours",
@@ -297,7 +447,9 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         labelRu: "Статус (общая классификация)",
         type: "text",
         required: true,
-        defaultValue: () => "Technicien / Agent de maîtrise (ETAM)",
+        defaultValue: () => "Employé",
+        help: "Catégorie du salarié (Employé, Technicien / Agent de maîtrise, Cadre…) — détermine aussi la durée max. de la période d'essai.",
+        helpRu: "Категория работника (Employé, Technicien / Agent de maîtrise, Cadre…) — от неё зависит и максимальный испытательный срок.",
       },
       {
         key: "classificationReferenceCode",
@@ -462,6 +614,49 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       employeeField("address", "Adresse du salarié", "text", undefined, undefined, "Адрес сотрудника"),
     ],
     generate: demandeCongesSansSolde,
+  },
+  {
+    code: "demande_temps_partiel_etudiant",
+    label: "Demande de temps partiel (étudiant, rédigée pour le salarié)",
+    labelRu: "Заявление о неполном рабочем дне (студент, от имени сотрудника)",
+    descriptionRu:
+      "Письменная просьба работника-студента (до 26 лет) установить рабочее время меньше 24 часов в неделю, чтобы совмещать с учёбой. Прикладывается к трудовому договору (ст. L.3123-7).",
+    category: "contrat",
+    legalRisk: true,
+    fields: [
+      {
+        key: "weeklyHours",
+        label: "Heures hebdomadaires demandées",
+        labelRu: "Запрашиваемые часы в неделю",
+        type: "number",
+        required: true,
+        defaultValue: () => 16,
+      },
+      { key: "schoolName", label: "Établissement", labelRu: "Учебное заведение", type: "text" },
+      { key: "studyProgram", label: "Formation / diplôme préparé", labelRu: "Программа / диплом", type: "text" },
+      { key: "schoolYear", label: "Année scolaire", labelRu: "Учебный год", type: "text", defaultValue: () => "2026-2027" },
+      {
+        key: "signingDate",
+        label: "Date",
+        labelRu: "Дата",
+        type: "date",
+        required: true,
+        defaultValue: () => todayIso(),
+      },
+      {
+        key: "signingCity",
+        label: "Ville",
+        labelRu: "Город",
+        type: "text",
+        required: true,
+        defaultValue: (_e, c) => c.signingCity,
+      },
+      SEX_FIELD,
+      employeeField("dateOfBirth", "Date de naissance", "date", undefined, undefined, "Дата рождения"),
+      employeeField("address", "Adresse du salarié", "text", undefined, undefined, "Адрес сотрудника"),
+      JOB_TITLE_FIELD,
+    ],
+    generate: demandeTempsPartielEtudiant,
   },
   {
     code: "lettre_demission",

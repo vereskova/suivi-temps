@@ -4,10 +4,16 @@ import { agr, civility, pronoun, salarieLabel } from "../gender";
 
 export type ContratBureauParams = {
   startDate: string;
-  trialMonths: number; // période d'essai, in months (ETAM/Agent de maîtrise: 2 or 3 per L.1221-19)
+  trialMonths: number; // période d'essai, in months (L.1221-19 : ouvriers/employés 2, agents de maîtrise/techniciens 3, cadres 4)
   signingDate: string;
   signingCity: string;
   isPartTime: boolean;
+  /** Temps partiel : répartition de la durée du travail entre les jours de la semaine (mention obligatoire, art. L.3123-6). Laisser vide pour un espace à compléter à la main. */
+  partTimeSchedule?: string;
+  /** Salarié âgé de moins de 26 ans poursuivant ses études : durée inférieure à 24 h à sa demande écrite (art. L.3123-7), demande annexée au contrat. */
+  isStudent?: boolean;
+  /** Prévoit la possibilité d'augmenter la durée du travail par avenant (temporaire, ex. vacances scolaires, ou définitive). */
+  hoursIncreaseClause?: boolean;
   weeklyEffectiveHours: number; // actual contracted weekly hours
   hasStructuralOvertime: boolean; // true if weeklyEffectiveHours > 35 with built-in overtime
   overtimeMajorationPercent: number; // e.g. 25 — only used if hasStructuralOvertime
@@ -38,6 +44,15 @@ export function contratBureau(
     ? Math.round(((params.weeklyEffectiveHours * 52) / 12) * 100) / 100
     : 151.67;
   const monthlyHours = monthlyHoursNumber.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+
+  // L.1221-19 : 2 mois max. pour les ouvriers et employés, 3 pour les agents de maîtrise et
+  // techniciens, 4 pour les cadres — la phrase suit la durée choisie plutôt que de citer toutes les catégories.
+  const trialCategoryLabel =
+    params.trialMonths >= 4
+      ? "aux cadres"
+      : params.trialMonths === 3
+        ? "aux agents de maîtrise et techniciens"
+        : "aux ouvriers et employés";
 
   let articleNum = 0;
   function article(title: string): Block {
@@ -90,6 +105,48 @@ export function contratBureau(
         ),
       ]
     : [];
+
+  // Mentions obligatoires du contrat à temps partiel (art. L.3123-6 du Code du travail) :
+  // durée hebdomadaire/mensuelle, répartition, cas et modalités de modification,
+  // limites des heures complémentaires — leur absence fait présumer un temps plein.
+  const complementaryLimitMinutes = Math.round(params.weeklyEffectiveHours * 0.1 * 60);
+  const complementaryLimit = `${Math.floor(complementaryLimitMinutes / 60)} h ${String(complementaryLimitMinutes % 60).padStart(2, "0")}`;
+  const partTimeBlocks: Block[] = [
+    para(
+      `La durée du travail de ${name} est ainsi fixée à ${params.weeklyEffectiveHours} heures par semaine, soit ${monthlyHours} heures par mois en moyenne.`
+    ),
+    para(
+      `Répartition de la durée du travail entre les jours de la semaine : ${
+        params.partTimeSchedule?.trim() ? params.partTimeSchedule.trim() : "____________________________________________"
+      }.`
+    ),
+    para(
+      `La répartition de la durée du travail pourra être modifiée en cas de nécessité de service (absence d'un collègue, surcroît ou baisse d'activité, contraintes de planning des chantiers ou des clients), dans le respect du repos quotidien et hebdomadaire. ${name} en sera informé${agr(sex, "", "e")} par écrit ou par message, au moins 7 jours ouvrés avant la date à laquelle la modification doit avoir lieu, sauf accord de ${name} pour un délai plus court.`
+    ),
+    para(
+      `Dans la limite d'une interruption d'activité par journée, les horaires de travail journaliers de ${name} ne pourront comporter qu'une interruption, d'une durée maximale de deux heures, conformément aux dispositions légales applicables.`
+    ),
+    para(
+      `${name} pourra être ${agr(sex, "amené")} à effectuer des heures complémentaires à la demande de la Société, dans la limite de 10 % de la durée hebdomadaire contractuelle, soit ${complementaryLimit} par semaine. Ces heures seront majorées de 10 % et ne pourront avoir pour effet de porter la durée du travail au niveau de la durée légale de 35 heures hebdomadaires. Toute heure complémentaire devra faire l'objet de l'accord préalable du supérieur hiérarchique de ${name}.`
+    ),
+    ...(params.isStudent && params.weeklyEffectiveHours < 24
+      ? [
+          para(
+            `La durée du travail, inférieure à la durée minimale légale de 24 heures hebdomadaires, est fixée à la demande écrite de ${name}, étudiant âgé de moins de 26 ans poursuivant ses études, afin de lui permettre de concilier son emploi du temps avec sa scolarité, conformément à l'article L.3123-7 du Code du travail. Cette demande est annexée au présent contrat. ${name} s'engage à remettre à la Société son certificat de scolarité à chaque rentrée et à l'informer sans délai de toute modification de sa situation d'études.`
+          ),
+        ]
+      : []),
+    ...(params.hoursIncreaseClause
+      ? [
+          para(
+            `Les parties conviennent que la durée du travail de ${name} pourra être augmentée par avenant écrit, soit temporairement (notamment pendant les périodes de vacances scolaires ou universitaires, dans la limite de la durée légale de 35 heures hebdomadaires), soit de manière définitive, à l'initiative de la Société ou de ${name}, sous réserve de l'accord exprès et écrit des deux parties. Le salaire sera alors adapté proportionnellement à la nouvelle durée du travail, sur la base du taux horaire contractuel.`
+          ),
+        ]
+      : []),
+    para(
+      `${name} bénéficiera d'une priorité pour l'attribution d'un emploi à temps complet ressortissant à sa catégorie professionnelle ou d'un emploi équivalent qui viendrait à être créé ou à devenir vacant dans la Société, conformément à l'article L.3123-8 du Code du travail.`
+    ),
+  ];
 
   const blocks: Block[] = [
     {
@@ -153,7 +210,7 @@ export function contratBureau(
     para(
       `Le présent contrat ne deviendra définitif qu'à l'issue d'une période d'essai de ${params.trialMonths} mois maximum à compter du ${formatDateFr(
         params.startDate
-      )}, conformément à l'article L.1221-19 du Code du travail applicable aux employés, techniciens et agents de maîtrise.`
+      )}, conformément à l'article L.1221-19 du Code du travail applicable ${trialCategoryLabel}.`
     ),
     para(
       `Pendant la période d'essai, chacune des parties peut rompre librement le contrat, sous réserve du respect du délai de prévenance légal ou conventionnel en vigueur. En cas de rupture à l'initiative de la Société, une lettre sera adressée à ${name} respectant ce délai de prévenance.`
@@ -171,12 +228,14 @@ export function contratBureau(
       }`
     ),
     ...overtimeLine,
-    para(
-      `L'horaire de travail de ${name} est réparti selon les modalités en vigueur au sein de l'entreprise, affichées sur le lieu de travail, et pourra être modifié en fonction des nécessités de service, dans le respect des dispositions légales, réglementaires et conventionnelles applicables.`
-    ),
-    para(
-      `Toute heure supplémentaire${params.hasStructuralOvertime ? " effectuée au-delà de l'horaire contractuel" : ""} devra faire l'objet de l'accord préalable et exprès du supérieur hiérarchique de ${name}.`
-    ),
+    ...(params.isPartTime ? partTimeBlocks : [
+      para(
+        `L'horaire de travail de ${name} est réparti selon les modalités en vigueur au sein de l'entreprise, affichées sur le lieu de travail, et pourra être modifié en fonction des nécessités de service, dans le respect des dispositions légales, réglementaires et conventionnelles applicables.`
+      ),
+      para(
+        `Toute heure supplémentaire${params.hasStructuralOvertime ? " effectuée au-delà de l'horaire contractuel" : ""} devra faire l'objet de l'accord préalable et exprès du supérieur hiérarchique de ${name}.`
+      ),
+    ]),
 
     article("RÉMUNÉRATION"),
     para(
