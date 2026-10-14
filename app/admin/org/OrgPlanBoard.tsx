@@ -11,6 +11,7 @@ import {
   type PlanCard,
 } from "@/lib/org/model";
 import { OrgCardView, parseCardKey } from "./OrgCards";
+import { PeerTags, cardFocusLabel, peerColor, peersOnNode } from "./OrgPresence";
 import type { OrgPlan } from "./useOrgPlan";
 
 const UNPLACED_EMP = "__unplaced_emp__";
@@ -114,6 +115,7 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
 
   function column(id: string, title: React.ReactNode, cards: PlanCard[], opts: { header: string; before?: number; node?: OrgNode }) {
     const delta = opts.before !== undefined ? cards.length - opts.before : 0;
+    const colEditors = opts.node ? peersOnNode(plan, opts.node.id) : [];
     return (
       <div
         key={id}
@@ -124,10 +126,12 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
         }}
         onDragLeave={() => setOver((cur) => (cur === id ? null : cur))}
         onDrop={() => drop(id)}
+        style={colEditors.length ? { boxShadow: `0 0 0 3px ${peerColor(colEditors[0].email)}` } : undefined}
         className={`flex min-h-24 min-w-0 flex-col gap-1.5 rounded-xl p-1.5 transition-colors ${
           over === id ? "bg-violet-50 ring-2 ring-violet-300" : "bg-white/60"
         }`}
       >
+        <PeerTags peers={colEditors} />
         <div className={`break-words rounded-lg px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase leading-tight tracking-wide ${opts.header}`}>
           {title}{" "}
           <span className="font-normal opacity-70">
@@ -144,10 +148,14 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
               card={card}
               chefIds={chefIds}
               canDrag={canEdit}
-              onDragStart={() => setDragKey(card.key)}
+              onDragStart={() => {
+                setDragKey(card.key);
+                plan.setFocus({ id: card.nodeId, label: cardFocusLabel(card) });
+              }}
               onDragEnd={() => {
                 setDragKey(null);
                 setOver(null);
+                plan.setFocus(null);
               }}
               onRemove={card.kind === "vacancy" && canEdit ? () => plan.removeVacancy(card.placementId!) : undefined}
             />

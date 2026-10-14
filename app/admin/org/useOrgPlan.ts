@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { syncScenarioDb } from "@/lib/org/sync";
 import { toast } from "@/components/Toast";
 import {
   BUREAU_ROLE_ORDER,
@@ -55,6 +56,13 @@ function usePersisted<T extends string>(key: string, defaultValue: T): [T, (v: T
 const PERSON_COLUMNS =
   "id, first_name, last_name, category, bureau_role, team_id, secondary_team_id, org_sort_order, badge_emoji, can_substitute, hire_date, status";
 
+type Snapshot = { nodes: OrgNode[]; placements: OrgPlacement[] };
+const HISTORY_LIMIT = 50;
+
+/** Кто сейчас что делает: id узла (куда смотрит/что правит) и подпись для чипа. */
+export type OrgFocus = { id: string | null; label: string };
+export type OrgPeer = { email: string; focus: OrgFocus | null; tab: string | null };
+
 export type StartFrom = { type: "flat" } | { type: "visotsky" } | { type: "copy"; scenarioId: string };
 
 /**
@@ -62,7 +70,7 @@ export type StartFrom = { type: "flat" } | { type: "visotsky" } | { type: "copy"
  * список сценариев, выбранный сценарий (узлы + размещения) и все правки.
  * В режиме «План» ничего не пишется в employees/teams — только в org_*.
  */
-export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
+export function useOrgPlan(supabase: Supabase, canPlan: boolean, tabName: "organigramme" | "schema" = "organigramme") {
   const [people, setPeople] = useState<OrgPerson[]>([]);
   const [teams, setTeams] = useState<OrgTeamLite[]>([]);
   const [bureauSaved, setBureauSaved] = useState<Record<string, number>>({});
@@ -79,6 +87,31 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
   const [contentLoading, setContentLoading] = useState(false);
   const [contentTick, setContentTick] = useState(0);
   const contentKey = useRef<string>("");
+  // История для «Отменить / Вернуть» (только в памяти, на время работы с открытым сценарием).
+  const [history, setHistory] = useState<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
+  const batching = useRef(false);
+  // Совместная работа: свои записи (чтобы не принять их эхо за чужие правки) и присутствие.
+  const ownWrites = useRef(new Map<string, number>());
+  const [myEmail, setMyEmail] = useState<string | null>(null);
+  const [peers, setPeers] = useState<OrgPeer[]>([]);
+  const presenceRef = useRef<ReturnType<Supabase["channel"]> | null>(null);
+  const focusRef = useRef<OrgFocus | null>(null);
+
+  /** Запомнить, что эти строки изменены нами (эхо Realtime в ближайшие секунды игнорируем). */
+  function touch(table: "n" | "p", ids: string[]) {
+    const until = Date.now() + 6000;
+    ids.forEach((id) => ownWrites.current.set(`${table}:${id}`, until));
+  }
+
+  useEffect(() => {
+    let alive = true;
+    supabase.auth.getUser().then(({ data }) => {
+      if (alive) setMyEmail(data.user?.email ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [supabase]);
 
   // ── Базовые данные ──
   const loadBase = useCallback(async () => {
@@ -138,6 +171,7 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     contentKey.current = key;
     let cancelled = false;
     async function load() {
+      setHistory({ past: [], future: [] });
       if (isLocal) {
         setNodes(seedsToNodes("local", flatTemplate(teams, orderedBureauRoles(bureauSaved))));
         setPlacements([]);
@@ -175,6 +209,84 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     // people намеренно не в зависимостях: он нужен только для разовой догрузки уволенных.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseLoading, isLocal, activeId, teams, bureauSaved, supabase, contentTick]);
+
+  // ── Правки других пользователей — в реальном времени ──
+  useEffect(() => {
+    if (!activeId || isLocal || schemaReady !== true) return;
+    type Payload = { eventType: "INSERT" | "UPDATE" | "DELETE"; new: Record<string, unknown>; old: Record<string, unknown> };
+    function isOwn(table: "n" | "p", id: string) {
+      const until = ownWrites.current.get(`${table}:${id}`);
+      return !!until && until > Date.now();
+    }
+    function onRows(table: "n" | "p", payload: Payload) {
+      const row = (payload.eventType === "DELETE" ? payload.old : payload.new) as { id?: string };
+      if (!row?.id || isOwn(table, row.id)) return;
+      const id = row.id;
+      const apply = <T extends { id: string }>(prev: T[]): T[] => {
+        if (payload.eventType === "DELETE") return prev.filter((x) => x.id !== id);
+        const incoming = payload.new as unknown as T;
+        const i = prev.findIndex((x) => x.id === id);
+        if (i < 0) return [...prev, incoming];
+        const copy = [...prev];
+        copy[i] = incoming;
+        return copy;
+      };
+      if (table === "n") setNodes((prev) => apply(prev));
+      else setPlacements((prev) => apply(prev));
+      // Состояние изменил кто-то другой: прежние шаги «Отменить» уже не соответствуют базе.
+      setHistory({ past: [], future: [] });
+    }
+    let timer: number | undefined;
+    const channel = supabase
+      .channel(`org-db-${activeId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "org_nodes", filter: `scenario_id=eq.${activeId}` }, (pl) =>
+        onRows("n", pl as unknown as Payload)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "org_placements", filter: `scenario_id=eq.${activeId}` }, (pl) =>
+        onRows("p", pl as unknown as Payload)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "org_scenarios" }, () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(async () => {
+          const { data, error } = await supabase.from("org_scenarios").select("*").order("created_at", { ascending: false });
+          if (!error) setScenarios((data as OrgScenario[]) ?? []);
+        }, 300);
+      })
+      .subscribe();
+    return () => {
+      window.clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [supabase, activeId, isLocal, schemaReady]);
+
+  // ── Кто сейчас в этом сценарии и что делает ──
+  useEffect(() => {
+    if (!myEmail || !activeId || isLocal || schemaReady !== true) return;
+    const channel = supabase.channel(`org-presence-${activeId}`, { config: { presence: { key: myEmail } } });
+    presenceRef.current = channel;
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState() as Record<string, { focus?: OrgFocus | null; tab?: string | null }[]>;
+        setPeers(Object.entries(state).map(([email, metas]) => ({ email, focus: metas[0]?.focus ?? null, tab: metas[0]?.tab ?? null })));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") await channel.track({ focus: focusRef.current, tab: tabName });
+      });
+    return () => {
+      presenceRef.current = null;
+      void supabase.removeChannel(channel);
+      setPeers([]);
+    };
+  }, [supabase, myEmail, activeId, isLocal, schemaReady, tabName]);
+
+  /** Сообщить остальным, что я сейчас делаю (null = ничего). */
+  const setFocus = useCallback(
+    (focus: OrgFocus | null) => {
+      focusRef.current = focus;
+      void presenceRef.current?.track({ focus, tab: tabName });
+    },
+    [tabName]
+  );
 
   const reloadContent = useCallback(() => {
     contentKey.current = "";
@@ -329,12 +441,63 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
   }
 
   function resetLocal() {
+    recordHistory();
     setNodes(seedsToNodes("local", flatTemplate(teams, orderedBureauRoles(bureauSaved))));
     setPlacements([]);
   }
 
   // ── Размещения (вся расстановка «что если») ──
   const scenarioIdForRows = isLocal ? "local" : activeId;
+
+  /** Запоминает текущее состояние перед правкой (внутри batch — только один раз). */
+  function recordHistory() {
+    if (batching.current) return;
+    const snap: Snapshot = { nodes, placements };
+    setHistory((h) => ({ past: [...h.past, snap].slice(-HISTORY_LIMIT), future: [] }));
+  }
+
+  /** Несколько правок подряд = один шаг истории. */
+  async function batch(fn: () => Promise<void>) {
+    recordHistory();
+    batching.current = true;
+    try {
+      await fn();
+    } finally {
+      batching.current = false;
+    }
+  }
+
+  async function applySnapshot(target: Snapshot) {
+    const cur: Snapshot = { nodes, placements };
+    touch("n", [...cur.nodes.map((n) => n.id), ...target.nodes.map((n) => n.id)]);
+    touch("p", [...cur.placements.map((x) => x.id), ...target.placements.map((x) => x.id)]);
+    setNodes(target.nodes);
+    setPlacements(target.placements);
+    if (isLocal) return;
+    try {
+      await syncScenarioDb(supabase, cur, target);
+    } catch (e) {
+      toast.error("Ошибка: " + (e as Error).message);
+      contentKey.current = "";
+      setContentTick((t) => t + 1);
+    }
+  }
+
+  async function undo() {
+    if (!canEdit || history.past.length === 0) return;
+    const target = history.past[history.past.length - 1];
+    const current: Snapshot = { nodes, placements };
+    setHistory((h) => ({ past: h.past.slice(0, -1), future: [...h.future, current] }));
+    await applySnapshot(target);
+  }
+
+  async function redo() {
+    if (!canEdit || history.future.length === 0) return;
+    const target = history.future[history.future.length - 1];
+    const current: Snapshot = { nodes, placements };
+    setHistory((h) => ({ past: [...h.past, current], future: h.future.slice(0, -1) }));
+    await applySnapshot(target);
+  }
 
   async function persistRollback(fn: () => PromiseLike<{ error: { message: string } | null }>) {
     if (isLocal) return;
@@ -369,6 +532,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     const sameAsReality = nodeId === origin; // включая «оба null»
     if (sameAsReality) {
       if (existing) {
+        recordHistory();
+        touch("p", [existing.id]);
         upsertPlacementState(null, existing.id);
         await persistRollback(() => supabase.from("org_placements").delete().eq("id", existing.id));
       }
@@ -376,6 +541,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     }
     if (existing) {
       if (existing.node_id === nodeId) return;
+      recordHistory();
+      touch("p", [existing.id]);
       upsertPlacementState({ ...existing, node_id: nodeId });
       await persistRollback(() => supabase.from("org_placements").update({ node_id: nodeId }).eq("id", existing.id));
       return;
@@ -389,6 +556,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
       vacancy_label: null,
       sort_order: 0,
     };
+    recordHistory();
+    touch("p", [row.id]);
     upsertPlacementState(row);
     await persistRollback(() => supabase.from("org_placements").insert(row));
   }
@@ -397,6 +566,9 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     if (!canEdit) return;
     const existing = placements.find((p) => p.candidate_id === candidateId);
     if (existing) {
+      if (existing.node_id === nodeId) return;
+      recordHistory();
+      touch("p", [existing.id]);
       upsertPlacementState({ ...existing, node_id: nodeId });
       await persistRollback(() => supabase.from("org_placements").update({ node_id: nodeId }).eq("id", existing.id));
       return;
@@ -410,6 +582,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
       vacancy_label: null,
       sort_order: 0,
     };
+    recordHistory();
+    touch("p", [row.id]);
     upsertPlacementState(row);
     await persistRollback(() => supabase.from("org_placements").insert(row));
   }
@@ -425,6 +599,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
       vacancy_label: label.trim(),
       sort_order: 0,
     };
+    recordHistory();
+    touch("p", [row.id]);
     upsertPlacementState(row);
     await persistRollback(() => supabase.from("org_placements").insert(row));
   }
@@ -433,12 +609,16 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     if (!canEdit) return;
     const existing = placements.find((p) => p.id === placementId);
     if (!existing || existing.node_id === nodeId) return;
+    recordHistory();
+    touch("p", [placementId]);
     upsertPlacementState({ ...existing, node_id: nodeId });
     await persistRollback(() => supabase.from("org_placements").update({ node_id: nodeId }).eq("id", placementId));
   }
 
   async function removeVacancy(placementId: string) {
     if (!canEdit) return;
+    recordHistory();
+    touch("p", [placementId]);
     upsertPlacementState(null, placementId);
     await persistRollback(() => supabase.from("org_placements").delete().eq("id", placementId));
   }
@@ -467,6 +647,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
       contact: patch.contact ?? null,
       notes: patch.notes ?? null,
     };
+    recordHistory();
+    touch("n", [row.id]);
     setNodes((prev) => [...prev, row]);
     await persistRollback(() => supabase.from("org_nodes").insert(row));
     return row.id;
@@ -474,6 +656,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
 
   async function updateNode(id: string, patch: NodePatch) {
     if (!canEdit) return;
+    recordHistory();
+    touch("n", [id]);
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
     await persistRollback(() => supabase.from("org_nodes").update(patch).eq("id", id));
   }
@@ -482,6 +666,9 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     if (!canEdit) return;
     const gone = descendantIds(nodes, id);
     gone.add(id);
+    recordHistory();
+    touch("n", [...gone]);
+    touch("p", placements.filter((p) => p.node_id && gone.has(p.node_id)).map((p) => p.id));
     setNodes((prev) => prev.filter((n) => !gone.has(n.id)));
     setPlacements((prev) => prev.filter((p) => !p.node_id || !gone.has(p.node_id)));
     await persistRollback(() => supabase.from("org_nodes").delete().eq("id", id));
@@ -497,6 +684,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     }
     const siblings = nodes.filter((n) => n.parent_id === parentId && n.id !== id);
     const order = siblings.length ? Math.max(...siblings.map((s) => s.sort_order)) + 1 : 0;
+    recordHistory();
+    touch("n", [id]);
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, parent_id: parentId, sort_order: order } : n)));
     await persistRollback(() => supabase.from("org_nodes").update({ parent_id: parentId, sort_order: order }).eq("id", id));
   }
@@ -512,6 +701,8 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     const reordered = [...sibs];
     [reordered[i], reordered[j]] = [reordered[j], reordered[i]];
     const orderOf = new Map(reordered.map((n, k) => [n.id, k]));
+    recordHistory();
+    touch("n", reordered.map((n) => n.id));
     setNodes((prev) => prev.map((n) => (orderOf.has(n.id) ? { ...n, sort_order: orderOf.get(n.id)! } : n)));
     if (isLocal) return;
     const results = await Promise.all(
@@ -569,6 +760,16 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean) {
     deleteNode,
     moveNode,
     shiftNode,
+    batch,
+    // совместная работа
+    myEmail,
+    peers,
+    setFocus,
+    // история
+    undo,
+    redo,
+    canUndo: canEdit && history.past.length > 0,
+    canRedo: canEdit && history.future.length > 0,
   };
 }
 

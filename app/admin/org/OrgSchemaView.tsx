@@ -28,6 +28,7 @@ import {
 import { OrgCardView, parseCardKey } from "./OrgCards";
 import { OrgModeBar } from "./OrgModeBar";
 import { OrgNodeModal, type NodeFormResult } from "./OrgNodeModal";
+import { PeerTags, cardFocusLabel, peerColor, peersOnNode } from "./OrgPresence";
 import { OrgDiffPanel } from "./OrgPlanBoard";
 import { useOrgPlan, type OrgPlan } from "./useOrgPlan";
 
@@ -51,7 +52,7 @@ export function OrgSchemaView({
   canPlan: boolean;
   isAdmin: boolean;
 }) {
-  const plan = useOrgPlan(supabase, canPlan);
+  const plan = useOrgPlan(supabase, canPlan, "schema");
 
   return (
     <div>
@@ -128,20 +129,31 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
   }
 
   function openCreate(parentId: string | null) {
+    const parent = nodes.find((n) => n.id === parentId);
+    plan.setFocus({ id: parentId, label: parent ? `добавляет в «${nodeTitle(parent).fr}»` : "добавляет блок" });
     setModal((m) => ({ open: true, node: null, parentId, seq: m.seq + 1 }));
   }
   function openEdit(node: OrgNode) {
+    plan.setFocus({ id: node.id, label: `правит «${nodeTitle(node).fr}»` });
     setModal((m) => ({ open: true, node, parentId: node.parent_id, seq: m.seq + 1 }));
   }
 
   async function saveModal(r: NodeFormResult) {
     const { parentId, kind, ...patch } = r;
     if (modal.node) {
-      await plan.updateNode(modal.node.id, { kind, ...patch });
-      if (parentId !== modal.node.parent_id) await plan.moveNode(modal.node.id, parentId);
+      const node = modal.node;
+      await plan.batch(async () => {
+        await plan.updateNode(node.id, { kind, ...patch });
+        if (parentId !== node.parent_id) await plan.moveNode(node.id, parentId);
+      });
     } else {
       await plan.addNode(parentId, kind, patch);
     }
+    closeModal();
+  }
+
+  function closeModal() {
+    plan.setFocus(null);
     setModal((m) => ({ ...m, open: false }));
   }
 
@@ -174,6 +186,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
     const cards = resolved.byNode.get(node.id) ?? [];
     const isCollapsed = collapsed.has(node.id);
     const isRoot = depth === 0;
+    const editors = peersOnNode(plan, node.id);
     return (
       <div
         key={node.id}
@@ -189,6 +202,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
           ev.stopPropagation();
           dropOn(node.id);
         }}
+        style={editors.length ? { boxShadow: `0 0 0 3px ${peerColor(editors[0].email)}` } : undefined}
         className={`rounded-xl border-2 bg-white transition-colors ${cc.border} ${overId === node.id ? "ring-2 ring-violet-400" : ""}`}
       >
         <div
@@ -196,10 +210,12 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
           onDragStart={(ev) => {
             ev.stopPropagation();
             setDragNode(node.id);
+            plan.setFocus({ id: node.id, label: `двигает «${t.fr}»` });
           }}
           onDragEnd={() => {
             setDragNode(null);
             setOverId(null);
+            plan.setFocus(null);
           }}
           className={`rounded-t-[10px] px-2 py-1.5 ${isRoot ? cc.header : `${cc.soft} text-stone-800`} ${
             canEdit ? "cursor-grab active:cursor-grabbing" : ""
@@ -260,6 +276,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
           )}
         </div>
 
+        <PeerTags peers={editors} />
         <div className="space-y-1.5 p-2">
           {(node.description || node.ckp || node.contact) && (
             <div className="space-y-0.5 text-[0.65rem] leading-snug text-stone-500">
@@ -282,10 +299,14 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
               card={card}
               chefIds={chefIds}
               canDrag={canEdit}
-              onDragStart={() => setDragKey(card.key)}
+              onDragStart={() => {
+                setDragKey(card.key);
+                plan.setFocus({ id: card.nodeId, label: cardFocusLabel(card) });
+              }}
               onDragEnd={() => {
                 setDragKey(null);
                 setOverId(null);
+                plan.setFocus(null);
               }}
               onRemove={card.kind === "vacancy" && canEdit ? () => plan.removeVacancy(card.placementId!) : undefined}
             />
@@ -406,10 +427,14 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
                 card={card}
                 chefIds={chefIds}
                 canDrag={canEdit}
-                onDragStart={() => setDragKey(card.key)}
+                onDragStart={() => {
+                  setDragKey(card.key);
+                  plan.setFocus({ id: null, label: cardFocusLabel(card) });
+                }}
                 onDragEnd={() => {
                   setDragKey(null);
                   setOverId(null);
+                  plan.setFocus(null);
                 }}
               />
             ))}
@@ -420,7 +445,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
       <OrgNodeModal
         key={modal.seq}
         open={modal.open}
-        onClose={() => setModal((m) => ({ ...m, open: false }))}
+        onClose={closeModal}
         node={modal.node}
         parentId={modal.parentId}
         nodes={nodes}
@@ -430,7 +455,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
           modal.node
             ? () => {
                 plan.deleteNode(modal.node!.id);
-                setModal((m) => ({ ...m, open: false }));
+                closeModal();
               }
             : undefined
         }

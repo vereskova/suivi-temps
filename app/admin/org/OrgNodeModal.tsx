@@ -84,7 +84,7 @@ export function OrgNodeModal({
     }
   }
 
-  const valid = (titleFr.trim() || titleRu.trim()) && (kind !== "position" || roleKey) && (kind !== "team" || teamId);
+  const valid = (titleFr.trim() || titleRu.trim()) && (kind !== "team" || teamId);
 
   return (
     <Modal open={open} onClose={onClose} title={node ? "Правка узла" : "Новый узел"} maxWidth="max-w-xl">
@@ -116,15 +116,20 @@ export function OrgNodeModal({
 
         {kind === "position" && (
           <label className="block text-[10px] font-bold uppercase text-stone-400">
-            Роль офиса (люди подтягиваются из карточек)
+            Роль офиса
             <select className="input mt-1 normal-case" value={roleKey} onChange={(e) => pickRole(e.target.value)}>
-              <option value="">—</option>
+              <option value="">Своя должность — название впишу сам, людей ставлю вручную</option>
               {BUREAU_ROLE_ORDER.map((r) => (
                 <option key={r} value={r}>
                   {BUREAU_ROLE_LABELS_RU[r]} / {BUREAU_ROLE_LABELS[r]}
                 </option>
               ))}
             </select>
+            <span className="mt-1 block text-[0.65rem] font-normal normal-case text-stone-400">
+              {roleKey
+                ? "Люди с этой ролью в карточке сотрудника подставятся сюда автоматически."
+                : "Своя должность не связана с карточками сотрудников: человека (или вакансию) поставишь перетаскиванием."}
+            </span>
           </label>
         )}
         {kind === "team" && (

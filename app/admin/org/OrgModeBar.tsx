@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, RefreshCw, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Plus, RefreshCw, Redo2, Save, Undo2 } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { ORG_STATUS_LABELS } from "@/lib/org/model";
+import { OrgPeersBar } from "./OrgPresence";
 import type { OrgPlan, StartFrom } from "./useOrgPlan";
 
 /** Переключатель «Сейчас / План» + выбор сценария. Общий для обеих вкладок. */
@@ -13,6 +14,28 @@ export function OrgModeBar({ plan, allowLocal }: { plan: OrgPlan; allowLocal: bo
   const [title, setTitle] = useState("");
   const [from, setFrom] = useState<string>("visotsky");
   const [busy, setBusy] = useState(false);
+
+  // Cmd/Ctrl+Z — отменить, Cmd/Ctrl+Shift+Z или Ctrl+Y — вернуть (не трогаем поля ввода).
+  const { canEdit, undo, redo } = plan;
+  useEffect(() => {
+    if (!canEdit) return;
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((k === "z" && e.shiftKey) || k === "y") {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canEdit, undo, redo]);
 
   if (plan.schemaReady === false) {
     return plan.canPlan ? (
@@ -101,6 +124,28 @@ export function OrgModeBar({ plan, allowLocal }: { plan: OrgPlan; allowLocal: bo
                 </button>
               </>
             )}
+            {plan.canEdit && (
+              <span className="inline-flex gap-1">
+                <button
+                  className="btn btn-secondary text-xs px-2.5 py-1.5"
+                  disabled={!plan.canUndo}
+                  onClick={() => plan.undo()}
+                  title="Отменить последнее действие (Cmd+Z)"
+                >
+                  <Undo2 size={13} />
+                  Отменить
+                </button>
+                <button
+                  className="btn btn-secondary text-xs px-2.5 py-1.5"
+                  disabled={!plan.canRedo}
+                  onClick={() => plan.redo()}
+                  title="Вернуть отменённое (Cmd+Shift+Z)"
+                >
+                  <Redo2 size={13} />
+                  Вернуть
+                </button>
+              </span>
+            )}
             {sc && <span className={`badge ${ORG_STATUS_LABELS[sc.status].badge}`}>{ORG_STATUS_LABELS[sc.status].ru}</span>}
           </>
         )}
@@ -118,6 +163,7 @@ export function OrgModeBar({ plan, allowLocal }: { plan: OrgPlan; allowLocal: bo
               ? "Сценарий закрыт для правок (не в статусе «Черновик»). Реальные данные не меняются."
               : "План не меняет реальные бригады, роли и зарплаты: хранятся только отличия от реальности."}
       </p>
+      <OrgPeersBar plan={plan} />
 
       <Modal open={newOpen} onClose={() => setNewOpen(false)} title="Новый сценарий" maxWidth="max-w-md">
         <div className="space-y-3">

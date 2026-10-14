@@ -1245,9 +1245,9 @@ export default function AdminPage() {
               ) : rhReadonlyView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
               ) : rhReadonlyView === "schema" ? (
-                <OrgSchemaView supabase={supabase} canPlan={false} isAdmin={false} />
+                <OrgSchemaView supabase={supabase} canPlan isAdmin={false} />
               ) : (
-                <OrganigrammeView supabase={supabase} />
+                <OrganigrammeView supabase={supabase} canPlan />
               )}
             </div>
           </div>
