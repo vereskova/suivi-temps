@@ -126,6 +126,7 @@ import {
   PayrollParams,
   PayrollExtrasInput,
   QualityBankCandidate,
+  minimumNetChantier,
 } from "@/lib/payroll/compute";
 import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
 import {
@@ -18292,6 +18293,24 @@ function PayrollExtrasView({
     return map;
   }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee, controllerSplit, banqueQualitePrimeByEmployee]);
 
+  // Minimum net légal estimé (salariés chantier d'équipe, selon les jours
+  // travaillés) — la comptable relevait chaque mois à la main ceux qui étaient
+  // en dessous (09/2026). On affiche le minimum + le complément nécessaire, et
+  // « Envoyer vers Paie » envoie le plus grand des deux.
+  const minimumByEmployee = useMemo(() => {
+    const map: Record<string, { minimum: number; complement: number }> = {};
+    employees.forEach((e) => {
+      if (isFopContractor(e)) return;
+      if (!(e.category === "chantier" && !!e.team_id && !!e.teams?.name)) return;
+      const jours = joursByEmployee[e.id] ?? 0;
+      const minimum = minimumNetChantier(jours);
+      if (minimum <= 0) return;
+      const aPayer = computed[e.id]?.aPayer ?? 0;
+      map[e.id] = { minimum, complement: Math.max(0, Math.round((minimum - aPayer) * 100) / 100) };
+    });
+    return map;
+  }, [employees, joursByEmployee, computed]);
+
   // Названия объектов из планинга по номеру команды — подсказки в окне выбора штрафов.
   const [planningSites, setPlanningSites] = useState<Record<string, string[]>>({});
   useEffect(() => {
@@ -18912,7 +18931,7 @@ function PayrollExtrasView({
       .filter((e) => !isFopContractor(e))
       .map((e) => ({
         employee: e,
-        amount: Math.round((computed[e.id]?.aPayer ?? 0) * 100) / 100,
+        amount: Math.round(Math.max(computed[e.id]?.aPayer ?? 0, minimumByEmployee[e.id]?.minimum ?? 0) * 100) / 100,
         jours: joursByEmployee[e.id] ?? 0,
       }));
     const amountsToSend = all.filter((r) => r.amount > 0);
@@ -18921,6 +18940,16 @@ function PayrollExtrasView({
       toast.warning("Aucun montant à envoyer / Нечего отправлять");
       return;
     }
+    const withMinimum = all.filter((r) => (minimumByEmployee[r.employee.id]?.complement ?? 0) > 0.005);
+    const complementTotal = withMinimum.reduce((sum, r) => sum + (minimumByEmployee[r.employee.id]?.complement ?? 0), 0);
+    const minimumNote =
+      withMinimum.length > 0
+        ? `\n⚠ Minimum légal estimé : ${withMinimum.length} salarié(s) remontés au minimum (+${complementTotal.toFixed(2)} € au total) :\n` +
+          withMinimum
+            .map((r) => `   – ${employeeName(r.employee)} : +${(minimumByEmployee[r.employee.id]?.complement ?? 0).toFixed(2)} €`)
+            .join("\n") +
+          `\n⚠ Оценочный минимум: ${withMinimum.length} сотр. подняты до минимума (+${complementTotal.toFixed(2)} € всего).\n`
+        : "";
     const ok = window.confirm(
       `Envoyer vers Paie (${monthName}) :\n` +
         `• « À payer » → Net souhaité : ${amountsToSend.length} salarié(s)\n` +
@@ -18929,7 +18958,8 @@ function PayrollExtrasView({
         `Отправить в Paie (${monthName}):\n` +
         `• «К оплате» → «Желаемый нетто»: ${amountsToSend.length} сотр.\n` +
         `• Отработанные дни (с половинками): ${joursToSend.length} сотр.\n` +
-        `Текущие значения у этих сотрудников в Paie будут заменены; с нулём/минусом — пропущены.`
+        `Текущие значения у этих сотрудников в Paie будут заменены; с нулём/минусом — пропущены.` +
+        minimumNote
     );
     if (!ok) return;
     if (amountsToSend.length > 0) {
@@ -19765,6 +19795,14 @@ function PayrollExtrasView({
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
+                        {(minimumByEmployee[e.id]?.complement ?? 0) > 0.005 && (
+                          <span
+                            className="block text-[10px] font-semibold text-error-600"
+                            title="Minimum légal estimé pour les jours travaillés — « Envoyer vers Paie » enverra ce montant / Оценочный минимум за отработанные дни — «Отправить в Paie» отправит эту сумму"
+                          >
+                            мин. {minimumByEmployee[e.id].minimum.toFixed(2)} (+{minimumByEmployee[e.id].complement.toFixed(2)})
+                          </span>
+                        )}
                       </td>
                     </tr>
                   </Fragment>
