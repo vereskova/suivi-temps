@@ -71,6 +71,7 @@ import {
   User,
   Users,
   Wallet,
+  Workflow,
   ListChecks,
   X,
   ZoomIn,
@@ -144,6 +145,11 @@ import { toast } from "@/components/Toast";
 import { Modal } from "@/components/Modal";
 import DateInput, { isoToDmy } from "@/components/DateInput";
 import { EmptyState } from "@/components/StateMessage";
+import { OrgSchemaView } from "./org/OrgSchemaView";
+import { OrgModeBar } from "./org/OrgModeBar";
+import { OrgPlanBoard, OrgDiffPanel } from "./org/OrgPlanBoard";
+import { useOrgPlan, useBureauOrder } from "./org/useOrgPlan";
+import { BUREAU_ROLE_LABELS, BUREAU_ROLE_LABELS_RU, BUREAU_ROLE_ORDER, teamLabelRu } from "@/lib/org/model";
 
 type Employee = {
   id: string;
@@ -439,6 +445,7 @@ type ViewKey =
   | "echeances"
   | "registre"
   | "organigramme"
+  | "schema"
   | "francais"
   | "dossier"
   | "checklists"
@@ -492,6 +499,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "documents", label: "Documents", labelRu: "Документы", icon: FileText },
       { key: "registre", label: "Registre du personnel", labelRu: "Реестр персонала", icon: BookText },
       { key: "organigramme", label: "Organigramme", labelRu: "Оргструктура", icon: Network },
+      { key: "schema", label: "Schéma de l'entreprise", labelRu: "Схема компании", icon: Workflow },
       { key: "francais", label: "Cours de français", labelRu: "Курсы французского", icon: Languages },
       { key: "dossier", label: "Dossier salarié", labelRu: "Личное дело", icon: FolderLock },
       { key: "checklists", label: "Checklists RH", labelRu: "Чек-листы", icon: SquareCheck },
@@ -560,6 +568,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   documents: ["rh_admin", "rh"],
   registre: ["rh_admin", "rh"],
   organigramme: ["rh_admin", "rh", "rh_readonly", "commercial_rh"],
+  schema: ["rh_admin", "rh", "rh_readonly", "commercial_rh"],
   francais: ["rh_admin", "rh"],
   dossier: ["rh_admin", "rh"],
   checklists: ["rh_admin", "rh"],
@@ -709,11 +718,11 @@ export default function AdminPage() {
     "admin_comptable_view",
     "paie"
   );
-  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme" | "phones">(
+  const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme" | "schema" | "phones">(
     "admin_commercial_rh_view",
     "commercial"
   );
-  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "organigramme" | "phones">(
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "organigramme" | "schema" | "phones">(
     "admin_rh_readonly_view",
     "employees"
   );
@@ -1144,6 +1153,16 @@ export default function AdminPage() {
           }}
         />
         <SidebarLink
+          icon={Workflow}
+          active={rhReadonlyView === "schema"}
+          label="Schéma de l'entreprise"
+          labelRu="Схема компании"
+          onClick={() => {
+            setRhReadonlyView("schema");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
           icon={Phone}
           active={rhReadonlyView === "phones"}
           label="Téléphones pro"
@@ -1226,6 +1245,8 @@ export default function AdminPage() {
                 <PayrollExtrasView supabase={supabase} />
               ) : rhReadonlyView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
+              ) : rhReadonlyView === "schema" ? (
+                <OrgSchemaView supabase={supabase} canPlan={false} isAdmin={false} />
               ) : (
                 <OrganigrammeView supabase={supabase} />
               )}
@@ -1268,6 +1289,16 @@ export default function AdminPage() {
           labelRu="Структура"
           onClick={() => {
             setCommercialRhView("organigramme");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={Workflow}
+          active={commercialRhView === "schema"}
+          label="Schéma de l'entreprise"
+          labelRu="Схема компании"
+          onClick={() => {
+            setCommercialRhView("schema");
             setMobileNavOpen(false);
           }}
         />
@@ -1355,6 +1386,8 @@ export default function AdminPage() {
                 />
               ) : commercialRhView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
+              ) : commercialRhView === "schema" ? (
+                <OrgSchemaView supabase={supabase} canPlan={false} isAdmin={false} />
               ) : (
                 <OrganigrammeView supabase={supabase} readOnly />
               )}
@@ -1609,7 +1642,12 @@ export default function AdminPage() {
             )}
             {view === "phones" && <PhoneDirectoryView supabase={supabase} />}
             {view === "registre" && <RegistreView supabase={supabase} />}
-            {view === "organigramme" && <OrganigrammeView supabase={supabase} />}
+            {view === "organigramme" && (
+              <OrganigrammeView supabase={supabase} canPlan={role === "rh_admin" || role === "rh"} />
+            )}
+            {view === "schema" && (
+              <OrgSchemaView supabase={supabase} canPlan={role === "rh_admin" || role === "rh"} isAdmin={role === "rh_admin"} />
+            )}
             {view === "francais" && <FrancaisView supabase={supabase} />}
             {view === "dossier" && (
               <DossierView supabase={supabase} initialEmployeeId={dossierTargetEmployeeId} />
@@ -11856,6 +11894,7 @@ const AUDIT_ENTITY_LABELS: Record<string, { fr: string; ru: string }> = {
   employee_phones: { fr: "Téléphones pro", ru: "Рабочие телефоны" },
   company_quality_bank: { fr: "Банк качества (entreprise)", ru: "Банк качества (компания)" },
   org_candidates: { fr: "Candidats (Organigramme)", ru: "Кандидаты (Оргструктура)" },
+  org_scenarios: { fr: "Scénario d'organigramme", ru: "Сценарий оргструктуры" },
 };
 
 /** Champs lisibles pour le résumé du journal — les champs calculés/techniques
@@ -13409,42 +13448,6 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
 }
 
 // ── Vue "Organigramme" — dérivée en direct des rôles bureau et des équipes ──
-const BUREAU_ROLE_LABELS: Record<string, string> = {
-  boss: "Boss",
-  rh: "RH",
-  assistant: "Assistante de direction",
-  coach: "Coach",
-  production: "Production",
-  planning: "Planning",
-  comptable: "Comptable",
-  marketing: "Marketing",
-  control: "Contrôle qualité",
-  formation_officer: "Formation",
-  depot: "Dépôt",
-  hotel: "Hôtel",
-};
-const BUREAU_ROLE_LABELS_RU: Record<string, string> = {
-  boss: "Босс",
-  rh: "Кадры",
-  assistant: "Ассистент руководителя",
-  coach: "Коуч",
-  production: "Производство",
-  planning: "Планирование",
-  comptable: "Бухгалтер",
-  marketing: "Маркетинг",
-  control: "Контроль качества",
-  formation_officer: "Обучение",
-  depot: "Склад",
-  hotel: "Отель",
-};
-const BUREAU_ROLE_ORDER = Object.keys(BUREAU_ROLE_LABELS);
-
-/** "Equipe 3" -> "Бригада 3" — team names are DB data (not a lookup table),
- *  so the Russian label is derived rather than mapped. */
-function teamLabelRu(name: string): string {
-  return name.replace(/^équipe/i, "Бригада").replace(/^equipe/i, "Бригада");
-}
-
 function orgTileLabel(e: OrgEmployee): string {
   const suffix = [e.badge_emoji, e.can_substitute ? "🔁" : null].filter(Boolean).join(" ");
   return suffix ? `${employeeName(e)} ${suffix}` : employeeName(e);
@@ -13587,12 +13590,10 @@ function SelectWithNew({
 function OrgCandidatesSection({
   supabase,
   teams,
-  employees,
   readOnly,
 }: {
   supabase: ReturnType<typeof createClient>;
   teams: OrgTeam[];
-  employees: OrgEmployee[];
   readOnly: boolean;
 }) {
   const [candidates, setCandidates] = useState<OrgCandidate[]>([]);
@@ -13600,11 +13601,6 @@ function OrgCandidatesSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
-  // Расстановка "что если": только на экране, ничего не пишется в базу. Хранятся
-  // лишь перемещения относительно текущего положения; сброс = очистить их.
-  const [moves, setMoves] = useState<Record<string, string>>({});
-  const [dragKey, setDragKey] = useState<string | null>(null);
-  const [overColumn, setOverColumn] = useState<string | null>(null);
   const [newFieldLabel, setNewFieldLabel] = useState("");
   const [newFieldType, setNewFieldType] = useState<"text" | "number" | "date">("text");
   const [draft, setDraft] = useState({
@@ -13805,71 +13801,6 @@ function OrgCandidatesSection({
   const teamPatchFrom = (v: string): Partial<OrgCandidate> =>
     v.startsWith("label:") ? { team_id: null, team_label: v.slice(6) } : { team_id: v || null, team_label: null };
 
-  // ── Расстановка (песочница) ──
-  const plannedTeamLabels = useMemo(
-    () => Array.from(new Set(candidates.map((c) => c.team_label).filter((l): l is string => !!l))),
-    [candidates]
-  );
-  const planColumns = useMemo(
-    () => [
-      { key: "pool", label: "Кандидаты без места", group: "Резерв" },
-      { key: "park", label: "Резерв / без места", group: "Резерв" },
-      { key: "office", label: "Офис (кандидаты)", group: "Резерв" },
-      ...BUREAU_ROLE_ORDER.map((role) => ({ key: `role:${role}`, label: BUREAU_ROLE_LABELS[role], group: "Офис" })),
-      ...[...teams]
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-        .map((t) => ({ key: t.id, label: t.name, group: "Бригады" })),
-      ...plannedTeamLabels.map((l) => ({ key: `label:${l}`, label: `${l} (новая)`, group: "Бригады" })),
-    ],
-    [teams, plannedTeamLabels]
-  );
-  const planCards = useMemo(() => {
-    const cards: { key: string; initial: string; kind: "employee" | "candidate"; employee?: OrgEmployee; candidate?: OrgCandidate }[] = [];
-    employees.forEach((e) =>
-      cards.push({
-        key: `e:${e.id}`,
-        initial: e.category === "bureau" ? (e.bureau_role ? `role:${e.bureau_role}` : "park") : e.team_id ?? "park",
-        kind: "employee",
-        employee: e,
-      })
-    );
-    const roleByLabel = new Map(BUREAU_ROLE_ORDER.map((role) => [BUREAU_ROLE_LABELS[role].toLowerCase(), role]));
-    candidates
-      .filter((c) => c.status !== "rejected" && c.status !== "arrived")
-      .forEach((c) => {
-        const role = roleByLabel.get(c.position_label.trim().toLowerCase());
-        cards.push({
-          key: `c:${c.id}`,
-          initial:
-            c.category === "bureau"
-              ? role
-                ? `role:${role}`
-                : "office"
-              : c.team_id ?? (c.team_label ? `label:${c.team_label}` : "pool"),
-          kind: "candidate",
-          candidate: c,
-        });
-      });
-    return cards;
-  }, [employees, candidates]);
-  const placeOf = (card: { key: string; initial: string }) => moves[card.key] ?? card.initial;
-  const movedCount = Object.keys(moves).length;
-  const chefOfTeam = useMemo(() => new Map(teams.map((t) => [t.id, t.chef_employee_id])), [teams]);
-
-  function dropOn(columnKey: string) {
-    if (!dragKey) return;
-    const card = planCards.find((c) => c.key === dragKey);
-    setDragKey(null);
-    setOverColumn(null);
-    if (!card) return;
-    setMoves((prev) => {
-      const next = { ...prev };
-      if (columnKey === card.initial) delete next[card.key];
-      else next[card.key] = columnKey;
-      return next;
-    });
-  }
-
   const teamName = (id: string | null) => teams.find((t) => t.id === id)?.name ?? "";
   const activeCount = candidates.filter((c) => c.status !== "rejected" && c.status !== "arrived").length;
 
@@ -13896,135 +13827,6 @@ function OrgCandidatesSection({
           Ошибка: {error}
         </p>
       )}
-
-      <div className="mb-5 rounded-xl border-2 border-violet-200 bg-violet-50 p-3">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-bold">
-            Расстановка «что если»{" "}
-            <span className="text-xs font-normal text-stone-400">
-              — перетаскивайте карточки между бригадами, чтобы прикинуть замены. Ничего не сохраняется.
-            </span>
-          </p>
-          <button
-            className="btn btn-secondary text-xs px-2.5 py-1.5"
-            disabled={movedCount === 0}
-            onClick={() => setMoves({})}
-            title="Вернуть всех на текущие места"
-          >
-            <RefreshCw size={13} />
-            Сбросить к текущему{movedCount > 0 ? ` (${movedCount})` : ""}
-          </button>
-        </div>
-        {(["Офис", "Бригады", "Резерв"] as const).map((groupName) => (
-        <div
-          key={groupName}
-          className={
-            groupName === "Резерв"
-              ? "mt-5 rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/70 p-3"
-              : "mb-3"
-          }
-        >
-        <p
-          className={`mb-1 text-[0.65rem] font-bold uppercase tracking-wide ${
-            groupName === "Резерв" ? "text-primary-600" : "text-stone-400"
-          }`}
-        >
-          {groupName === "Резерв" ? "Резерв и кандидаты — сюда можно убрать человека или взять оттуда" : groupName}
-        </p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {planColumns.filter((col) => col.group === groupName).map((col) => {
-            const here = planCards.filter((c) => placeOf(c) === col.key);
-            const before = planCards.filter((c) => c.initial === col.key).length;
-            const delta = here.length - before;
-            return (
-              <div
-                key={col.key}
-                onDragOver={(ev) => {
-                  ev.preventDefault();
-                  setOverColumn(col.key);
-                }}
-                onDragLeave={() => setOverColumn((cur) => (cur === col.key ? null : cur))}
-                onDrop={() => dropOn(col.key)}
-                className={`flex min-h-24 min-w-0 flex-col gap-1.5 rounded-xl p-1.5 transition-colors ${
-                  overColumn === col.key
-                    ? "bg-primary-50 ring-2 ring-primary-300"
-                    : col.group === "Резерв"
-                      ? "bg-white/70"
-                      : "bg-white/60"
-                }`}
-              >
-                <div
-                  className={`truncate rounded-lg px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white ${
-                    col.group === "Резерв" ? "bg-primary-600" : "bg-stone-800"
-                  }`}
-                >
-                  {col.label}{" "}
-                  <span className="font-normal opacity-70">
-                    {here.length}
-                    {delta !== 0 && (
-                      <span className={delta > 0 ? "text-success-300" : "text-error-300"}> ({delta > 0 ? "+" : ""}{delta})</span>
-                    )}
-                  </span>
-                </div>
-                {here.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-stone-300 px-2 py-2 text-center text-xs text-stone-300">—</div>
-                ) : (
-                  here.map((card) => {
-                    const moved = card.key in moves;
-                    if (card.kind === "employee") {
-                      const e = card.employee!;
-                      const isChef = e.category === "chantier" && !!e.team_id && chefOfTeam.get(e.team_id) === e.id;
-                      return (
-                        <div
-                          key={card.key}
-                          draggable
-                          onDragStart={() => setDragKey(card.key)}
-                          onDragEnd={() => {
-                            setDragKey(null);
-                            setOverColumn(null);
-                          }}
-                          className={`cursor-grab active:cursor-grabbing ${moved ? "rounded-xl ring-2 ring-primary-400" : ""}`}
-                        >
-                          <OrgTile
-                            label={orgTileLabel(e)}
-                            tone={e.bureau_role === "boss" ? "boss" : isChef ? "lead" : e.category === "bureau" ? "bureau" : "member"}
-                            trialHireDate={e.hire_date}
-                          />
-                        </div>
-                      );
-                    }
-                    const c = card.candidate!;
-                    return (
-                      <div
-                        key={card.key}
-                        draggable
-                        onDragStart={() => setDragKey(card.key)}
-                        onDragEnd={() => {
-                          setDragKey(null);
-                          setOverColumn(null);
-                        }}
-                        title={[c.position_label, candidateStatusInfo(c.status).ru, c.arrival_date ? `приезд ${fmtDate(c.arrival_date)}` : ""].filter(Boolean).join(" · ")}
-                        className={`cursor-grab rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/50 px-2.5 py-2 text-xs active:cursor-grabbing ${
-                          moved ? "ring-2 ring-primary-400" : ""
-                        }`}
-                      >
-                        <p className="truncate font-bold text-primary-800">{c.full_name || "Кандидат"}</p>
-                        <p className="truncate text-[0.65rem] text-stone-500">{c.position_label}</p>
-                        <p className="truncate text-[0.6rem] text-primary-600">
-                          {candidateStatusInfo(c.status).ru}
-                          {c.arrival_date ? ` · ${fmtDate(c.arrival_date)}` : ""}
-                        </p>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            );
-          })}
-        </div>
-        </div>
-        ))}
-      </div>
 
       {!readOnly && (
         <div className="mb-4 rounded-xl border border-stone-100 bg-stone-50/50 p-3">
@@ -14294,10 +14096,17 @@ function OrgCandidatesSection({
 function OrganigrammeView({
   supabase,
   readOnly = false,
+  canPlan = false,
 }: {
   supabase: ReturnType<typeof createClient>;
   readOnly?: boolean;
+  /** rh_admin / rh : режим «План» (сценарии). */
+  canPlan?: boolean;
 }) {
+  const plan = useOrgPlan(supabase, canPlan);
+  const bureauOrder = useBureauOrder(supabase);
+  const [dragRole, setDragRole] = useState<string | null>(null);
+  const [overRole, setOverRole] = useState<string | null>(null);
   const [employees, setEmployees] = useState<OrgEmployee[]>([]);
   const [teams, setTeams] = useState<OrgTeam[]>([]);
   const [loading, setLoading] = useState(true);
@@ -14369,9 +14178,25 @@ function OrganigrammeView({
     [teams]
   );
   const bureauColumns = useMemo(
-    () => BUREAU_ROLE_ORDER.map((role) => ({ key: role, label: BUREAU_ROLE_LABELS[role] })),
-    []
+    () => bureauOrder.roles.map((role) => ({ key: role, label: BUREAU_ROLE_LABELS[role] })),
+    [bureauOrder.roles]
   );
+  const canReorderBureau = !readOnly && bureauOrder.available;
+
+  /** Колонку офиса перетащили на другую: ставим её на место целевой. */
+  function dropRole(target: string) {
+    const dragged = dragRole;
+    setDragRole(null);
+    setOverRole(null);
+    if (!dragged || dragged === target || !canReorderBureau) return;
+    const current = bureauOrder.roles;
+    const from = current.indexOf(dragged);
+    const to = current.indexOf(target);
+    const list = current.filter((r) => r !== dragged);
+    const at = list.indexOf(target);
+    list.splice(from < to ? at + 1 : at, 0, dragged);
+    bureauOrder.save(list);
+  }
 
   const bureauGrid = useMemo(
     () => buildOrgGrid(bureauColumns, (e) => e.bureau_role, bureauEmployees),
@@ -14414,8 +14239,24 @@ function OrganigrammeView({
       </div>
     );
 
+  const showPlan = plan.schemaReady === true && plan.mode === "plan" && (canPlan || !!plan.published);
+
   return (
     <div>
+      <OrgModeBar plan={plan} allowLocal />
+      {showPlan ? (
+        plan.loading ? (
+          <div className="card">
+            <SkeletonRows rows={5} cols={5} />
+          </div>
+        ) : (
+          <>
+            <OrgPlanBoard plan={plan} />
+            <OrgDiffPanel plan={plan} />
+          </>
+        )
+      ) : (
+      <>
       <div className="card mb-4">
         <div className="font-bold flex items-center">
           Bureau <span className="ml-1 font-normal text-stone-400">Бюро</span>
@@ -14430,6 +14271,18 @@ function OrganigrammeView({
         <p className="text-xs text-stone-400 mb-3">
           Glissez une personne pour la réordonner dans sa colonne.{" "}
           <span className="opacity-70">/ Перетащите, чтобы изменить порядок в колонке.</span>
+          {canReorderBureau && (
+            <>
+              {" "}
+              Glissez l&apos;en-tête d&apos;une colonne pour réordonner les blocs.{" "}
+              <span className="opacity-70">/ Перетащите заголовок колонки, чтобы поменять блоки местами.</span>
+              {bureauOrder.isCustom && (
+                <button type="button" className="ml-2 underline hover:text-stone-600" onClick={() => bureauOrder.reset()}>
+                  Порядок по умолчанию
+                </button>
+              )}
+            </>
+          )}
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {bureauColumns.map((c) => (
@@ -14438,6 +14291,20 @@ function OrganigrammeView({
               header={c.label}
               headerRu={BUREAU_ROLE_LABELS_RU[c.key]}
               employees={bureauGrid.byColumn.get(c.key) ?? []}
+              headerDnd={
+                canReorderBureau
+                  ? {
+                      onDragStart: () => setDragRole(c.key),
+                      onDragEnd: () => {
+                        setDragRole(null);
+                        setOverRole(null);
+                      },
+                      onDragOver: () => setOverRole(c.key),
+                      onDrop: () => dropRole(c.key),
+                      isOver: overRole === c.key && dragRole !== c.key,
+                    }
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -14488,8 +14355,10 @@ function OrganigrammeView({
           </div>
         </div>
       )}
+      </>
+      )}
 
-      <OrgCandidatesSection supabase={supabase} teams={teams} employees={employees} readOnly={readOnly} />
+      <OrgCandidatesSection supabase={supabase} teams={teams} readOnly={readOnly} />
     </div>
   );
 }
@@ -14533,10 +14402,13 @@ function OrgColumn({
   chefId,
   onReorder,
   onToggleChef,
+  headerDnd,
 }: {
   header: string;
   headerRu?: string;
   employees: OrgEmployee[];
+  /** Перетаскивание самой колонки (блока) за заголовок — меняет порядок блоков. */
+  headerDnd?: { onDragStart: () => void; onDragEnd: () => void; onDragOver: () => void; onDrop: () => void; isOver: boolean };
   chefId?: string | null;
   /** When provided, tiles become drag-and-drop reorderable within this column. */
   onReorder?: (newOrder: OrgEmployee[]) => void;
@@ -14571,7 +14443,31 @@ function OrgColumn({
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
-      <div className="truncate rounded-lg bg-stone-800 px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white">
+      <div
+        draggable={!!headerDnd}
+        onDragStart={headerDnd ? () => headerDnd.onDragStart() : undefined}
+        onDragEnd={headerDnd ? () => headerDnd.onDragEnd() : undefined}
+        onDragOver={
+          headerDnd
+            ? (ev) => {
+                ev.preventDefault();
+                headerDnd.onDragOver();
+              }
+            : undefined
+        }
+        onDrop={
+          headerDnd
+            ? (ev) => {
+                ev.preventDefault();
+                headerDnd.onDrop();
+              }
+            : undefined
+        }
+        title={headerDnd ? "Перетащите, чтобы поменять блоки местами" : undefined}
+        className={`truncate rounded-lg px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white ${
+          headerDnd ? "cursor-grab active:cursor-grabbing" : ""
+        } ${headerDnd?.isOver ? "bg-primary-600" : "bg-stone-800"}`}
+      >
         {header}
         {headerRu && <span className="block truncate text-[0.6rem] font-medium normal-case opacity-60">{headerRu}</span>}
       </div>

@@ -297,3 +297,25 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #a8a29e;
 }
+
+/* Печать схемы компании (вкладка «Схема компании»): только область .org-print-area */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .org-print-area,
+  .org-print-area * {
+    visibility: visible;
+  }
+  .org-print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+  .org-print-area .card {
+    box-shadow: none;
+    border: none;
+    overflow: visible;
+  }
+}
