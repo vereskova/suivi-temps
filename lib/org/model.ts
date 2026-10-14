@@ -663,6 +663,57 @@ export const ORG_COLOR_CLASSES: Record<string, { header: string; border: string;
   stone: { header: "bg-stone-700 text-white", border: "border-stone-300", soft: "bg-stone-50" },
 };
 
+/** Цвета блоков по умолчанию (как в предложенной структуре по Высоцкому) — для режима «Сейчас», пока схема не опубликована. */
+export const DEFAULT_ROLE_COLORS: Record<string, string> = {
+  boss: "sky",
+  assistant: "sky",
+  coach: "sky",
+  rh: "amber",
+  hotel: "amber",
+  marketing: "rose",
+  comptable: "emerald",
+  production: "orange",
+  planning: "orange",
+  depot: "orange",
+  formation_officer: "teal",
+  control: "teal",
+};
+export const DEFAULT_TEAM_COLOR = "orange";
+
+/** Цвет узла: свой или унаследованный от ближайшего родителя с цветом. */
+export function inheritedColor(nodes: OrgNode[], node: OrgNode): string | null {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  let cur: OrgNode | undefined = node;
+  let guard = 0;
+  while (cur && guard++ < 50) {
+    if (cur.color) return cur.color;
+    cur = cur.parent_id ? byId.get(cur.parent_id) : undefined;
+  }
+  return null;
+}
+
+/** Цвета колонок для режима «Сейчас»: берутся из опубликованной схемы, иначе из цветов по умолчанию. */
+export function roleColorMap(nodes: OrgNode[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  [...nodes].sort(compareNodes).forEach((n) => {
+    if (n.kind === "position" && n.role_key && !(n.role_key in out)) {
+      const c = inheritedColor(nodes, n);
+      if (c) out[n.role_key] = c;
+    }
+  });
+  return out;
+}
+export function teamColorMap(nodes: OrgNode[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  [...nodes].sort(compareNodes).forEach((n) => {
+    if (n.kind === "team" && n.team_id && !(n.team_id in out)) {
+      const c = inheritedColor(nodes, n);
+      if (c) out[n.team_id] = c;
+    }
+  });
+  return out;
+}
+
 export function colorClasses(color: string | null | undefined) {
   return ORG_COLOR_CLASSES[color ?? "stone"] ?? ORG_COLOR_CLASSES.stone;
 }

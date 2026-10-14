@@ -148,7 +148,17 @@ import { OrgSchemaView } from "./org/OrgSchemaView";
 import { OrgModeBar } from "./org/OrgModeBar";
 import { OrgPlanBoard, OrgDiffPanel } from "./org/OrgPlanBoard";
 import { useOrgPlan, useBureauOrder } from "./org/useOrgPlan";
-import { BUREAU_ROLE_LABELS, BUREAU_ROLE_LABELS_RU, BUREAU_ROLE_ORDER, teamLabelRu } from "@/lib/org/model";
+import {
+  BUREAU_ROLE_LABELS,
+  BUREAU_ROLE_LABELS_RU,
+  BUREAU_ROLE_ORDER,
+  DEFAULT_ROLE_COLORS,
+  DEFAULT_TEAM_COLOR,
+  ORG_COLOR_CLASSES,
+  roleColorMap,
+  teamColorMap,
+  teamLabelRu,
+} from "@/lib/org/model";
 
 type Employee = {
   id: string;
@@ -14181,6 +14191,9 @@ function OrganigrammeView({
     [bureauOrder.roles]
   );
   const canReorderBureau = !readOnly && bureauOrder.available;
+  // Цвета колонок как в «Схеме компании»: из опубликованной схемы, иначе по умолчанию.
+  const roleColors = useMemo(() => roleColorMap(plan.nodes), [plan.nodes]);
+  const teamColors = useMemo(() => teamColorMap(plan.nodes), [plan.nodes]);
 
   /** Колонку офиса перетащили на другую: ставим её на место целевой. */
   function dropRole(target: string) {
@@ -14289,6 +14302,7 @@ function OrganigrammeView({
               key={c.key}
               header={c.label}
               headerRu={BUREAU_ROLE_LABELS_RU[c.key]}
+              headerColor={roleColors[c.key] ?? DEFAULT_ROLE_COLORS[c.key]}
               employees={bureauGrid.byColumn.get(c.key) ?? []}
               headerDnd={
                 canReorderBureau
@@ -14327,6 +14341,7 @@ function OrganigrammeView({
               key={c.key}
               header={c.label}
               headerRu={teamLabelRu(c.label)}
+              headerColor={teamColors[c.key] ?? DEFAULT_TEAM_COLOR}
               employees={teamGrid.byColumn.get(c.key) ?? []}
               chefId={teamChefMap.get(c.key)}
               onReorder={readOnly ? undefined : handleReorderTeam}
@@ -14357,7 +14372,10 @@ function OrganigrammeView({
       </>
       )}
 
-      <OrgCandidatesSection supabase={supabase} teams={teams} readOnly={readOnly} />
+      {/* Список кандидатов — только в режиме «План» (в «Сейчас» показываем лишь реальный состав). */}
+      {(showPlan || plan.schemaReady === false) && (
+        <OrgCandidatesSection supabase={supabase} teams={teams} readOnly={readOnly} />
+      )}
     </div>
   );
 }
@@ -14402,9 +14420,12 @@ function OrgColumn({
   onReorder,
   onToggleChef,
   headerDnd,
+  headerColor,
 }: {
   header: string;
   headerRu?: string;
+  /** Ключ цвета блока (как в «Схеме компании»); без него заголовок тёмный. */
+  headerColor?: string;
   employees: OrgEmployee[];
   /** Перетаскивание самой колонки (блока) за заголовок — меняет порядок блоков. */
   headerDnd?: { onDragStart: () => void; onDragEnd: () => void; onDragOver: () => void; onDrop: () => void; isOver: boolean };
@@ -14465,7 +14486,13 @@ function OrgColumn({
         title={headerDnd ? "Перетащите, чтобы поменять блоки местами" : undefined}
         className={`truncate rounded-lg px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white ${
           headerDnd ? "cursor-grab active:cursor-grabbing" : ""
-        } ${headerDnd?.isOver ? "bg-primary-600" : "bg-stone-800"}`}
+        } ${
+          headerDnd?.isOver
+            ? "bg-primary-600"
+            : headerColor && ORG_COLOR_CLASSES[headerColor]
+              ? ORG_COLOR_CLASSES[headerColor].header.split(" ")[0]
+              : "bg-stone-800"
+        }`}
       >
         {header}
         {headerRu && <span className="block truncate text-[0.6rem] font-medium normal-case opacity-60">{headerRu}</span>}
