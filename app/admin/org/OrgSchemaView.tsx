@@ -201,25 +201,27 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
             setDragNode(null);
             setOverId(null);
           }}
-          className={`flex items-start gap-1 rounded-t-[10px] px-2 py-1.5 ${isRoot ? cc.header : `${cc.soft} text-stone-800`} ${
+          className={`rounded-t-[10px] px-2 py-1.5 ${isRoot ? cc.header : `${cc.soft} text-stone-800`} ${
             canEdit ? "cursor-grab active:cursor-grabbing" : ""
           }`}
         >
-          {canEdit && <GripVertical size={13} className="mt-0.5 shrink-0 opacity-50" />}
-          {children.length > 0 && (
-            <button type="button" onClick={() => toggle(node.id)} className="mt-0.5 shrink-0 opacity-70 hover:opacity-100">
-              {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-            </button>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className={`truncate text-xs font-bold ${isRoot ? "uppercase tracking-wide" : ""}`}>{t.fr}</p>
-            {t.ru && t.ru !== t.fr && <p className="truncate text-[0.65rem] opacity-70">{t.ru}</p>}
+          <div className="flex items-start gap-1">
+            {canEdit && <GripVertical size={13} className="mt-0.5 shrink-0 opacity-50" />}
+            {children.length > 0 && (
+              <button type="button" onClick={() => toggle(node.id)} className="mt-0.5 shrink-0 opacity-70 hover:opacity-100">
+                {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+              </button>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className={`break-words text-xs font-bold leading-tight ${isRoot ? "uppercase tracking-wide" : ""}`}>{t.fr}</p>
+              {t.ru && t.ru !== t.fr && <p className="break-words text-[0.65rem] leading-tight opacity-70">{t.ru}</p>}
+            </div>
+            {KIND_CHIP[node.kind] && (
+              <span className="shrink-0 rounded bg-black/10 px-1 text-[0.55rem] uppercase">{KIND_CHIP[node.kind]}</span>
+            )}
           </div>
-          {KIND_CHIP[node.kind] && (
-            <span className="shrink-0 rounded bg-black/10 px-1 text-[0.55rem] uppercase">{KIND_CHIP[node.kind]}</span>
-          )}
           {canEdit && (
-            <div className="flex shrink-0 items-center gap-0.5">
+            <div className="mt-1 flex items-center justify-end gap-1.5">
               <button type="button" title="Добавить внутрь" onClick={() => openCreate(node.id)} className="opacity-60 hover:opacity-100">
                 <Plus size={13} />
               </button>

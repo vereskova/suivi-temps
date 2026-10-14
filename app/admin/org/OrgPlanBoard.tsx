@@ -128,7 +128,7 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
           over === id ? "bg-violet-50 ring-2 ring-violet-300" : "bg-white/60"
         }`}
       >
-        <div className={`truncate rounded-lg px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase tracking-wide ${opts.header}`}>
+        <div className={`break-words rounded-lg px-2 py-1.5 text-center text-[0.7rem] font-bold uppercase leading-tight tracking-wide ${opts.header}`}>
           {title}{" "}
           <span className="font-normal opacity-70">
             {cards.length}
@@ -217,7 +217,7 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
                   n.id,
                   <>
                     {t.fr}
-                    {t.ru && t.ru !== t.fr && <span className="block truncate text-[0.6rem] font-medium normal-case opacity-70">{t.ru}</span>}
+                    {t.ru && t.ru !== t.fr && <span className="block break-words text-[0.6rem] font-medium normal-case opacity-70">{t.ru}</span>}
                   </>,
                   cards,
                   { header: n.kind === "external" ? "bg-stone-500 text-white" : cc.header, before, node: n }

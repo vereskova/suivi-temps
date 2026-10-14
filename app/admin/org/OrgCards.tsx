@@ -60,12 +60,12 @@ export function OrgCardView({
       <div
         {...drag}
         title={card.attached ? "Сотрудник офиса, прикреплённый к бригаде" : undefined}
-        className={`flex min-w-0 items-center gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold leading-tight ${tone} ${grab} ${movedRing} ${
+        className={`flex min-w-0 items-start gap-1 rounded-lg border px-2.5 py-2 text-xs font-semibold leading-tight ${tone} ${grab} ${movedRing} ${
           card.attached ? "opacity-70" : ""
         }`}
       >
         {isChef && <Crown size={11} className="shrink-0 fill-current" />}
-        <span className="truncate">{personLabel(e)}</span>
+        <span className="break-words">{personLabel(e)}</span>
         {card.attached && <span className="shrink-0 text-[0.6rem] font-normal">↗</span>}
       </div>
     );
@@ -79,9 +79,9 @@ export function OrgCardView({
         title={[c.position_label, CANDIDATE_STATUS_RU[c.status] ?? c.status].filter(Boolean).join(" · ")}
         className={`rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/50 px-2.5 py-2 text-xs ${grab} ${movedRing}`}
       >
-        <p className="truncate font-bold text-primary-800">{c.full_name || "Кандидат"}</p>
-        <p className="truncate text-[0.65rem] text-stone-500">{c.position_label}</p>
-        <p className="truncate text-[0.6rem] text-primary-600">
+        <p className="break-words font-bold text-primary-800">{c.full_name || "Кандидат"}</p>
+        <p className="break-words text-[0.65rem] text-stone-500">{c.position_label}</p>
+        <p className="break-words text-[0.6rem] text-primary-600">
           {CANDIDATE_STATUS_RU[c.status] ?? c.status}
           {c.team_label ? ` · бригада «${c.team_label}»` : ""}
         </p>
@@ -92,9 +92,9 @@ export function OrgCardView({
   return (
     <div
       {...drag}
-      className={`flex min-w-0 items-center gap-1 rounded-lg border-2 border-dashed border-error-300 bg-error-50 px-2.5 py-2 text-xs font-bold text-error-700 ${grab}`}
+      className={`flex min-w-0 items-start gap-1 rounded-lg border-2 border-dashed border-error-300 bg-error-50 px-2.5 py-2 text-xs font-bold text-error-700 ${grab}`}
     >
-      <span className="truncate">Вакансия: {card.label}</span>
+      <span className="break-words">Вакансия: {card.label}</span>
       {onRemove && (
         <button
           type="button"
