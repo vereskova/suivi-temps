@@ -572,7 +572,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   dossier: ["rh_admin", "rh"],
   checklists: ["rh_admin", "rh"],
   paie: ["rh_admin", "comptable"],
-  paie_extras: ["rh_admin", "comptable", "rh_readonly"],
+  paie_extras: ["rh_admin", "rh", "comptable", "rh_readonly"],
   planning: ["rh_admin", "rh"],
   audit: ["rh_admin"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
@@ -1462,7 +1462,8 @@ export default function AdminPage() {
   // rh: Effectif + RH sections only — no Pointage group, no Paie.
   // Calculateurs and HR-дашборды use only the employees table,
   // which 'rh' already has full read/write on (see migration 0017) — no
-  // reason to keep them admin-only. Paie, Commercial, and the audit log
+  // reason to keep them admin-only. Primes & Bonus is open to 'rh' read-only
+  // (14/10/2026, migration 0110). Paie, Commercial, and the audit log
   // stay rh_admin-only (the audit log's whole point is oversight of what
   // rh/comptable/etc. changed).
   const visibleNavGroups =
@@ -1473,7 +1474,6 @@ export default function AdminPage() {
             items: g.items.filter(
               (item) =>
                 item.key !== "paie" &&
-                item.key !== "paie_extras" &&
                 item.key !== "commercial" &&
                 item.key !== "autoparc" &&
                 item.key !== "audit"
@@ -1653,7 +1653,7 @@ export default function AdminPage() {
             )}
             {view === "checklists" && <ChecklistsView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} canOpenDossier />}
-            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} />}
+            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} readOnly={role === "rh"} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
