@@ -648,7 +648,37 @@ export function cloneScenarioRows(
 
 // ── Палитра блоков ────────────────────────────────────────────────────────
 
-export const ORG_COLORS = ["sky", "amber", "rose", "emerald", "orange", "teal", "violet", "stone"] as const;
+export const ORG_COLORS = [
+  "sky",
+  "amber",
+  "rose",
+  "emerald",
+  "orange",
+  "teal",
+  "violet",
+  "stone",
+  // ещё 20 цветов
+  "red",
+  "coral",
+  "maroon",
+  "pink",
+  "fuchsia",
+  "purple",
+  "plum",
+  "indigo",
+  "blue",
+  "navy",
+  "cyan",
+  "mint",
+  "green",
+  "forest",
+  "lime",
+  "olive",
+  "yellow",
+  "gold",
+  "slate",
+  "brown",
+] as const;
 export type OrgColor = (typeof ORG_COLORS)[number];
 
 /** Статические классы Tailwind (динамические имена классов не попали бы в сборку). */
@@ -661,6 +691,26 @@ export const ORG_COLOR_CLASSES: Record<string, { header: string; border: string;
   teal: { header: "bg-teal-600 text-white", border: "border-teal-300", soft: "bg-teal-50" },
   violet: { header: "bg-violet-600 text-white", border: "border-violet-300", soft: "bg-violet-50" },
   stone: { header: "bg-stone-700 text-white", border: "border-stone-300", soft: "bg-stone-50" },
+  red: { header: "bg-red-600 text-white", border: "border-red-300", soft: "bg-red-50" },
+  coral: { header: "bg-red-400 text-white", border: "border-red-200", soft: "bg-red-50" },
+  maroon: { header: "bg-red-900 text-white", border: "border-red-400", soft: "bg-red-50" },
+  pink: { header: "bg-pink-500 text-white", border: "border-pink-300", soft: "bg-pink-50" },
+  fuchsia: { header: "bg-fuchsia-600 text-white", border: "border-fuchsia-300", soft: "bg-fuchsia-50" },
+  purple: { header: "bg-purple-600 text-white", border: "border-purple-300", soft: "bg-purple-50" },
+  plum: { header: "bg-purple-900 text-white", border: "border-purple-400", soft: "bg-purple-50" },
+  indigo: { header: "bg-indigo-600 text-white", border: "border-indigo-300", soft: "bg-indigo-50" },
+  blue: { header: "bg-blue-600 text-white", border: "border-blue-300", soft: "bg-blue-50" },
+  navy: { header: "bg-blue-900 text-white", border: "border-blue-400", soft: "bg-blue-50" },
+  cyan: { header: "bg-cyan-600 text-white", border: "border-cyan-300", soft: "bg-cyan-50" },
+  mint: { header: "bg-emerald-400 text-white", border: "border-emerald-200", soft: "bg-emerald-50" },
+  green: { header: "bg-green-600 text-white", border: "border-green-300", soft: "bg-green-50" },
+  forest: { header: "bg-green-900 text-white", border: "border-green-400", soft: "bg-green-50" },
+  lime: { header: "bg-lime-600 text-white", border: "border-lime-300", soft: "bg-lime-50" },
+  olive: { header: "bg-lime-800 text-white", border: "border-lime-400", soft: "bg-lime-50" },
+  yellow: { header: "bg-yellow-400 text-stone-900", border: "border-yellow-300", soft: "bg-yellow-50" },
+  gold: { header: "bg-yellow-600 text-white", border: "border-yellow-300", soft: "bg-yellow-50" },
+  slate: { header: "bg-slate-600 text-white", border: "border-slate-300", soft: "bg-slate-50" },
+  brown: { header: "bg-amber-900 text-white", border: "border-amber-400", soft: "bg-amber-50" },
 };
 
 /** Цвета блоков по умолчанию (как в предложенной структуре по Высоцкому) — для режима «Сейчас», пока схема не опубликована. */

@@ -14484,14 +14484,14 @@ function OrgColumn({
             : undefined
         }
         title={headerDnd ? "Перетащите, чтобы поменять блоки местами" : undefined}
-        className={`truncate rounded-lg px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide text-white ${
+        className={`truncate rounded-lg px-2.5 py-2 text-center text-[0.7rem] font-bold uppercase tracking-wide ${
           headerDnd ? "cursor-grab active:cursor-grabbing" : ""
         } ${
           headerDnd?.isOver
-            ? "bg-primary-600"
+            ? "bg-primary-600 text-white"
             : headerColor && ORG_COLOR_CLASSES[headerColor]
-              ? ORG_COLOR_CLASSES[headerColor].header.split(" ")[0]
-              : "bg-stone-800"
+              ? ORG_COLOR_CLASSES[headerColor].header
+              : "bg-stone-800 text-white"
         }`}
       >
         {header}
