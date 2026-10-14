@@ -11443,7 +11443,7 @@ async function fetchNotificationRows(
     supabase
       .from("employee_documents")
       .select(
-        "employee_id, valid_until, document_categories(label), employees(first_name, last_name, status)"
+        "employee_id, valid_until, document_categories(label), employees!employee_documents_employee_id_fkey(first_name, last_name, status)"
       )
       .not("valid_until", "is", null),
     supabase
