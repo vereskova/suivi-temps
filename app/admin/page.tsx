@@ -54,6 +54,7 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  Paperclip,
   Pencil,
   Phone,
   Plane,
@@ -6989,6 +6990,8 @@ type EmployeeTrainingRow = {
   employee_id: string;
   training_type_id: string;
   status: string;
+  /** Явная ссылка на сертификат в «Dossier salarié» (миграция 0112). */
+  document_id?: string | null;
 };
 
 type FormationCert = { id: string; employee_id: string; file_name: string; storage_path: string };
@@ -7016,6 +7019,8 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
   const [search, setSearch] = useState("");
+  // Окно «прикрепить сертификат» к зелёной ячейке.
+  const [certTarget, setCertTarget] = useState<{ employee: Employee; type: TrainingType } | null>(null);
   // Цвета бригад — как в «Схеме компании» / «Оргструктуре».
   const orgPlan = useOrgPlan(supabase, false);
   const teamColors = useMemo(() => teamColorMap(orgPlan.nodes), [orgPlan.nodes]);
@@ -7037,7 +7042,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
             .eq("category", "chantier")
             .eq("status", "active")
             .order("last_name"),
-          supabase.from("employee_trainings").select("employee_id, training_type_id, status"),
+          supabase.from("employee_trainings").select("*"),
           supabase.from("employee_documents").select("id, employee_id, file_name, storage_path").eq("category_code", "formation"),
           supabase.from("teams").select("chef_employee_id").eq("active", true),
         ]);
@@ -7057,8 +7062,21 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     return m;
   }, [trainings]);
 
-  /** Сертификат о прохождении для (сотрудник, обучение) — по названию файла в досье. */
-  function certFor(employeeId: string, code: string): FormationCert | null {
+  const trainingDocMap = useMemo(() => {
+    const m = new Map<string, string>();
+    trainings.forEach((t) => {
+      if (t.document_id) m.set(`${t.employee_id}|${t.training_type_id}`, t.document_id);
+    });
+    return m;
+  }, [trainings]);
+
+  /** Сертификат о прохождении: явная ссылка, а если её нет — подбор по названию файла в досье. */
+  function certFor(employeeId: string, typeId: string, code: string): FormationCert | null {
+    const linked = trainingDocMap.get(`${employeeId}|${typeId}`);
+    if (linked) {
+      const doc = certs.find((c) => c.id === linked);
+      if (doc) return doc;
+    }
     const re = TRAINING_CERT_PATTERNS[code];
     if (!re) return null;
     const list = certs.filter((c) => c.employee_id === employeeId && re.test(c.file_name));
@@ -7109,16 +7127,18 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
       .sort((a, b) => (a.id === "none" ? 1 : b.id === "none" ? -1 : a.name.localeCompare(b.name, undefined, { numeric: true })));
   }, [filteredEmployees, chefIds]);
 
-  async function toggle(employeeId: string, typeId: string, current: string | undefined) {
-    const next = current === "ok" ? "ko" : "ok";
+  /** Клик по ячейке: — → KO → OK → — (серое «не требуется» = нет записи). */
+  async function cycle(employeeId: string, typeId: string, current: string | undefined) {
+    const next: "ok" | "ko" | null = current === undefined ? "ko" : current === "ko" ? "ok" : null;
+    if (next === null && current === "ok" && !window.confirm("Снять отметку «пройдено» и сделать ячейку «не требуется»?")) return;
     const key = `${employeeId}|${typeId}`;
     setSaving(key);
-    const { error } = await supabase
-      .from("employee_trainings")
-      .upsert(
-        { employee_id: employeeId, training_type_id: typeId, status: next },
-        { onConflict: "employee_id,training_type_id" }
-      );
+    const { error } =
+      next === null
+        ? await supabase.from("employee_trainings").delete().eq("employee_id", employeeId).eq("training_type_id", typeId)
+        : await supabase
+            .from("employee_trainings")
+            .upsert({ employee_id: employeeId, training_type_id: typeId, status: next }, { onConflict: "employee_id,training_type_id" });
     setSaving(null);
 
     if (error) {
@@ -7132,7 +7152,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
   function cell(e: Employee, t: TrainingType, compact = false) {
     const key = `${e.id}|${t.id}`;
     const status = statusMap.get(key);
-    const cert = status === "ok" ? certFor(e.id, t.code) : null;
+    const cert = status === "ok" ? certFor(e.id, t.id, t.code) : null;
     const tone =
       status === "ok"
         ? "bg-emerald-500 text-white hover:bg-emerald-600"
@@ -7142,26 +7162,41 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     return (
       <span className="group relative block">
         <button
-          onClick={() => toggle(e.id, t.id, status)}
+          onClick={() => cycle(e.id, t.id, status)}
           disabled={saving === key}
-          title={t.label}
+          title={`${t.label} — клик: ${status === undefined ? "KO" : status === "ko" ? "OK" : "не требуется"}`}
           className={`block w-full rounded-md font-bold ${compact ? "px-2.5 py-1 text-xs" : "py-2 text-xs"} ${tone}`}
         >
           {compact ? `${t.code}: ` : ""}
           {status ? status.toUpperCase() : "—"}
         </button>
-        {cert && (
-          <button
-            type="button"
-            onClick={(ev) => {
-              ev.stopPropagation();
-              void openCert(cert);
-            }}
-            title={`Открыть сертификат: ${cert.file_name}`}
-            className="absolute right-1 top-1/2 -translate-y-1/2 rounded bg-white/90 p-0.5 text-emerald-700 opacity-0 shadow transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
-          >
-            <ExternalLink size={12} />
-          </button>
+        {status === "ok" && (
+          <span className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+            {cert && (
+              <button
+                type="button"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  void openCert(cert);
+                }}
+                title={`Открыть сертификат: ${cert.file_name}`}
+                className="rounded bg-white/90 p-0.5 text-emerald-700 shadow hover:bg-white"
+              >
+                <ExternalLink size={12} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(ev) => {
+                ev.stopPropagation();
+                setCertTarget({ employee: e, type: t });
+              }}
+              title={cert ? "Заменить сертификат" : "Прикрепить сертификат"}
+              className="rounded bg-white/90 p-0.5 text-emerald-700 shadow hover:bg-white"
+            >
+              <Paperclip size={12} />
+            </button>
+          </span>
         )}
       </span>
     );
@@ -7175,15 +7210,15 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
           <InfoNote
             title="Formations"
             text={
-              "Отметки о пройденных обучениях по каждому сотруднику и виду обучения (например, CACES, работа на высоте). Нажмите на ячейку, чтобы переключить статус OK/KO.\n\n" +
-              "Красное — обучение обязательно, но не пройдено. Зелёное — пройдено; наведите на зелёную ячейку и нажмите значок справа, чтобы открыть сертификат из «Dossier salarié». Серое — не требуется.\n\n" +
+              "Отметки о пройденных обучениях по каждому сотруднику и виду обучения (например, CACES, работа на высоте). Клик по ячейке меняет статус по кругу: «—» (не требуется) → KO → OK → «—».\n\n" +
+              "Красное — обучение обязательно, но не пройдено. Зелёное — пройдено; наведите на зелёную ячейку: значок со стрелкой открывает сертификат из «Dossier salarié», скрепка прикрепляет или заменяет сертификат. Серое — не требуется.\n\n" +
               "Здесь нет дат истечения. Если для документа важна дата действия (например, «Habilitation»), загружайте его в разделе «Dossier salarié» — оттуда он попадёт в «Notifications», когда срок будет подходить."
             }
           />
         </div>
         <p className="text-xs text-stone-400 mb-3">
-          Cliquer une cellule pour basculer OK / KO ; sur une cellule verte, l&apos;icône ouvre le certificat.{" "}
-          <span className="opacity-70">/ Нажмите на ячейку, чтобы переключить OK / KO; на зелёной значок открывает сертификат.</span>
+          Clic : — → KO → OK → — ; sur une cellule verte, les icônes ouvrent / rattachent le certificat.{" "}
+          <span className="opacity-70">/ Клик: — → KO → OK → —; на зелёной значки открывают или прикрепляют сертификат.</span>
         </p>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-emerald-500" /> OK — пройдено</span>
@@ -7312,7 +7347,156 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         </div>
         </>
       )}
+      {certTarget && (
+        <TrainingCertModal
+          supabase={supabase}
+          employee={certTarget.employee}
+          type={certTarget.type}
+          currentDocId={certFor(certTarget.employee.id, certTarget.type.id, certTarget.type.code)?.id ?? null}
+          onClose={() => setCertTarget(null)}
+          onSaved={() => {
+            setCertTarget(null);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Окно «Сертификат»: выбрать документ из досье сотрудника или загрузить новый и привязать к обучению. */
+function TrainingCertModal({
+  supabase,
+  employee,
+  type,
+  currentDocId,
+  onClose,
+  onSaved,
+}: {
+  supabase: ReturnType<typeof createClient>;
+  employee: Employee;
+  type: TrainingType;
+  currentDocId: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [docs, setDocs] = useState<{ id: string; file_name: string; storage_path: string; category_code: string }[]>([]);
+  const [selected, setSelected] = useState<string | null>(currentDocId);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    supabase
+      .from("employee_documents")
+      .select("id, file_name, storage_path, category_code")
+      .eq("employee_id", employee.id)
+      .in("category_code", ["formation", "habilitation"])
+      .order("created_at")
+      .then(({ data }) => {
+        if (alive) setDocs(data ?? []);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [supabase, employee.id]);
+
+  async function open(path: string) {
+    const { data } = await supabase.storage.from(DOSSIER_BUCKET).createSignedUrl(path, 60);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
+  }
+
+  async function link(docId: string | null) {
+    setBusy(true);
+    const { error } = await supabase
+      .from("employee_trainings")
+      .update({ document_id: docId })
+      .eq("employee_id", employee.id)
+      .eq("training_type_id", type.id);
+    setBusy(false);
+    if (error) {
+      toast.error("Ошибка: " + error.message + " (выполнена ли миграция 0112?)");
+      return;
+    }
+    onSaved();
+  }
+
+  async function upload(file: File) {
+    setBusy(true);
+    const ext = (file.name.split(".").pop() ?? "pdf").toLowerCase();
+    const safe = `${type.label.replace(/[^A-Za-z0-9._-]+/g, "_")}.${ext}`;
+    const path = `${employee.id}/formation/${Math.random().toString(36).slice(2, 10)}_${safe}`;
+    const { error: upErr } = await supabase.storage.from(DOSSIER_BUCKET).upload(path, file, { contentType: file.type || undefined });
+    if (upErr) {
+      setBusy(false);
+      toast.error("Ошибка загрузки: " + upErr.message);
+      return;
+    }
+    const { data: row, error: insErr } = await supabase
+      .from("employee_documents")
+      .insert({
+        employee_id: employee.id,
+        category_code: "formation",
+        file_name: `Formation - ${type.label}.${ext}`,
+        storage_path: path,
+        file_size: file.size,
+        mime_type: file.type || null,
+      })
+      .select("id")
+      .single();
+    if (insErr || !row) {
+      setBusy(false);
+      toast.error("Ошибка: " + (insErr?.message ?? "документ не сохранён"));
+      return;
+    }
+    await link(row.id);
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`${employeeName(employee)} — ${type.code}`} maxWidth="max-w-lg">
+      <p className="mb-3 text-sm text-stone-500">{type.label}. Выберите документ из досье или загрузите новый сертификат.</p>
+      {docs.length === 0 ? (
+        <p className="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-400">В досье пока нет документов «Formation» и «Habilitation».</p>
+      ) : (
+        <ul className="mb-3 space-y-1.5">
+          {docs.map((d) => (
+            <li key={d.id} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${selected === d.id ? "border-emerald-400 bg-emerald-50" : "border-stone-200"}`}>
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                <input type="radio" name="cert" checked={selected === d.id} onChange={() => setSelected(d.id)} />
+                <span className="truncate">{d.file_name}</span>
+                <span className="shrink-0 text-[0.65rem] uppercase text-stone-400">{d.category_code}</span>
+              </label>
+              <button type="button" className="shrink-0 text-stone-400 hover:text-stone-700" title="Открыть" onClick={() => void open(d.storage_path)}>
+                <ExternalLink size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label className={`btn btn-secondary inline-flex ${busy ? "pointer-events-none opacity-50" : "cursor-pointer"}`}>
+          <Upload size={14} /> Загрузить новый
+          <input
+            type="file"
+            accept="application/pdf,image/*"
+            className="hidden"
+            onChange={(ev) => {
+              const f = ev.target.files?.[0];
+              if (f) void upload(f);
+            }}
+          />
+        </label>
+        <div className="flex gap-2">
+          {currentDocId && (
+            <button className="btn btn-secondary" disabled={busy} onClick={() => link(null)}>
+              Убрать ссылку
+            </button>
+          )}
+          <button className="btn btn-primary" disabled={busy || !selected || selected === currentDocId} onClick={() => link(selected)}>
+            Привязать
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
