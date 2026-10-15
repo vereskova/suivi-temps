@@ -6991,20 +6991,39 @@ type EmployeeTrainingRow = {
   status: string;
 };
 
+type FormationCert = { id: string; employee_id: string; file_name: string; storage_path: string };
+
+/** По названию файла в категории «Formation» понимаем, какое обучение подтверждает сертификат. */
+const TRAINING_CERT_PATTERNS: Record<string, RegExp> = {
+  R431: /toiture|hauteur|r\s?431/i,
+  BR_PV_BT: /br[\s-]*pv|photovolta/i,
+  R408: /[ée]chafaud|r\s?408/i,
+  R486A: /r\s?486|pemp/i,
+  R482: /r\s?482/i,
+  SST: /\bsst\b|sauveteur/i,
+  AIPR: /aipr/i,
+  R446: /r\s?446|filet/i,
+};
+
 function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [types, setTypes] = useState<TrainingType[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [trainings, setTrainings] = useState<EmployeeTrainingRow[]>([]);
+  const [certs, setCerts] = useState<FormationCert[]>([]);
+  const [chefIds, setChefIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
   const [search, setSearch] = useState("");
+  // Цвета бригад — как в «Схеме компании» / «Оргструктуре».
+  const orgPlan = useOrgPlan(supabase, false);
+  const teamColors = useMemo(() => teamColorMap(orgPlan.nodes), [orgPlan.nodes]);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const [{ data: typeRows }, { data: empRows }, { data: trainRows }] =
+      const [{ data: typeRows }, { data: empRows }, { data: trainRows }, { data: certRows }, { data: teamRows }] =
         await Promise.all([
           supabase
             .from("training_types")
@@ -7019,10 +7038,14 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
             .eq("status", "active")
             .order("last_name"),
           supabase.from("employee_trainings").select("employee_id, training_type_id, status"),
+          supabase.from("employee_documents").select("id, employee_id, file_name, storage_path").eq("category_code", "formation"),
+          supabase.from("teams").select("chef_employee_id").eq("active", true),
         ]);
       setTypes(typeRows ?? []);
       setEmployees((empRows as unknown as Employee[]) ?? []);
       setTrainings(trainRows ?? []);
+      setCerts((certRows as FormationCert[]) ?? []);
+      setChefIds(new Set((teamRows ?? []).map((t) => t.chef_employee_id).filter((x): x is string => !!x)));
       setLoading(false);
     }
     load();
@@ -7034,12 +7057,29 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     return m;
   }, [trainings]);
 
+  /** Сертификат о прохождении для (сотрудник, обучение) — по названию файла в досье. */
+  function certFor(employeeId: string, code: string): FormationCert | null {
+    const re = TRAINING_CERT_PATTERNS[code];
+    if (!re) return null;
+    const list = certs.filter((c) => c.employee_id === employeeId && re.test(c.file_name));
+    return list.length ? list[list.length - 1] : null;
+  }
+
+  async function openCert(cert: FormationCert) {
+    const { data, error } = await supabase.storage.from(DOSSIER_BUCKET).createSignedUrl(cert.storage_path, 60);
+    if (error || !data?.signedUrl) {
+      toast.error("Не удалось открыть сертификат");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener");
+  }
+
   const teamOptions = useMemo(() => {
     const map = new Map<string, string>();
     employees.forEach((e) => {
       if (e.team_id && e.teams?.name) map.set(e.team_id, e.teams.name);
     });
-    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }));
   }, [employees]);
 
   const filteredEmployees = useMemo(() => {
@@ -7050,6 +7090,24 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
       return true;
     });
   }, [employees, teamFilter, search]);
+
+  /** Группы по бригадам: бригадир первым, внутри — по фамилии. */
+  const groups = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; people: Employee[] }>();
+    filteredEmployees.forEach((e) => {
+      const id = e.team_id ?? "none";
+      if (!map.has(id)) map.set(id, { id, name: e.teams?.name ?? "Sans équipe", people: [] });
+      map.get(id)!.people.push(e);
+    });
+    return Array.from(map.values())
+      .map((g) => ({
+        ...g,
+        people: [...g.people].sort(
+          (a, b) => Number(chefIds.has(b.id)) - Number(chefIds.has(a.id)) || a.last_name.localeCompare(b.last_name)
+        ),
+      }))
+      .sort((a, b) => (a.id === "none" ? 1 : b.id === "none" ? -1 : a.name.localeCompare(b.name, undefined, { numeric: true })));
+  }, [filteredEmployees, chefIds]);
 
   async function toggle(employeeId: string, typeId: string, current: string | undefined) {
     const next = current === "ok" ? "ko" : "ok";
@@ -7070,6 +7128,45 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     setRefreshKey((k) => k + 1);
   }
 
+  /** Ячейка: красная = обязательно, но не пройдено; зелёная = пройдено (значок справа открывает сертификат); серая = не требуется. */
+  function cell(e: Employee, t: TrainingType, compact = false) {
+    const key = `${e.id}|${t.id}`;
+    const status = statusMap.get(key);
+    const cert = status === "ok" ? certFor(e.id, t.code) : null;
+    const tone =
+      status === "ok"
+        ? "bg-emerald-500 text-white hover:bg-emerald-600"
+        : status === "ko"
+          ? "bg-red-500 text-white hover:bg-red-600"
+          : "bg-stone-200 text-stone-400 hover:bg-stone-300";
+    return (
+      <span className="group relative block">
+        <button
+          onClick={() => toggle(e.id, t.id, status)}
+          disabled={saving === key}
+          title={t.label}
+          className={`block w-full rounded-md font-bold ${compact ? "px-2.5 py-1 text-xs" : "py-2 text-xs"} ${tone}`}
+        >
+          {compact ? `${t.code}: ` : ""}
+          {status ? status.toUpperCase() : "—"}
+        </button>
+        {cert && (
+          <button
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              void openCert(cert);
+            }}
+            title={`Открыть сертификат: ${cert.file_name}`}
+            className="absolute right-1 top-1/2 -translate-y-1/2 rounded bg-white/90 p-0.5 text-emerald-700 opacity-0 shadow transition-opacity hover:bg-white group-hover:opacity-100 focus:opacity-100"
+          >
+            <ExternalLink size={12} />
+          </button>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div>
       <div className="card mb-4">
@@ -7079,15 +7176,21 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
             title="Formations"
             text={
               "Отметки о пройденных обучениях по каждому сотруднику и виду обучения (например, CACES, работа на высоте). Нажмите на ячейку, чтобы переключить статус OK/KO.\n\n" +
+              "Красное — обучение обязательно, но не пройдено. Зелёное — пройдено; наведите на зелёную ячейку и нажмите значок справа, чтобы открыть сертификат из «Dossier salarié». Серое — не требуется.\n\n" +
               "Здесь нет дат истечения. Если для документа важна дата действия (например, «Habilitation»), загружайте его в разделе «Dossier salarié» — оттуда он попадёт в «Notifications», когда срок будет подходить."
             }
           />
         </div>
         <p className="text-xs text-stone-400 mb-3">
-          Cliquer une cellule pour basculer OK / KO.{" "}
-          <span className="opacity-70">/ Нажмите на ячейку, чтобы переключить OK / KO.</span>
+          Cliquer une cellule pour basculer OK / KO ; sur une cellule verte, l&apos;icône ouvre le certificat.{" "}
+          <span className="opacity-70">/ Нажмите на ячейку, чтобы переключить OK / KO; на зелёной значок открывает сертификат.</span>
         </p>
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-emerald-500" /> OK — пройдено</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-red-500" /> KO — обязательно, не пройдено</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-stone-200" /> — не требуется</span>
+        </div>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
             <label className="block text-xs font-bold text-stone-400">
               <Bi fr="Recherche" ru="Поиск" />
@@ -7129,83 +7232,81 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         </div>
       ) : (
         <>
-        {/* Mobile: one card per employee with wrapping status chips, instead
-            of a table with one column per training type. */}
-        <div className="md:hidden space-y-2">
-          {filteredEmployees.map((e) => (
-            <div key={e.id} className="card">
-              <p className="font-semibold">{employeeName(e)}</p>
-              <p className="text-xs text-stone-400 mb-2">{e.teams?.name ?? "—"}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {types.map((t) => {
-                  const key = `${e.id}|${t.id}`;
-                  const status = statusMap.get(key);
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => toggle(e.id, t.id, status)}
-                      disabled={saving === key}
-                      title={t.label}
-                      className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                        status === "ok"
-                          ? "bg-success-100 text-success-700"
-                          : status === "ko"
-                          ? "bg-error-100 text-error-700"
-                          : "bg-stone-100 text-stone-400"
-                      }`}
-                    >
-                      {t.code}: {status ? status.toUpperCase() : "—"}
-                    </button>
-                  );
-                })}
+        {/* Mobile: одна карточка на бригаду, внутри — сотрудники с цветными чипами. */}
+        <div className="md:hidden space-y-3">
+          {groups.map((g) => {
+            const cc = ORG_COLOR_CLASSES[teamColors[g.id] ?? DEFAULT_TEAM_COLOR] ?? ORG_COLOR_CLASSES[DEFAULT_TEAM_COLOR];
+            return (
+              <div key={g.id} className="card p-0 overflow-hidden">
+                <div className={`px-3 py-2 text-sm font-bold uppercase tracking-wide ${cc.header}`}>
+                  {g.name} <span className="font-normal normal-case opacity-80">{teamLabelRu(g.name)}</span>
+                </div>
+                <div className="space-y-3 p-3">
+                  {g.people.map((e) => (
+                    <div key={e.id}>
+                      <p className="font-semibold">
+                        {chefIds.has(e.id) && <Crown size={12} className="mr-1 inline fill-current text-success-700" />}
+                        {employeeName(e)}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        {types.map((t) => (
+                          <span key={t.id}>{cell(e, t, true)}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="hidden md:block card overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full border-separate border-spacing-0 text-sm">
             <thead>
               <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Poste" ru="Должность" /></th>
                 {types.map((t) => (
-                  <th key={t.id} className="pb-2 px-2 text-center" title={t.label}>
+                  <th key={t.id} className="pb-2 px-1 text-center" title={t.label}>
                     {t.code}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filteredEmployees.map((e) => (
-                <tr key={e.id} className="border-t border-stone-100">
-                  <td className="py-2 pr-4 font-semibold">{employeeName(e)}</td>
-                  <td className="py-2 pr-4 text-stone-500">
-                    {e.teams?.name ?? "—"}
-                  </td>
-                  {types.map((t) => {
-                    const key = `${e.id}|${t.id}`;
-                    const status = statusMap.get(key);
-                    return (
-                      <td key={t.id} className="py-2 px-2 text-center">
-                        <button
-                          onClick={() => toggle(e.id, t.id, status)}
-                          disabled={saving === key}
-                          className={`w-10 rounded-full px-2 py-1 text-xs font-bold ${
-                            status === "ok"
-                              ? "bg-success-100 text-success-700"
-                              : status === "ko"
-                              ? "bg-error-100 text-error-700"
-                              : "bg-stone-100 text-stone-400"
-                          }`}
-                        >
-                          {status ? status.toUpperCase() : "—"}
-                        </button>
+              {groups.map((g) => {
+                const cc = ORG_COLOR_CLASSES[teamColors[g.id] ?? DEFAULT_TEAM_COLOR] ?? ORG_COLOR_CLASSES[DEFAULT_TEAM_COLOR];
+                return (
+                  <Fragment key={g.id}>
+                    <tr>
+                      <td colSpan={types.length + 2} className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${cc.header}`}>
+                        {g.name}{" "}
+                        <span className="font-normal normal-case opacity-80">{teamLabelRu(g.name)} · {g.people.length}</span>
                       </td>
-                    );
-                  })}
-                </tr>
-              ))}
+                    </tr>
+                    {g.people.map((e) => (
+                      <tr key={e.id}>
+                        <td className="border-b border-stone-100 py-1 pr-4 font-semibold">{employeeName(e)}</td>
+                        <td className="border-b border-stone-100 py-1 pr-4 text-xs">
+                          {chefIds.has(e.id) ? (
+                            <span className="inline-flex items-center gap-1 text-success-700">
+                              <Crown size={11} className="fill-current" /> Chef d&apos;équipe
+                            </span>
+                          ) : (
+                            <span className="text-stone-300">—</span>
+                          )}
+                        </td>
+                        {types.map((t) => (
+                          <td key={t.id} className="border-b border-stone-100 px-0.5 py-0.5 text-center">
+                            {cell(e, t)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
