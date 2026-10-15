@@ -15,6 +15,7 @@ export const BUREAU_ROLE_LABELS: Record<string, string> = {
   formation_officer: "Formation",
   depot: "Dépôt",
   hotel: "Hôtel",
+  repair: "Réparation",
 };
 
 export const BUREAU_ROLE_LABELS_RU: Record<string, string> = {
@@ -30,6 +31,7 @@ export const BUREAU_ROLE_LABELS_RU: Record<string, string> = {
   formation_officer: "Обучение",
   depot: "Склад",
   hotel: "Отель",
+  repair: "Ремонтники",
 };
 
 /** Порядок блоков офиса по умолчанию (пожелание Kate, 14/10/2026): руководитель,
@@ -46,6 +48,7 @@ export const BUREAU_ROLE_ORDER = [
   "depot",
   "hotel",
   "production",
+  "repair",
   "formation_officer",
   "control",
 ];
@@ -559,6 +562,7 @@ export function visotskyTemplate(teams: OrgTeamLite[]): NodeSeed[] {
     { key: "teams", parentKey: "b4", kind: "section", title_fr: "Équipes", title_ru: "Бригады" },
     pos("planning", "b4"),
     pos("depot", "b4"),
+    pos("repair", "b4"),
     {
       key: "b5",
       parentKey: null,
@@ -725,6 +729,7 @@ export const DEFAULT_ROLE_COLORS: Record<string, string> = {
   production: "orange",
   planning: "orange",
   depot: "orange",
+  repair: "orange",
   formation_officer: "teal",
   control: "teal",
 };
