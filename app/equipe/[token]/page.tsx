@@ -204,7 +204,7 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
       {open && (
         <div className="px-4 pb-4">
           <Line ru="Отработано дней" fr="Jours travaillés" value={num(p.jours)} />
-          <Line ru="Ставка за день" fr="Taux journalier" value={eur(p.taux)} />
+          <Line ru="Заработано в день" fr="Gagné par jour" value={eur(p.taux)} />
           <Line ru="Зарплата за дни" fr="Salaire des jours" value={eur(r.salaireJours)} />
           {p.bonusEquipe !== 0 && (
             <>
