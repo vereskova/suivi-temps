@@ -20376,13 +20376,22 @@ function DossierView({
 
   async function reloadOverdueCounts() {
     const t = today();
-    const [{ data: docs }, { data: visits }] = await Promise.all([
+    const [{ data: docs }, { data: visits }, { data: gone }] = await Promise.all([
       supabase.from("employee_documents").select("employee_id, valid_until").lt("valid_until", t),
-      supabase.from("medical_visits").select("employee_id, next_visit_date").lt("next_visit_date", t),
+      supabase.from("medical_visits").select("employee_id, next_visit_date, last_visit_date").lt("next_visit_date", t),
+      supabase.from("employees").select("id").neq("status", "active"),
     ]);
+    // Les sortis n'ont plus rien à renouveler, et une visite déjà passée (last >= next) n'est pas en retard.
+    const goneIds = new Set((gone ?? []).map((e: { id: string }) => e.id));
     const map = new Map<string, number>();
-    (docs ?? []).forEach((d: { employee_id: string }) => map.set(d.employee_id, (map.get(d.employee_id) ?? 0) + 1));
-    (visits ?? []).forEach((v: { employee_id: string }) => map.set(v.employee_id, (map.get(v.employee_id) ?? 0) + 1));
+    (docs ?? []).forEach((d: { employee_id: string }) => {
+      if (!goneIds.has(d.employee_id)) map.set(d.employee_id, (map.get(d.employee_id) ?? 0) + 1);
+    });
+    (visits ?? []).forEach((v: { employee_id: string; next_visit_date: string | null; last_visit_date: string | null }) => {
+      if (goneIds.has(v.employee_id)) return;
+      if (v.last_visit_date && v.next_visit_date && v.last_visit_date >= v.next_visit_date) return;
+      map.set(v.employee_id, (map.get(v.employee_id) ?? 0) + 1);
+    });
     setOverdueCounts(map);
   }
 
