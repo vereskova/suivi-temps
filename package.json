@@ -21,6 +21,7 @@
     "lucide-react": "^1.25.0",
     "mailparser": "^3.9.23",
     "next": "16.2.4",
+    "nodemailer": "^10.1.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "xlsx": "^0.18.5"
@@ -29,6 +30,7 @@
     "@tailwindcss/postcss": "^4",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

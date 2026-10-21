@@ -22,6 +22,8 @@ export type VTenant = {
   email: string | null;
   phone: string | null;
   address: string | null;
+  representative: string | null;
+  billing_email: string | null;
   is_active: boolean;
   notes: string | null;
 };
@@ -39,6 +41,10 @@ export type VLease = {
   monthly_total: number;
   deposit: number;
   billing_day: number;
+  index_type: "ILC" | "ILAT" | "IRL" | "none" | null;
+  next_revision_date: string | null;
+  notice_months: number | null;
+  terminated_on: string | null;
   is_active: boolean;
   notes: string | null;
 };
@@ -58,6 +64,7 @@ export type VCharge = {
   paid_on: string | null;
   status: ChargeStatus;
   description: string | null;
+  reminded_at: string | null;
 };
 
 export type VBankTx = {
@@ -137,7 +144,12 @@ export function suggestMatches(txs: VBankTx[], charges: VCharge[], tenants: VTen
     .sort((a, b) => (a.settled_at ?? "").localeCompare(b.settled_at ?? ""))
     .forEach((tx) => {
       const text = [tx.label, tx.counterparty, tx.reference, tx.note].filter(Boolean).join(" ");
-      const candidates = open.filter((c) => !used.has(c.id) && nameMatches(text, tenantById.get(c.tenant_id!)?.name ?? ""));
+      const txDay = (tx.settled_at ?? "").slice(0, 10);
+      // un virement ne règle pas un loyer appelé bien après lui : on exige qu'il date d'au plus 7 jours avant l'échéance
+      const notBefore = (due: string) => new Date(Date.parse(`${due}T00:00:00Z`) - 7 * 86400000).toISOString().slice(0, 10);
+      const candidates = open.filter(
+        (c) => !used.has(c.id) && txDay >= notBefore(c.due_date) && nameMatches(text, tenantById.get(c.tenant_id!)?.name ?? "")
+      );
       if (candidates.length === 0) return;
       const exact = candidates.find((c) => Math.abs(remaining(c) - num(tx.amount)) < 0.01);
       const chosen = exact ?? candidates[0];
@@ -166,4 +178,115 @@ export const PROPERTY_STATUS_LABEL: Record<VProperty["status"], { fr: string; ru
 /** Dernier jour du mois (year, month 1-12) au format AAAA-MM-JJ. */
 export function monthEnd(year: number, month: number): string {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+// ───────────────────────── Fiche société, factures, documents ─────────────────────────
+
+export type VSettings = {
+  id: number;
+  company_name: string;
+  legal_form: string | null;
+  siren: string | null;
+  vat_number: string | null;
+  address: string | null;
+  iban: string | null;
+  bic: string | null;
+  email: string | null;
+  phone: string | null;
+  payment_terms: string;
+  late_penalty: string;
+  invoice_prefix: string;
+  receipt_prefix: string;
+};
+
+export type InvoiceLine = { label: string; amount_ht: number; vat_rate: number; vat: number; amount_ttc: number };
+
+export type VInvoice = {
+  id: string;
+  number: string;
+  kind: "invoice" | "receipt";
+  tenant_id: string | null;
+  lease_id: string | null;
+  charge_id: string | null;
+  issue_date: string;
+  due_date: string | null;
+  period_start: string | null;
+  period_end: string | null;
+  lines: InvoiceLine[];
+  total_ht: number;
+  vat_amount: number;
+  total_ttc: number;
+  status: "draft" | "sent" | "void";
+  pdf_path: string | null;
+  sent_at: string | null;
+  sent_to: string | null;
+  notes: string | null;
+};
+
+export type VDocument = {
+  id: string;
+  tenant_id: string | null;
+  lease_id: string | null;
+  property_id: string | null;
+  kind: "contract" | "amendment" | "inventory" | "insurance" | "identity" | "invoice" | "other";
+  title: string;
+  storage_path: string;
+  mime: string | null;
+  size_bytes: number | null;
+  uploaded_at: string;
+};
+
+export const DOCUMENT_KIND_LABEL: Record<VDocument["kind"], { fr: string; ru: string }> = {
+  contract: { fr: "Contrat de bail", ru: "Договор аренды" },
+  amendment: { fr: "Avenant", ru: "Допсоглашение" },
+  inventory: { fr: "État des lieux", ru: "Акт приёма-передачи" },
+  insurance: { fr: "Assurance", ru: "Страховка" },
+  identity: { fr: "Pièce d'identité / Kbis", ru: "Удостоверение / Kbis" },
+  invoice: { fr: "Facture", ru: "Счёт" },
+  other: { fr: "Autre", ru: "Другое" },
+};
+
+const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
+export const monthLabelFr = (isoDate: string) => `${MONTHS_FR[Number(isoDate.slice(5, 7)) - 1]} ${isoDate.slice(0, 4)}`;
+
+/**
+ * Lignes d'une facture à partir de l'échéance et du bail. Si le montant appelé est celui du bail et que le bail
+ * détaille loyer HT / charges / TVA, on reprend ce détail ; sinon une ligne unique (TVA de l'échéance incluse).
+ */
+export function buildInvoiceLines(
+  charge: Pick<VCharge, "amount_due" | "vat_amount" | "period_start" | "due_date" | "description" | "kind">,
+  lease: Pick<VLease, "monthly_total" | "rent_ht" | "vat" | "charges"> | null
+): InvoiceLine[] {
+  const period = monthLabelFr(charge.period_start ?? charge.due_date);
+  const due = round2(num(charge.amount_due));
+  const detailed = lease && lease.rent_ht != null && Math.abs(num(lease.monthly_total) - due) < 0.01;
+  if (charge.kind === "rent" && detailed) {
+    const ht = round2(num(lease!.rent_ht));
+    const vat = round2(num(lease!.vat));
+    const charges = round2(num(lease!.charges));
+    const rate = ht > 0 ? Math.round((vat / ht) * 100) : 0;
+    const lines: InvoiceLine[] = [{ label: `Loyer ${period}`, amount_ht: ht, vat_rate: rate, vat, amount_ttc: round2(ht + vat) }];
+    if (charges > 0) lines.push({ label: `Provision sur charges ${period}`, amount_ht: charges, vat_rate: 0, vat: 0, amount_ttc: charges });
+    return lines;
+  }
+  const vat = round2(num(charge.vat_amount));
+  const ht = round2(due - vat);
+  const label = charge.kind === "deposit" ? "Dépôt de garantie" : charge.description?.trim() || `Loyer ${period}`;
+  return [{ label, amount_ht: ht, vat_rate: ht > 0 ? Math.round((vat / ht) * 100) : 0, vat, amount_ttc: due }];
+}
+
+export const totalsOf = (lines: InvoiceLine[]) => ({
+  total_ht: round2(lines.reduce((s, l) => s + l.amount_ht, 0)),
+  vat_amount: round2(lines.reduce((s, l) => s + l.vat, 0)),
+  total_ttc: round2(lines.reduce((s, l) => s + l.amount_ttc, 0)),
+});
+
+/** Prochain numéro « F-2026-0007 » d'après les numéros existants de l'année. */
+export function nextInvoiceNumber(prefix: string, year: number, existing: string[]): string {
+  const re = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+  const max = existing.reduce((m, n) => {
+    const hit = n.match(re);
+    return hit ? Math.max(m, Number(hit[1])) : m;
+  }, 0);
+  return `${prefix}-${year}-${String(max + 1).padStart(4, "0")}`;
 }
