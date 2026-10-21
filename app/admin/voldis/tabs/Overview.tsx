@@ -5,6 +5,7 @@ import { toast } from "@/components/Toast";
 import { proposeMatches } from "@/lib/voldis/matching";
 import { num, remaining, round2 } from "@/lib/voldis/rental";
 import type { Supabase, VoldisData } from "../data";
+import SitePlan from "../SitePlan";
 import { Bi, Section, eur, eur0, frDate, todayIso } from "../ui";
 import { callApi } from "./Rents";
 
@@ -167,22 +168,9 @@ export default function Overview({ data, go }: { supabase: Supabase; data: Voldi
         )}
       </Section>
 
-      <Section title="Lots" ru="Помещения" action={<button className="text-sm font-semibold text-primary-700 hover:underline" onClick={() => go("lots")}>Gérer</button>}>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-9">
-          {props.map((p) => {
-            const l = activeLeases.find((x) => x.property_id === p.id);
-            return (
-              <button
-                key={p.id}
-                onClick={() => go("lots")}
-                title={l ? tenantBy.get(l.tenant_id)?.name : "Libre"}
-                className={`rounded-xl border px-3 py-2.5 text-left transition-colors hover:border-stone-400 ${l ? "border-stone-200 bg-white" : "border-dashed border-stone-300 bg-stone-50"}`}
-              >
-                <div className="text-base font-extrabold text-stone-900">{p.lot_number}</div>
-                <div className="truncate text-[11px] text-stone-400">{l ? tenantBy.get(l.tenant_id)?.name : "libre"}</div>
-              </button>
-            );
-          })}
+      <Section title="Plan du site" ru="План участка" action={<button className="text-sm font-semibold text-primary-700 hover:underline" onClick={() => go("lots")}>Gérer les lots</button>}>
+        <div className="rounded-2xl border border-stone-200 bg-white p-4 sm:p-6">
+          <SitePlan props={props} leases={leases} tenants={tenants} onSelect={() => go("lots")} />
         </div>
       </Section>
     </div>

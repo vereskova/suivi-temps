@@ -110,6 +110,8 @@ export function LotModal({ supabase, lot, onClose, onSaved }: { supabase: Supaba
     status: lot?.status ?? "available",
     address: lot?.address ?? "590 chemin d'Engoudes, 31450 Baziège",
     notes: lot?.notes ?? "",
+    occupant: lot?.occupant ?? "",
+    pays_cash: lot?.pays_cash ?? false,
   });
   const [busy, setBusy] = useState(false);
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.value });
@@ -126,6 +128,8 @@ export function LotModal({ supabase, lot, onClose, onSaved }: { supabase: Supaba
       status: f.status,
       address: textOrNull(f.address),
       notes: textOrNull(f.notes),
+      occupant: textOrNull(f.occupant),
+      pays_cash: f.pays_cash,
     };
     const q = lot ? supabase.from("voldis_properties").update(row).eq("id", lot.id) : supabase.from("voldis_properties").insert(row);
     const { error } = await q;
@@ -163,6 +167,13 @@ export function LotModal({ supabase, lot, onClose, onSaved }: { supabase: Supaba
         <Field label="Adresse" ru="Адрес">
           <input className="input" value={f.address} onChange={set("address")} />
         </Field>
+        <Field label="Occupant sans bail" ru="Жилец без договора" hint="Affiché sur le plan (ex. Remy, Evgueni)" className="sm:col-span-2">
+          <input className="input" value={f.occupant} onChange={set("occupant")} />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-stone-600 sm:col-span-2">
+          <input type="checkbox" checked={f.pays_cash} onChange={(e) => setF({ ...f, pays_cash: e.target.checked })} />
+          Paie en espèces (hors virement bancaire) / Платит наличными
+        </label>
         <Field label="Notes" ru="Заметки" className="sm:col-span-2">
           <textarea className="input min-h-20" value={f.notes} onChange={set("notes")} />
         </Field>

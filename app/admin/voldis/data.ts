@@ -54,7 +54,7 @@ export function useVoldisData(supabase: Supabase): VoldisData {
     setState({
       loading: false,
       missing: false,
-      props: ((p.data ?? []) as VProperty[]).sort((a, z) => Number(a.lot_number) - Number(z.lot_number)),
+      props: ((p.data ?? []) as VProperty[]).sort((a, z) => a.lot_number.localeCompare(z.lot_number, "fr", { numeric: true })),
       tenants: (t.data ?? []) as VTenant[],
       leases: (l.data ?? []) as VLease[],
       charges: (c.data ?? []) as VCharge[],

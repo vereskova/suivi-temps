@@ -12,6 +12,8 @@ export type VProperty = {
   list_rent: number | null;
   status: "available" | "rented" | "notice" | "unavailable" | "works";
   notes: string | null;
+  occupant: string | null;
+  pays_cash: boolean;
 };
 
 export type VTenant = {
