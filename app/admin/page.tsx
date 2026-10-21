@@ -19610,68 +19610,112 @@ function PayrollExtrasView({
         </div>
       ) : (
         <div className="card">
-          {companyQualityBank && (
-            <div className="mb-3 rounded-xl border border-stone-200 p-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-xs font-bold text-stone-500 shrink-0">
-                  <Bi fr="Банк качества (entreprise)" ru="Банк качества (компания)" />
-                </span>
-                <span className="text-lg font-bold text-stone-800 shrink-0">{bankTotalLive.toFixed(0)} €</span>
-                <span className="text-[11px] text-stone-400 shrink-0">
-                  {(() => {
-                    const payoutIso = nextQualityBankPayoutDate();
-                    const [py, pm, pd] = payoutIso.split("-");
-                    return (
-                      <Bi
-                        fr={`Sans plafond — se remplit jusqu'au paiement du ${pd}/${pm}/${py}`}
-                        ru={`Без потолка — копится до выплаты ${pd}.${pm}.${py}`}
-                      />
-                    );
-                  })()}
-                </span>
-                {isBankPayoutMonth && canWrite && (
-                  <button className="btn btn-dark" disabled={distributing} onClick={() => void distributeQualityBank()}>
-                    <Bi fr="Payer le Банк качества" ru="Выплатить Банк качества" />
-                  </button>
-                )}
-              </div>
-              <div
-                className="mt-1 text-[11px] text-stone-400"
-                title="Contrôleur désigné qui reçoit 25% des pénalités chaque mois / Назначенный контролёр, получающий 25% штрафов каждый месяц"
-              >
-                <Bi
-                  fr={`Contrôleur : ${employeeName(employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID) ?? { first_name: "", last_name: "?" })} — part du mois : ${controllerSplit.controllerShare.toFixed(2)} € (25 % de ${totalPenalitesThisMonth.toFixed(2)} €)`}
-                  ru={`Контролёр — доля за месяц: ${controllerSplit.controllerShare.toFixed(2)} € (25 % от штрафов ${totalPenalitesThisMonth.toFixed(2)} €)`}
-                />
-              </div>
-              {bankStandings.length > 0 && (
-                <div className="mt-2">
-                  <div className="mb-1 text-[11px] text-stone-400">
-                    <Bi
-                      fr={`Classement des équipes (moins de pénalités = mieux) — les ${QUALITY_BANK_EXCLUDED_WORST} pires n'ont pas de part ; la meilleure reçoit le plus`}
-                      ru={`Рейтинг команд (меньше штрафов — выше) — ${QUALITY_BANK_EXCLUDED_WORST} худшие без доли; лучшая получает больше всех`}
-                    />
+          {companyQualityBank && (() => {
+            const payoutIso = nextQualityBankPayoutDate();
+            const [py, pm, pd] = payoutIso.split("-");
+            const dayMs = 86400000;
+            const t0 = Date.parse(`${companyQualityBank.period_start}T00:00:00Z`);
+            const t1 = Date.parse(`${payoutIso}T00:00:00Z`);
+            const todayMs = Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+            const progress = t1 > t0 ? Math.min(100, Math.max(0, ((todayMs - t0) / (t1 - t0)) * 100)) : 0;
+            const daysLeft = Math.max(0, Math.round((t1 - todayMs) / dayMs));
+            const maxAmount = Math.max(1, ...bankStandings.map((t) => t.amount));
+            const firstOut = bankStandings.findIndex((t) => !t.eligible);
+            const controllerName = employeeName(employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID) ?? { first_name: "", last_name: "?" });
+            return (
+              <div className="mb-3 rounded-2xl border border-stone-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wide text-stone-500">
+                      <Bi fr="Банк качества (entreprise)" ru="Банк качества (компания)" />
+                    </div>
+                    <div className="mt-1 text-3xl font-extrabold tabular-nums text-emerald-700">{bankTotalLive.toFixed(0)} €</div>
                   </div>
-                  <div className="grid gap-1 sm:grid-cols-2">
-                    {bankStandings.map((t) => (
-                      <div
-                        key={t.teamId}
-                        className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-xs ${
-                          t.eligible ? "bg-emerald-50 text-emerald-900" : "bg-stone-100 text-stone-500"
-                        }`}
-                      >
-                        <span className="font-semibold">
-                          {t.rank}. {t.name}
-                        </span>
-                        <span className="text-stone-500">{t.penalties.toFixed(0)} € штрафов</span>
-                        <span className="font-bold">{t.eligible ? `${t.amount.toFixed(0)} €` : "—"}</span>
-                      </div>
-                    ))}
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-semibold text-stone-700">
+                      <Bi fr={`Paiement le ${pd}/${pm}/${py}`} ru={`Выплата ${pd}.${pm}.${py}`} />
+                    </span>
+                    {isBankPayoutMonth && canWrite && (
+                      <button className="btn btn-dark" disabled={distributing} onClick={() => void distributeQualityBank()}>
+                        <Bi fr="Payer le Банк качества" ru="Выплатить Банк качества" />
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+                <div className="mt-3">
+                  <div className="h-2 overflow-hidden rounded-full bg-stone-100">
+                    <div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="mt-1 flex justify-between text-[11px] text-stone-400">
+                    <span>
+                      <Bi fr="Sans plafond — se remplit jusqu'au paiement" ru="Без потолка — копится до выплаты" />
+                    </span>
+                    <span className="shrink-0 font-semibold text-stone-500">
+                      {daysLeft} <Bi fr="j. restants" ru="дн. осталось" />
+                    </span>
+                  </div>
+                </div>
+                <div
+                  className="mt-3 inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-amber-50 px-3 py-1.5 text-[11px] text-amber-900"
+                  title="Contrôleur désigné qui reçoit 25% des pénalités chaque mois / Назначенный контролёр, получающий 25% штрафов каждый месяц"
+                >
+                  <span className="font-bold">
+                    <Bi fr={`Contrôleur : ${controllerName}`} ru="Контролёр" />
+                  </span>
+                  <span className="font-bold tabular-nums">{controllerSplit.controllerShare.toFixed(2)} €</span>
+                  <span className="text-amber-700">
+                    <Bi fr={`25 % de ${totalPenalitesThisMonth.toFixed(2)} € ce mois`} ru={`25 % от ${totalPenalitesThisMonth.toFixed(2)} € за месяц`} />
+                  </span>
+                </div>
+                {bankStandings.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-2 text-[11px] text-stone-400">
+                      <Bi
+                        fr={`Classement des équipes : moins de pénalités = mieux. Les ${QUALITY_BANK_EXCLUDED_WORST} pires n'ont pas de part.`}
+                        ru={`Рейтинг команд: меньше штрафов — выше. ${QUALITY_BANK_EXCLUDED_WORST} худшие без доли.`}
+                      />
+                    </div>
+                    <ul className="flex flex-col gap-1.5">
+                      {bankStandings.map((t, i) => (
+                        <Fragment key={t.teamId}>
+                          {i === firstOut && firstOut > 0 && (
+                            <li className="my-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                              <span className="h-px flex-1 bg-stone-200" />
+                              <Bi fr="Sans part" ru="Без доли" />
+                              <span className="h-px flex-1 bg-stone-200" />
+                            </li>
+                          )}
+                          <li className={`flex items-center gap-3 rounded-xl px-3 py-2 ${t.eligible ? "bg-emerald-50/70" : "bg-stone-50"}`}>
+                            <span
+                              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-extrabold ${
+                                t.rank === 1 ? "bg-amber-400 text-amber-950" : t.eligible ? "bg-emerald-600 text-white" : "bg-stone-300 text-stone-600"
+                              }`}
+                            >
+                              {t.rank}
+                            </span>
+                            <span className={`w-24 shrink-0 text-sm font-bold ${t.eligible ? "text-stone-800" : "text-stone-500"}`}>{t.name}</span>
+                            <span
+                              className={`w-20 shrink-0 text-right text-xs tabular-nums ${
+                                t.penalties === 0 ? "font-bold text-emerald-700" : t.eligible ? "text-stone-500" : "text-error-600"
+                              }`}
+                            >
+                              {t.penalties === 0 ? <Bi fr="0 € штрафов" ru="без штрафов" /> : `−${t.penalties.toFixed(0)} €`}
+                            </span>
+                            <span className="hidden h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-stone-200/70 sm:block">
+                              {t.eligible && <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${(t.amount / maxAmount) * 100}%` }} />}
+                            </span>
+                            <span className={`ml-auto w-20 shrink-0 text-right text-base font-extrabold tabular-nums ${t.eligible ? "text-emerald-800" : "text-stone-400"}`}>
+                              {t.eligible ? `${t.amount.toFixed(0)} €` : "—"}
+                            </span>
+                          </li>
+                        </Fragment>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div className="flex items-center gap-2 flex-wrap text-[11px]">
               {EXTRAS_ABSENCE_LEGEND.map((item) => (
