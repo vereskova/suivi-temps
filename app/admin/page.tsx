@@ -17,6 +17,7 @@ import {
   Banknote,
   Bell,
   BookText,
+  Building2,
   Briefcase,
   Calculator,
   CalendarDays,
@@ -80,6 +81,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import LocationView from "./voldis/LocationView";
 import {
   HR_GROUPS,
   computeGroupStats,
@@ -476,7 +478,8 @@ type ViewKey =
   | "dashboards"
   | "commercial"
   | "autoparc"
-  | "audit";
+  | "audit"
+  | "voldis_location";
 
 type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon };
 
@@ -540,6 +543,14 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+/** 2e société du groupe : VOLDIS (location de locaux). Menu propre, rh_admin uniquement. */
+const VOLDIS_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Location",
+    items: [{ key: "voldis_location", label: "Location de locaux", labelRu: "Аренда локалей", icon: Building2 }],
+  },
+];
+
 /** Keeps a piece of UI navigation state (which section/tab is open) across a
  *  page reload — read once from localStorage on mount, written back on every
  *  change. `validValues`, when given, guards against a stale stored value
@@ -600,6 +611,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   audit: ["rh_admin"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
+  voldis_location: ["rh_admin"],
 };
 
 /** rh_admin-only indicator of which roles can see the currently open page —
@@ -731,6 +743,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = usePersistedView<ViewKey>("admin_view", "jour", VALID_VIEW_KEYS);
+  const [company, setCompany] = usePersistedView<"vladis" | "voldis">("admin_company", "vladis", new Set(["vladis", "voldis"]));
   const [dossierTargetEmployeeId, setDossierTargetEmployeeId] = useState<string | null>(null);
   function openDossier(employeeId: string) {
     setDossierTargetEmployeeId(employeeId);
@@ -1504,6 +1517,10 @@ export default function AdminPage() {
           }))
           .filter((g) => g.items.length > 0)
       : NAV_GROUPS;
+  // VOLDIS : réservé à rh_admin ; les autres rôles restent sur VLADIS.
+  const activeCompany = role === "rh_admin" ? company : "vladis";
+  const shownNavGroups = activeCompany === "voldis" ? VOLDIS_NAV_GROUPS : visibleNavGroups;
+  const shownView: ViewKey = activeCompany === "voldis" ? "voldis_location" : view;
 
   return (
     <main className="min-h-screen p-4 md:p-8">
@@ -1530,16 +1547,33 @@ export default function AdminPage() {
               <LogoMark size={44} />
             </div>
             <div className="min-w-0">
-              <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">
-                VLADIS
-              </p>
+              {role === "rh_admin" ? (
+                <div className="flex items-center gap-1" role="tablist" aria-label="Société / Компания">
+                  {(["vladis", "voldis"] as const).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeCompany === c}
+                      onClick={() => setCompany(c)}
+                      className={`rounded-lg px-2.5 py-0.5 text-lg font-extrabold tracking-tight leading-tight transition-colors ${
+                        activeCompany === c ? "bg-stone-900 text-white" : "text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                      }`}
+                    >
+                      {c === "vladis" ? "VLADIS" : "VOLDIS"}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
+              )}
               <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">
-                Tableau de bord RH
+                {activeCompany === "voldis" ? "Location de locaux / Аренда локалей" : "Tableau de bord RH"}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {role === "rh_admin" && <PageAccessBadge viewKey={view} />}
+            {role === "rh_admin" && <PageAccessBadge viewKey={shownView} />}
             <Link href="/" className="btn btn-secondary text-sm shrink-0">
               <ArrowLeft size={15} />
               <span className="hidden sm:inline">Retour au pointage</span>
@@ -1566,13 +1600,13 @@ export default function AdminPage() {
                   <X size={18} />
                 </button>
               </div>
-              {visibleNavGroups.map((group) => (
+              {shownNavGroups.map((group) => (
                 <SidebarSection key={group.title} title={group.title}>
                   {group.items.map((item) => (
                     <SidebarLink
                       key={item.key}
                       icon={item.icon}
-                      active={view === item.key}
+                      active={shownView === item.key}
                       onClick={() => {
                         if (item.key === "echeances") markAllNotificationsUnread();
                         setView(item.key);
@@ -1593,13 +1627,13 @@ export default function AdminPage() {
           {!navCollapsed && (
             <aside className="hidden lg:block w-60 shrink-0">
               <nav className="card p-3 space-y-4 sticky top-4">
-                {visibleNavGroups.map((group) => (
+                {shownNavGroups.map((group) => (
                   <SidebarSection key={group.title} title={group.title}>
                     {group.items.map((item) => (
                       <SidebarLink
                         key={item.key}
                         icon={item.icon}
-                        active={view === item.key}
+                        active={shownView === item.key}
                         onClick={() => {
                           if (item.key === "echeances") markAllNotificationsUnread();
                           setView(item.key);
@@ -1616,6 +1650,8 @@ export default function AdminPage() {
           )}
 
           <div className="flex-1 min-w-0">
+          {activeCompany === "voldis" && <LocationView supabase={supabase} />}
+          {activeCompany === "vladis" && (
           <DossierNavContext.Provider value={openDossier}>
             {view === "jour" && (
               <JourView
@@ -1682,6 +1718,7 @@ export default function AdminPage() {
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
           </DossierNavContext.Provider>
+          )}
           </div>
         </div>
       </div>
