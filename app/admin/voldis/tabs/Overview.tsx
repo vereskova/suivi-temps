@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "@/components/Toast";
-import { num, remaining, round2, suggestMatches } from "@/lib/voldis/rental";
+import { proposeMatches } from "@/lib/voldis/matching";
+import { num, remaining, round2 } from "@/lib/voldis/rental";
 import type { Supabase, VoldisData } from "../data";
 import { Bi, Section, eur, eur0, frDate, todayIso } from "../ui";
 import { callApi } from "./Rents";
@@ -69,12 +70,13 @@ export default function Overview({ data, go }: { supabase: Supabase; data: Voldi
   });
 
   // 2. Paiements reçus à rapprocher
-  const suggestions = suggestMatches(txs, charges, tenants);
-  if (suggestions.length > 0) {
+  const proposals = proposeMatches(txs, charges, tenants);
+  if (proposals.length > 0) {
+    const sureN = proposals.filter((p) => p.confidence === "sure").length;
     items.push({
       key: "bank",
-      title: `${suggestions.length} virement${suggestions.length > 1 ? "s" : ""} reçu${suggestions.length > 1 ? "s" : ""} à rapprocher`,
-      detail: suggestions.slice(0, 3).map((s) => `${s.tenantName} ${eur(num(s.tx.amount))}`).join(" · "),
+      title: `${proposals.length} virement${proposals.length > 1 ? "s" : ""} reçu${proposals.length > 1 ? "s" : ""} à rapprocher`,
+      detail: `${sureN} sûr${sureN > 1 ? "s" : ""}, ${proposals.length - sureN} à vérifier — ${proposals.slice(0, 3).map((p) => `${p.tenant.name} ${eur(num(p.tx.amount))}`).join(" · ")}`,
       tone: "warn",
       actions: [{ label: "Ouvrir la banque", onClick: () => go("banque") }],
     });

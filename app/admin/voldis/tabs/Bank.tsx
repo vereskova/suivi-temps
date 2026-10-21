@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/components/Toast";
 import { parseBankFile, toRows } from "@/lib/voldis/bank-import";
-import { num, remaining, round2, statusFor, suggestMatches, type VBankTx, type VCharge } from "@/lib/voldis/rental";
+import { proposeMatches, type Proposal } from "@/lib/voldis/matching";
+import { num, remaining, round2, statusFor, type VBankTx } from "@/lib/voldis/rental";
 import type { Supabase, VoldisData } from "../data";
-import { Bi, eur, frDate, todayIso } from "../ui";
+import { Bi, Field, Menu, Modal, eur, frDate, todayIso } from "../ui";
 
 // ───────────────────────── Banque (Crédit Agricole) ─────────────────────────
 
@@ -67,7 +68,10 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
   }
 
   const needsReconnect = !!pw?.connections?.some((c) => c.state);
-  const suggestions = useMemo(() => suggestMatches(txs, charges, tenants), [txs, charges, tenants]);
+  const proposals = useMemo(() => proposeMatches(txs, charges, tenants), [txs, charges, tenants]);
+  const sure = proposals.filter((p) => p.confidence === "sure");
+  const [assigning, setAssigning] = useState<VBankTx | null>(null);
+  const [applying, setApplying] = useState(false);
   const account = txs.find((t) => t.bank_account);
   const income = round2(txs.filter((t) => t.side === "credit").reduce((s, t) => s + num(t.amount), 0));
   const spent = round2(txs.filter((t) => t.side === "debit").reduce((s, t) => s + num(t.amount), 0));
@@ -105,23 +109,63 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
     }
   }
 
-  async function reconcile(tx: VBankTx, charge: VCharge) {
-    const paid = round2(num(charge.amount_paid) + num(tx.amount));
-    const paidOn = (tx.settled_at ?? todayIso()).slice(0, 10);
-    const next = { ...charge, amount_paid: paid, paid_on: paidOn };
-    const { error } = await supabase
-      .from("voldis_charges")
-      .update({ amount_paid: paid, paid_on: paidOn, status: statusFor(next) })
-      .eq("id", charge.id);
+  /** Applique une proposition : rattachement seul, enregistrement du paiement, ou attribution au locataire. */
+  async function apply(p: Proposal): Promise<boolean> {
+    if (p.kind === "pay") {
+      const paid = round2(num(p.charge.amount_paid) + num(p.tx.amount));
+      const paidOn = (p.tx.settled_at ?? todayIso()).slice(0, 10);
+      const { error } = await supabase
+        .from("voldis_charges")
+        .update({ amount_paid: paid, paid_on: paidOn, status: statusFor({ ...p.charge, amount_paid: paid }) })
+        .eq("id", p.charge.id);
+      if (error) {
+        toast.error("Erreur : " + error.message);
+        return false;
+      }
+    }
+    const patch = p.kind === "assign" ? { tenant_id: p.tenant.id } : { tenant_id: p.tenant.id, charge_id: p.charge.id };
+    const { error } = await supabase.from("voldis_bank_transactions").update(patch).eq("id", p.tx.id);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function applyOne(p: Proposal) {
+    setApplying(true);
+    if (await apply(p)) toast.success("Rapproché / Сопоставлено");
+    setApplying(false);
+    await onChanged();
+  }
+
+  async function applySure() {
+    const nPay = sure.filter((p) => p.kind === "pay").length;
+    if (!window.confirm(`Valider ${sure.length} proposition(s) sûre(s) ?${nPay ? ` Dont ${nPay} enregistrement(s) de paiement.` : ""}\nПодтвердить ${sure.length} надёжных сопоставлений?`)) return;
+    setApplying(true);
+    let ok = 0;
+    for (const p of sure) if (await apply(p)) ok++;
+    setApplying(false);
+    toast.success(`${ok}/${sure.length} rapprochement(s) / сопоставлений`);
+    await onChanged();
+  }
+
+  async function assign(tx: VBankTx, tenantId: string | null, category: string | null) {
+    const { error } = await supabase.from("voldis_bank_transactions").update({ tenant_id: tenantId, category: category ?? tx.category }).eq("id", tx.id);
     if (error) return toast.error("Erreur : " + error.message);
-    const { error: e2 } = await supabase.from("voldis_bank_transactions").update({ charge_id: charge.id }).eq("id", tx.id);
-    if (e2) return toast.error("Erreur : " + e2.message);
-    toast.success("Rapproché / Сопоставлено");
+    setAssigning(null);
+    await onChanged();
+  }
+
+  async function unlink(tx: VBankTx) {
+    // on retire seulement le rattachement : les montants de l'échéance ne sont pas modifiés
+    const { error } = await supabase.from("voldis_bank_transactions").update({ tenant_id: null, charge_id: null }).eq("id", tx.id);
+    if (error) return toast.error("Erreur : " + error.message);
     await onChanged();
   }
 
   const chargeById = new Map(charges.map((c) => [c.id, c]));
-  const shown = txs.filter((t) => (filter === "all" ? true : filter === "todo" ? t.side === "credit" && !t.charge_id : t.side === filter));
+  const shown = txs.filter((t) => (filter === "all" ? true : filter === "todo" ? t.side === "credit" && !t.charge_id && !t.tenant_id : t.side === filter));
 
   return (
     <div className="flex flex-col gap-4">
@@ -207,26 +251,38 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         )}
       </div>
 
-      {suggestions.length > 0 && (
+      {proposals.length > 0 && (
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
-          <p className="mb-2 font-bold text-stone-800">
-            <Bi fr="Rapprochements proposés" ru="Предлагаемые сопоставления" />
-          </p>
-          <ul className="flex flex-col gap-2">
-            {suggestions.map((s) => (
-              <li key={s.tx.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-emerald-50/70 px-3 py-2 text-sm">
-                <span className="tabular-nums font-bold text-emerald-800">{eur(num(s.tx.amount))}</span>
-                <span className="text-stone-500">{frDate(s.tx.settled_at)}</span>
-                <span className="min-w-0 flex-1 truncate">
-                  {s.tx.label} → <strong>{s.tenantName}</strong>, loyer {frDate(s.charge.due_date)} (reste {eur(remaining(s.charge))})
-                  {!s.exact && <span className="ml-1 text-amber-700">· montant différent</span>}
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="font-bold text-stone-800">
+              <Bi fr={`Propositions de rapprochement (${proposals.length})`} ru="Предложения по сопоставлению" />
+            </p>
+            {sure.length > 0 && (
+              <button className="btn btn-dark" disabled={applying} onClick={() => void applySure()}>
+                <Bi fr={`Valider les ${sure.length} sûres`} ru="Подтвердить надёжные" />
+              </button>
+            )}
+          </div>
+          <ul className="divide-y divide-stone-100">
+            {proposals.slice(0, 40).map((p) => (
+              <li key={p.tx.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${p.confidence === "sure" ? "bg-emerald-500" : "bg-amber-500"}`} title={p.confidence === "sure" ? "Sûr" : "À vérifier"} />
+                <span className="w-24 shrink-0 tabular-nums font-bold text-stone-800">{eur(num(p.tx.amount))}</span>
+                <span className="w-20 shrink-0 text-stone-400">{frDate(p.tx.settled_at)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-semibold text-stone-800">{p.tenant.name}</span>
+                  <span className="text-stone-500">
+                    {p.kind === "assign" ? " · sans échéance (attribué au locataire)" : p.kind === "link" ? ` · échéance du ${frDate(p.charge.due_date)} déjà encaissée` : ` · loyer du ${frDate(p.charge.due_date)} (reste ${eur(remaining(p.charge))})`}
+                  </span>
+                  <span className="block truncate text-xs text-stone-400">{p.reason}</span>
                 </span>
-                <button className="btn btn-dark px-3 py-1 text-xs" onClick={() => void reconcile(s.tx, s.charge)}>
-                  <Bi fr="Rapprocher" ru="Сопоставить" />
+                <button className="btn btn-secondary px-3 py-1 text-xs" disabled={applying} onClick={() => void applyOne(p)}>
+                  <Bi fr={p.kind === "pay" ? "Enregistrer" : p.kind === "link" ? "Rattacher" : "Attribuer"} ru={p.kind === "pay" ? "Записать оплату" : p.kind === "link" ? "Привязать" : "Закрепить"} />
                 </button>
               </li>
             ))}
           </ul>
+          {proposals.length > 40 && <p className="pt-3 text-xs text-stone-400">… et {proposals.length - 40} autres : validez d&apos;abord celles-ci.</p>}
         </div>
       )}
 
@@ -255,7 +311,8 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
               <th>Date</th>
               <th>Libellé</th>
               <th className="text-right">Montant</th>
-              <th>Rapproché / catégorie</th>
+              <th>Locataire / catégorie</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -272,14 +329,24 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
                     {eur(num(t.amount))}
                   </td>
                   <td className="text-xs text-stone-500">
-                    {c ? `${tenantName.get(c.tenant_id ?? "") ?? ""} · ${frDate(c.due_date)}` : t.category ?? (t.side === "credit" ? "—" : "")}
+                    {c ? `${tenantName.get(c.tenant_id ?? "") ?? ""} · ${frDate(c.due_date)}` : t.tenant_id ? tenantName.get(t.tenant_id) : t.category ?? (t.side === "credit" ? "—" : "")}
+                  </td>
+                  <td className="text-right">
+                    {t.side === "credit" && (
+                      <Menu
+                        items={[
+                          { label: "Attribuer à un locataire…", onClick: () => setAssigning(t) },
+                          ...(t.tenant_id || t.charge_id ? [{ label: "Retirer le rattachement", onClick: () => void unlink(t) }] : []),
+                        ]}
+                      />
+                    )}
                   </td>
                 </tr>
               );
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-stone-400">
+                <td colSpan={5} className="py-6 text-center text-stone-400">
                   Aucune opération / Нет операций
                 </td>
               </tr>
@@ -294,6 +361,50 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
           </div>
         )}
       </div>
+      {assigning && <AssignModal tx={assigning} tenants={tenants} onClose={() => setAssigning(null)} onSave={(tid, cat) => void assign(assigning, tid, cat)} />}
     </div>
+  );
+}
+
+const CATEGORIES = ["Loyer", "Dépôt de garantie", "Remboursement", "Autre"];
+
+function AssignModal({ tx, tenants, onClose, onSave }: { tx: VBankTx; tenants: VoldisData["tenants"]; onClose: () => void; onSave: (tenantId: string | null, category: string | null) => void }) {
+  const [tenantId, setTenantId] = useState(tx.tenant_id ?? "");
+  const [category, setCategory] = useState(tx.category ?? "Loyer");
+  return (
+    <Modal open onClose={onClose} title="Attribuer ce virement · Закрепить поступление">
+      <p className="mb-4 rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-600">
+        <strong className="tabular-nums text-stone-900">{eur(num(tx.amount))}</strong> · {frDate(tx.settled_at)}
+        <span className="mt-1 block truncate text-xs text-stone-400">{tx.label}</span>
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Locataire" ru="Арендатор">
+          <select className="input" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+            <option value="">— Aucun (hors loyers) —</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Catégorie" ru="Категория">
+          <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
+            {CATEGORIES.map((c) => (
+              <option key={c}>{c}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <p className="mt-3 text-xs text-stone-400">Les virements suivants du même payeur seront proposés automatiquement pour ce locataire. / Следующие платежи этого плательщика будут предлагаться для этого арендатора.</p>
+      <div className="mt-6 flex justify-end gap-2">
+        <button className="btn btn-secondary" onClick={onClose}>
+          <Bi fr="Annuler" ru="Отмена" />
+        </button>
+        <button className="btn btn-primary" onClick={() => onSave(tenantId || null, category)}>
+          <Bi fr="Enregistrer" ru="Сохранить" />
+        </button>
+      </div>
+    </Modal>
   );
 }

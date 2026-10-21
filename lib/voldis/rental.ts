@@ -85,6 +85,7 @@ export type VBankTx = {
   emitted_at: string | null;
   status: string | null;
   charge_id: string | null;
+  tenant_id: string | null;
 };
 
 export const num = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v) || 0);
@@ -121,7 +122,8 @@ export function nameMatches(txText: string, tenantName: string): boolean {
   const needle = normName(tenantName);
   if (!needle) return false;
   if (hay.includes(needle)) return true;
-  const words = needle.split(" ").filter((w) => w.length >= 3);
+  // « JOUETS » / « JOUET » : on compare sans le S final pour tolérer pluriels et abréviations
+  const words = needle.split(" ").filter((w) => w.length >= 3).map((w) => w.replace(/S$/, ""));
   return words.length > 0 && words.every((w) => hay.includes(w));
 }
 
