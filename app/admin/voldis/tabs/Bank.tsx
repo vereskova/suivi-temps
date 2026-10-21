@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/Toast";
 import { parseBankFile, toRows } from "@/lib/voldis/bank-import";
 import { categoryFor } from "@/lib/voldis/bank-import";
@@ -25,6 +25,45 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
   const [pwBusy, setPwBusy] = useState(false);
   const [filter, setFilter] = useState<"all" | "check" | "credit" | "debit" | "todo">("all");
   const [limit, setLimit] = useState(40);
+  // largeurs des colonnes réglables à la souris (la colonne « Opération » prend le reste), mémorisées dans le navigateur
+  const [cols, setCols] = useState<{ date: number; amount: number; who: number }>(() => {
+    const fallback = { date: 96, amount: 128, who: 340 };
+    if (typeof window === "undefined") return fallback;
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("voldis_bank_cols") ?? "null");
+      return saved && typeof saved.date === "number" ? { ...fallback, ...saved } : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  const drag = useRef<{ key: "date" | "amount" | "who"; startX: number; startW: number; dir: 1 | -1 } | null>(null);
+
+  function startResize(key: "date" | "amount" | "who", e: React.PointerEvent) {
+    e.preventDefault();
+    // « Locataire / catégorie » est tirée vers la gauche pour s'agrandir au détriment de « Opération »
+    drag.current = { key, startX: e.clientX, startW: cols[key], dir: key === "who" ? -1 : 1 };
+    const move = (ev: PointerEvent) => {
+      const d = drag.current;
+      if (!d) return;
+      const w = Math.min(700, Math.max(64, d.startW + d.dir * (ev.clientX - d.startX)));
+      setCols((prev) => ({ ...prev, [d.key]: w }));
+    };
+    const up = () => {
+      drag.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setCols((prev) => {
+        try {
+          window.localStorage.setItem("voldis_bank_cols", JSON.stringify(prev));
+        } catch {
+          /* stockage indisponible : les largeurs ne sont simplement pas mémorisées */
+        }
+        return prev;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   useEffect(() => {
     fetch("/api/voldis/powens/status")
@@ -313,18 +352,27 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         </p>
         <table className="w-full table-fixed text-sm">
           <colgroup>
-            <col className="w-24" />
+            <col style={{ width: cols.date }} />
             <col />
-            <col className="w-32" />
-            <col className="w-64" />
-            <col className="w-10" />
+            <col style={{ width: cols.amount }} />
+            <col style={{ width: cols.who }} />
+            <col style={{ width: 40 }} />
           </colgroup>
           <thead>
             <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-wide text-stone-400">
-              <th className="px-2 py-2">Date</th>
+              <th className="relative px-2 py-2">
+                Date
+                <ResizeHandle onPointerDown={(e) => startResize("date", e)} />
+              </th>
               <th className="px-2 py-2">Opération</th>
-              <th className="px-2 py-2 text-right">Montant</th>
-              <th className="px-2 py-2">Locataire / catégorie</th>
+              <th className="relative px-2 py-2 text-right">
+                Montant
+                <ResizeHandle onPointerDown={(e) => startResize("amount", e)} />
+              </th>
+              <th className="relative px-2 py-2">
+                <ResizeHandle left onPointerDown={(e) => startResize("who", e)} />
+                Locataire / catégorie
+              </th>
               <th />
             </tr>
           </thead>
@@ -336,14 +384,14 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
               return (
                 <tr key={t.id} className={flag ? "bg-amber-50/70" : "border-b border-stone-50"}>
                   <td className={`whitespace-nowrap px-2 py-2.5 ${flag ? "text-stone-600" : "text-stone-400"}`}>{frDate(t.settled_at)}</td>
-                  <td className={`truncate px-2 py-2.5 ${flag ? "font-medium text-stone-900" : "text-stone-500"}`} title={t.label ?? ""}>
+                  <td className={`break-words px-2 py-2.5 ${flag ? "font-medium text-stone-900" : "text-stone-500"}`} title={t.label ?? ""}>
                     {cleanLabel(t.label ?? t.reference)}
                   </td>
                   <td className={`whitespace-nowrap px-2 py-2.5 text-right tabular-nums ${flag ? "font-bold" : "font-medium"} ${t.side === "credit" ? (flag ? "text-emerald-800" : "text-emerald-700/70") : flag ? "text-red-700" : "text-red-500/70"}`}>
                     {t.side === "credit" ? "+" : "−"}
                     {eur(num(t.amount))}
                   </td>
-                  <td className="truncate px-2 py-2.5 text-xs" title={flag?.reason ?? who}>
+                  <td className="break-words px-2 py-2.5 text-xs" title={flag?.reason ?? who}>
                     {flag ? (
                       <span className="font-semibold text-amber-800">
                         {who && <span className="mr-1.5 font-normal text-stone-500">{who} ·</span>}
@@ -428,5 +476,17 @@ function AssignModal({ tx, tenants, onClose, onSave }: { tx: VBankTx; tenants: V
         </button>
       </div>
     </Modal>
+  );
+}
+
+/** Poignée de redimensionnement d'une colonne : on la tire à la souris (ou au doigt) pour élargir. */
+function ResizeHandle({ onPointerDown, left }: { onPointerDown: (e: React.PointerEvent) => void; left?: boolean }) {
+  return (
+    <span
+      onPointerDown={onPointerDown}
+      style={{ touchAction: "none" }}
+      title="Glisser pour ajuster la largeur / Потяните, чтобы изменить ширину"
+      className={`absolute top-0 h-full w-2 cursor-col-resize select-none hover:bg-stone-300 ${left ? "left-0" : "right-0"}`}
+    />
   );
 }
