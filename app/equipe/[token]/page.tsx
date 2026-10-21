@@ -39,7 +39,10 @@ type Person = {
   result: Result;
   days: Day[];
 };
-type Payload = { team: string; year: number; month: number; hasRun: boolean; employees: Person[] };
+type BankTeam = { rank: number; name: string; mine: boolean; penalties: number; eligible: boolean; sharePct: number; amount: number };
+type BankMember = { id: string; name: string; days: number; amount: number };
+type QualityBank = { periodStart: string; payoutDate: string; pool: number; excludedWorst: number; teams: BankTeam[]; members: BankMember[] };
+type Payload = { team: string; year: number; month: number; hasRun: boolean; employees: Person[]; qualityBank?: QualityBank | null };
 
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
@@ -170,6 +173,118 @@ function DayGrid({ days }: { days: Day[] }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/** « Equipe 3 » → « Бригада 3 ». */
+const ruTeam = (name: string) => name.replace(/^equipe\s*/i, "Бригада ");
+const frDate = (iso: string) => {
+  const [y, m, d] = iso.split("-");
+  return `${d}.${m}.${y}`;
+};
+
+const QB_STORAGE_KEY = "equipe-qb-open";
+
+/** Банк качества : рейтинг бригад « на сегодня » + доли своей бригады. Свёрнут до одной строки; состояние помнится на телефоне. */
+function QualityBankCard({ bank }: { bank: QualityBank }) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return typeof window !== "undefined" && window.localStorage.getItem(QB_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  function toggle() {
+    setOpen((v) => {
+      try {
+        window.localStorage.setItem(QB_STORAGE_KEY, v ? "0" : "1");
+      } catch {
+        /* localStorage недоступен (приватный режим) — просто не запоминаем */
+      }
+      return !v;
+    });
+  }
+  const mine = bank.teams.find((t) => t.mine);
+  const total = bank.teams.length;
+  const summary = mine
+    ? mine.eligible
+      ? `${mine.rank}-е из ${total} · ${eur(mine.amount)}`
+      : `${mine.rank}-е из ${total} · пока вне рейтинга`
+    : "Рейтинг бригад";
+  const above = mine ? mine.rank - 1 : 0;
+  const below = mine ? total - mine.rank : 0;
+
+  return (
+    <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+        <div className="min-w-0 flex-1">
+          <div className="text-[15px] font-bold text-stone-900">Банк качества</div>
+          <div className="truncate text-[13px] text-stone-500">{summary}</div>
+        </div>
+        <div className="shrink-0 text-right">
+          <div className="whitespace-nowrap text-[17px] font-extrabold tabular-nums text-stone-900">{eur(Math.round(bank.pool))}</div>
+          <div className="text-[11px] text-stone-400">до {frDate(bank.payoutDate)}</div>
+        </div>
+        <svg
+          viewBox="0 0 20 20"
+          className={`h-5 w-5 shrink-0 text-stone-400 transition-transform ${open ? "rotate-180" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m5 8 5 5 5-5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="border-t border-stone-100 px-4 pb-4 pt-3">
+          <p className="text-[12px] leading-snug text-stone-400">
+            Меньше штрафов — выше место. Три худшие бригады без доли. Если человек перешёл в другую бригаду, штрафы и доля считаются по дням в каждой.
+          </p>
+          {mine && (
+            <div className="mt-2 flex gap-2 text-[12px] font-semibold">
+              <span className="rounded-lg bg-stone-100 px-2 py-1 text-stone-600">▲ лучше вас: {above}</span>
+              <span className="rounded-lg bg-stone-100 px-2 py-1 text-stone-600">▼ хуже вас: {below}</span>
+            </div>
+          )}
+          <ul className="mt-2 divide-y divide-stone-100">
+            {bank.teams.map((t) => (
+              <li key={t.rank} className={`flex items-center gap-3 py-2 ${t.mine ? "font-bold text-stone-900" : t.eligible ? "text-stone-700" : "text-stone-400"}`}>
+                <span className="w-5 shrink-0 text-center text-[14px] tabular-nums">{t.rank}</span>
+                <span className="w-3 shrink-0 text-center text-[10px] text-stone-400" aria-hidden="true">
+                  {mine ? (t.mine ? "●" : t.rank < mine.rank ? "▲" : "▼") : ""}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px]">
+                    {ruTeam(t.name)}
+                    {t.mine && <span className="ml-1.5 text-[11px] font-semibold text-primary-600">вы</span>}
+                  </span>
+                  <span className="block text-[11px] font-normal text-stone-400">штрафы {eur(t.penalties)}</span>
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-[14px] tabular-nums">{t.eligible ? eur(t.amount) : "—"}</span>
+              </li>
+            ))}
+          </ul>
+          {mine && bank.members.length > 0 && (
+            <div className="mt-3 rounded-xl bg-stone-50 px-3 py-2">
+              <div className="text-[12px] font-semibold text-stone-500">Ваша бригада · по отработанным дням</div>
+              <ul className="mt-1 space-y-0.5">
+                {bank.members.map((m) => (
+                  <li key={m.id} className="flex items-center gap-2 text-[13px]">
+                    <span className="min-w-0 flex-1 truncate text-stone-700">{m.name}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums text-stone-400">{num(m.days)} дн.</span>
+                    <span className="w-16 shrink-0 text-right font-semibold tabular-nums text-stone-800">{eur(m.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -386,6 +501,7 @@ export default function TeamPrimesPage() {
             <div className="text-[12px] text-stone-400">Aucun salarié dans cette équipe ce mois-ci.</div>
           </div>
         )}
+        {data?.qualityBank && <QualityBankCard bank={data.qualityBank} />}
         {data?.hasRun &&
           data.employees.map((p) => <PersonCard key={p.id} p={p} open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} />)}
         {lastOk && (

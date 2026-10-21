@@ -206,16 +206,16 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  * DEUX banques distinctes, à ne pas confondre :
  *   1. Le БАНК (plafond 3000) ci-dessous — propre à CHAQUE salarié d'équipe,
  *      alimenté par SON PROPRE BONUS équipe (30 % déposé, voir plus bas).
- *   2. Le "Банк качества" de l'ENTREPRISE (plafond 10000, company_quality_bank,
- *      computeControllerSplit / rankQualityBankWinners plus bas) — alimenté
- *      par 75 % de chaque pénalité déduite du БАНК #1 d'un salarié d'équipe ;
- *      les 25 % restants vont directement dans la paie du mois du contrôleur
- *      désigné (CIOBANU Valeriu pour l'instant, un seul pour toute
- *      l'entreprise). Quand ce second banque atteint 10000, les 5 salariés
- *      ayant le MOINS de pénalités et le PLUS de BONUS cumulés depuis le
- *      dernier partage se répartissent la totalité : 30/25/20/15/10 %, puis
- *      le compteur repart de zéro. Un seul pool pour toute l'entreprise, pas
- *      un par équipe — confirmé avec l'utilisatrice.
+ *   2. Le "Банк качества" de l'ENTREPRISE (company_quality_bank,
+ *      computeControllerSplit plus bas, répartition dans quality-bank.ts) —
+ *      alimenté par 75 % de chaque pénalité déduite du БАНК #1 d'un salarié
+ *      d'équipe ; les 25 % restants vont directement dans la paie du mois du
+ *      contrôleur désigné (CIOBANU Valeriu pour l'instant, un seul pour toute
+ *      l'entreprise). SANS plafond, il se remplit jusqu'au paiement de fin
+ *      janvier ou de fin septembre : les équipes sont alors classées par
+ *      pénalités, les trois pires sont exclues et les autres se partagent le
+ *      pool par rang (décision du 21/10/2026, voir quality-bank.ts), puis le
+ *      pool repart de zéro. Un seul pool pour toute l'entreprise.
  *
  * Штраф контроль — UN SEUL champ, dont le sens dépend de faitPartieEquipe
  * (confirmé avec l'utilisatrice, 29/09/2026 : "для команд это будет так, а
@@ -390,39 +390,4 @@ export function computeControllerSplit(totalPenalitesTousSalaries: number): {
     controllerShare: Math.round(total * CONTROLEUR_SHARE_RATE * 100) / 100,
     bankShare: Math.round(total * QUALITY_BANK_SHARE_RATE * 100) / 100,
   };
-}
-
-/**
- * Quand le Банк качества (commun à l'entreprise) atteint QUALITY_BANK_TARGET
- * (10000), les 5 salariés avec le MOINS de pénalités cumulées et — à
- * pénalités égales — le PLUS de BONUS équipe cumulé depuis le dernier
- * partage se répartissent la totalité du pool : 30/25/20/15/10 %. Le tri se
- * fait ici ; l'appelant fournit déjà les totaux cumulés par salarié (somme
- * sur payroll_extras depuis period_start) et récupère qui gagne combien.
- */
-export const QUALITY_BANK_TARGET = 10000;
-export const QUALITY_BANK_PAYOUT_SHARES = [0.3, 0.25, 0.2, 0.15, 0.1];
-
-export type QualityBankCandidate = {
-  employeeId: string;
-  totalPenalites: number;
-  totalBonus: number;
-};
-
-export type QualityBankWinner = QualityBankCandidate & { rank: number; sharePct: number; amount: number };
-
-export function rankQualityBankWinners(
-  candidates: QualityBankCandidate[],
-  poolTotal: number
-): QualityBankWinner[] {
-  const sorted = [...candidates].sort((a, b) => {
-    if (a.totalPenalites !== b.totalPenalites) return a.totalPenalites - b.totalPenalites; // moins de pénalités d'abord
-    return b.totalBonus - a.totalBonus; // à égalité, plus de bonus d'abord
-  });
-  return sorted.slice(0, QUALITY_BANK_PAYOUT_SHARES.length).map((c, i) => ({
-    ...c,
-    rank: i + 1,
-    sharePct: QUALITY_BANK_PAYOUT_SHARES[i] * 100,
-    amount: Math.round(poolTotal * QUALITY_BANK_PAYOUT_SHARES[i] * 100) / 100,
-  }));
 }

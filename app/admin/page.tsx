@@ -122,13 +122,25 @@ import {
   computeNightPremium,
   computePayrollExtras,
   computeControllerSplit,
-  rankQualityBankWinners,
-  QUALITY_BANK_TARGET,
   DEFAULT_PAYROLL_PARAMS,
   PayrollParams,
   PayrollExtrasInput,
-  QualityBankCandidate,
 } from "@/lib/payroll/compute";
+import {
+  rankTeamsForQualityBank,
+  splitByDays,
+  nextQualityBankPayoutDate,
+  periodStartAfterPayout,
+  aggregateTeamDays,
+  allocatePenaltiesToTeams,
+  daysInTeam,
+  fetchAllPages,
+  QUALITY_BANK_EXCLUDED_WORST,
+  QUALITY_BANK_PAYOUT_MONTHS,
+  type PeriodLine,
+  type TeamDayRow,
+  type TeamStanding,
+} from "@/lib/payroll/quality-bank";
 import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
 import {
   countWeekdaysBetween,
@@ -15566,8 +15578,11 @@ function DayCell({
   onSaveNote,
   readOnly = false,
   cellKey,
+  moveLabel = null,
 }: {
   cellKey?: string;
+  /** Rempli le jour où le salarié est passé dans une autre équipe (ex. « →5 »). */
+  moveLabel?: string | null;
   cellBg: string | undefined;
   selectValue: string;
   worked: boolean;
@@ -15646,10 +15661,21 @@ function DayCell({
             {absenceShortCode(t.code)}
           </option>
         ))}
+        <option value="move" title="Passer dans une autre équipe à partir de ce jour / Перевод в другую бригаду с этого дня">
+          ⇄
+        </option>
         <option value="depart" title="Fin de contrat ce jour / Увольнение с этого дня">
           ✕
         </option>
       </select>
+      {moveLabel && (
+        <span
+          className="pointer-events-none absolute bottom-0 left-0 rounded-tr bg-primary-600 px-0.5 text-[8px] font-bold leading-tight text-white"
+          title={`Перевод в другую бригаду с этого дня / Changement d'équipe : ${moveLabel}`}
+        >
+          {moveLabel}
+        </span>
+      )}
       {hasContent && (
         <span
           className="pointer-events-none absolute top-0 right-0 border-t-[6px] border-t-primary-500 border-l-[6px] border-l-transparent"
@@ -17474,39 +17500,74 @@ const CHEF_RATE_FRENCH = 115;
  *  forme chaque mois. Les cases de présence se cliquent directement ici —
  *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
  *  jour", pas une copie). Alimente Jours dans Paie. */
-/** Somme des Штраф négatifs des salariés d'équipe sur tous les mois de la
- *  période du Банк качества commun SAUF `excludeRunId` (le mois affiché, dont
- *  les valeurs en direct viennent de l'écran). Toujours lue depuis les
- *  pénalités enregistrées — jamais depuis company_quality_bank.current_total,
- *  qu'un ancien onglet pouvait réécrire avec une valeur périmée (05/10/2026). */
-async function loadBankOtherPenalites(
+/** Données de la période du Банк качества SAUF le mois affiché (`excludeRunId`, dont
+ *  les valeurs en direct viennent de l'écran) : lignes pénalités/BONUS enregistrées par
+ *  salarié et par mois, et jours travaillés par équipe (pointage_entries.team_id) pour
+ *  suivre les changements d'équipe. Toujours lu depuis les lignes enregistrées — jamais
+ *  depuis company_quality_bank.current_total, qu'un ancien onglet pouvait réécrire avec
+ *  une valeur périmée (05/10/2026). */
+type BankOtherMonths = {
+  /** Total des pénalités d'équipe des AUTRES mois de la période (base du pool). */
+  total: number;
+  lines: PeriodLine[];
+  /** Jours par salarié / équipe / mois, de la période entière jusqu'à aujourd'hui (mois affiché compris). */
+  dayRows: TeamDayRow[];
+  /** Équipe actuelle de chaque salarié d'équipe chantier (sert quand il n'y a aucun pointage). */
+  teamOf: Record<string, string>;
+};
+const EMPTY_BANK_OTHER: BankOtherMonths = { total: 0, lines: [], dayRows: [], teamOf: {} };
+async function loadBankOtherMonths(
   supabase: ReturnType<typeof createClient>,
   periodStart: string,
   excludeRunId: string | null
-): Promise<number> {
+): Promise<BankOtherMonths> {
   const periodMonth = `${periodStart.slice(0, 7)}-01`;
-  const { data: runs } = await supabase.from("payroll_runs").select("id").gte("month", periodMonth);
-  const runIds = (runs ?? []).map((r) => r.id).filter((id) => id !== excludeRunId);
-  if (runIds.length === 0) return 0;
-  const { data: lines } = await supabase
-    .from("payroll_extras")
-    .select("employee_id, penalite_montant")
-    .in("run_id", runIds);
-  const ids = Array.from(new Set((lines ?? []).filter((l) => Number(l.penalite_montant) < 0).map((l) => l.employee_id)));
-  if (ids.length === 0) return 0;
   const { data: emps } = await supabase
     .from("employees")
-    .select("id, category, team_id, teams!employees_team_id_fkey(name)")
-    .in("id", ids);
-  const inTeam = new Set(
-    ((emps ?? []) as unknown as { id: string; category: string; team_id: string | null; teams: { name: string } | null }[])
-      .filter((e) => e.category === "chantier" && !!e.team_id && !!e.teams?.name)
-      .map((e) => e.id)
+    .select("id, team_id, contract_type, teams!employees_team_id_fkey(name)")
+    .eq("category", "chantier")
+    .not("team_id", "is", null);
+  const teamOf: Record<string, string> = {};
+  ((emps ?? []) as unknown as { id: string; team_id: string; contract_type: string | null; teams: { name: string } | null }[]).forEach((e) => {
+    if (e.teams?.name && e.contract_type !== "FOP") teamOf[e.id] = e.team_id;
+  });
+  const empIds = Object.keys(teamOf);
+  if (empIds.length === 0) return EMPTY_BANK_OTHER;
+
+  const { data: runs } = await supabase.from("payroll_runs").select("id, month").gte("month", periodMonth);
+  const runMonth = new Map((runs ?? []).filter((r) => r.id !== excludeRunId).map((r) => [r.id as string, String(r.month).slice(0, 7)]));
+  const runIds = Array.from(runMonth.keys());
+  const rawLines = runIds.length
+    ? await fetchAllPages<{ run_id: string; employee_id: string; penalite_montant: number | null; bonus_equipe: number | null }>((from, to) =>
+        supabase.from("payroll_extras").select("run_id, employee_id, penalite_montant, bonus_equipe").in("run_id", runIds).range(from, to)
+      )
+    : [];
+  const lines: PeriodLine[] = rawLines
+    .filter((l) => !!teamOf[l.employee_id])
+    .map((l) => ({
+      employeeId: l.employee_id,
+      month: runMonth.get(l.run_id) ?? "",
+      penalty: Math.max(0, -(Number(l.penalite_montant) || 0)),
+      bonus: Number(l.bonus_equipe) || 0,
+    }));
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const pointage = await fetchAllPages<{ employee_id: string; team_id: string; work_date: string; is_absent: boolean; half_day: boolean | null }>((from, to) =>
+    supabase
+      .from("pointage_entries")
+      .select("employee_id, team_id, work_date, is_absent, half_day")
+      .in("employee_id", empIds)
+      .gte("work_date", periodMonth)
+      .lte("work_date", todayIso)
+      .order("work_date")
+      .order("employee_id")
+      .range(from, to)
   );
-  return (lines ?? []).reduce(
-    (sum, l) => (inTeam.has(l.employee_id) ? sum + Math.max(0, -(Number(l.penalite_montant) || 0)) : sum),
-    0
-  );
+  return {
+    total: lines.reduce((sum, l) => sum + l.penalty, 0),
+    lines,
+    dayRows: aggregateTeamDays(pointage),
+    teamOf,
+  };
 }
 
 /** Colonnes payroll_extras écrites quand UNE case est modifiée (sauvegarde
@@ -17632,7 +17693,7 @@ async function exportExtrasExcel(data: {
   dayColumns: string[];
   attendance: Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>>;
   dayNotes: Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>>;
-  bank: { total: number; target: number; controllerName: string; controllerShare: number } | null;
+  bank: { total: number; controllerName: string; controllerShare: number } | null;
   employmentOf: Record<string, { hire: string | null; end: string | null }>;
 }) {
   const mod = await import("exceljs");
@@ -17703,7 +17764,7 @@ async function exportExtrasExcel(data: {
   ws.mergeCells(`A3:${lastColLetter}3`);
   const bankCell = ws.getCell("A3");
   bankCell.value = data.bank
-    ? `Банк качества (entreprise) : ${data.bank.total.toFixed(0)} / ${data.bank.target} €   ·   Contrôleur ${data.bank.controllerName} — part du mois ${data.bank.controllerShare.toFixed(2)} €`
+    ? `Банк качества (entreprise) : ${data.bank.total.toFixed(0)} €   ·   Contrôleur ${data.bank.controllerName} — part du mois ${data.bank.controllerShare.toFixed(2)} €`
     : "";
   bankCell.font = { name: FONT, size: 10, italic: true, color: { argb: "FF64748B" } };
   bankCell.alignment = { vertical: "middle", indent: 1 };
@@ -18120,7 +18181,28 @@ function PayrollExtrasView({
   const [banqueQualitePrimeByEmployee, setBanqueQualitePrimeByEmployee] = useState<Record<string, number>>({});
   // Pénalités d'équipe des AUTRES mois de la période du Банк качества — le mois
   // affiché vient de l'écran en direct (voir bankTotalLive).
-  const [bankOtherPenalites, setBankOtherPenalites] = useState(0);
+  const [bankOther, setBankOther] = useState<BankOtherMonths>(EMPTY_BANK_OTHER);
+  // Переводы между бригадами (employee_team_moves) : à partir de from_date, le salarié est dans team_id.
+  // Le pointage d'un jour est enregistré dans l'équipe de CE jour, jamais dans l'équipe actuelle.
+  type TeamMove = { from_date: string; team_id: string; team_name: string | null };
+  const [teamMovesByEmployee, setTeamMovesByEmployee] = useState<Record<string, TeamMove[]>>({});
+  useEffect(() => {
+    if (demo) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from("employee_team_moves").select("employee_id, team_id, from_date, teams(name)");
+      if (error || cancelled) return; // table absente (migration 0114 pas encore faite) : on retombe sur l'équipe actuelle
+      const map: Record<string, TeamMove[]> = {};
+      ((data ?? []) as unknown as { employee_id: string; team_id: string; from_date: string; teams: { name: string } | null }[]).forEach((r) => {
+        (map[r.employee_id] ??= []).push({ from_date: r.from_date, team_id: r.team_id, team_name: r.teams?.name ?? null });
+      });
+      Object.values(map).forEach((list) => list.sort((a, b) => a.from_date.localeCompare(b.from_date)));
+      setTeamMovesByEmployee(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, demo, runId]);
   // Présence par jour — même table que "Par jour" (pointage_entries),
   // modifiable directement ici (choix dans chaque case : présent, absent,
   // ou un type précis — maladie, congé payé, etc.).
@@ -18266,7 +18348,7 @@ function PayrollExtrasView({
         setBanqueQualitePrimeByEmployee({});
         setRaisonMetaByEmployee({});
         setCompanyQualityBank(d.companyQualityBank);
-        setBankOtherPenalites(0);
+        setBankOther(EMPTY_BANK_OTHER);
         setRunId(null);
         setLoading(false);
         return;
@@ -18360,7 +18442,7 @@ function PayrollExtrasView({
 
       const { data: bank } = await supabase.from("company_quality_bank").select("id, current_total, period_start").limit(1).maybeSingle();
       setCompanyQualityBank(bank ?? null);
-      setBankOtherPenalites(bank ? await loadBankOtherPenalites(supabase, bank.period_start, run?.id ?? null) : 0);
+      setBankOther(bank ? await loadBankOtherMonths(supabase, bank.period_start, run?.id ?? null) : EMPTY_BANK_OTHER);
 
       if (run?.id) {
         const { data: lines } = await supabase.from("payroll_extras").select("*").eq("run_id", run.id);
@@ -18829,109 +18911,140 @@ function PayrollExtrasView({
 
   // Total du Банк качества en direct : pénalités des autres mois de la
   // période + ce mois-ci tel qu'affiché (seulement si ce mois fait partie de
-  // la période en cours).
+  // la période en cours). Sans plafond : il grossit jusqu'au paiement de fin
+  // janvier ou de fin septembre (décision du 21/10/2026).
+  const bankMonthInPeriod = useMemo(() => {
+    if (!companyQualityBank) return false;
+    const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
+    return monthIso >= `${companyQualityBank.period_start.slice(0, 7)}-01`;
+  }, [companyQualityBank, year, month]);
   const bankTotalLive = useMemo(() => {
     if (!companyQualityBank) return 0;
-    const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
-    const periodMonth = `${companyQualityBank.period_start.slice(0, 7)}-01`;
-    const thisMonth = monthIso >= periodMonth ? totalPenalitesThisMonth : 0;
-    return computeControllerSplit(bankOtherPenalites + thisMonth).bankShare;
-  }, [companyQualityBank, year, month, totalPenalitesThisMonth, bankOtherPenalites]);
+    const thisMonth = bankMonthInPeriod ? totalPenalitesThisMonth : 0;
+    return computeControllerSplit(bankOther.total + thisMonth).bankShare;
+  }, [companyQualityBank, bankMonthInPeriod, totalPenalitesThisMonth, bankOther]);
 
-  // Distribution du Банк качества à 10000 : une seule personne la déclenche
-  // (mise à jour conditionnelle de period_start), les autres reçoivent le
-  // résultat en direct.
-  const distributingRef = useRef(false);
-  useEffect(() => {
-    if (!canWrite || loading || !companyQualityBank || bankTotalLive < QUALITY_BANK_TARGET) return;
-    if (distributingRef.current) return;
-    distributingRef.current = true;
-    (async () => {
-      try {
-        const bank = companyQualityBank;
-        const nextPeriodStart = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
-        const { data: claimed } = await supabase
-          .from("company_quality_bank")
-          .update({ current_total: 0, period_start: nextPeriodStart })
-          .eq("id", bank.id)
-          .eq("period_start", bank.period_start)
-          .select("id");
-        if (!claimed || claimed.length === 0) return; // un autre utilisateur l'a déjà fait
+  // Classement des équipes sur la période : autres mois (enregistrés) + mois affiché (en direct).
+  // Pénalités et BONUS d'un salarié sont répartis entre ses équipes selon ses jours dans chacune.
+  const bankStandings = useMemo(() => {
+    const inTeam = (e: PaieEmployee) => e.category === "chantier" && !!e.team_id && !!e.teams?.name && e.contract_type !== "FOP";
+    const monthNow = `${year}-${String(month).padStart(2, "0")}`;
+    const liveLines: PeriodLine[] = bankMonthInPeriod
+      ? employees.filter(inTeam).map((e) => {
+          const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+          return {
+            employeeId: e.id,
+            month: monthNow,
+            penalty: Math.max(0, -(Number(line.penaliteMontant) || 0)),
+            bonus: Number(line.bonusEquipe) || 0,
+          };
+        })
+      : [];
+    const teamNow = new Map(employees.filter(inTeam).map((e) => [e.id, e.team_id as string]));
+    const allocated = allocatePenaltiesToTeams([...bankOther.lines, ...liveLines], bankOther.dayRows, (id) => bankOther.teamOf[id] ?? teamNow.get(id) ?? null);
+    const byTeam = new Map<string, TeamStanding>();
+    employees.forEach((e) => {
+      if (!inTeam(e) || e.status === "terminated" || byTeam.has(e.team_id!)) return;
+      const a = allocated.get(e.team_id!);
+      byTeam.set(e.team_id!, { teamId: e.team_id!, name: e.teams!.name, penalties: a?.penalties ?? 0, bonus: a?.bonus ?? 0 });
+    });
+    return rankTeamsForQualityBank(Array.from(byTeam.values()), bankTotalLive);
+  }, [employees, inputs, bankOther, bankMonthInPeriod, bankTotalLive, year, month]);
 
-        const periodMonth = `${bank.period_start.slice(0, 7)}-01`;
-        const { data: pastRuns } = await supabase.from("payroll_runs").select("id").gte("month", periodMonth).neq("id", runId!);
-        const pastRunIds = (pastRuns ?? []).map((r) => r.id);
-        let pastLines: { employee_id: string; penalite_montant: number; bonus_equipe: number }[] = [];
-        if (pastRunIds.length > 0) {
-          const { data } = await supabase
-            .from("payroll_extras")
-            .select("employee_id, penalite_montant, bonus_equipe")
-            .in("run_id", pastRunIds);
-          pastLines = data ?? [];
-        }
-        const faitPartieEquipeById = new Map(
-          employees.map((e) => [e.id, e.category === "chantier" && !!e.team_id && !!e.teams?.name])
-        );
-        const cumulative = new Map<string, QualityBankCandidate>();
-        const addToCumulative = (employeeId: string, penalites: number, bonus: number) => {
-          const prev = cumulative.get(employeeId) ?? { employeeId, totalPenalites: 0, totalBonus: 0 };
-          prev.totalPenalites += penalites;
-          prev.totalBonus += bonus;
-          cumulative.set(employeeId, prev);
-        };
-        pastLines.forEach((l) => {
-          if (!faitPartieEquipeById.get(l.employee_id)) return;
-          addToCumulative(l.employee_id, Math.max(0, -(Number(l.penalite_montant) || 0)), Number(l.bonus_equipe) || 0);
-        });
-        Object.entries(inputsRef.current).forEach(([empId, l]) => {
-          if (!faitPartieEquipeById.get(empId)) return;
-          addToCumulative(empId, Math.max(0, -(Number(l.penaliteMontant) || 0)), Number(l.bonusEquipe) || 0);
-        });
+  // Le Банк качества se paie dans la paie de janvier et de septembre : le bouton n'apparaît que ces mois-là.
+  const isBankPayoutMonth = bankMonthInPeriod && QUALITY_BANK_PAYOUT_MONTHS.includes(month);
+  const [distributing, setDistributing] = useState(false);
 
-        const winners = rankQualityBankWinners(Array.from(cumulative.values()), bankTotalLive);
-        const periodEnd = `${year}-${String(month).padStart(2, "0")}-01`;
-        const { data: payout, error: payoutError } = await supabase
-          .from("quality_bank_payouts")
-          .insert({ total_distributed: bankTotalLive, period_start: bank.period_start, period_end: periodEnd })
-          .select("id")
-          .single();
-        if (payoutError || !payout?.id) {
-          toast.error("Erreur БАНК качества : " + (payoutError?.message ?? "inconnue"));
-          return;
-        }
-        await supabase.from("quality_bank_payout_winners").insert(
-          winners.map((w) => ({
-            payout_id: payout.id,
-            employee_id: w.employeeId,
-            rank: w.rank,
-            share_pct: w.sharePct,
-            amount: w.amount,
-            total_penalites: w.totalPenalites,
-            total_bonus: w.totalBonus,
-          }))
-        );
-        const primeRows = winners.map((w) => ({
-          run_id: runId,
-          employee_id: w.employeeId,
-          banque_qualite_prime: Math.round(((banqueQualitePrimeByEmployee[w.employeeId] || 0) + w.amount) * 100) / 100,
-        }));
-        await supabase.from("payroll_extras").upsert(primeRows, { onConflict: "run_id,employee_id" });
-        setBanqueQualitePrimeByEmployee((prev) => ({
-          ...prev,
-          ...Object.fromEntries(primeRows.map((r) => [r.employee_id, r.banque_qualite_prime])),
-        }));
-        setCompanyQualityBank({ id: bank.id, current_total: 0, period_start: nextPeriodStart });
-        setBankOtherPenalites(0);
-        const winnersText = winners
-          .map((w) => `${w.rank}. ${employeeName(employees.find((e) => e.id === w.employeeId) ?? { first_name: "", last_name: w.employeeId })} — ${w.amount.toFixed(0)}€`)
-          .join(", ");
-        toast.success(`🏆 Банк качества достиг ${bankTotalLive.toFixed(0)}€ — распределено: ${winnersText}`);
-      } finally {
-        distributingRef.current = false;
+  async function distributeQualityBank() {
+    if (!canWrite || !companyQualityBank || !runId || distributing) return;
+    const bank = companyQualityBank;
+    const eligible = bankStandings.filter((t) => t.eligible && t.amount > 0);
+    if (eligible.length === 0) {
+      toast.error("Aucune équipe éligible / Нет команд для выплаты");
+      return;
+    }
+    const lines = eligible
+      .map((t) => `${t.rank}. ${t.name} — ${t.amount.toFixed(0)} €`)
+      .join("\n");
+    if (
+      !window.confirm(
+        `Payer le Банк качества (${bankTotalLive.toFixed(0)} €) et repartir de zéro ?\nВыплатить Банк качества (${bankTotalLive.toFixed(0)} €) и начать с нуля?\n\n${lines}`
+      )
+    )
+      return;
+    setDistributing(true);
+    try {
+      // Les nouvelles colonnes viennent de la migration 0113 : on vérifie avant de toucher quoi que ce soit.
+      const probe = await supabase.from("quality_bank_payout_winners").select("team_id").limit(1);
+      if (probe.error) {
+        toast.error("Сначала выполните миграцию 0113 в Supabase (quality_bank_payout_winners). " + probe.error.message);
+        return;
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bankTotalLive, canWrite, loading, companyQualityBank]);
+      const nextPeriodStart = periodStartAfterPayout(year, month);
+      const { data: claimed } = await supabase
+        .from("company_quality_bank")
+        .update({ current_total: 0, period_start: nextPeriodStart })
+        .eq("id", bank.id)
+        .eq("period_start", bank.period_start)
+        .select("id");
+      if (!claimed || claimed.length === 0) {
+        toast.error("Le paiement a déjà été fait par quelqu'un d'autre / Выплату уже сделал другой пользователь");
+        return;
+      }
+
+      const { data: payout, error: payoutError } = await supabase
+        .from("quality_bank_payouts")
+        .insert({ total_distributed: bankTotalLive, period_start: bank.period_start, period_end: `${year}-${String(month).padStart(2, "0")}-01` })
+        .select("id")
+        .single();
+      if (payoutError || !payout?.id) {
+        toast.error("Erreur БАНК качества : " + (payoutError?.message ?? "inconnue"));
+        return;
+      }
+      const winnerRows: Record<string, unknown>[] = [];
+      const primeRows: { run_id: string; employee_id: string; banque_qualite_prime: number }[] = [];
+      eligible.forEach((t) => {
+        // Jours DANS cette équipe sur la période (suivi jour par jour) ; seuls les salariés encore présents touchent.
+        const teamDays = daysInTeam(bankOther.dayRows, t.teamId);
+        const members = employees
+          .filter((e) => e.category === "chantier" && e.contract_type !== "FOP" && e.status !== "terminated")
+          .map((e) => ({ id: e.id, days: teamDays.get(e.id) ?? 0 }))
+          .filter((m) => m.days > 0);
+        const split = splitByDays(t.amount, members);
+        members.forEach((m) => {
+          const amount = split[m.id] ?? 0;
+          winnerRows.push({
+            payout_id: payout.id,
+            employee_id: m.id,
+            rank: t.rank,
+            share_pct: Math.round(t.sharePct * 100) / 100,
+            amount,
+            total_penalites: t.penalties,
+            total_bonus: t.bonus,
+            team_id: t.teamId,
+            team_name: t.name,
+            days_worked: m.days,
+          });
+          primeRows.push({
+            run_id: runId,
+            employee_id: m.id,
+            banque_qualite_prime: Math.round(((banqueQualitePrimeByEmployee[m.id] || 0) + amount) * 100) / 100,
+          });
+        });
+      });
+      if (winnerRows.length > 0) await supabase.from("quality_bank_payout_winners").insert(winnerRows);
+      if (primeRows.length > 0) await supabase.from("payroll_extras").upsert(primeRows, { onConflict: "run_id,employee_id" });
+      setBanqueQualitePrimeByEmployee((prev) => ({
+        ...prev,
+        ...Object.fromEntries(primeRows.map((r) => [r.employee_id, r.banque_qualite_prime])),
+      }));
+      setCompanyQualityBank({ id: bank.id, current_total: 0, period_start: nextPeriodStart });
+      setBankOther(EMPTY_BANK_OTHER);
+      toast.success(`🏆 Банк качества выплачен: ${bankTotalLive.toFixed(0)} € — ${eligible.length} команд`);
+    } finally {
+      setDistributing(false);
+    }
+  }
 
   /** Change le statut d'un jour directement dans cette grille — écrit dans
    *  pointage_entries tout de suite (pas besoin du bouton "Enregistrer", qui
@@ -18941,7 +19054,87 @@ function PayrollExtrasView({
    *  "depart" (fin de contrat à partir de ce jour — met à jour employees
    *  directement plutôt que pointage_entries, ce qui grise automatiquement
    *  ce jour et tous les suivants via `outsideEmployment`). */
+  /** Équipe d'un salarié à une date donnée : dernier transfert ≤ date, sinon l'équipe actuelle. */
+  function teamIdForDate(employeeId: string, dateIso: string, currentTeamId: string | null): string | null {
+    const moves = teamMovesByEmployee[employeeId];
+    if (!moves || moves.length === 0) return currentTeamId;
+    const past = moves.filter((m) => m.from_date <= dateIso).sort((a, b) => b.from_date.localeCompare(a.from_date));
+    return past.length > 0 ? past[0].team_id : currentTeamId;
+  }
+
+  /** Enregistre un passage dans une autre équipe à partir de `dateIso` : historique (employee_team_moves),
+   *  pointages déjà saisis à partir de cette date, et équipe actuelle de la fiche si c'est le dernier transfert. */
+  async function moveEmployeeTeam(employee: PaieEmployee, dateIso: string) {
+    if (demo || readOnly) return;
+    const { data: teamRows, error: teamsError } = await supabase.from("teams").select("id, name, chef_employee_id, active").eq("active", true);
+    if (teamsError) {
+      toast.error("Erreur : " + teamsError.message);
+      return;
+    }
+    const label = (n: string) => n.replace(/^equipe\s*/i, "").trim();
+    const list = [...(teamRows ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const answer = window.prompt(
+      `${employee.first_name} ${employee.last_name} : passage dans une autre équipe à partir du ${fmtDate(dateIso)}.\n` +
+        `Перевод в другую бригаду с этой даты. Сейчас: ${employee.teams?.name ?? "—"}.\n\n` +
+        `Numéro de l'équipe / Номер бригады (${list.map((t) => label(t.name)).join(", ")}) :`
+    );
+    if (!answer) return;
+    const target = list.find((t) => label(t.name) === answer.trim());
+    if (!target) {
+      toast.error("Équipe introuvable / Бригада не найдена");
+      return;
+    }
+    if (target.id === teamIdForDate(employee.id, dateIso, employee.team_id)) {
+      toast.error("Déjà dans cette équipe à cette date / В этой бригаде уже с этой даты");
+      return;
+    }
+    if (
+      !window.confirm(
+        `${employee.first_name} ${employee.last_name} → ${target.name} à partir du ${fmtDate(dateIso)} ?\nПеревод в ${target.name} с ${fmtDate(dateIso)}?`
+      )
+    )
+      return;
+
+    const existing = teamMovesByEmployee[employee.id] ?? [];
+    const rows: { employee_id: string; team_id: string; from_date: string; created_by: string | null }[] = [];
+    if (existing.length === 0 && employee.team_id) {
+      rows.push({ employee_id: employee.id, team_id: employee.team_id, from_date: "2000-01-01", created_by: currentUserEmail });
+    }
+    rows.push({ employee_id: employee.id, team_id: target.id, from_date: dateIso, created_by: currentUserEmail });
+    const nameById = new Map(list.map((t) => [t.id, t.name]));
+    const { error } = await supabase.from("employee_team_moves").upsert(rows, { onConflict: "employee_id,from_date" });
+    if (error) {
+      toast.error("Erreur : " + error.message + " (migration 0114 ?)");
+      return;
+    }
+    const nextMove = existing.filter((m) => m.from_date > dateIso).sort((a, b) => a.from_date.localeCompare(b.from_date))[0];
+    let pointageUpdate = supabase.from("pointage_entries").update({ team_id: target.id }).eq("employee_id", employee.id).gte("work_date", dateIso);
+    if (nextMove) pointageUpdate = pointageUpdate.lt("work_date", nextMove.from_date);
+    await pointageUpdate;
+    const isLatest = !nextMove;
+    if (isLatest && dateIso <= new Date().toISOString().slice(0, 10)) {
+      await supabase.from("employees").update({ team_id: target.id }).eq("id", employee.id);
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === employee.id ? { ...emp, team_id: target.id, teams: { name: target.name, chef_employee_id: target.chef_employee_id } } : emp
+        )
+      );
+    }
+    setTeamMovesByEmployee((prev) => ({
+      ...prev,
+      [employee.id]: [
+        ...(prev[employee.id] ?? []).filter((m) => !rows.some((r) => r.from_date === m.from_date)),
+        ...rows.map((r) => ({ from_date: r.from_date, team_id: r.team_id, team_name: nameById.get(r.team_id) ?? null })),
+      ].sort((a, b) => a.from_date.localeCompare(b.from_date)),
+    }));
+    toast.success(`Перевод записан: ${target.name} с ${fmtDate(dateIso)}`);
+  }
+
   async function setDayStatus(employee: PaieEmployee, dateIso: string, value: string) {
+    if (value === "move") {
+      await moveEmployeeTeam(employee, dateIso);
+      return;
+    }
     if (demo && value === "depart") return;
     if (value === "depart") {
       const ok = window.confirm(
@@ -18981,7 +19174,7 @@ function PayrollExtrasView({
       .upsert(
         {
           work_date: dateIso,
-          team_id: employee.team_id,
+          team_id: teamIdForDate(employee.id, dateIso, employee.team_id),
           employee_id: employee.id,
           is_absent: !worked,
           absence_type_id: absenceTypeId,
@@ -19218,7 +19411,6 @@ function PayrollExtrasView({
         bank: companyQualityBank
           ? {
               total: bankTotalLive,
-              target: QUALITY_BANK_TARGET,
               controllerName: controller ? employeeName(controller) : "—",
               controllerShare: controllerSplit.controllerShare,
             }
@@ -19419,28 +19611,65 @@ function PayrollExtrasView({
       ) : (
         <div className="card">
           {companyQualityBank && (
-            <div className="mb-3 flex items-center gap-3 flex-wrap">
-              <span className="text-xs font-bold text-stone-500 shrink-0">
-                <Bi fr="Банк качества (entreprise)" ru="Банк качества (компания)" />
-              </span>
-              <div className="flex-1 min-w-[160px] max-w-xs h-3 rounded-full bg-stone-100 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-300 to-amber-500"
-                  style={{ width: `${Math.min(100, (bankTotalLive / QUALITY_BANK_TARGET) * 100)}%` }}
-                />
+            <div className="mb-3 rounded-xl border border-stone-200 p-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className="text-xs font-bold text-stone-500 shrink-0">
+                  <Bi fr="Банк качества (entreprise)" ru="Банк качества (компания)" />
+                </span>
+                <span className="text-lg font-bold text-stone-800 shrink-0">{bankTotalLive.toFixed(0)} €</span>
+                <span className="text-[11px] text-stone-400 shrink-0">
+                  {(() => {
+                    const payoutIso = nextQualityBankPayoutDate();
+                    const [py, pm, pd] = payoutIso.split("-");
+                    return (
+                      <Bi
+                        fr={`Sans plafond — se remplit jusqu'au paiement du ${pd}/${pm}/${py}`}
+                        ru={`Без потолка — копится до выплаты ${pd}.${pm}.${py}`}
+                      />
+                    );
+                  })()}
+                </span>
+                {isBankPayoutMonth && canWrite && (
+                  <button className="btn btn-dark" disabled={distributing} onClick={() => void distributeQualityBank()}>
+                    <Bi fr="Payer le Банк качества" ru="Выплатить Банк качества" />
+                  </button>
+                )}
               </div>
-              <span className="text-xs font-semibold text-stone-600 shrink-0">
-                {bankTotalLive.toFixed(0)} / {QUALITY_BANK_TARGET} €
-              </span>
-              <span
-                className="text-[11px] text-stone-400 shrink-0"
+              <div
+                className="mt-1 text-[11px] text-stone-400"
                 title="Contrôleur désigné qui reçoit 25% des pénalités chaque mois / Назначенный контролёр, получающий 25% штрафов каждый месяц"
               >
                 <Bi
                   fr={`Contrôleur : ${employeeName(employees.find((e) => e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID) ?? { first_name: "", last_name: "?" })} — part du mois : ${controllerSplit.controllerShare.toFixed(2)} € (25 % de ${totalPenalitesThisMonth.toFixed(2)} €)`}
                   ru={`Контролёр — доля за месяц: ${controllerSplit.controllerShare.toFixed(2)} € (25 % от штрафов ${totalPenalitesThisMonth.toFixed(2)} €)`}
                 />
-              </span>
+              </div>
+              {bankStandings.length > 0 && (
+                <div className="mt-2">
+                  <div className="mb-1 text-[11px] text-stone-400">
+                    <Bi
+                      fr={`Classement des équipes (moins de pénalités = mieux) — les ${QUALITY_BANK_EXCLUDED_WORST} pires n'ont pas de part ; la meilleure reçoit le plus`}
+                      ru={`Рейтинг команд (меньше штрафов — выше) — ${QUALITY_BANK_EXCLUDED_WORST} худшие без доли; лучшая получает больше всех`}
+                    />
+                  </div>
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    {bankStandings.map((t) => (
+                      <div
+                        key={t.teamId}
+                        className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-xs ${
+                          t.eligible ? "bg-emerald-50 text-emerald-900" : "bg-stone-100 text-stone-500"
+                        }`}
+                      >
+                        <span className="font-semibold">
+                          {t.rank}. {t.name}
+                        </span>
+                        <span className="text-stone-500">{t.penalties.toFixed(0)} € штрафов</span>
+                        <span className="font-bold">{t.eligible ? `${t.amount.toFixed(0)} €` : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -19742,6 +19971,11 @@ function PayrollExtrasView({
                             showAmount={isWeekend}
                             onSaveNote={(comment, amount) => saveDayNote(e, d, comment, amount)}
                             readOnly={readOnly}
+                            moveLabel={(() => {
+                              const mv = (teamMovesByEmployee[e.id] ?? []).find((m) => m.from_date === d && m.from_date > "2000-01-01");
+                              if (!mv) return null;
+                              return mv.team_name ? `→${mv.team_name.replace(/^equipe\s*/i, "").trim()}` : "→";
+                            })()}
                           />
                         );
                       })}
