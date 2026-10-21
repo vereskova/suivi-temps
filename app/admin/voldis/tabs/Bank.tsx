@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "@/components/Toast";
 import { parseBankFile, toRows } from "@/lib/voldis/bank-import";
-import { proposeMatches, type Proposal } from "@/lib/voldis/matching";
+import { categoryFor } from "@/lib/voldis/bank-import";
+import { analyzeTxs, cleanLabel, proposeMatches, type Proposal } from "@/lib/voldis/matching";
 import { num, remaining, round2, statusFor, type VBankTx } from "@/lib/voldis/rental";
 import type { Supabase, VoldisData } from "../data";
 import { Bi, Field, Menu, Modal, eur, frDate, todayIso } from "../ui";
@@ -22,7 +23,7 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
     error?: string;
   } | null>(null);
   const [pwBusy, setPwBusy] = useState(false);
-  const [filter, setFilter] = useState<"all" | "credit" | "debit" | "todo">("all");
+  const [filter, setFilter] = useState<"all" | "check" | "credit" | "debit" | "todo">("all");
   const [limit, setLimit] = useState(40);
 
   useEffect(() => {
@@ -165,7 +166,8 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
   }
 
   const chargeById = new Map(charges.map((c) => [c.id, c]));
-  const shown = txs.filter((t) => (filter === "all" ? true : filter === "todo" ? t.side === "credit" && !t.charge_id && !t.tenant_id : t.side === filter));
+  const flags = useMemo(() => analyzeTxs(txs, charges, tenants), [txs, charges, tenants]);
+  const shown = txs.filter((t) => (filter === "all" ? true : filter === "check" ? flags.has(t.id) : filter === "todo" ? t.side === "credit" && !t.charge_id && !t.tenant_id : t.side === filter));
 
   return (
     <div className="flex flex-col gap-4">
@@ -291,9 +293,9 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
           {(
             [
               ["all", "Toutes", "Все"],
+              ["check", `À vérifier (${flags.size})`, "Проверить"],
               ["credit", "Encaissements", "Поступления"],
               ["debit", "Dépenses", "Расходы"],
-              ["todo", "À rapprocher", "Не сопоставлены"],
             ] as const
           ).map(([k, fr, ru]) => (
             <button
@@ -305,33 +307,53 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
             </button>
           ))}
         </div>
-        <table className="w-full text-sm">
+        <p className="mb-3 text-xs text-stone-400">
+          <span className="mr-4">Gris : reconnu automatiquement</span>
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">Surligné : à vérifier</span>
+        </p>
+        <table className="w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-24" />
+            <col />
+            <col className="w-32" />
+            <col className="w-64" />
+            <col className="w-10" />
+          </colgroup>
           <thead>
-            <tr>
-              <th>Date</th>
-              <th>Libellé</th>
-              <th className="text-right">Montant</th>
-              <th>Locataire / catégorie</th>
+            <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-wide text-stone-400">
+              <th className="px-2 py-2">Date</th>
+              <th className="px-2 py-2">Opération</th>
+              <th className="px-2 py-2 text-right">Montant</th>
+              <th className="px-2 py-2">Locataire / catégorie</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {shown.slice(0, limit).map((t) => {
               const c = t.charge_id ? chargeById.get(t.charge_id) : null;
+              const flag = flags.get(t.id);
+              const who = c ? `${tenantName.get(c.tenant_id ?? "") ?? ""} · ${frDate(c.due_date)}` : t.tenant_id ? tenantName.get(t.tenant_id) : t.category ?? categoryFor(t.label ?? "") ?? "";
               return (
-                <tr key={t.id}>
-                  <td className="whitespace-nowrap text-stone-500">{frDate(t.settled_at)}</td>
-                  <td className="max-w-md truncate" title={t.label ?? ""}>
-                    {t.label ?? t.reference ?? "—"}
+                <tr key={t.id} className={flag ? "bg-amber-50/70" : "border-b border-stone-50"}>
+                  <td className={`whitespace-nowrap px-2 py-2.5 ${flag ? "text-stone-600" : "text-stone-400"}`}>{frDate(t.settled_at)}</td>
+                  <td className={`truncate px-2 py-2.5 ${flag ? "font-medium text-stone-900" : "text-stone-500"}`} title={t.label ?? ""}>
+                    {cleanLabel(t.label ?? t.reference)}
                   </td>
-                  <td className={`text-right tabular-nums font-bold ${t.side === "credit" ? "text-emerald-700" : "text-stone-600"}`}>
+                  <td className={`whitespace-nowrap px-2 py-2.5 text-right tabular-nums ${flag ? "font-bold" : "font-medium"} ${t.side === "credit" ? (flag ? "text-emerald-800" : "text-emerald-700/70") : flag ? "text-red-700" : "text-red-500/70"}`}>
                     {t.side === "credit" ? "+" : "−"}
                     {eur(num(t.amount))}
                   </td>
-                  <td className="text-xs text-stone-500">
-                    {c ? `${tenantName.get(c.tenant_id ?? "") ?? ""} · ${frDate(c.due_date)}` : t.tenant_id ? tenantName.get(t.tenant_id) : t.category ?? (t.side === "credit" ? "—" : "")}
+                  <td className="truncate px-2 py-2.5 text-xs" title={flag?.reason ?? who}>
+                    {flag ? (
+                      <span className="font-semibold text-amber-800">
+                        {who && <span className="mr-1.5 font-normal text-stone-500">{who} ·</span>}
+                        {flag.reason}
+                      </span>
+                    ) : (
+                      <span className="text-stone-400">{who}</span>
+                    )}
                   </td>
-                  <td className="text-right">
+                  <td className="px-2 py-2.5 text-right">
                     {t.side === "credit" && (
                       <Menu
                         items={[
@@ -346,8 +368,8 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
             })}
             {shown.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-stone-400">
-                  Aucune opération / Нет операций
+                <td colSpan={5} className="py-8 text-center text-stone-400">
+                  {filter === "check" ? "Rien à vérifier — tout est reconnu ✓" : "Aucune opération / Нет операций"}
                 </td>
               </tr>
             )}

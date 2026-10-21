@@ -43,6 +43,7 @@ export function categoryFor(label: string): string | null {
   if (l.includes("AXAFRANCE")) return "Assurance";
   if (l.includes("DIRECTIONGENERALEDESFINANCES") || l.includes("IMPOTTF")) return "Taxe foncière";
   if (l.includes("TENUEDECOMPTE")) return "Frais bancaires";
+  if (l.includes("FITECO")) return "FITECO (honoraires)";
   return null;
 }
 
