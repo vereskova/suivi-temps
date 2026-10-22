@@ -7057,6 +7057,55 @@ const TRAINING_CERT_PATTERNS: Record<string, RegExp> = {
   R446: /r\s?446|filet/i,
 };
 
+/** Расшифровка обучений для таблицы «Formations» (код → полное название и что это). */
+const TRAINING_INFO: Record<string, { ru: string; fr: string; what: string }> = {
+  SST: {
+    ru: "Спасатель-санитар на производстве",
+    fr: "Sauveteur Secouriste du Travail",
+    what: "Первая помощь при несчастном случае; обновление (MAC) раз в 24 месяца.",
+  },
+  AIPR: {
+    ru: "Допуск к работам рядом с подземными и воздушными сетями",
+    fr: "Autorisation d'Intervention à Proximité des Réseaux",
+    what: "Электричество, газ, вода рядом с местом работ; обязателен для работающих рядом с сетями, действует 5 лет.",
+  },
+  R408: {
+    ru: "Монтаж и использование стационарных лесов",
+    fr: "Recommandation CNAM R408 - échafaudages de pied",
+    what: "Сборка, приёмка и разборка фасадных лесов (стационарных, «de pied»).",
+  },
+  R431: {
+    ru: "Работа на высоте: страховочные СИЗ",
+    fr: "Recommandation CNAM R431 - EPI contre les chutes de hauteur",
+    what: "Страховочная привязь, стропы, анкерные точки. Нужен тем, кто работает на кровле и на высоте (поэтому сертификаты «toiture» привязываются сюда).",
+  },
+  R446: {
+    ru: "Страховочные сетки больших полотен",
+    fr: "Recommandation CNAM R446 - filets de sécurité grandes nappes",
+    what: "Монтаж и демонтаж больших страховочных сеток (коллективная защита от падения).",
+  },
+  R482: {
+    ru: "Допуск CACES R482: строительная техника",
+    fr: "CACES R482 - engins de chantier",
+    what: "Мини-экскаватор, погрузчик, экскаватор-погрузчик, каток и др. по категориям A-G; действует 10 лет.",
+  },
+  R486A: {
+    ru: "Допуск CACES R486, категория A: подъёмники для людей",
+    fr: "CACES R486 cat. A - PEMP (plateformes élévatrices mobiles de personnel)",
+    what: "Ножничные подъёмники (вертикальный подъём платформы); категория B - это телескопические и коленчатые вышки. Действует 10 лет.",
+  },
+  BR_PV_BT: {
+    ru: "Электродопуск BR: низкое напряжение, фотоэлектрика",
+    fr: "Habilitation électrique BR - basse tension / photovoltaïque (NF C 18-510)",
+    what: "Допуск к электрическим работам в низком напряжении на солнечных панелях. Не обязателен для всех (серая ячейка у большинства). Точная формулировка - как в удостоверении.",
+  },
+};
+
+function trainingTip(t: { code: string; label: string }): string {
+  const i = TRAINING_INFO[t.code];
+  return i ? `${t.code} - ${i.ru}. ${i.what}` : t.label;
+}
+
 function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [types, setTypes] = useState<TrainingType[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -7213,7 +7262,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         <button
           onClick={() => cycle(e.id, t.id, status)}
           disabled={saving === key}
-          title={`${t.label} - клик: ${status === undefined ? "KO" : status === "ko" ? "OK" : "не требуется"}`}
+          title={`${trainingTip(t)} - клик: ${status === undefined ? "KO" : status === "ko" ? "OK" : "не требуется"}`}
           className={`block w-full rounded-md font-bold ${compact ? "px-2.5 py-1 text-xs" : "py-2 text-xs"} ${tone}`}
         >
           {compact ? `${t.code}: ` : ""}
@@ -7352,7 +7401,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
                 <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Poste" ru="Должность" /></th>
                 {types.map((t) => (
-                  <th key={t.id} className="pb-2 px-1 text-center" title={t.label}>
+                  <th key={t.id} className="pb-2 px-1 text-center" title={trainingTip(t)}>
                     {t.code}
                   </th>
                 ))}
@@ -7395,6 +7444,34 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
           </table>
         </div>
         </>
+      )}
+      {types.length > 0 && (
+        <div className="card mt-4">
+          <p className="mb-2 text-sm font-bold text-stone-700">
+            <Bi fr="Légende des formations" ru="Расшифровка обучений" />
+          </p>
+          <dl className="grid gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+            {types.map((t) => {
+              const i = TRAINING_INFO[t.code];
+              return (
+                <div key={t.id}>
+                  <dt className="font-bold text-stone-800">
+                    {t.code} <span className="font-normal text-stone-500">- {i?.ru ?? t.label}</span>
+                  </dt>
+                  <dd className="text-xs text-stone-500">
+                    {i ? (
+                      <>
+                        <span className="italic">{i.fr}.</span> {i.what}
+                      </>
+                    ) : (
+                      t.label
+                    )}
+                  </dd>
+                </div>
+              );
+            })}
+          </dl>
+        </div>
       )}
       {certTarget && (
         <TrainingCertModal
@@ -7502,7 +7579,7 @@ function TrainingCertModal({
 
   return (
     <Modal open onClose={onClose} title={`${employeeName(employee)} - ${type.code}`} maxWidth="max-w-lg">
-      <p className="mb-3 text-sm text-stone-500">{type.label}. Выберите документ из досье или загрузите новый сертификат.</p>
+      <p className="mb-3 text-sm text-stone-500">{TRAINING_INFO[type.code] ? `${TRAINING_INFO[type.code].ru} (${TRAINING_INFO[type.code].fr})` : type.label}. Выберите документ из досье или загрузите новый сертификат.</p>
       {docs.length === 0 ? (
         <p className="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-400">В досье пока нет документов «Formation» и «Habilitation».</p>
       ) : (
