@@ -60,3 +60,16 @@ export async function updateCharge(supabase: Supabase, id: string, patch: Record
   }
   return true;
 }
+
+/** Создание платежей (например, оплата вперёд); если поля paid_cash ещё нет (миграция 0121), повторяем без него. */
+export async function insertCharges(supabase: Supabase, rows: Record<string, unknown>[]): Promise<boolean> {
+  let { error } = await supabase.from("voldis_charges").insert(rows);
+  if (error && /paid_cash/.test(error.message)) {
+    ({ error } = await supabase.from("voldis_charges").insert(rows.map(({ paid_cash, ...rest }) => (void paid_cash, rest))));
+  }
+  if (error) {
+    toast.error("Ошибка: " + error.message);
+    return false;
+  }
+  return true;
+}

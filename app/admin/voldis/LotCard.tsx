@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { toast } from "@/components/Toast";
-import { RENT_STATE_LABEL, num, remaining, rentState, ymOf, monthLabelRu, type RentState, type VCharge } from "@/lib/voldis/rental";
+import { RENT_STATE_LABEL, dueDateOf, monthEnd, monthLabelRu, num, remaining, rentState, shiftMonth, ymOf, type RentState, type VCharge, type VLease } from "@/lib/voldis/rental";
 import type { Supabase, VoldisData } from "./data";
 import { DocumentsPanel, LeaseModal, LotModal, TenantModal } from "./forms";
 import { ReviseModal } from "./ReviseModal";
-import { Menu, Modal, Status, eur, frDate, todayIso } from "./ui";
-import { ensureInvoice, openPdf, remindTenant, sendInvoice, updateCharge } from "./actions";
+import { Field, Menu, Modal, Status, eur, frDate, todayIso } from "./ui";
+import { ensureInvoice, insertCharges, openPdf, remindTenant, sendInvoice, updateCharge } from "./actions";
 
 const tone = (s: RentState) => ({ paid: "good", partial: "warn", late: "bad", expected: "idle", lost: "idle" }[s] as "good" | "warn" | "bad" | "idle");
 
@@ -15,7 +15,7 @@ const tone = (s: RentState) => ({ paid: "good", partial: "warn", late: "bad", ex
 export default function LotCard({ supabase, data, lotId, onClose }: { supabase: Supabase; data: VoldisData; lotId: string; onClose: () => void }) {
   const { props, tenants, leases, charges, docs, invoices, reload } = data;
   const lot = props.find((p) => p.id === lotId);
-  const [modal, setModal] = useState<"lot" | "tenant" | "lease" | "newLease" | "revise" | null>(null);
+  const [modal, setModal] = useState<"lot" | "tenant" | "lease" | "newLease" | "revise" | "advance" | null>(null);
   const [busy, setBusy] = useState(false);
   const today = todayIso();
   if (!lot) return null;
@@ -144,6 +144,9 @@ export default function LotCard({ supabase, data, lotId, onClose }: { supabase: 
                     Отметить прошлые месяцы наличными ({openPast.length})
                   </button>
                 )}
+                <button className="text-primary-700 hover:underline" disabled={busy} onClick={() => setModal("advance")}>
+                  Оплата вперёд
+                </button>
                 {hasLate && tenant && (
                   <button
                     className="text-primary-700 hover:underline"
@@ -244,6 +247,9 @@ export default function LotCard({ supabase, data, lotId, onClose }: { supabase: 
       {modal === "newLease" && (
         <LeaseModal supabase={supabase} lease={null} props={props} tenants={tenants} leases={leases} docs={docs} defaultPropertyId={lot.id} onClose={() => setModal(null)} onSaved={() => void reload()} />
       )}
+      {modal === "advance" && lease && (
+        <AdvanceModal supabase={supabase} lease={lease} cash={lot.pays_cash} lastMonth={rentCharges.filter((c) => c.lease_id === lease.id).map((c) => ymOf(c.due_date)).sort().pop() ?? todayIso().slice(0, 7)} existing={new Set(rentCharges.filter((c) => c.lease_id === lease.id).map((c) => ymOf(c.due_date)))} onClose={() => setModal(null)} onSaved={() => void reload()} />
+      )}
       {modal === "revise" && lease && <ReviseModal supabase={supabase} lease={lease} tenantName={tenant?.name ?? ""} onClose={() => setModal(null)} onSaved={() => void reload()} />}
     </>
   );
@@ -255,5 +261,79 @@ function Term({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="w-28 shrink-0 text-stone-400">{label}</dt>
       <dd className="min-w-0 text-stone-700">{value}</dd>
     </div>
+  );
+}
+
+
+/** Арендатор заплатил за несколько месяцев вперёд: создаём оплаченные платежи на ближайшие месяцы. */
+function AdvanceModal({ supabase, lease, cash, lastMonth, existing, onClose, onSaved }: { supabase: Supabase; lease: VLease; cash: boolean; lastMonth: string; existing: Set<string>; onClose: () => void; onSaved: () => void }) {
+  const [months, setMonths] = useState("2");
+  const [when, setWhen] = useState(todayIso());
+  const [isCash, setIsCash] = useState(cash);
+  const [busy, setBusy] = useState(false);
+  const n = Math.min(24, Math.max(1, Number(months) || 1));
+  const list = Array.from({ length: n }, (_, i) => shiftMonth(lastMonth, i + 1)).filter((ym) => !existing.has(ym));
+
+  async function save() {
+    if (list.length === 0) return toast.error("Эти месяцы уже есть");
+    setBusy(true);
+    const ok = await insertCharges(
+      supabase,
+      list.map((ym) => ({
+        lease_id: lease.id,
+        property_id: lease.property_id,
+        tenant_id: lease.tenant_id,
+        kind: "rent",
+        due_date: dueDateOf(ym, lease.billing_day),
+        period_start: `${ym}-01`,
+        period_end: monthEnd(Number(ym.slice(0, 4)), Number(ym.slice(5, 7))),
+        amount_due: lease.monthly_total,
+        vat_amount: num(lease.vat),
+        amount_paid: lease.monthly_total,
+        paid_on: when,
+        paid_cash: isCash,
+        status: "paid",
+        description: `Аренда ${ym} (оплата вперёд)`,
+      }))
+    );
+    setBusy(false);
+    if (!ok) return;
+    toast.success(`Оплачено вперёд: ${list.map((ym) => monthLabelRu(ym)).join(", ")}`);
+    onSaved();
+    onClose();
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Оплата вперёд">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="" ru="На сколько месяцев">
+          <input className="input" inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} autoFocus />
+        </Field>
+        <Field label="" ru="Дата получения">
+          <input className="input" type="date" value={when} onChange={(e) => setWhen(e.target.value)} />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-stone-600 sm:col-span-2">
+          <input type="checkbox" checked={isCash} onChange={(e) => setIsCash(e.target.checked)} />
+          Получено наличными (не через банк)
+        </label>
+      </div>
+      <p className="mt-4 rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-600">
+        {list.length === 0 ? (
+          "Эти месяцы уже есть в списке платежей."
+        ) : (
+          <>
+            Будут отмечены оплаченными: <strong className="text-stone-900">{list.map((ym) => monthLabelRu(ym)).join(", ")}</strong>, по {eur(num(lease.monthly_total))} за месяц (всего {eur(num(lease.monthly_total) * list.length)}).
+          </>
+        )}
+      </p>
+      <div className="mt-6 flex justify-end gap-2">
+        <button className="btn btn-secondary" onClick={onClose}>
+          Отмена
+        </button>
+        <button className="btn btn-primary" disabled={busy || list.length === 0} onClick={() => void save()}>
+          Отметить оплаченными
+        </button>
+      </div>
+    </Modal>
   );
 }
