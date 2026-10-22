@@ -18,7 +18,7 @@ import {
 // /equipe/<jeton> ouverte depuis le téléphone de l'équipe. Pas de session :
 // le jeton (table team_access_links, lisible seulement par rh_admin) identifie
 // l'équipe, et seules les lignes de cette équipe sont renvoyées. Mêmes formules
-// que l'écran RH (computePayrollExtras) — le Банк качества et la part du
+// que l'écran RH (computePayrollExtras) - le Банк качества et la part du
 // contrôleur se calculent sur toute l'entreprise, mais rien d'autre ne sort.
 
 // Même contrôleur que PayrollExtrasView (QUALITY_BANK_CONTROLLER_EMPLOYEE_ID).

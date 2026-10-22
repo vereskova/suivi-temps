@@ -3,18 +3,18 @@
  * the flat 7-category model (0026 + seed-commercial-checklists.ts) with:
  *   - a short, flat "core" list per client (one category: DEVIS or PLANNING)
  *   - some clients now have TWO named template variants (same company, two
- *     job types — e.g. "ADVANCED EnerGies" has "Bâtiment" and "Ombrières")
+ *     job types - e.g. "ADVANCED EnerGies" has "Bâtiment" and "Ombrières")
  *   - a separate global "Autres" catalogue (rarely-requested tasks, picked
  *     per-dossier rather than defaulted into every template)
  *
  * Source: Checklists_Modeles_Clients_VLADIS (1).numbers, 14 sheets. Apple
  * Numbers isn't readable by the `xlsx` package already used elsewhere in
- * this repo, so — unlike the original seed script — this one doesn't take a
+ * this repo, so - unlike the original seed script - this one doesn't take a
  * file path argument. The sheet contents were extracted once (via Python's
  * numbers_parser) and are embedded below as literals; re-running this
  * script just re-applies that same fixed dataset. Labels are imported
  * verbatim from the source (including its inconsistent "Firnis"/"Furnis"/
- * "Fournis" spellings) — not corrected, since this is domain jargon the
+ * "Fournis" spellings) - not corrected, since this is domain jargon the
  * commercial team understands better than an import script should guess
  * at. One exact duplicate row ("Fournis consuel" listed twice under
  * MATÉRIAUX in the source) is silently dropped; a second, non-duplicate
@@ -25,12 +25,12 @@
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/seed-commercial-checklists-v2.ts
  *
  * Safe to re-run:
- *   - Clients are upserted by name — a client present in the DB but absent
+ *   - Clients are upserted by name - a client present in the DB but absent
  *     from this dataset (e.g. "Easing", not in this revision) is left
  *     untouched, never deleted.
  *   - Each (client, variant) template is upserted, then its items are fully
  *     replaced (delete+insert), same as the original script.
- *   - The Autres catalogue is fully replaced (delete+insert) — it's a
+ *   - The Autres catalogue is fully replaced (delete+insert) - it's a
  *     single global list, not per-client.
  */
 import { createClient } from "@supabase/supabase-js";
@@ -244,7 +244,7 @@ async function main() {
   const clientNames = Array.from(new Set(TEMPLATES.map((t) => t.client)));
 
   for (const clientName of clientNames) {
-    // Matched by name_normalized, not the exact name — the source
+    // Matched by name_normalized, not the exact name - the source
     // spreadsheet has spelled at least one client name differently across
     // revisions ("ADVANCED EnerGies" vs "ADVANCED EnerGIes"), and upserting
     // by exact name silently created a duplicate client row instead of
@@ -286,7 +286,7 @@ async function main() {
       const { error: insertError } = await supabase.from("commercial_checklist_template_items").insert(rows);
       if (insertError) throw insertError;
 
-      console.log(`✓ ${clientName} — ${variant.variant}: ${rows.length} tâches`);
+      console.log(`✓ ${clientName} - ${variant.variant}: ${rows.length} tâches`);
     }
   }
 

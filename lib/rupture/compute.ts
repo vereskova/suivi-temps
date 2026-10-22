@@ -1,5 +1,5 @@
 /**
- * Rupture-de-contrat calculator — préavis, procédure de rupture conventionnelle
+ * Rupture-de-contrat calculator - préavis, procédure de rupture conventionnelle
  * (RC), and indemnités, per la Convention Collective Métallurgie. Ported field
  * for field from the reference spreadsheet (Calculateur_Ruptures.xlsx) so the
  * numbers match exactly; only the input/output shapes are new.
@@ -72,7 +72,7 @@ function holidaySetForRange(fromIso: string, toIsoDate: string): Set<string> {
   return set;
 }
 
-/** Excel WORKDAY() equivalent — moves `delta` business days from `iso`,
+/** Excel WORKDAY() equivalent - moves `delta` business days from `iso`,
  *  skipping weekends and the given holidays. Negative `delta` moves backward. */
 function workday(iso: string, delta: number, holidays: Set<string>): string {
   let cur = iso;
@@ -87,7 +87,7 @@ function workday(iso: string, delta: number, holidays: Set<string>): string {
   return cur;
 }
 
-/** Anniversary-based seniority — mirrors Excel's DATEDIF(hire, ref, "Y"/"M"). */
+/** Anniversary-based seniority - mirrors Excel's DATEDIF(hire, ref, "Y"/"M"). */
 function anciennete(hireIso: string, refIso: string): { years: number; months: number; decimalYears: number } {
   const hire = toUtcDate(hireIso);
   const ref = toUtcDate(refIso);
@@ -106,7 +106,7 @@ function anciennete(hireIso: string, refIso: string): { years: number; months: n
   return { years, months, decimalYears: years + months / 12 };
 }
 
-/** Calendar-day notice period, per group/seniority/age — ported verbatim from
+/** Calendar-day notice period, per group/seniority/age - ported verbatim from
  *  the reference spreadsheet's formula (Convention Collective Métallurgie). */
 function preavisCalendarDays(
   type: RuptureType,

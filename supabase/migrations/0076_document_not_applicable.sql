@@ -3,7 +3,7 @@
 -- conduire for someone who doesn't drive) instead of it sitting forever as
 -- a red "Aucun document" gap. Per-period categories (contrat/dpae/rupture)
 -- are marked per registre_unique_personnel row; other categories leave
--- registre_entry_id null. No unique constraint — the app checks before
+-- registre_entry_id null. No unique constraint - the app checks before
 -- insert/delete, same style as the rest of this file's tables. Access
 -- mirrors employee_documents itself (0011/0017): rh_admin and rh only.
 create table employee_document_not_applicable (
@@ -16,7 +16,7 @@ create table employee_document_not_applicable (
 );
 
 -- Set server-side, same pattern as employee_documents.uploaded_by_email
--- (0024) — not trusted from the client.
+-- (0024) - not trusted from the client.
 create or replace function set_document_not_applicable_created_by() returns trigger
 language plpgsql security definer as $$
 begin

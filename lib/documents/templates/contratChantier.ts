@@ -150,7 +150,7 @@ export function contratChantier(
     { type: "spacer" },
     closing(
       `Fait en double exemplaire à ${params.signingCity} le ${formatDateShort(params.signingDate)}`,
-      { label: `L'employeur — ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
+      { label: `L'employeur - ${company.name}`, lines: [company.representativeName, company.representativeTitle] },
       {
         label: salarieLabel(sex),
         lines: [fullName, "« Lu et approuvé - Bon pour accord »"],
@@ -158,5 +158,5 @@ export function contratChantier(
     ),
   ];
 
-  return { title: `Contrat de travail — ${fullName}`, blocks };
+  return { title: `Contrat de travail - ${fullName}`, blocks };
 }

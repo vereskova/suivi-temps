@@ -4,11 +4,11 @@
 -- adjusted without a code change whenever the source rates/deadlines move.
 --
 -- Two curve shapes cover everything in the source spreadsheet:
---   'linear' — interpolate between points (Main-d'œuvre, Pose SI, Pose PPV);
---   'step'   — each point's x is the upper bound of a range, its y the flat
+--   'linear' - interpolate between points (Main-d'œuvre, Pose SI, Pose PPV);
+--   'step'   - each point's x is the upper bound of a range, its y the flat
 --              value for that range (Tirage de câble, Sécurité collective,
 --              Filet sur face); a single point is just a constant (Pose/
---              Dépose Bac acier, Démontage panneau — one measured value in
+--              Dépose Bac acier, Démontage panneau - one measured value in
 --              the source, no second point to derive a rate from).
 -- Same access split as the other commercial master-data tables (0027):
 -- read for commercial+rh_admin, write rh_admin-only.
@@ -76,25 +76,25 @@ create policy commercial_duration_norm_points_admin_delete on commercial_duratio
 -- until someone edits the table.
 insert into commercial_duration_norms (code, label, label_ru, unit, mode, checklist_hint, position) values
   ('main_doeuvre_standard', 'Main-d''œuvre (standard)', 'Main-d''œuvre (стандарт)', 'kwc', 'linear',
-   'Ligne « Main-d''œuvre » — sauf si le dossier a aussi une ligne Pose SI/Pose PPV.', 1),
+   'Ligne « Main-d''œuvre » - sauf si le dossier a aussi une ligne Pose SI/Pose PPV.', 1),
   ('main_doeuvre_ombriere', 'Main-d''œuvre (ombrière)', 'Main-d''œuvre (ombrière)', 'kwc', 'linear',
-   'Ligne « Main-d''œuvre » — dès que le dossier a une ligne Pose SI et/ou Pose PPV.', 2),
+   'Ligne « Main-d''œuvre » - dès que le dossier a une ligne Pose SI et/ou Pose PPV.', 2),
   ('pose_si', 'Pose SI', 'Pose SI', 'kwc', 'linear',
    'Ligne « Pose SI ».', 3),
   ('pose_ppv', 'Pose PPV', 'Pose PPV', 'kwc', 'linear',
    'Ligne « Pose PPV ».', 4),
   ('tirage_cable', 'Tirage de câble', 'Протяжка кабеля', 'm', 'step',
-   'Ligne « Tirage AC » — par longueur de câble (m).', 5),
+   'Ligne « Tirage AC » - par longueur de câble (m).', 5),
   ('pose_bac_acier', 'Pose Bac acier', 'Pose Bac acier', 'm', 'step',
-   'Ligne « Pose Bac acier » — un seul point mesuré dans la source (230 m), pas de courbe.', 6),
+   'Ligne « Pose Bac acier » - un seul point mesuré dans la source (230 m), pas de courbe.', 6),
   ('depose_bac_acier', 'Dépose Bac acier', 'Dépose Bac acier', 'm', 'step',
-   'Ligne « Dépose Bac acier » — un seul point mesuré dans la source (360 m), pas de courbe.', 7),
+   'Ligne « Dépose Bac acier » - un seul point mesuré dans la source (360 m), pas de courbe.', 7),
   ('demontage_panneau', 'Démonter panneau', 'Démonter panneau', 'm2', 'step',
-   'Ligne « Démonter panneau » — un seul point mesuré dans la source (150, unité non précisée), pas de courbe.', 8),
+   'Ligne « Démonter panneau » - un seul point mesuré dans la source (150, unité non précisée), pas de courbe.', 8),
   ('securite_collective', 'Sécurité collective (filet périmètre)', 'Сетка по периметру', 'kwc', 'step',
-   'Ligne « Pose & dépose sécurité colective » — par puissance (kWc).', 9),
+   'Ligne « Pose & dépose sécurité colective » - par puissance (kWc).', 9),
   ('filet_sur_face', 'Filet sur face (sous bac acier)', 'Сетка под bac acier', 'm2', 'step',
-   'Ligne « Pose /depose fille sur face » — par surface de toiture (m²).', 10);
+   'Ligne « Pose /depose fille sur face » - par surface de toiture (m²).', 10);
 
 insert into commercial_duration_norm_points (norm_id, x, y, position)
 select n.id, v.x, v.y, v.position

@@ -1,6 +1,6 @@
-/** VLADIS brand mark — the official logo asset (public/logo.jpg): a circle
+/** VLADIS brand mark - the official logo asset (public/logo.jpg): a circle
  *  enclosing a radiating tree motif with a trunk, white on the brand blue.
- *  Fills whatever rounded container it's placed in — the parent div must have
+ *  Fills whatever rounded container it's placed in - the parent div must have
  *  `overflow-hidden` so the image clips to that container's own radius. */
 export function LogoMark({ size = 32, className = "" }: { size?: number; className?: string }) {
   return (

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { LogoMark } from "@/components/Logo";
 
-/** App segment error boundary — Next.js renders this in place of the page
+/** App segment error boundary - Next.js renders this in place of the page
  *  whenever a render/runtime error escapes a nested route. There's no
  *  error-tracking service wired up yet, so console.error is the only sink. */
 export default function Error({

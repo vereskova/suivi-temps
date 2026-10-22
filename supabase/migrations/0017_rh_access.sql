@@ -1,13 +1,13 @@
 -- Grants the 'rh' role read/write on every table backing the Effectif + RH
 -- sidebar sections (Employés, Médical, Formations, Tailles, Documents,
 -- Registre du personnel, Organigramme, Cours de français, Dossier salarié).
--- Deliberately excludes pointage_entries and the payroll_* tables — this
+-- Deliberately excludes pointage_entries and the payroll_* tables - this
 -- role is scoped to HR data, not day-to-day time tracking or payroll.
 -- Added as new, purely additive policies (Postgres RLS ORs all permissive
 -- policies together) so the existing rh_admin/chef/comptable policies are
--- untouched — 'rh' can only ever gain access, never narrow anyone else's.
+-- untouched - 'rh' can only ever gain access, never narrow anyone else's.
 
--- Teams & employees — needed for Organigramme, Employés, and every other
+-- Teams & employees - needed for Organigramme, Employés, and every other
 -- view's team/employee dropdowns.
 create policy teams_rh_select on teams for select using (
   current_role_name() = 'rh'

@@ -3,7 +3,7 @@
 -- New employee fields needed to fill contract templates. `address`,
 -- `birth_place`, `classification`, `weekly_hours` are no more sensitive than
 -- what's already on `employees` (date_of_birth, phone) so they live there.
--- `monthly_gross_salary` goes in `employee_confidential` instead — same
+-- `monthly_gross_salary` goes in `employee_confidential` instead - same
 -- row-vs-column RLS reasoning as RIB/Sécurité sociale: chefs have partial
 -- SELECT on `employees` for their own team, and salary shouldn't leak through
 -- that same row-level policy.
@@ -15,7 +15,7 @@ alter table employees add column if not exists weekly_hours numeric(4,2);
 
 alter table employee_confidential add column if not exists monthly_gross_salary numeric(9,2);
 
--- ── Company profile (singleton) — feeds the letterhead / signatory block on every generated document ──
+-- ── Company profile (singleton) - feeds the letterhead / signatory block on every generated document ──
 create table company_settings (
   id                    uuid primary key default gen_random_uuid(),
   name                  text not null default 'VLADIS',

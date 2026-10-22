@@ -1,7 +1,7 @@
 -- Grants the 'comptable' role exactly what the Paie admin view needs and
 -- nothing else. Added as new, purely additive policies (Postgres RLS ORs all
 -- permissive policies together) so the existing rh_admin/chef policies are
--- untouched — comptable can only ever gain access, never narrow anyone else's.
+-- untouched - comptable can only ever gain access, never narrow anyone else's.
 
 -- Paie needs the employee roster (name, team, category) and team names for
 -- the Bureau/Contrôle & Formation/Équipe grouping, but never writes either.
@@ -13,7 +13,7 @@ create policy teams_comptable_select on teams for select using (
   current_role_name() = 'comptable'
 );
 
--- payroll_parameters: Paie only ever reads these (rate, ceilings, etc.) —
+-- payroll_parameters: Paie only ever reads these (rate, ceilings, etc.) -
 -- editing them stays rh_admin-only via the existing policy.
 create policy payroll_parameters_comptable_select on payroll_parameters for select using (
   current_role_name() = 'comptable'
@@ -28,7 +28,7 @@ create policy payroll_runs_comptable_insert on payroll_runs for insert with chec
 );
 
 -- payroll_line_items: Paie selects saved lines and upserts (insert+update)
--- on "Enregistrer" — no delete, matching what the UI actually does.
+-- on "Enregistrer" - no delete, matching what the UI actually does.
 create policy payroll_line_items_comptable_select on payroll_line_items for select using (
   current_role_name() = 'comptable'
 );
@@ -42,7 +42,7 @@ create policy payroll_line_items_comptable_update on payroll_line_items for upda
 );
 
 -- pointage_entries: "Appliquer au pointage" reads that month's entries per
--- employee and overwrites overtime_minutes — no insert/delete, it only ever
+-- employee and overwrites overtime_minutes - no insert/delete, it only ever
 -- touches rows that already exist.
 create policy pointage_comptable_select on pointage_entries for select using (
   current_role_name() = 'comptable'

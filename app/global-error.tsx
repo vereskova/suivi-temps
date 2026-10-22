@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { LogoMark } from "@/components/Logo";
 import "./globals.css";
 
-/** Root-level fallback — only triggers when the root layout itself throws.
+/** Root-level fallback - only triggers when the root layout itself throws.
  *  Per Next.js convention this file must render its own <html>/<body> since
  *  it replaces the root layout entirely; a plain <a> is used instead of
  *  next/link because the app's router context may not be mounted here.

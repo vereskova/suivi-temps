@@ -3,11 +3,11 @@
 -- trailers share one table (vehicle_type distinguishes them) since they
 -- share every other concern here: documents, contrôle technique, insurance.
 --
--- Insurance/leasing are flat "current value" columns, not a history table —
+-- Insurance/leasing are flat "current value" columns, not a history table -
 -- matches how they're already tracked (one row, overwritten on renewal);
 -- old contracts stay recoverable as uploaded documents. Figures that aren't
 -- cleanly known (insurance premium, leasing payment, warranty) are left
--- null here on purpose — see scripts/seed-autoparc.ts — rather than guessed.
+-- null here on purpose - see scripts/seed-autoparc.ts - rather than guessed.
 create table vehicles (
   id                          uuid primary key default gen_random_uuid(),
   plate                       text not null unique,
@@ -117,7 +117,7 @@ create table vehicle_documents (
   created_at       timestamptz not null default now()
 );
 
--- Garages, tire shops, insurance broker, trailer dealer — currently scattered
+-- Garages, tire shops, insurance broker, trailer dealer - currently scattered
 -- across sheet notes ("Ремонт и обсл. автомобилей").
 create table vehicle_service_providers (
   id        uuid primary key default gen_random_uuid(),
@@ -138,7 +138,7 @@ alter table vehicle_document_categories enable row level security;
 alter table vehicle_documents enable row level security;
 alter table vehicle_service_providers enable row level security;
 
--- rh_admin-only for v1, same as Paie/Commercial/audit — can be opened to
+-- rh_admin-only for v1, same as Paie/Commercial/audit - can be opened to
 -- 'rh' later in one line, same as was just done for HR-дашборды.
 create policy vehicles_rh_admin_all on vehicles for all using (
   current_role_name() = 'rh_admin'
@@ -181,7 +181,7 @@ grant select, insert, update, delete on vehicle_documents to authenticated, serv
 grant select, insert, update, delete on vehicle_service_providers to authenticated, service_role;
 
 -- Storage bucket `autopark-documents` is created separately via the Storage
--- API (same as `dossier-salarie` was) — private, only rh_admin may read/write.
+-- API (same as `dossier-salarie` was) - private, only rh_admin may read/write.
 create policy autopark_documents_rh_admin_storage on storage.objects for all using (
   bucket_id = 'autopark-documents' and current_role_name() = 'rh_admin'
 ) with check (

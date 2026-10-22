@@ -5,7 +5,7 @@
  * and full maintenance-visit history with the 20-item checklist (from the
  * Lux Motors service log spreadsheet).
  *
- * Insurance, leasing figures, and warranty are deliberately left null here —
+ * Insurance, leasing figures, and warranty are deliberately left null here -
  * they're not cleanly available across sources, so per the same rule
  * applied to Paie's SMIC figure, they're filled in later by hand through the
  * Autoparc UI rather than guessed.
@@ -15,7 +15,7 @@
  *     npx tsx scripts/seed-autoparc.ts "/path/to/история обслуживания.xlsx" [--dry-run]
  *
  * Safe to re-run for the identity/CT part (upserts vehicles by plate). NOT
- * safe to re-run for maintenance visits — re-running would insert duplicate
+ * safe to re-run for maintenance visits - re-running would insert duplicate
  * visit rows, since there's no natural unique key across (vehicle, date) to
  * upsert on (a vehicle can plausibly be serviced twice on the same date).
  */
@@ -38,7 +38,7 @@ if (!filePath) {
 
 const supabase = createClient(url, serviceKey);
 
-// ── 1. Vehicle/trailer identity — from the real folder names in
+// ── 1. Vehicle/trailer identity - from the real folder names in
 // "03 VLADIS /МАШИНЫ/". Reviewable literal data rather than a folder-name
 // parser, since there are only ~33 of them and getting a plate wrong would
 // silently create a duplicate/wrong vehicle record.
@@ -92,7 +92,7 @@ const VEHICLES: VehicleSeed[] = [
 ];
 
 // ── 2. Contrôle technique due dates + fallback team label, fetched live
-// from "Feuille 2" of the user's own registration-tracking sheet — avoids
+// from "Feuille 2" of the user's own registration-tracking sheet - avoids
 // hand-transcribing ~15 dates.
 const FEUILLE2_SHEET_URL =
   "https://docs.google.com/spreadsheets/d/18TZsGuxxfO7mBUxVTeRFm6L-S7BuG-eSvvMJ_aOAQUs/export?format=xlsx";
@@ -124,7 +124,7 @@ async function fetchFeuille2(): Promise<Map<string, { ctDueDate: string | null; 
   return map;
 }
 
-// ── 3. Lux Motors maintenance history — the source file has 3 sheets, each
+// ── 3. Lux Motors maintenance history - the source file has 3 sheets, each
 // with 5 vehicle "column-groups" of 6 columns; groups repeat vertically for
 // every dated visit. Which plate sits in which group is fixed (verified
 // directly against the file), so it's hardcoded rather than parsed from the
@@ -181,7 +181,7 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
     for (const row of rows) {
       const v0 = row[col0];
       // Excel date serials for any plausible service date land well above
-      // 1000 (e.g. ~46000 for late 2025) — well clear of the 1-20 item
+      // 1000 (e.g. ~46000 for late 2025) - well clear of the 1-20 item
       // numbers below, so this alone disambiguates a visit-start row.
       // Converted via SSF rather than a JS Date to avoid a UTC/local
       // timezone shift silently rolling the date to the wrong day.
@@ -200,7 +200,7 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
         inNotes = false;
         continue;
       }
-      // A header row also ends any preceding notes section — some rounds
+      // A header row also ends any preceding notes section - some rounds
       // repeat the header/checklist for a vehicle that wasn't actually
       // serviced that round (all items false, no date of its own); without
       // this reset, "inNotes" from the previous round would stay stuck and
@@ -226,11 +226,11 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
     if (current) result.get(plate)!.push(current);
   }
 
-  // Drop entirely-empty rounds (no mileage, nothing checked, no notes) —
+  // Drop entirely-empty rounds (no mileage, nothing checked, no notes) -
   // the source sheet keeps a blank header+checklist template for a vehicle
   // that wasn't actually serviced that round, which isn't a real visit.
   //
-  // Also drop the exact "2025-11-20 / 20000 km, nothing checked" row —
+  // Also drop the exact "2025-11-20 / 20000 km, nothing checked" row -
   // confirmed (by diffing the raw sheet) to appear identically, verbatim,
   // on at least 5 unrelated vehicles. That's not a coincidence a real fleet
   // could produce; it's a leftover copy-pasted placeholder from when those
@@ -241,7 +241,7 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
       visits.filter((v) => {
         if (v.mileageKm === null && v.notes === null && !Object.values(v.checklist).some(Boolean)) return false;
         if (v.visitDate === "2025-11-20" && v.mileageKm === 20000 && !Object.values(v.checklist).some(Boolean)) {
-          console.warn(`  ⚠ ${plate}: dropped a "2025-11-20 / 20000 km" row — matches a known placeholder pattern.`);
+          console.warn(`  ⚠ ${plate}: dropped a "2025-11-20 / 20000 km" row - matches a known placeholder pattern.`);
           return false;
         }
         return true;
@@ -249,7 +249,7 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
     );
   }
 
-  // Flag (don't drop — still reviewable/deletable in the UI) any visit
+  // Flag (don't drop - still reviewable/deletable in the UI) any visit
   // whose mileage is lower than an earlier one for the same vehicle, since
   // that's the clearest sign of a misread row rather than an actual
   // odometer rollback.
@@ -260,7 +260,7 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
       if (v.mileageKm !== null) {
         if (maxSoFar >= 0 && v.mileageKm < maxSoFar) {
           console.warn(
-            `  ⚠ ${plate}: visit ${v.visitDate} has mileage ${v.mileageKm} km, lower than an earlier visit (${maxSoFar} km) — check this row in the source file before trusting it.`
+            `  ⚠ ${plate}: visit ${v.visitDate} has mileage ${v.mileageKm} km, lower than an earlier visit (${maxSoFar} km) - check this row in the source file before trusting it.`
           );
         }
         maxSoFar = Math.max(maxSoFar, v.mileageKm);
@@ -272,7 +272,7 @@ function parseLuxMotorsSheet(rows: unknown[][], plates: string[]): Map<string, P
 }
 
 async function main() {
-  console.log(dryRun ? "=== DRY RUN — no writes will be made ===" : "=== Seeding Autoparc ===");
+  console.log(dryRun ? "=== DRY RUN - no writes will be made ===" : "=== Seeding Autoparc ===");
 
   // Vehicles
   console.log(`\nUpserting ${VEHICLES.length} vehicles/trailers…`);
@@ -303,7 +303,7 @@ async function main() {
     }
     console.log(`  ✓ ${plateToId.size}/${VEHICLES.length} upserted`);
   } else {
-    VEHICLES.forEach((v) => console.log(`  would upsert: ${v.plate}${v.plateOld ? ` (ex-${v.plateOld})` : ""} — ${v.vehicleType}`));
+    VEHICLES.forEach((v) => console.log(`  would upsert: ${v.plate}${v.plateOld ? ` (ex-${v.plateOld})` : ""} - ${v.vehicleType}`));
   }
 
   // Contrôle technique + team assignment
@@ -345,7 +345,7 @@ async function main() {
       if (dryRun) continue;
       const id = plateToId.get(plate);
       if (!id) {
-        console.error(`  ✗ ${plate}: no matching vehicle id — skipped`);
+        console.error(`  ✗ ${plate}: no matching vehicle id - skipped`);
         continue;
       }
       for (const visit of visits) {
@@ -375,7 +375,7 @@ async function main() {
         }
       }
       // Keep the vehicle's own mileage in sync with the latest visit that
-      // actually recorded one — same thing the UI's "Add visit" does.
+      // actually recorded one - same thing the UI's "Add visit" does.
       const latestWithMileage = [...visits]
         .filter((v) => v.mileageKm !== null)
         .sort((a, b) => b.visitDate.localeCompare(a.visitDate))[0];
@@ -390,7 +390,7 @@ async function main() {
   }
   console.log(`\n${dryRun ? "Would insert" : "Inserted"} ${totalVisits} maintenance visits total.`);
   console.log(
-    "\nNote: insurance, leasing, and warranty fields were left empty on purpose — fill them in via the Autoparc UI."
+    "\nNote: insurance, leasing, and warranty fields were left empty on purpose - fill them in via the Autoparc UI."
   );
 }
 

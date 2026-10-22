@@ -2,7 +2,7 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 
 export type PrevalyEmail = {
-  // Only unique within one mailbox of one account — use array index (or
+  // Only unique within one mailbox of one account - use array index (or
   // uid+account) as the React key, never uid alone, once more than one
   // account/mailbox is merged.
   uid: number;
@@ -24,7 +24,7 @@ function looksLikePrevaly(address: string | undefined): boolean {
 type MailAccount = { host: string; user: string; pass: string };
 
 /** assistant@vladis.fr holds the back-and-forth correspondence; the
- *  convocation e-mails themselves land in contact@vladis.fr — a second,
+ *  convocation e-mails themselves land in contact@vladis.fr - a second,
  *  separate OVH mailbox (its own IMAP login AND its own mail cluster
  *  hostname, not an alias), so both are read when configured. Only the
  *  first account is required. */
@@ -71,7 +71,7 @@ async function fetchFromAccount(account: MailAccount, since: Date): Promise<Prev
         continue; // mailbox doesn't exist under this name on this account
       }
       try {
-        // Ask the IMAP server to pre-filter by sender/recipient domain —
+        // Ask the IMAP server to pre-filter by sender/recipient domain -
         // fetching the full source of every message in the window (then
         // discarding most of them) was slow enough to blow Vercel's function
         // timeout, even though it ran fine against a plain local script.
@@ -115,7 +115,7 @@ async function fetchFromAccount(account: MailAccount, since: Date): Promise<Prev
 
 /**
  * Reads the OVH mailbox(es) (credentials in .env.local, never hardcoded) and
- * returns every message to/from Prevaly/Padoa within the last `days` days —
+ * returns every message to/from Prevaly/Padoa within the last `days` days -
  * both sides of the correspondence, so a reply she sent shows up too.
  */
 export async function fetchPrevalyEmails(days: number): Promise<PrevalyEmail[]> {
@@ -161,9 +161,9 @@ export type ConvocationEvent = {
 
 /**
  * Prevaly sends three kinds of "... convocation santé au travail : NAME avec
- * DOCTOR" e-mails — a first convocation, a "RAPPEL" reminder (same layout),
+ * DOCTOR" e-mails - a first convocation, a "RAPPEL" reminder (same layout),
  * and an "ANNULATION" cancellation (a different, simpler layout, no date
- * needed since the appointment no longer stands) — always with that exact
+ * needed since the appointment no longer stands) - always with that exact
  * subject shape, which is far more reliable to parse than the body: the
  * HTML body's line breaks collapse unpredictably depending on which mail
  * client rendered it, but the subject line never does.
@@ -184,7 +184,7 @@ export function parseConvocationEmail(subject: string, text: string): Convocatio
 
   // A reply/forward ("RE:", "TR:", "Fwd:") in a convocation thread often just
   // confirms something in a short message while quoting the ORIGINAL
-  // convocation body underneath — e.g. Prevaly confirming a slot was
+  // convocation body underneath - e.g. Prevaly confirming a slot was
   // reassigned to a different employee, with the old convocation (old date)
   // quoted below. Parsing that quoted date as fresh would silently revive an
   // already-cancelled appointment. Only a freshly-issued Convocation/RAPPEL
@@ -212,10 +212,10 @@ export type AptitudeEvent = {
 };
 
 /**
- * "Santé au travail : aptitude pour un travailleur de VLADIS [...]" — sent
+ * "Santé au travail : aptitude pour un travailleur de VLADIS [...]" - sent
  * once a visit is over, confirming it actually happened and linking to the
  * resulting "avis d'aptitude" (fitness certificate) on Prevaly's employer
- * portal. That portal link needs a real login (never done automatically —
+ * portal. That portal link needs a real login (never done automatically -
  * same rule as everywhere else), so this only extracts the date/name to
  * confirm the visit happened; the document itself has to be fetched once
  * someone is logged in there.
@@ -251,7 +251,7 @@ function normalizeName(s: string): string {
 /**
  * Matches a free-form name line (order/case/accents unknown) against the
  * employee roster. Returns the employee id, or null if no exact token-set
- * match is found — ambiguous or partial matches are left for RH to resolve
+ * match is found - ambiguous or partial matches are left for RH to resolve
  * by hand rather than guessed.
  */
 export function matchEmployeeByName(
@@ -265,7 +265,7 @@ export function matchEmployeeByName(
 }
 
 /** Loose full-text search used only to surface correspondence history for
- *  one employee (a read-only convenience) — both name tokens must appear
+ *  one employee (a read-only convenience) - both name tokens must appear
  *  somewhere in the message, in any order. */
 export function emailMentionsEmployee(email: PrevalyEmail, firstName: string, lastName: string): boolean {
   const haystack = normalizeName(`${email.subject} ${email.text}`);

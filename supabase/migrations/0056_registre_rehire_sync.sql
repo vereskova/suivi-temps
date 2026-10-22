@@ -1,7 +1,7 @@
 -- 0048 explicitly left rehiring unhandled ("the register's own convention
 -- is that a returning employee gets a fresh row... that case still needs a
 -- manual entry"). In practice this keeps happening (STARCICOV Andrei is on
--- his third episode) and each time needs a manual fix — so handle it the
+-- his third episode) and each time needs a manual fix - so handle it the
 -- same way as a fresh insert: a status flip from 'terminated' back to
 -- 'active' creates a new registre row using the employee's current
 -- hire_date, exactly like sync_registre_on_employee_insert() does for a

@@ -1,4 +1,4 @@
--- Demi-journée (0,5) dans la grille de présence de "Primes & Bonus" — un jour
+-- Demi-journée (0,5) dans la grille de présence de "Primes & Bonus" - un jour
 -- travaillé mais compté pour 0,5 jour au lieu de 1 dans le total "Jours" qui
 -- alimente Salaire jours. Distinct des types d'absence (maladie, CP, RTT…) :
 -- ici l'employé est bien présent (is_absent reste false), seule la quotité

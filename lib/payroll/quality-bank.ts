@@ -1,5 +1,5 @@
 /**
- * Банк качества (entreprise) — répartition PAR ÉQUIPE (décision 21/10/2026).
+ * Банк качества (entreprise) - répartition PAR ÉQUIPE (décision 21/10/2026).
  *
  * Le pool se remplit avec 75 % des pénalités des équipes chantier (voir
  * computeControllerSplit dans compute.ts), SANS plafond, jusqu'à la prochaine

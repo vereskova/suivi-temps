@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Only /admin (the RH panel) requires login. The daily pointage form at "/" is
-// intentionally public — team leads found the magic-link email round-trip too
+// intentionally public - team leads found the magic-link email round-trip too
 // much friction on their phones, and there's no sensitive data on that form.
 const PROTECTED_PREFIX = "/admin";
 

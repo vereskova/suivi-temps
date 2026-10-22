@@ -22,7 +22,7 @@ export type FieldSchema = {
   required?: boolean;
   /**
    * "employee" fields are merged onto the employee record before generation (they fill in
-   * gaps in the employee's profile — address, nationality, salary, etc.). "params" (default)
+   * gaps in the employee's profile - address, nationality, salary, etc.). "params" (default)
    * are passed straight through as document-specific parameters. See splitParams().
    */
   target?: "employee" | "params";
@@ -41,17 +41,17 @@ export type DocumentTypeDefinition = {
   code: string;
   label: string;
   labelRu?: string;
-  /** Short plain-Russian explanation of what this document is and when to use it — shown
+  /** Short plain-Russian explanation of what this document is and when to use it - shown
    *  in the UI so RH (who only reads Russian) understands each option before picking it. */
   descriptionRu?: string;
   category: DocumentCategory;
-  legalRisk: boolean; // surfaced in the UI as "brouillon — à vérifier avant envoi"
+  legalRisk: boolean; // surfaced in the UI as "brouillon - à vérifier avant envoi"
   fields: FieldSchema[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   generate: (employee: EmployeeDoc, company: CompanyDoc, params: any) => DocContent;
 };
 
-/** Whole years between an ISO date and today — null if the date is missing/invalid. */
+/** Whole years between an ISO date and today - null if the date is missing/invalid. */
 function yearsSince(iso: string | null): number | null {
   if (!iso) return null;
   const then = new Date(iso + "T00:00:00Z").getTime();
@@ -109,21 +109,21 @@ const SEX_FIELD = employeeField(
 const JOB_TITLE_FIELD = employeeField("jobTitle", "Intitulé du poste", "text", undefined, undefined, "Должность");
 const CLASSIFICATION_FIELD = employeeField(
   "classification",
-  "Classification / groupe d'emploi (A–I)",
+  "Classification / groupe d'emploi (A-I)",
   "text",
-  "Détermine la durée légale du préavis — laissez vide pour utiliser la valeur par défaut (1 mois).",
+  "Détermine la durée légale du préavis - laissez vide pour utiliser la valeur par défaut (1 mois).",
   undefined,
-  "Классификация / группа (A–I)",
-  "Определяет официальный срок отработки — оставьте пустым, чтобы использовать значение по умолчанию (1 месяц)."
+  "Классификация / группа (A-I)",
+  "Определяет официальный срок отработки - оставьте пустым, чтобы использовать значение по умолчанию (1 месяц)."
 );
 const CLASSE_FIELD = employeeField(
   "classe",
   "Classe (coefficient conventionnel)",
   "text",
-  "Positionnement dans la grille de classification, ex. \"1\" — voir le bulletin de paie.",
+  "Positionnement dans la grille de classification, ex. \"1\" - voir le bulletin de paie.",
   undefined,
   "Класс (коэффициент по конвенции)",
-  "Положение в сетке классификации, например «1» — см. расчётный листок."
+  "Положение в сетке классификации, например «1» - см. расчётный листок."
 );
 const WEEKLY_HOURS_FIELD = employeeField(
   "weeklyHours",
@@ -142,7 +142,7 @@ const SALARY_FIELD = employeeField(
   "Оклад брутто в месяц (€)"
 );
 
-/** Prochain 15 du mois (aujourd'hui inclus) — date de début par défaut des CDD d'entretien/réparation des locaux. */
+/** Prochain 15 du mois (aujourd'hui inclus) - date de début par défaut des CDD d'entretien/réparation des locaux. */
 function nextFifteenthIso(): string {
   const d = new Date();
   let y = d.getFullYear();
@@ -160,8 +160,8 @@ function nextFifteenthIso(): string {
 export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
   {
     code: "contrat_chantier",
-    label: "Contrat CDI — Chantier",
-    labelRu: "Трудовой договор — стройка",
+    label: "Contrat CDI - Chantier",
+    labelRu: "Трудовой договор - стройка",
     descriptionRu:
       "Бессрочный трудовой договор (CDI) для рабочего на стройке. Используется при найме нового сотрудника в бригаду.",
     category: "contrat",
@@ -214,7 +214,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     label: "Contrat CDD (3 mois)",
     labelRu: "Трудовой договор CDD (срочный)",
     descriptionRu:
-      "Срочный трудовой договор (CDD) — например на 3 месяца для рабочих, которые ремонтируют офис. Включает основание, точную дату окончания, пробный срок, выплату зарплаты 10 числа, prime de précarité 10 %. Основание договора нужно согласовать с бухгалтером/юристом до подписания.",
+      "Срочный трудовой договор (CDD) - например на 3 месяца для рабочих, которые ремонтируют офис. Включает основание, точную дату окончания, пробный срок, выплату зарплаты 10 числа, prime de précarité 10 %. Основание договора нужно согласовать с бухгалтером/юристом до подписания.",
     category: "contrat",
     legalRisk: true,
     fields: [
@@ -233,8 +233,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         type: "date",
         required: true,
         defaultValue: () => defaultCddEndDate(nextFifteenthIso(), 3),
-        help: "Date précise obligatoire (L.1242-12). Par défaut : 3 mois après le début — à corriger si la date de début change.",
-        helpRu: "Точная дата обязательна (L.1242-12). По умолчанию 3 месяца от начала — исправьте, если измените дату начала.",
+        help: "Date précise obligatoire (L.1242-12). Par défaut : 3 mois après le début - à corriger si la date de début change.",
+        helpRu: "Точная дата обязательна (L.1242-12). По умолчанию 3 месяца от начала - исправьте, если измените дату начала.",
         derived: (values) => {
           const s = values.startDate as string | undefined;
           const e = values.endDate as string | undefined;
@@ -320,8 +320,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
   },
   {
     code: "contrat_bureau",
-    label: "Contrat CDI — Bureau",
-    labelRu: "Трудовой договор — офис",
+    label: "Contrat CDI - Bureau",
+    labelRu: "Трудовой договор - офис",
     descriptionRu:
       "Бессрочный трудовой договор (CDI) для сотрудника офиса, со всеми условиями: испытательный срок, часы, переработки, зона мобильности и т.д.",
     category: "contrat",
@@ -370,12 +370,12 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
       },
       {
         key: "isStudent",
-        label: "Salarié étudiant (< 26 ans) — durée < 24 h à sa demande",
-        labelRu: "Работник — студент (до 26 лет): меньше 24 ч по его просьбе",
+        label: "Salarié étudiant (< 26 ans) - durée < 24 h à sa demande",
+        labelRu: "Работник - студент (до 26 лет): меньше 24 ч по его просьбе",
         type: "boolean",
         defaultValue: () => false,
-        help: "Ajoute la clause de demande écrite (art. L.3123-7) — joindre la lettre « Demande de temps partiel (étudiant) ».",
-        helpRu: "Добавляет пункт о письменной просьбе работника (ст. L.3123-7) — приложите письмо «Заявление о неполном дне (студент)».",
+        help: "Ajoute la clause de demande écrite (art. L.3123-7) - joindre la lettre « Demande de temps partiel (étudiant) ».",
+        helpRu: "Добавляет пункт о письменной просьбе работника (ст. L.3123-7) - приложите письмо «Заявление о неполном дне (студент)».",
       },
       {
         key: "hoursIncreaseClause",
@@ -389,8 +389,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         label: "Répartition des horaires (temps partiel)",
         labelRu: "Распределение часов по дням (неполный день)",
         type: "text",
-        help: "Ex. « lundi, mardi, jeudi de 9h à 17h » — mention obligatoire au temps partiel ; vide = espace à compléter à la main.",
-        helpRu: "Например «пн, вт, чт с 9:00 до 17:00» — обязательное условие при неполном дне; пусто — оставит пустое место для рукописного заполнения.",
+        help: "Ex. « lundi, mardi, jeudi de 9h à 17h » - mention obligatoire au temps partiel ; vide = espace à compléter à la main.",
+        helpRu: "Например «пн, вт, чт с 9:00 до 17:00» - обязательное условие при неполном дне; пусто - оставит пустое место для рукописного заполнения.",
       },
       {
         key: "weeklyEffectiveHours",
@@ -430,9 +430,9 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         labelRu: "Служебные поездки",
         type: "text",
         help:
-          "Description libre (ex. \"des déplacements ponctuels sur les chantiers de l'entreprise\") — laisser vide pour omettre la clause.",
+          "Description libre (ex. \"des déplacements ponctuels sur les chantiers de l'entreprise\") - laisser vide pour omettre la clause.",
         helpRu:
-          "Свободное описание (например, «периодические поездки на объекты компании») — оставьте пустым, чтобы не включать этот пункт.",
+          "Свободное описание (например, «периодические поездки на объекты компании») - оставьте пустым, чтобы не включать этот пункт.",
       },
       {
         key: "dealsWithClients",
@@ -448,16 +448,16 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         type: "text",
         required: true,
         defaultValue: () => "Employé",
-        help: "Catégorie du salarié (Employé, Technicien / Agent de maîtrise, Cadre…) — détermine aussi la durée max. de la période d'essai.",
-        helpRu: "Категория работника (Employé, Technicien / Agent de maîtrise, Cadre…) — от неё зависит и максимальный испытательный срок.",
+        help: "Catégorie du salarié (Employé, Technicien / Agent de maîtrise, Cadre…) - détermine aussi la durée max. de la période d'essai.",
+        helpRu: "Категория работника (Employé, Technicien / Agent de maîtrise, Cadre…) - от неё зависит и максимальный испытательный срок.",
       },
       {
         key: "classificationReferenceCode",
         label: "Référence repère-emploi (optionnel)",
         labelRu: "Код должности по сетке (необязательно)",
         type: "text",
-        help: "Ex. \"M110.01.001\" — laisser vide si non vérifié, pour ne rien inventer.",
-        helpRu: "Например «M110.01.001» — оставьте пустым, если не проверено, чтобы не придумывать.",
+        help: "Ex. \"M110.01.001\" - laisser vide si non vérifié, pour ne rien inventer.",
+        helpRu: "Например «M110.01.001» - оставьте пустым, если не проверено, чтобы не придумывать.",
       },
       {
         key: "smgAnnualAmount",
@@ -497,7 +497,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     label: "Accord de confidentialité (NDA)",
     labelRu: "Соглашение о конфиденциальности (NDA)",
     descriptionRu:
-      "Документ о неразглашении коммерческой информации — подписывается вместе с трудовым договором или отдельно.",
+      "Документ о неразглашении коммерческой информации - подписывается вместе с трудовым договором или отдельно.",
     category: "confidentialite",
     legalRisk: false,
     fields: [
@@ -529,7 +529,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     label: "Attestation de congés payés",
     labelRu: "Справка об оплачиваемом отпуске",
     descriptionRu:
-      "Подтверждение того, что сотрудник находится или находился в оплачиваемом отпуске в указанный период — например, для визового центра или другой инстанции.",
+      "Подтверждение того, что сотрудник находится или находился в оплачиваемом отпуске в указанный период - например, для визового центра или другой инстанции.",
     category: "conges",
     legalRisk: false,
     fields: [
@@ -551,7 +551,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     label: "Attestation d'hébergement",
     labelRu: "Справка о проживании (хозяин жилья)",
     descriptionRu:
-      "Подтверждение того, что сотрудник проживает по адресу, предоставленному компанией (нужно, например, для оформления вида на жительство). Хозяин жилья и адрес всегда одни и те же — меняются только данные сотрудника и дата.",
+      "Подтверждение того, что сотрудник проживает по адресу, предоставленному компанией (нужно, например, для оформления вида на жительство). Хозяин жилья и адрес всегда одни и те же - меняются только данные сотрудника и дата.",
     category: "administratif",
     legalRisk: false,
     fields: [
@@ -580,7 +580,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     label: "Demande de congé sans solde (rédigée pour le salarié)",
     labelRu: "Заявление на неоплачиваемый отпуск (от имени сотрудника)",
     descriptionRu:
-      "Письмо-заявление, которое сотрудник подаёт работодателю с просьбой о неоплачиваемом отпуске — компания составляет его за сотрудника.",
+      "Письмо-заявление, которое сотрудник подаёт работодателю с просьбой о неоплачиваемом отпуске - компания составляет его за сотрудника.",
     category: "conges",
     legalRisk: false,
     fields: [
@@ -683,8 +683,8 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
         type: "number",
         required: true,
         defaultValue: (e) => yearsSince(e.hireDate) ?? "",
-        help: "Calculée depuis la date d'embauche du dossier salarié — à ajuster si besoin.",
-        helpRu: "Рассчитывается по дате приёма на работу из личного дела — при необходимости скорректируйте.",
+        help: "Calculée depuis la date d'embauche du dossier salarié - à ajuster si besoin.",
+        helpRu: "Рассчитывается по дате приёма на работу из личного дела - при необходимости скорректируйте.",
       },
       {
         key: "ageYears",
@@ -714,7 +714,7 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
     label: "Rupture de la période d'essai (employeur)",
     labelRu: "Расторжение на испытательном сроке (по инициативе работодателя)",
     descriptionRu:
-      "Письмо о прекращении испытательного срока по инициативе работодателя. Срок уведомления (délai de prévenance) рассчитывается автоматически по стажу сотрудника — 24 часа / 48 часов / 2 недели / 1 месяц, согласно ст. L1221-25 Трудового кодекса.",
+      "Письмо о прекращении испытательного срока по инициативе работодателя. Срок уведомления (délai de prévenance) рассчитывается автоматически по стажу сотрудника - 24 часа / 48 часов / 2 недели / 1 месяц, согласно ст. L1221-25 Трудового кодекса.",
     category: "rupture",
     legalRisk: true,
     fields: [
@@ -733,11 +733,11 @@ export const DOCUMENT_TYPES: DocumentTypeDefinition[] = [
           const r = letterDateForTrialEnd(hire || null, lastDay);
           const when = formatDateShort(r.letterDateIso);
           return {
-            fr: `Date de la lettre : ${when} — délai de prévenance ${r.delai.label} (${r.joursPresence} j de présence)${
-              r.exact ? "" : " — durée réelle supérieure au minimum (cas limite)"
+            fr: `Date de la lettre : ${when} - délai de prévenance ${r.delai.label} (${r.joursPresence} j de présence)${
+              r.exact ? "" : " - durée réelle supérieure au minimum (cas limite)"
             }`,
-            ru: `Дата письма: ${when} — срок уведомления ${r.delai.label} (${r.joursPresence} дн. стажа)${
-              r.exact ? "" : " — фактический срок больше минимального (пограничный случай)"
+            ru: `Дата письма: ${when} - срок уведомления ${r.delai.label} (${r.joursPresence} дн. стажа)${
+              r.exact ? "" : " - фактический срок больше минимального (пограничный случай)"
             }`,
           };
         },

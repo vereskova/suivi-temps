@@ -2,14 +2,14 @@
 -- localStorage (per user's request, on reflection: it should be shared
 -- across everyone with rh_admin/rh access, like a team inbox, not siloed
 -- per computer). notification_key mirrors the client-side key format
--- `${employeeId}|${type}|${date}` — there's no separate notifications
+-- `${employeeId}|${type}|${date}` - there's no separate notifications
 -- table; these are computed on the fly from documents/visits/birthdays, so
 -- this table only ever tracks the two boolean flags the UI needs:
---   seen           — true once someone has opened the Notifications page
+--   seen           - true once someone has opened the Notifications page
 --                    while this key was in the list (clears the red dot)
---   manual_unread  — true when someone explicitly flagged it back as
+--   manual_unread  - true when someone explicitly flagged it back as
 --                    unread (either "mark all unread" from the nav link,
---                    or a right-click on a single row) — takes priority
+--                    or a right-click on a single row) - takes priority
 --                    over `seen` so it isn't immediately re-marked seen
 --                    the next time the page auto-marks everything.
 create table notification_flags (
@@ -22,7 +22,7 @@ create table notification_flags (
 alter table notification_flags enable row level security;
 
 -- Shared state, so both rh_admin and rh (the only roles that see the
--- Notifications view) can read and write every row — no per-user column.
+-- Notifications view) can read and write every row - no per-user column.
 create policy notification_flags_select on notification_flags for select using (
   current_role_name() in ('rh_admin', 'rh')
 );

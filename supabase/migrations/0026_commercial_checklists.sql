@@ -44,7 +44,7 @@ create table commercial_checklist_template_items (
 create index commercial_checklist_template_items_client_idx
   on commercial_checklist_template_items(client_id);
 
--- One dossier per chantier/devis for a client — a client can have several,
+-- One dossier per chantier/devis for a client - a client can have several,
 -- at the same time or over time. The three action buttons operate on a
 -- specific dossier, never on the client as a whole.
 create table commercial_cases (
@@ -68,7 +68,7 @@ create index commercial_cases_client_idx on commercial_cases(client_id);
 
 -- Copied from the client's template when the dossier is created, then
 -- edited independently. Default 'active': in practice most lines in a
--- client's template really are needed for a typical chantier there — the
+-- client's template really are needed for a typical chantier there - the
 -- commercial rep turns off or flags the few exceptions, rather than
 -- confirming every single line by hand.
 create table commercial_case_items (

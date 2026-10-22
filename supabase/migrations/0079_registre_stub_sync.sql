@@ -1,14 +1,14 @@
 -- "+ Nouvel employé" (Checklists RH / Employés) only needs a first and last
--- name — but 0048's insert trigger still fires immediately and creates a
+-- name - but 0048's insert trigger still fires immediately and creates a
 -- registre row from whatever's on the employee record at that instant,
 -- which is mostly null. Filling in hire_date, date_of_birth, etc. on the
 -- employee afterwards (as normal) never touched that row, leaving a
--- registre entry with a real numero but a blank date_entree — invisible to
+-- registre entry with a real numero but a blank date_entree - invisible to
 -- anything sorting or filtering on it (see DOVHAL Yevhenii, 2026-09-25).
 --
 -- Both triggers only ever touch a registre row that still has date_entree
 -- is null (the unmistakable "stub, never finished" signal) and only fill a
--- field that's itself still null — so a real, already-complete episode is
+-- field that's itself still null - so a real, already-complete episode is
 -- never touched, and a value someone typed directly into the registre is
 -- never overwritten.
 create or replace function sync_registre_stub_from_employee() returns trigger

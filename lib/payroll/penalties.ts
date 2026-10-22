@@ -1,8 +1,8 @@
 /**
- * Справочник штрафов контролёра — из таблицы « Ошибки штраф.numbers »
- * (лист ШТРАФЫ), переданной 12/10/2026. Суммы — на команду из 3 человек :
+ * Справочник штрафов контролёра - из таблицы « Ошибки штраф.numbers »
+ * (лист ШТРАФЫ), переданной 12/10/2026. Суммы - на команду из 3 человек :
  * на одного человека штраф = сумма ÷ 3 (PENALTY_DEFAULT_DIVISOR). Цены « за шт. »
- * (3.2 = 5 €, 3.3 = 2 €) и « в день » (3.1 = 5 €) — по главному листу.
+ * (3.2 = 5 €, 3.3 = 2 €) и « в день » (3.1 = 5 €) - по главному листу.
  */
 export type PenaltyUnit = "fixed" | "range" | "per_piece" | "per_day";
 
@@ -24,7 +24,7 @@ export const PENALTY_CATALOG: PenaltyCatalogItem[] = [
   { code: "1.2", stage: "Contrôle materielle", description: "Повреждённые панели или отсутствуют материалы", severity: "Серьёзная", amount: 150, unit: "fixed" },
   { code: "1.3", stage: "Marquage raille", description: "Неправильные расстояния между рельсами", severity: "Средняя", amount: 300, unit: "fixed" },
   { code: "1.4", stage: "Fixation raille", description: "Рельсы закреплены слабо", severity: "Серьёзная", amount: 270, unit: "fixed" },
-  { code: "1.5", stage: "Fixation string", description: "Кабели string плохо закреплены / кабель повреждён", severity: "Малая", amount: 150, amountMax: 300, unit: "range", note: "150 — плохо закреплены, 300 — кабель повреждён" },
+  { code: "1.5", stage: "Fixation string", description: "Кабели string плохо закреплены / кабель повреждён", severity: "Малая", amount: 150, amountMax: 300, unit: "range", note: "150 - плохо закреплены, 300 - кабель повреждён" },
   { code: "1.6", stage: "6mm² vert jaune", description: "Отсутствует или неправильное заземление", severity: "Серьёзная", amount: 300, unit: "fixed" },
   { code: "1.7", stage: "Pose panneaux", description: "Панели установлены криво или плохо зажаты", severity: "Серьёзная", amount: 300, amountMax: 600, unit: "range" },
   { code: "1.8", stage: "Pose CDC", description: "Неправильный монтаж CDC", severity: "Серьёзная", amount: 300, unit: "fixed" },
@@ -82,6 +82,6 @@ export function describePenaltyPick(p: PenaltyPick): { teamAmount: number; share
       : item.unit === "per_day"
         ? `${qty} дн × ${fmt(item.amount)} € = ${fmt(teamAmount)} €`
         : `${fmt(teamAmount)} €`;
-  const line = `${p.site?.trim() ? `${p.site.trim()} · ` : ""}${item.code} ${item.stage} — ${item.description}: ${calc} ÷ ${divisor} = −${fmt(share)} €`;
+  const line = `${p.site?.trim() ? `${p.site.trim()} · ` : ""}${item.code} ${item.stage} - ${item.description}: ${calc} ÷ ${divisor} = −${fmt(share)} €`;
   return { teamAmount, share, line };
 }

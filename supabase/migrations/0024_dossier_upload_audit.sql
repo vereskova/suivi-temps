@@ -1,7 +1,7 @@
 -- Track who uploaded each document, and keep a durable history of
 -- upload/delete actions even after a document itself is deleted.
 -- Stored as auth.users.email (not employees.id) because the RH/comptable
--- logins aren't necessarily tied to an employee row — set server-side via
+-- logins aren't necessarily tied to an employee row - set server-side via
 -- trigger so it can't be spoofed by the client.
 
 alter table employee_documents add column if not exists uploaded_by_email text;

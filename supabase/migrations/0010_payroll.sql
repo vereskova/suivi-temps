@@ -1,6 +1,6 @@
--- Phase 3: payroll (Paie) — ports the net→brut reverse calculation from
+-- Phase 3: payroll (Paie) - ports the net→brut reverse calculation from
 -- VLADIS_с_итогом.xlsx (waterfall: repas → HS+25% → HS+50% → prime exceptionnelle).
--- The app only produces this input table for the accountant — it does not
+-- The app only produces this input table for the accountant - it does not
 -- generate an actual bulletin de paie.
 
 create table payroll_parameters (

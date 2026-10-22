@@ -83,7 +83,7 @@ export default function Home() {
       setAbsenceTypes(absenceRows ?? []);
 
       // Bureau staff who occasionally fill in for someone on a chantier team
-      // — not tied to any one team (their permanent team_id is null), so
+      // - not tied to any one team (their permanent team_id is null), so
       // they're offered regardless of which team is currently selected.
       const { data: subRows } = await supabase
         .from("pointage_roster")

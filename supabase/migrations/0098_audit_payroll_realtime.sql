@@ -5,7 +5,7 @@
 -- Nouveau déclencheur, plus compact que log_audit_action() (0032) : sur un
 -- UPDATE il n'enregistre que les champs RÉELLEMENT modifiés (avant/après) +
 -- le contexte (employee_id, run_id, work_date…), et ne logue rien quand un
--- "Enregistrer" renvoie les mêmes valeurs — sans cela, chaque sauvegarde de
+-- "Enregistrer" renvoie les mêmes valeurs - sans cela, chaque sauvegarde de
 -- Primes & Bonus (toutes les lignes du mois) noierait le journal.
 create or replace function log_audit_changes() returns trigger
 language plpgsql security definer set search_path = public as $$

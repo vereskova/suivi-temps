@@ -1,10 +1,10 @@
 -- Refonte des check-lists Commercial :
 -- 1. Un client peut désormais avoir plusieurs templates nommés (ex.
---    "ADVANCED EnerGies" a "Bâtiment" et "Ombrières" — même client, deux
+--    "ADVANCED EnerGies" a "Bâtiment" et "Ombrières" - même client, deux
 --    types de chantier). Les clients à un seul template gardent un unique
---    template "Standard" — rien ne change pour eux côté utilisateur.
+--    template "Standard" - rien ne change pour eux côté utilisateur.
 -- 2. Nouveau catalogue global "Autres" (tâches rarement demandées, pas
---    propres à un client) — piochées au cas par cas dans un dossier plutôt
+--    propres à un client) - piochées au cas par cas dans un dossier plutôt
 --    que mises par défaut partout.
 
 -- ── Templates nommés par client ──────────────────────────────────────────
@@ -26,7 +26,7 @@ alter table commercial_checklist_template_items
 create index commercial_checklist_templates_client_idx on commercial_checklist_templates(client_id);
 create index commercial_checklist_template_items_template_idx on commercial_checklist_template_items(template_id);
 
--- ── Catégories des "Autres" — mêmes table/FK que DEVIS/PLANNING pour que
+-- ── Catégories des "Autres" - mêmes table/FK que DEVIS/PLANNING pour que
 -- commercial_case_items.category_code garde une seule taxonomie peu importe
 -- l'origine de la ligne. Les 5 catégories qui disparaissent des nouveaux
 -- templates (COMMANDE_MATERIEL, LIVRAISON, ETIQUETAGE, TS, RECUPERATION)
@@ -39,7 +39,7 @@ insert into commercial_categories (code, label, label_ru, sort_order) values
   ('MATERIAUX',   'Matériaux',   'Материалы',               14)
 on conflict (code) do nothing;
 
--- ── Catalogue global "Autres" — pas de client_id, un seul catalogue partagé ──
+-- ── Catalogue global "Autres" - pas de client_id, un seul catalogue partagé ──
 create table commercial_autre_items (
   id                uuid primary key default gen_random_uuid(),
   category_code     text not null references commercial_categories(code),

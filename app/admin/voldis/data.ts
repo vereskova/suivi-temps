@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { createClient } from "@/lib/supabase/client";
-import type { VBankTx, VCharge, VDocument, VInvoice, VLease, VProperty, VSettings, VTenant } from "@/lib/voldis/rental";
+import { missingCharges, type VBankTx, type VCharge, type VDocument, type VInvoice, type VLease, type VProperty, type VSettings, type VTenant } from "@/lib/voldis/rental";
 
 export type Supabase = ReturnType<typeof createClient>;
 
@@ -50,14 +50,22 @@ export function useVoldisData(supabase: Supabase): VoldisData {
       setState((prev) => ({ ...prev, loading: false, missing: true }));
       return;
     }
-    // Les tables ajoutées par la migration 0118 peuvent manquer : on reste fonctionnel sans elles.
+    // Платежи по договорам создаются автоматически: если договор действует, платёж за месяц ожидается.
+    let charges = (c.data ?? []) as VCharge[];
+    const leases = (l.data ?? []) as VLease[];
+    const missing = missingCharges(leases, charges, new Date().toISOString().slice(0, 7));
+    if (missing.length > 0) {
+      const { data: created } = await supabase.from("voldis_charges").insert(missing).select("*");
+      if (created) charges = [...(created as VCharge[]), ...charges].sort((a, z) => z.due_date.localeCompare(a.due_date));
+    }
+    // Таблицы из миграции 0118 могут отсутствовать: работаем и без них.
     setState({
       loading: false,
       missing: false,
       props: ((p.data ?? []) as VProperty[]).sort((a, z) => a.lot_number.localeCompare(z.lot_number, "fr", { numeric: true })),
       tenants: (t.data ?? []) as VTenant[],
-      leases: (l.data ?? []) as VLease[],
-      charges: (c.data ?? []) as VCharge[],
+      leases,
+      charges,
       txs: (b.data ?? []) as VBankTx[],
       invoices: i.error ? [] : ((i.data ?? []) as VInvoice[]),
       docs: d.error ? [] : ((d.data ?? []) as VDocument[]),

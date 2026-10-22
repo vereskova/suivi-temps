@@ -6,13 +6,13 @@
  * scripts/seed-autoparc.ts.
  *
  * Categorization is filename/path-keyword based (folder path first, then
- * filename) — best-effort, not exact. Anything unrecognized lands in
+ * filename) - best-effort, not exact. Anything unrecognized lands in
  * "autre" rather than being guessed into a specific category; miscategorized
  * files are easy to spot and re-upload via the Autoparc UI.
  *
  * Deliberately excludes folders that are company-wide rather than
  * per-vehicle (insurance broker archive, COC scans with no vehicle-
- * identifying filename, equipment inventory, purchase overviews) — those
+ * identifying filename, equipment inventory, purchase overviews) - those
  * need a human to decide where they belong, not a script.
  *
  * Usage:
@@ -77,7 +77,7 @@ const FOLDER_TO_PLATE: Record<string, string> = {
   "Прицеп:9-HG-553-SM-(Oфис)": "HG-553-SM",
   "manitou": "MANITOU-MT1840HA",
 };
-// Trailing NBSP in the real folder name — added via a normalized lookup below.
+// Trailing NBSP in the real folder name - added via a normalized lookup below.
 FOLDER_TO_PLATE["Прицеп:3-HB-761-HN-(К9+) "] = "HB-761-HN";
 
 const EXCLUDED_FOLDERS = [
@@ -89,7 +89,7 @@ const EXCLUDED_FOLDERS = [
 ];
 
 type CategoryRule = { pattern: RegExp; category: string };
-// Checked in order — folder-path keywords first (more reliable context),
+// Checked in order - folder-path keywords first (more reliable context),
 // then filename keywords. First match wins; no match -> "autre".
 const CATEGORY_RULES: CategoryRule[] = [
   { pattern: /\bcoc\b/i, category: "coc" },
@@ -146,7 +146,7 @@ function uniqueFileToken() {
 }
 
 // Supabase Storage rejects object keys containing Cyrillic, accented Latin,
-// or symbols like ° and — ("Invalid key") — only the storage PATH needs
+// or symbols like ° and - ("Invalid key") - only the storage PATH needs
 // this; the human-readable file_name stored in the DB keeps the real name.
 function sanitizeForStorageKey(name: string): string {
   const ext = path.extname(name);
@@ -157,7 +157,7 @@ function sanitizeForStorageKey(name: string): string {
 }
 
 async function main() {
-  console.log(dryRun ? "=== DRY RUN — no uploads will be made ===" : "=== Uploading Autopark documents ===");
+  console.log(dryRun ? "=== DRY RUN - no uploads will be made ===" : "=== Uploading Autopark documents ===");
 
   const entries = fs.readdirSync(baseDir);
   const { data: vehicles, error } = await supabase.from("vehicles").select("id, plate");
@@ -169,7 +169,7 @@ async function main() {
 
   for (const rawEntry of entries) {
     // macOS/iCloud stores filenames NFD-normalized (e.g. "й" as "и" + a
-    // combining breve) — normalize to NFC so lookups against these
+    // combining breve) - normalize to NFC so lookups against these
     // hardcoded (NFC) map keys actually match.
     const entry = rawEntry.normalize("NFC");
     if (entry === ".DS_Store") continue;
@@ -177,19 +177,19 @@ async function main() {
     if (!fs.statSync(full).isDirectory()) continue; // loose top-level files: skip (general/company docs, already-parsed spreadsheets)
 
     if (EXCLUDED_FOLDERS.includes(entry)) {
-      console.log(`\n⏭  "${entry}" — excluded (not per-vehicle), skipped`);
+      console.log(`\n⏭  "${entry}" - excluded (not per-vehicle), skipped`);
       totalSkippedFolders++;
       continue;
     }
     const plate = FOLDER_TO_PLATE[entry];
     if (!plate) {
-      console.log(`\n⚠ "${entry}" — no known plate mapping, skipped (add it to FOLDER_TO_PLATE if it should be included)`);
+      console.log(`\n⚠ "${entry}" - no known plate mapping, skipped (add it to FOLDER_TO_PLATE if it should be included)`);
       totalSkippedFolders++;
       continue;
     }
     const vehicleId = plateToId.get(plate);
     if (!vehicleId) {
-      console.log(`\n✗ "${entry}" -> ${plate} — no matching vehicle row in the DB, skipped`);
+      console.log(`\n✗ "${entry}" -> ${plate} - no matching vehicle row in the DB, skipped`);
       continue;
     }
 

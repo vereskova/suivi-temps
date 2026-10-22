@@ -1,4 +1,4 @@
--- VLADIS suivi-temps — Phase 0/1 schema: teams, employees, absence_types, pointage_entries
+-- VLADIS suivi-temps - Phase 0/1 schema: teams, employees, absence_types, pointage_entries
 -- Run this once in the Supabase SQL Editor (or `supabase db push` if using the CLI).
 
 create extension if not exists "pgcrypto";

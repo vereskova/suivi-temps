@@ -101,7 +101,7 @@ function InvoiceDoc({ cfg, tenant, invoice }: { cfg: VSettings; tenant: VTenant 
           <View key={i} style={s.tr} wrap={false}>
             <Text style={s.cLabel}>{l.label}</Text>
             <Text style={s.cNum}>{eur(l.amount_ht)}</Text>
-            <Text style={s.cVat}>{l.vat_rate ? `${l.vat_rate} % · ${eur(l.vat)}` : "—"}</Text>
+            <Text style={s.cVat}>{l.vat_rate ? `${l.vat_rate} % · ${eur(l.vat)}` : "-"}</Text>
             <Text style={s.cNum}>{eur(l.amount_ttc)}</Text>
           </View>
         ))}
@@ -130,7 +130,7 @@ function ReceiptDoc({ cfg, tenant, invoice }: { cfg: VSettings; tenant: VTenant 
         <Header cfg={cfg} invoice={invoice} title="QUITTANCE DE LOYER" />
         <Parties tenant={tenant} />
         <Text style={s.para}>
-          Je soussigné, {cfg.company_name}, déclare avoir reçu de {tenant?.name ?? "—"} la somme de {eur(invoice.total_ttc)}
+          Je soussigné, {cfg.company_name}, déclare avoir reçu de {tenant?.name ?? "-"} la somme de {eur(invoice.total_ttc)}
           {period ? `, au titre du loyer et des charges de la période ${period}` : ""}, et lui en donne quittance, sous réserve de tous mes droits.
         </Text>
         <View style={s.th}>
@@ -143,7 +143,7 @@ function ReceiptDoc({ cfg, tenant, invoice }: { cfg: VSettings; tenant: VTenant 
           <View key={i} style={s.tr} wrap={false}>
             <Text style={s.cLabel}>{l.label}</Text>
             <Text style={s.cNum}>{eur(l.amount_ht)}</Text>
-            <Text style={s.cVat}>{l.vat_rate ? `${l.vat_rate} % · ${eur(l.vat)}` : "—"}</Text>
+            <Text style={s.cVat}>{l.vat_rate ? `${l.vat_rate} % · ${eur(l.vat)}` : "-"}</Text>
             <Text style={s.cNum}>{eur(l.amount_ttc)}</Text>
           </View>
         ))}

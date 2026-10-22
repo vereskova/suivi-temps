@@ -1,5 +1,5 @@
 /**
- * Pure HR dashboard calculations — tenure, age, turnover, tenure
+ * Pure HR dashboard calculations - tenure, age, turnover, tenure
  * distribution, hires/departures trend, trial period. Kept separate from
  * app/admin/page.tsx so a new group or a new turnover period is a data or
  * argument change here, not a rewrite of the dashboard view. Mirrors the
@@ -23,7 +23,7 @@ export type DashEmployee = {
     | { name: string; chef_employee_id: string | null }
     | { name: string; chef_employee_id: string | null }[]
     | null;
-  /** Number of registre_unique_personnel rows for this person — more than
+  /** Number of registre_unique_personnel rows for this person - more than
    *  one means a rehire (see dashIsRevenu). The caller joins this in
    *  (dashboardMetrics itself has no DB access); 1 or omitted means "no
    *  known rehire history". */
@@ -46,18 +46,18 @@ export function dashIsFop(e: DashEmployee): boolean {
 /** More than one registre_unique_personnel row = this person left and came
  *  back at least once. Counted as its own group instead of folded into
  *  "Tous", since a rehire's headcount/tenure/turnover behave differently
- *  from someone continuously employed — and their current episode's own
+ *  from someone continuously employed - and their current episode's own
  *  tenure is what's meaningful, not a total spanning the gap. */
 export function dashIsRevenu(e: DashEmployee): boolean {
   return (e.episodeCount ?? 1) > 1;
 }
 
-/** "Stagiaire" here means within the first 2 calendar months of hire_date —
+/** "Stagiaire" here means within the first 2 calendar months of hire_date -
  *  the actual période d'essai length used in VLADIS's own CDI contracts
  *  (see e.g. contrat POGREBNOI: "période d'essai de 2 mois maximum"), not
  *  the 30-day window isInTrialPeriod uses for the UI badge elsewhere. A
  *  rehire within their first 2 months counts as both "stagiaire" and
- *  "revenu" — the two groups overlap on purpose, same as e.g. "chef" and
+ *  "revenu" - the two groups overlap on purpose, same as e.g. "chef" and
  *  "chantier" already do. */
 export function dashIsStagiaire(e: DashEmployee, todayIso: string): boolean {
   if (dashIsFop(e) || e.status === "terminated" || !e.hire_date) return false;
@@ -65,7 +65,7 @@ export function dashIsStagiaire(e: DashEmployee, todayIso: string): boolean {
 }
 
 /** Someone who quit or was let go within their own 2-month période d'essai
- *  — this never shows up in "stagiaire" (which is a live snapshot, gone the
+ *  - this never shows up in "stagiaire" (which is a live snapshot, gone the
  *  moment they're terminated) or in the normal turnover figures for any
  *  other group without digging, so it gets its own row. */
 export function dashLeftDuringTrial(e: DashEmployee): boolean {
@@ -73,7 +73,7 @@ export function dashLeftDuringTrial(e: DashEmployee): boolean {
   return e.end_date <= addMonthsIso(e.hire_date, 2);
 }
 
-/** Whole completed months between two ISO dates — the unit every duration on the HR dashboard is built from. */
+/** Whole completed months between two ISO dates - the unit every duration on the HR dashboard is built from. */
 export function monthsBetweenIso(startIso: string, endIso: string): number {
   const start = new Date(startIso + "T00:00:00Z");
   const end = new Date(endIso + "T00:00:00Z");
@@ -95,7 +95,7 @@ export function addMonthsIso(iso: string, delta: number): string {
 }
 
 export function formatYearsMonths(totalMonths: number | null): string {
-  if (totalMonths === null) return "—";
+  if (totalMonths === null) return "-";
   const y = Math.floor(totalMonths / 12);
   const m = Math.round(totalMonths % 12);
   return `${y}a ${m}m`;
@@ -106,7 +106,7 @@ export function dashAverage(values: number[]): number | null {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-/** Reconstructs headcount at any past date directly from hire_date/end_date — no snapshot table needed or available. */
+/** Reconstructs headcount at any past date directly from hire_date/end_date - no snapshot table needed or available. */
 export function dashHeadcountAt(emps: DashEmployee[], dateIso: string): number {
   return emps.filter((e) => e.hire_date && e.hire_date <= dateIso && (!e.end_date || e.end_date > dateIso)).length;
 }
@@ -128,13 +128,13 @@ export type HrGroupDef = {
   labelRu: string;
   predicate: (e: DashEmployee, todayIso: string) => boolean;
   /** Everyone matching this group is terminated by construction (e.g. "left
-   *  during their trial") — computeGroupStats's usual "count" (people still
+   *  during their trial") - computeGroupStats's usual "count" (people still
    *  on the books) would always read 0, so this counts every match instead. */
   countsTerminated?: boolean;
 };
 
 /**
- * Groups as data, not branching code — adding a new group later (e.g. a new
+ * Groups as data, not branching code - adding a new group later (e.g. a new
  * role) is one entry here, not a page-wide change. "chef" tenure is measured
  * as the person's total time at the company, not time-since-promoted: there's
  * no history of who was chef when (teams.chef_employee_id changes aren't
@@ -185,7 +185,7 @@ export type TurnoverResult = {
 /**
  * Turnover for one population over one period. Kept as its own function
  * (instead of inlined per-group) so a future quarter/year toggle in the UI is
- * a new call with a different `period`, not new logic — only "rolling12" is
+ * a new call with a different `period`, not new logic - only "rolling12" is
  * wired into the dashboard today.
  */
 export function computeTurnover(
@@ -220,7 +220,7 @@ export type DashGroupStats = {
 };
 
 /**
- * `allInGroup` must include terminated employees too — headcount
+ * `allInGroup` must include terminated employees too - headcount
  * reconstruction and turnover need the full history; only the
  * ancienneté/âge averages are restricted to people currently on the books.
  */
@@ -239,7 +239,7 @@ export function computeGroupStats(group: HrGroupDef, allInGroup: DashEmployee[],
     avgAgeMonths: dashAverage(ageMonths),
     hires12mo: turnover.hires,
     departures12mo: turnover.departures,
-    // "Turnover" is departures ÷ average headcount — meaningless for a
+    // "Turnover" is departures ÷ average headcount - meaningless for a
     // group where everyone is terminated by construction (e.g. "left
     // during trial"): headcount-at-any-date for such a group is close to
     // zero, so the ratio blows up into a nonsense number like 1300%.
@@ -251,10 +251,10 @@ export type TenureBucket = { label: string; labelRu: string; min: number; max: n
 
 export const DASH_TENURE_BUCKETS: TenureBucket[] = [
   { label: "< 3 mois", labelRu: "< 3 мес", min: 0, max: 3 },
-  { label: "3–6 mois", labelRu: "3–6 мес", min: 3, max: 6 },
-  { label: "6–12 mois", labelRu: "6–12 мес", min: 6, max: 12 },
-  { label: "1–2 ans", labelRu: "1–2 года", min: 12, max: 24 },
-  { label: "2–5 ans", labelRu: "2–5 лет", min: 24, max: 60 },
+  { label: "3-6 mois", labelRu: "3-6 мес", min: 3, max: 6 },
+  { label: "6-12 mois", labelRu: "6-12 мес", min: 6, max: 12 },
+  { label: "1-2 ans", labelRu: "1-2 года", min: 12, max: 24 },
+  { label: "2-5 ans", labelRu: "2-5 лет", min: 24, max: 60 },
   { label: "5 ans et +", labelRu: "5 лет и более", min: 60, max: Infinity },
 ];
 
@@ -317,7 +317,7 @@ export function computeHiresDeparturesInRange(
   };
 }
 
-/** Month-by-month breakdown of an explicit range — the manual/year/quarter counterpart to computeHiresDeparturesTrend's fixed "N months back from today". */
+/** Month-by-month breakdown of an explicit range - the manual/year/quarter counterpart to computeHiresDeparturesTrend's fixed "N months back from today". */
 export function computeHiresDeparturesTrendInRange(employees: DashEmployee[], range: DateRange): TrendMonth[] {
   const trend: TrendMonth[] = [];
   const endMonth = range.endIso.slice(0, 7);
@@ -337,7 +337,7 @@ export function computeHiresDeparturesTrendInRange(employees: DashEmployee[], ra
 
 export type TrialPeriodInfo = { endsAt: string };
 
-/** 30 calendar days from hire_date. No new column — computed purely from a field that already exists. */
+/** 30 calendar days from hire_date. No new column - computed purely from a field that already exists. */
 export function isInTrialPeriod(hireDate: string | null, todayIso: string): TrialPeriodInfo | null {
   if (!hireDate) return null;
   const endsAt = addDaysIso(hireDate, 30);

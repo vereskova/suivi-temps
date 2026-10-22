@@ -15,7 +15,7 @@ function push(kind: ToastKind, message: string) {
   listeners.forEach((l) => l(item));
 }
 
-/** Fire-and-forget toast API — call from anywhere, no hook/context wiring needed at the call site. */
+/** Fire-and-forget toast API - call from anywhere, no hook/context wiring needed at the call site. */
 export const toast = {
   success: (message: string) => push("success", message),
   error: (message: string) => push("error", message),

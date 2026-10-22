@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/vladis-backup.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Missing $ENV_FILE — copy vladis-backup.env.example there and fill it in first." >&2
+  echo "Missing $ENV_FILE - copy vladis-backup.env.example there and fill it in first." >&2
   exit 1
 fi
 # shellcheck source=/dev/null

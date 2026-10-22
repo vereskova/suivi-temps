@@ -17,7 +17,7 @@ import type { OrgPlan } from "./useOrgPlan";
 const UNPLACED_EMP = "__unplaced_emp__";
 const UNPLACED_CAND = "__unplaced_cand__";
 
-/** Отличия плана от реальности — общий для обеих вкладок. */
+/** Отличия плана от реальности - общий для обеих вкладок. */
 export function OrgDiffPanel({ plan }: { plan: OrgPlan }) {
   const [open, setOpen] = useState(false);
   if (plan.mode !== "plan") return null;
@@ -85,7 +85,7 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
     return out;
   }, [columns]);
 
-  /** Сколько сотрудников стоит в узле в реальности — для пометки (+N)/(−N). */
+  /** Сколько сотрудников стоит в узле в реальности - для пометки (+N)/(−N). */
   const originCount = useMemo(() => {
     const m = new Map<string, number>();
     [...resolved.byNode.values(), resolved.unplacedEmployees].flat().forEach((c) => {
@@ -140,7 +140,7 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
           </span>
         </div>
         {cards.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-stone-300 px-2 py-2 text-center text-xs text-stone-300">—</div>
+          <div className="rounded-lg border border-dashed border-stone-300 px-2 py-2 text-center text-xs text-stone-300">-</div>
         ) : (
           cards.map((card) => (
             <OrgCardView
@@ -204,8 +204,8 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
         Расстановка «Состав»{" "}
         <span className="text-xs font-normal text-stone-400">
           {canEdit
-            ? "— перетаскивайте карточки между колонками. Цветная рамка = отличие от реальности."
-            : "— только просмотр."}
+            ? "- перетаскивайте карточки между колонками. Цветная рамка = отличие от реальности."
+            : "- только просмотр."}
         </span>
       </p>
       {groups.map(({ root, cols }) => {
@@ -238,7 +238,7 @@ export function OrgPlanBoard({ plan }: { plan: OrgPlan }) {
 
       <div className="mt-2 rounded-xl border-2 border-dashed border-primary-300 bg-primary-50/70 p-3">
         <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-wide text-primary-600">
-          Резерв и кандидаты — сюда можно убрать человека или взять оттуда
+          Резерв и кандидаты - сюда можно убрать человека или взять оттуда
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
           {column(UNPLACED_EMP, "Без места", resolved.unplacedEmployees, { header: "bg-primary-600 text-white" })}

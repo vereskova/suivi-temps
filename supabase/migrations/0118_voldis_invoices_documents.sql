@@ -92,7 +92,7 @@ create policy voldis_documents_admin on voldis_documents for all
 
 grant select, insert, update, delete on voldis_settings, voldis_invoices, voldis_documents to authenticated, service_role;
 
--- Stockage privé : contrats, factures PDF, pièces — lecture/écriture rh_admin uniquement ------
+-- Stockage privé : contrats, factures PDF, pièces - lecture/écriture rh_admin uniquement ------
 insert into storage.buckets (id, name, public) values ('voldis-documents', 'voldis-documents', false)
   on conflict (id) do nothing;
 

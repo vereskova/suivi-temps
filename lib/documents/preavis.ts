@@ -1,12 +1,12 @@
 /**
- * Préavis (notice period) lookup — Convention Collective Nationale de la
- * Métallurgie, groupes d'emploi A–I, per the reference table gathered from
+ * Préavis (notice period) lookup - Convention Collective Nationale de la
+ * Métallurgie, groupes d'emploi A-I, per the reference table gathered from
  * the "droit du travail" skill. This is a compact summary of the convention,
- * not a substitute for it — double-check against the actual convention text
+ * not a substitute for it - double-check against the actual convention text
  * (or a labor lawyer) before relying on this for a real dismissal, especially
- * for groups F–I where notice also depends on the employee's age.
+ * for groups F-I where notice also depends on the employee's age.
  *
- * `classification` is expected to be a single letter A–I (matches the
+ * `classification` is expected to be a single letter A-I (matches the
  * "groupe d'emploi" shown top-left on the bulletin de paie). Unknown/missing
  * classification falls back to a conservative default and flags it in the
  * returned `note`.
@@ -66,7 +66,7 @@ export function computePreavis(
     if (ancienneteYears < 3) return months(2);
     // >= 3 years: licenciement notice depends on age.
     if (ageYears === null) {
-      return months(3, "Âge inconnu — 3 mois si < 50 ans, 4 si 50–55, 6 si ≥ 55 (à confirmer).");
+      return months(3, "Âge inconnu - 3 mois si < 50 ans, 4 si 50-55, 6 si ≥ 55 (à confirmer).");
     }
     if (ageYears >= 55) return months(6);
     if (ageYears >= 50) return ancienneteYears >= 5 ? months(6) : months(4);
@@ -78,16 +78,16 @@ export function computePreavis(
     label: type === "demission" ? "1 mois (par défaut)" : "1 mois (par défaut)",
     months: 1,
     weeks: null,
-    note: "Classification (groupe d'emploi) manquante — durée par défaut, à vérifier avant envoi.",
+    note: "Classification (groupe d'emploi) manquante - durée par défaut, à vérifier avant envoi.",
   };
 }
 
 /**
- * Délai de prévenance for an EMPLOYER-initiated rupture during the période d'essai —
+ * Délai de prévenance for an EMPLOYER-initiated rupture during the période d'essai -
  * Code du travail art. L1221-25. Unlike démission/licenciement préavis above, this
  * depends only on the employee's tenure (jours de présence), never on classification.
  * Confirmed against Légifrance (art. L1221-25) and Convention Collective Nationale de
- * la Métallurgie (IDCC 3248) reference sources — the convention doesn't shorten it.
+ * la Métallurgie (IDCC 3248) reference sources - the convention doesn't shorten it.
  */
 export type DelaiPrevenanceEssai = {
   label: string; // "24 heures" | "48 heures" | "2 semaines" | "1 mois"
@@ -116,8 +116,8 @@ export function computeDelaiPrevenanceEssai(joursPresence: number): DelaiPrevena
  * exact (`exact: true`: the délai ends precisely on the last day). Around a
  * tier boundary no date can end exactly then (e.g. 89 days of presence = 2
  * weeks but 90 = 1 month), so the letter goes out earlier and the real period
- * is longer than the minimum — still compliant, since a longer notice is
- * allowed — and `exact` is false so the form can say so.
+ * is longer than the minimum - still compliant, since a longer notice is
+ * allowed - and `exact` is false so the form can say so.
  */
 export function letterDateForTrialEnd(
   hireIso: string | null,

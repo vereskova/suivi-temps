@@ -1,7 +1,7 @@
 /**
- * VOLDIS — rapprochement bancaire : propose, pour chaque virement reçu, le locataire et l'échéance.
+ * VOLDIS - rapprochement bancaire : propose, pour chaque virement reçu, le locataire et l'échéance.
  * « Apprentissage » : les mouvements déjà rattachés à un locataire (directement ou via une échéance)
- * servent de modèle — un nouveau virement dont le libellé a la même « signature » reçoit la même proposition.
+ * servent de modèle - un nouveau virement dont le libellé a la même « signature » reçoit la même proposition.
  */
 import { categoryFor } from "./bank-import";
 import { nameMatches, num, remaining, type VBankTx, type VCharge, type VTenant } from "./rental";
@@ -49,10 +49,10 @@ export function guessTenant(
   const learnedId = sig ? learned.get(sig) : undefined;
   if (learnedId) {
     const t = tenants.find((x) => x.id === learnedId);
-    if (t) return { tenant: t, reason: `déjà rattaché : « ${sig} »` };
+    if (t) return { tenant: t, reason: `уже привязан: «${sig}»` };
   }
   const named = tenants.filter((t) => nameMatches(text, t.name));
-  if (named.length === 1) return { tenant: named[0], reason: "nom dans le libellé" };
+  if (named.length === 1) return { tenant: named[0], reason: "имя в тексте платежа" };
   return null;
 }
 
@@ -109,7 +109,7 @@ export function proposeMatches(txs: VBankTx[], charges: VCharge[], tenants: VTen
         const c = covered[0];
         const exact = Math.abs(num(c.amount_paid) - amount) < 0.01;
         alreadyLinkedAmount.set(c.id, (alreadyLinkedAmount.get(c.id) ?? 0) + amount);
-        out.push({ kind: "link", tx, tenant: g.tenant, charge: c, confidence: exact ? "sure" : "maybe", reason: `${g.reason}${exact ? ", montant identique" : ", paiement partiel de l'échéance"}` });
+        out.push({ kind: "link", tx, tenant: g.tenant, charge: c, confidence: exact ? "sure" : "maybe", reason: `${g.reason}${exact ? ", сумма совпадает" : ", часть платежа"}` });
         return;
       }
 
@@ -122,7 +122,7 @@ export function proposeMatches(txs: VBankTx[], charges: VCharge[], tenants: VTen
         const c = open[0];
         claimed.add(c.id);
         const exact = Math.abs(remaining(c) - amount) < 0.01;
-        out.push({ kind: "pay", tx, tenant: g.tenant, charge: c, confidence: exact ? "sure" : "maybe", reason: `${g.reason}${exact ? ", montant identique au reste dû" : ", montant différent"}` });
+        out.push({ kind: "pay", tx, tenant: g.tenant, charge: c, confidence: exact ? "sure" : "maybe", reason: `${g.reason}${exact ? ", сумма равна остатку" : ", сумма отличается"}` });
         return;
       }
 
@@ -142,18 +142,18 @@ export function cleanLabel(label: string | null | undefined): string {
   s = s.replace(/^VIREMENT EMIS VIR INST vers\s*/i, "→ ");
   s = s.replace(/^PRELEVEMENT\s*/i, "");
   const loan = s.match(/^REMBOURSEMENT DE PRET .*\b(CAPITAL|INTERETS)\b/i);
-  if (loan) return `Prêt — ${loan[1].toUpperCase() === "CAPITAL" ? "capital" : "intérêts"}`;
-  if (/^REGLEMENT ASSU\. CAAE PRET/i.test(s)) return "Assurance du prêt";
-  if (/^AXA FRANCE/i.test(s)) return "AXA France — assurance";
-  if (/^DIRECTION GENERALE DES FINANCES/i.test(s)) return "Taxe foncière (DGFiP)";
-  if (/^Tenue de compte/i.test(s)) return "Frais de tenue de compte";
+  if (loan) return loan[1].toUpperCase() === "CAPITAL" ? "Кредит: основной долг" : "Кредит: проценты";
+  if (/^REGLEMENT ASSU\. CAAE PRET/i.test(s)) return "Страховка кредита";
+  if (/^AXA FRANCE/i.test(s)) return "Страховка AXA";
+  if (/^DIRECTION GENERALE DES FINANCES/i.test(s)) return "Налог на недвижимость (DGFiP)";
+  if (/^Tenue de compte/i.test(s)) return "Комиссия за ведение счёта";
   s = s
     .split(" ")
     .filter((w) => !/^(SCTINSTOUT|RAWSCTOUT)/i.test(w) && !(w.length >= 7 && /\d/.test(w) && /[A-Za-z]/.test(w)) && !/^\d{6,}$/.test(w))
     .join(" ")
     .replace(/\bVIR DE .*? (?=[A-Z])/i, "")
     .trim();
-  return s.length > 70 ? `${s.slice(0, 68)}…` : s || (label ?? "—");
+  return s.length > 70 ? `${s.slice(0, 68)}…` : s || (label ?? "-");
 }
 
 export type TxFlag = { reason: string; action?: "assign" };
@@ -163,7 +163,7 @@ const median = (xs: number[]) => {
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
-const fmt = (n: number) => `${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
+const fmt = (n: number) => `${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 
 /**
  * Repère les opérations qui demandent un regard humain (clé = id du mouvement) ; les autres sont « reconnues » :
@@ -192,13 +192,13 @@ export function analyzeTxs(txs: VBankTx[], charges: VCharge[], tenants: VTenant[
         const c = t.charge_id ? chargeById.get(t.charge_id) : null;
         if (c) {
           const sum = linkedSum.get(c.id) ?? amount;
-          if (Math.abs(sum - num(c.amount_due)) > 0.5) out.set(t.id, { reason: `Loyer attendu ${fmt(num(c.amount_due))}` });
+          if (Math.abs(sum - num(c.amount_due)) > 0.5) out.set(t.id, { reason: `По платежу ожидалось ${fmt(num(c.amount_due))}` });
         }
         return;
       }
       const p = proposalFor.get(t.id);
-      if (p) out.set(t.id, { reason: `À confirmer : ${p.tenant.name}`, action: "assign" });
-      else out.set(t.id, { reason: "Payeur à identifier", action: "assign" });
+      if (p) out.set(t.id, { reason: `Подтвердить: ${p.tenant.name}`, action: "assign" });
+      else out.set(t.id, { reason: "Нужно определить плательщика", action: "assign" });
       return;
     }
     // dépenses : montant inhabituel pour une opération qui se répète, ou grosse dépense non classée
@@ -206,10 +206,10 @@ export function analyzeTxs(txs: VBankTx[], charges: VCharge[], tenants: VTenant[
     if (peers.length >= 3) {
       const med = median(peers);
       const spread = peers.filter((x) => med > 0 && Math.abs(x - med) / med > 0.25).length / peers.length;
-      if (spread < 0.4 && med > 0 && Math.abs(amount - med) / med > 0.25) out.set(t.id, { reason: `Habituellement ≈ ${fmt(med)}` });
+      if (spread < 0.4 && med > 0 && Math.abs(amount - med) / med > 0.25) out.set(t.id, { reason: `Обычно около ${fmt(med)}` });
       return;
     }
-    if (!categoryOf(t) && amount >= 300) out.set(t.id, { reason: "Dépense non classée" });
+    if (!categoryOf(t) && amount >= 300) out.set(t.id, { reason: "Расход без категории" });
   });
   return out;
 }

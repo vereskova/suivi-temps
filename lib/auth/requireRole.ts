@@ -18,7 +18,7 @@ export type RoleCheckResult =
  * Shared auth+role gate for API routes: resolves the current Supabase user,
  * looks up their app_role, and rejects with the right status code (401 vs
  * 403) if they're not signed in or not one of allowedRoles. Each route used
- * to duplicate this exact block — kept in one place so a future role change
+ * to duplicate this exact block - kept in one place so a future role change
  * can't be updated in two of the three routes and forgotten in the third.
  */
 export async function requireRole(allowedRoles: readonly string[]): Promise<RoleCheckResult> {

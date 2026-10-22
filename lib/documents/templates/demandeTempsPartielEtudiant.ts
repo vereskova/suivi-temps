@@ -12,7 +12,7 @@ export type DemandeTempsPartielEtudiantParams = {
 };
 
 /** Lettre rédigée pour le salarié : demande écrite d'une durée de travail à temps partiel
- *  inférieure à 24 h hebdomadaires, compatible avec ses études (art. L.3123-7 du Code du travail —
+ *  inférieure à 24 h hebdomadaires, compatible avec ses études (art. L.3123-7 du Code du travail -
  *  dérogation à la demande du salarié, notamment étudiant de moins de 26 ans). À joindre au contrat. */
 export function demandeTempsPartielEtudiant(
   employee: EmployeeDoc,
@@ -35,7 +35,7 @@ export function demandeTempsPartielEtudiant(
     rightAligned(`À ${params.signingCity}, le ${formatDateFr(params.signingDate)}`),
     { type: "spacer" },
     para(
-      "Objet : Demande d'une durée de travail à temps partiel inférieure à 24 heures hebdomadaires — étudiant"
+      "Objet : Demande d'une durée de travail à temps partiel inférieure à 24 heures hebdomadaires - étudiant"
     ),
     { type: "spacer" },
     para(`${representative},`),
@@ -65,5 +65,5 @@ export function demandeTempsPartielEtudiant(
     para("Pièce jointe : certificat de scolarité"),
   ];
 
-  return { title: `Demande de temps partiel (étudiant) — ${fullName}`, blocks };
+  return { title: `Demande de temps partiel (étudiant) - ${fullName}`, blocks };
 }

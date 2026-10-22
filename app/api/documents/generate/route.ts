@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   // "rh" already has full RLS read/write on employees, company_settings and
-  // generated_documents (migration 0017) — the Documents view was visible to
+  // generated_documents (migration 0017) - the Documents view was visible to
   // rh but generation was still rh_admin-only, a leftover from before the
   // "rh" role existed. Matches the same parity given to rupture access.
   const check = await requireRole(["rh_admin", "rh"]);

@@ -2,7 +2,7 @@
 -- actually needs, matching the physical folders: each type can optionally
 -- track an expiry date (titre de séjour, passeport, carte BTP), be restricted
 -- to foreign employees only (titre de séjour / VISA), or be tied to a specific
--- hiring period (contrat / DPAE / rupture — an employee can be hired and let
+-- hiring period (contrat / DPAE / rupture - an employee can be hired and let
 -- go more than once, each cycle already gets its own row in
 -- registre_unique_personnel, so documents for that cycle link to it instead
 -- of duplicating dates).
@@ -32,7 +32,7 @@ insert into document_categories (code, label, sort_order, sensitive, requires_ex
   ('archive',           'Archive',                      14, false, false, false, false),
   ('bulletin_paie',     'Bulletin de paie',             15, false, false, false, false);
 
--- Per-document expiry (titre de séjour, passeport, carte BTP) — null for types
+-- Per-document expiry (titre de séjour, passeport, carte BTP) - null for types
 -- that don't apply. Overdue = valid_until < current_date.
 alter table employee_documents add column if not exists valid_until date;
 

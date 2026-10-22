@@ -37,15 +37,35 @@ const SHAPES: Shape[] = [
 
 const eur0 = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 
+export type LotState = "paid" | "expected" | "late" | "other" | "free";
+
+const STATE_CLASS: Record<LotState, string> = {
+  paid: "fill-emerald-50 stroke-emerald-600 hover:fill-emerald-100",
+  expected: "fill-amber-50 stroke-amber-500 hover:fill-amber-100",
+  late: "fill-red-50 stroke-red-500 hover:fill-red-100",
+  other: "fill-white stroke-stone-500 hover:fill-stone-50",
+  free: "fill-stone-50 stroke-stone-300 hover:fill-stone-100",
+};
+
+export const LOT_STATE_LEGEND: { state: LotState; label: string; dot: string }[] = [
+  { state: "paid", label: "Оплачено", dot: "bg-emerald-500" },
+  { state: "expected", label: "Ожидается", dot: "bg-amber-500" },
+  { state: "late", label: "Просрочено", dot: "bg-red-500" },
+  { state: "other", label: "Без договора", dot: "bg-stone-500" },
+  { state: "free", label: "Свободно", dot: "bg-stone-300" },
+];
+
 export default function SitePlan({
   props,
   leases,
   tenants,
+  states,
   onSelect,
 }: {
   props: VProperty[];
   leases: VLease[];
   tenants: VTenant[];
+  states?: Map<string, LotState>;
   onSelect?: (lot: VProperty) => void;
 }) {
   const tenantName = new Map(tenants.map((t) => [t.id, t.name]));
@@ -59,7 +79,8 @@ export default function SitePlan({
         const lease = p ? leaseBy.get(p.id) : undefined;
         const who = lease ? tenantName.get(lease.tenant_id) : p?.occupant ?? null;
         const occupied = !!lease || !!p?.occupant;
-        const label = s.lot === "K" ? "K" : s.lot;
+        const label = s.lot;
+        const state: LotState = states?.get(s.lot) ?? (occupied ? "other" : "free");
         const pts = rect(s.center, s.aV, s.bU);
         const small = s.aV < 60;
         return (
@@ -68,30 +89,30 @@ export default function SitePlan({
             className={p && onSelect ? "cursor-pointer" : ""}
             onClick={() => p && onSelect?.(p)}
             role={p && onSelect ? "button" : undefined}
-            aria-label={`Lot ${label}${who ? `, ${who}` : ", libre"}`}
+            aria-label={`Помещение ${label}${who ? `, ${who}` : ", свободно"}`}
           >
             <polygon
               points={poly(pts)}
-              className={occupied ? "fill-white stroke-stone-700 hover:fill-stone-50" : "fill-stone-50 stroke-stone-300 hover:fill-stone-100"}
-              strokeWidth={occupied ? 2 : 1.5}
-              strokeDasharray={occupied ? undefined : "5 4"}
+              className={STATE_CLASS[state]}
+              strokeWidth={state === "free" ? 1.5 : 2}
+              strokeDasharray={state === "free" ? "5 4" : undefined}
               strokeLinejoin="round"
             />
             <text x={s.center[0]} y={s.center[1] - (small ? 4 : 10)} textAnchor="middle" className="fill-stone-900" style={{ fontSize: small ? 24 : 32, fontWeight: 800 }}>
               {label}
             </text>
             <text x={s.center[0]} y={s.center[1] + (small ? 14 : 12)} textAnchor="middle" className={occupied ? "fill-stone-600" : "fill-stone-400"} style={{ fontSize: small ? 12 : 14, fontWeight: 600 }}>
-              {(who ?? "libre").length > 13 ? `${(who ?? "libre").slice(0, 12)}…` : who ?? "libre"}
+              {(who ?? "свободно").length > 13 ? `${(who ?? "свободно").slice(0, 12)}…` : who ?? "свободно"}
             </text>
             {p && occupied && !small && (
               <text x={s.center[0]} y={s.center[1] + 30} textAnchor="middle" className="fill-stone-400" style={{ fontSize: 13 }}>
                 {lease ? eur0(num(lease.monthly_total)) : ""}
-                {p.pays_cash ? " · espèces" : ""}
+                {p.pays_cash ? " · нал." : ""}
               </text>
             )}
             {p && small && p.pays_cash && (
               <text x={s.center[0]} y={s.center[1] + 28} textAnchor="middle" className="fill-amber-600" style={{ fontSize: 11, fontWeight: 700 }}>
-                espèces
+                нал.
               </text>
             )}
           </g>
@@ -99,13 +120,13 @@ export default function SitePlan({
       })}
       {/* repères */}
       <text x={mid(SHAPES[0].center, 70, -70)[0]} y={mid(SHAPES[0].center, 70, -70)[1]} className="fill-stone-300" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
-        BÂTIMENT A
+        ЗДАНИЕ A
       </text>
       <text x={560} y={470} className="fill-stone-300" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
-        BÂTIMENT B
+        ЗДАНИЕ B
       </text>
       <text x={505} y={842} className="fill-stone-300" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
-        CONTENEUR
+        КОНТЕЙНЕР
       </text>
     </svg>
   );

@@ -7,7 +7,7 @@
 --
 -- Fix: mark them SECURITY DEFINER so their internal queries run as the
 -- function owner (postgres, which has BYPASSRLS in Supabase) instead of the
--- calling role — this is the standard Supabase pattern for RLS helper
+-- calling role - this is the standard Supabase pattern for RLS helper
 -- functions and breaks the recursive re-entry into RLS entirely.
 
 create or replace function current_employee_id() returns uuid

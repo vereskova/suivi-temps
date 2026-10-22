@@ -1,4 +1,4 @@
--- Port of "часы работы.numbers" — the real, current logic confirmed with
+-- Port of "часы работы.numbers" - the real, current logic confirmed with
 -- the user (August 2026 as reference month): per-employee monthly bonus/
 -- penalty/km/quality-bank line, feeding Paie instead of duplicating data
 -- entry there. Jours is computed from real pointage_entries, not retyped.
@@ -8,7 +8,7 @@ create table payroll_extras (
   employee_id               uuid not null references employees(id) on delete cascade,
   -- Ставка journalière propre à ce salarié (remplace le taux unique global).
   taux_journalier           numeric(7,2) not null default 0,
-  -- BONUS d'équipe — calculé ailleurs (plusieurs facteurs), saisi ici tel quel.
+  -- BONUS d'équipe - calculé ailleurs (plusieurs facteurs), saisi ici tel quel.
   bonus_equipe              numeric(9,2) not null default 0,
   -- Штраф : montant signé (+ ajustement, - pénalité, comme dans la feuille
   -- d'origine) + raison, plutôt qu'un seul nombre sans contexte.
@@ -23,7 +23,7 @@ create table payroll_extras (
   -- Null = reprendre automatiquement le БАНК qualité de fin du mois
   -- précédent (même employé) ; renseigné seulement pour corriger/amorcer.
   banque_ajustement_manuel  numeric(9,2),
-  -- Snapshot du БАНК qualité de FIN de ce mois, écrit à chaque sauvegarde —
+  -- Snapshot du БАНК qualité de FIN de ce mois, écrit à chaque sauvegarde -
   -- lu tel quel comme point de départ du mois suivant, plutôt que de
   -- remonter toute la chaîne des mois précédents à chaque fois.
   banque_qualite_fin        numeric(9,2) not null default 0,

@@ -3,8 +3,8 @@ import { requireRole } from "@/lib/auth/requireRole";
 import { emailMentionsEmployee, fetchPrevalyEmails } from "@/lib/email/prevalyMail";
 
 // Read-only correspondence history for one employee: unlike the convocation
-// auto-fill (fixed layout, auto-applied), this covers ALL Prevaly e-mails —
-// free-text ones included — matched by a loose "both name tokens appear
+// auto-fill (fixed layout, auto-applied), this covers ALL Prevaly e-mails -
+// free-text ones included - matched by a loose "both name tokens appear
 // somewhere in the message" search, purely for RH to read on demand.
 export async function GET(request: NextRequest) {
   const check = await requireRole(["rh_admin", "rh"]);

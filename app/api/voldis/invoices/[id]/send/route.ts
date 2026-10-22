@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const period = monthLabelFr(invoice.period_start ?? invoice.issue_date);
   const isReceipt = invoice.kind === "receipt";
-  const subject = isReceipt ? `Quittance de loyer ${period} — ${cfg.company_name}` : `Facture ${invoice.number} — loyer ${period} — ${cfg.company_name}`;
+  const subject = isReceipt ? `Quittance de loyer ${period} - ${cfg.company_name}` : `Facture ${invoice.number} - loyer ${period} - ${cfg.company_name}`;
   const text = isReceipt
     ? `Bonjour,\n\nVeuillez trouver ci-joint la quittance de loyer pour ${period}.\n\nCordialement,\n${cfg.company_name}`
     : `Bonjour,\n\nVeuillez trouver ci-joint la facture ${invoice.number} relative au loyer de ${period}, d'un montant de ${invoice.total_ttc.toFixed(2).replace(".", ",")} €.\n${cfg.payment_terms}${cfg.iban ? `\nIBAN : ${cfg.iban}` : ""}\n\nCordialement,\n${cfg.company_name}`;

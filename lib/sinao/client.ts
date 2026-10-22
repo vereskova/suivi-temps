@@ -2,13 +2,13 @@
  * Minimal client for the Sinao invoicing API (https://api.sinao.app/v1),
  * used to push a confirmed commercial checklist as a draft ("brouillon")
  * quote. Sinao has no import for structured devis files (PDF import only,
- * unrelated) — this calls their real, documented REST API instead
+ * unrelated) - this calls their real, documented REST API instead
  * (`POST /apps/{appId}/quotes` creates a quote in `draft` status by
  * default). There is no sandbox environment documented by Sinao: the very
  * first real call from this module runs against production Sinao data.
  *
  * Auth: a durable Api-Key created once by the company admin in Sinao's own
- * interface (Réglages > Clés API) — never a per-user bearer token. Read
+ * interface (Réglages > Clés API) - never a per-user bearer token. Read
  * from env, never exposed to the browser.
  */
 
@@ -24,7 +24,7 @@ export class SinaoError extends Error {
   }
 }
 
-/** True once VLADIS has actually created a Sinao API key — until then, createDraftQuote() stubs instead of calling out. */
+/** True once VLADIS has actually created a Sinao API key - until then, createDraftQuote() stubs instead of calling out. */
 export function isSinaoConfigured(): boolean {
   return Boolean(process.env.SINAO_API_KEY && process.env.SINAO_APP_ID);
 }
@@ -76,7 +76,7 @@ export async function findOrganizationByName(name: string): Promise<SinaoOrganiz
 
 export type SinaoQuoteCategory = {
   label: string;
-  /** amount is cents (Sinao's own unit — "Price without taxes in cents"), vatPercent is basis points (20% = 2000). */
+  /** amount is cents (Sinao's own unit - "Price without taxes in cents"), vatPercent is basis points (20% = 2000). */
   items: {
     label: string;
     amount: number;
@@ -90,14 +90,14 @@ export type SinaoQuoteCategory = {
 /**
  * Sinao's real content shape does NOT match its own published OpenAPI spec
  * (the spec's flat `SalesLine[]` with a `style: {type, position, section_id}`
- * wrapper is simply ignored — confirmed by direct testing: quotes created
+ * wrapper is simply ignored - confirmed by direct testing: quotes created
  * or updated with that shape always come back with zero lines). The shape
  * actually persisted, read back from a real quote created by hand in
  * Sinao's own UI, is an array of sections, each holding its own `lines`:
  * `[{ detail?, lines: [{ detail, type, account_id, amount_accurately, ... }] }]`
- * — `type`/`account_id` sit directly on the line (no `style` nesting), and
+ * - `type`/`account_id` sit directly on the line (no `style` nesting), and
  * the price field that actually takes effect is `amount_accurately`
- * (cents × 1000 — `amount` alone is accepted but silently ignored).
+ * (cents × 1000 - `amount` alone is accepted but silently ignored).
  */
 type SinaoContentLine =
   | {
@@ -110,7 +110,7 @@ type SinaoContentLine =
       type: "product";
       account_id: number;
     }
-  // Note/description-only row (no price, no quantity) — renders as small
+  // Note/description-only row (no price, no quantity) - renders as small
   // text right under the product line above it. `type: "product"` values
   // like "text"/"note"/"comment" all fail Sinao's validation; "description"
   // is the one that's accepted and actually shows up, confirmed live.
@@ -122,7 +122,7 @@ type SinaoContentSection = {
 };
 
 /**
- * "Prestations de services" (PCG 706) — the sales account VLADIS's real
+ * "Prestations de services" (PCG 706) - the sales account VLADIS's real
  * quotes book against (confirmed by reading one back). A line with no
  * account_id never gets aggregated into the quote's totals, so every line
  * needs one; VLADIS has no other services revenue account to pick between.
@@ -142,7 +142,7 @@ function buildContent(categories: SinaoQuoteCategory[]): SinaoContentSection[] {
           amount_accurately: item.amount * 1000,
           vat_percent: item.vatPercent,
           // The checklist's own unit (e.g. "toit", "KWC") when the user has
-          // set one — matches how VLADIS's real quotes show a meaningful
+          // set one - matches how VLADIS's real quotes show a meaningful
           // Unité column instead of the generic "forfait" fallback.
           unity: item.unite?.trim() || "forfait",
           type: "product" as const,
@@ -163,7 +163,7 @@ function buildContent(categories: SinaoQuoteCategory[]): SinaoContentSection[] {
 /**
  * Sets a quote's line items via its update endpoint. Content is always
  * pushed this way, never as part of the initial create call: Sinao's
- * create endpoint accepts a `content` parameter but silently drops it —
+ * create endpoint accepts a `content` parameter but silently drops it -
  * confirmed by every quote created through this integration coming back
  * empty until content was set via a follow-up call like this one.
  */
@@ -178,8 +178,8 @@ async function pushContent(quoteId: string, categories: SinaoQuoteCategory[]): P
  * Fixed quote-level fields VLADIS's real quotes always carry (confirmed by
  * reading real quotes back, and by round-tripping these exact values
  * through a test push). Sinao doesn't apply the organization's own
- * defaults when a quote is created via the API — only the account/bank
- * shown in Réglages — so these have to be sent explicitly on every create,
+ * defaults when a quote is created via the API - only the account/bank
+ * shown in Réglages - so these have to be sent explicitly on every create,
  * or the quote is missing its RIB, its "TVA non applicable" notice, and
  * its signature mention.
  */
@@ -201,12 +201,12 @@ export type CreateDraftQuoteResult = {
 
 /**
  * Creates a draft quote for `clientName`, then pushes the given categorized
- * line items onto it via a follow-up call (see pushContent — Sinao's create
+ * line items onto it via a follow-up call (see pushContent - Sinao's create
  * endpoint doesn't apply `content` itself).
  *
  * Stub mode: VLADIS hasn't created a Sinao API key yet, so until
  * SINAO_API_KEY/SINAO_APP_ID are set, this skips the network call entirely
- * and returns a fake quote id instead of failing — lets the rest of the
+ * and returns a fake quote id instead of failing - lets the rest of the
  * commercial workflow (checklist, both PDFs, the "already pushed" state) be
  * used and demoed today. Swap to the real thing automatically the moment
  * the env vars are configured, no code change needed.
@@ -249,7 +249,7 @@ export async function createDraftQuote(params: {
       contact_infos,
       title,
       // The quote's own date (shown to the client, separate from the
-      // record's system `created_at`) — omitting it left every quote dated
+      // record's system `created_at`) - omitting it left every quote dated
       // 1970-01-01 (confirmed by reading real quotes back: existing ones
       // all carry a real written_at, e.g. "2026-09-02T22:00:00.000000Z").
       written_at: now.toISOString(),
@@ -271,7 +271,7 @@ export type UpdateDraftQuoteResult = {
 };
 
 /**
- * Replaces the line items of an already-created Sinao quote — used when a
+ * Replaces the line items of an already-created Sinao quote - used when a
  * commercial case is re-pushed after its checklist changed (e.g. prices
  * added after the very first push). The previous content is fully
  * replaced, not merged.

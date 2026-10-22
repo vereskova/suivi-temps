@@ -1,4 +1,4 @@
-// Prevaly's own visit center — from the address in their convocation
+// Prevaly's own visit center - from the address in their convocation
 // e-mails ("PREVALY - LABEGE, 227 rue Pierre Gilles de Gennes, 31670
 // LABEGE") and confirmed against its own Google Maps link.
 export const LABEGE_COORDS = { lat: 43.539959, lng: 1.513886 };
@@ -6,7 +6,7 @@ export const LABEGE_COORDS = { lat: 43.539959, lng: 1.513886 };
 export function parseCoords(raw: string | null): { lat: number; lng: number } | null {
   if (!raw) return null;
   // Most cells use "lat, lng"; a few have a typo'd extra dot instead of a
-  // comma between the two numbers (e.g. "43.091667.2.278811") — matching
+  // comma between the two numbers (e.g. "43.091667.2.278811") - matching
   // decimal numbers directly handles both.
   const matches = raw.match(/-?\d{1,3}\.\d+/g);
   if (!matches || matches.length < 2) return null;
@@ -27,7 +27,7 @@ function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: num
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-/** Rough drive-time estimate from straight-line distance — not real routing
+/** Rough drive-time estimate from straight-line distance - not real routing
  *  (no map API involved), so it's deliberately conservative: a 1.3×
  *  circuity factor for actual road distance over "as the crow flies", at a
  *  70 km/h average blending highway and rural chantier-access roads. Good

@@ -1,6 +1,6 @@
--- Annuaire des téléphones pro : nom du titulaire de chaque ligne — la
+-- Annuaire des téléphones pro : nom du titulaire de chaque ligne - la
 -- personne rattachée à la ligne (employee_phones.employee_id) ou, pour une
--- ligne d'équipe, le chef d'équipe — seulement s'il est encore en poste
+-- ligne d'équipe, le chef d'équipe - seulement s'il est encore en poste
 -- (active / on_leave). Demandé le 08/10/2026 ("дай всем имена").
 drop function if exists work_phone_directory();
 create function work_phone_directory()

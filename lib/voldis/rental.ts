@@ -1,4 +1,4 @@
-/** VOLDIS — location de locaux : types et règles de calcul partagés (UI + API). */
+/** VOLDIS - location de locaux : types et règles de calcul partagés (UI + API). */
 
 export type ChargeStatus = "paid" | "partial" | "late" | "unpaid" | "lost";
 
@@ -67,6 +67,7 @@ export type VCharge = {
   status: ChargeStatus;
   description: string | null;
   reminded_at: string | null;
+  paid_cash?: boolean;
 };
 
 export type VBankTx = {
@@ -293,4 +294,83 @@ export function nextInvoiceNumber(prefix: string, year: number, existing: string
     return hit ? Math.max(m, Number(hit[1])) : m;
   }, 0);
   return `${prefix}-${year}-${String(max + 1).padStart(4, "0")}`;
+}
+
+
+// ───────────────────────── Платежи по договору: считаются автоматически ─────────────────────────
+
+/** Сколько дней после срока платёж ещё считается «ожидается», а не «просрочен». */
+export const GRACE_DAYS = 7;
+
+export type RentState = "paid" | "partial" | "late" | "expected" | "lost";
+
+export const RENT_STATE_LABEL: Record<RentState, string> = {
+  paid: "Оплачено",
+  partial: "Частично",
+  late: "Просрочено",
+  expected: "Ожидается",
+  lost: "Списано",
+};
+
+const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+
+/** Состояние платежа считается из сумм и сроков, а не хранится: нельзя забыть обновить. */
+export function rentState(c: Pick<VCharge, "amount_due" | "amount_paid" | "due_date" | "status">, today = new Date().toISOString().slice(0, 10)): RentState {
+  if (c.status === "lost") return "lost";
+  const due = num(c.amount_due);
+  const paid = num(c.amount_paid);
+  if (due > 0 && paid >= due - 0.005) return "paid";
+  if (paid > 0) return today > addDays(c.due_date, GRACE_DAYS) ? "late" : "partial";
+  return today > addDays(c.due_date, GRACE_DAYS) ? "late" : "expected";
+}
+
+export const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+export const monthLabelRu = (ym: string) => `${MONTHS_RU[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+export const ymOf = (iso: string) => iso.slice(0, 7);
+
+export function shiftMonth(ym: string, delta: number): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
+}
+
+/** Действует ли договор в этом месяце (хотя бы один день месяца). */
+export function leaseCoversMonth(l: Pick<VLease, "start_date" | "end_date" | "is_active" | "terminated_on">, ym: string): boolean {
+  const first = `${ym}-01`;
+  const last = monthEnd(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)));
+  const end = l.terminated_on ?? l.end_date;
+  return l.start_date <= last && (!end || end >= first);
+}
+
+/** Дата платежа месяца по договору. */
+export const dueDateOf = (ym: string, billingDay: number) => `${ym}-${String(Math.min(28, Math.max(1, billingDay))).padStart(2, "0")}`;
+
+/**
+ * Платежи, которых ещё нет в базе: каждый действующий договор ожидает платёж за каждый месяц
+ * от начала (но не раньше `fromYm`) до текущего. Возвращает строки для вставки.
+ */
+export function missingCharges(leases: VLease[], charges: VCharge[], todayYm: string, fromYm = "2025-11"): Record<string, unknown>[] {
+  const have = new Set(charges.filter((c) => c.kind === "rent" && c.lease_id).map((c) => `${c.lease_id}|${ymOf(c.due_date)}`));
+  const rows: Record<string, unknown>[] = [];
+  for (const l of leases) {
+    if (!l.is_active) continue;
+    for (let ym = ymOf(l.start_date) > fromYm ? ymOf(l.start_date) : fromYm; ym <= todayYm; ym = shiftMonth(ym, 1)) {
+      if (!leaseCoversMonth(l, ym) || have.has(`${l.id}|${ym}`)) continue;
+      const last = monthEnd(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)));
+      rows.push({
+        lease_id: l.id,
+        property_id: l.property_id,
+        tenant_id: l.tenant_id,
+        kind: "rent",
+        due_date: dueDateOf(ym, l.billing_day),
+        period_start: `${ym}-01`,
+        period_end: last,
+        amount_due: l.monthly_total,
+        vat_amount: num(l.vat),
+        amount_paid: 0,
+        status: "unpaid",
+        description: `Аренда ${ym}`,
+      });
+    }
+  }
+  return rows;
 }

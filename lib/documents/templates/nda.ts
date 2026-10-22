@@ -17,7 +17,7 @@ export function nda(employee: EmployeeDoc, company: CompanyDoc, params: NdaParam
     para("ENTRE LES SOUSSIGNÉS :"),
     { type: "spacer" },
     p(b(`La société ${company.name}`)),
-    para(`N°SIRET : ${company.siret} — Code NAF : ${company.nafCode}`),
+    para(`N°SIRET : ${company.siret} - Code NAF : ${company.nafCode}`),
     para(`Siège social : ${company.address}`),
     para(`Représentée par ${company.representativeName}, ${company.representativeTitle}`),
     para("Ci-après dénommée « la Société »"),
@@ -99,5 +99,5 @@ export function nda(employee: EmployeeDoc, company: CompanyDoc, params: NdaParam
     ),
   ];
 
-  return { title: `NDA — ${fullName}`, blocks };
+  return { title: `NDA - ${fullName}`, blocks };
 }

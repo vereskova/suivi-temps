@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
  * Lands the magic-link email directly on our own domain (via a custom Supabase
  * email template) instead of bouncing through supabase.co/auth/v1/verify first.
  * Avoids Safari's ITP capping session cookies set right after a cross-site
- * redirect chain — see the Magic Link template in the Supabase dashboard.
+ * redirect chain - see the Magic Link template in the Supabase dashboard.
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);

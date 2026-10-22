@@ -1,13 +1,13 @@
 -- Ouvre la vue "Primes & Bonus" (PayrollExtrasView) à comptable (accès complet,
--- déjà prévu côté RLS depuis payroll_extras/0074 et le Банк качества/0084 —
+-- déjà prévu côté RLS depuis payroll_extras/0074 et le Банк качества/0084 -
 -- il ne manquait que pointage_entries en INSERT pour l'attribution des jours
 -- via la grille de présence directement dans cette vue) et à rh_readonly
--- (lecture seule uniquement — le rôle n'a jamais eu de droit d'écriture nulle
+-- (lecture seule uniquement - le rôle n'a jamais eu de droit d'écriture nulle
 -- part, l'UI y est donc purement consultative aussi). Confirmé avec
 -- l'utilisatrice, 29/09/2026.
 
 -- comptable avait déjà select+update sur pointage_entries (0015) mais pas
--- insert — nécessaire pour "Remplir les jours vides" / le clic sur une case
+-- insert - nécessaire pour "Remplir les jours vides" / le clic sur une case
 -- de présence qui n'a pas encore de ligne.
 create policy pointage_comptable_insert on pointage_entries for insert with check (
   current_role_name() = 'comptable'

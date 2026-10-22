@@ -268,7 +268,7 @@ function uniqueFileToken() {
 
 /** Supabase Storage rejects object keys with accents, apostrophes, or other
  *  non-ASCII/unsafe characters (e.g. a screenshot named "Capture d'écran
- *  ... à ....pdf") — sanitize only the STORAGE key; the human-readable name
+ *  ... à ....pdf") - sanitize only the STORAGE key; the human-readable name
  *  (accents and all) is kept separately in the `file_name` DB column. */
 function sanitizeStorageFileName(name: string): string {
   const normalized = name.normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -276,7 +276,7 @@ function sanitizeStorageFileName(name: string): string {
 }
 
 /** Splits one delimited line, honoring double-quoted fields (so a quoted
- *  value can contain the delimiter itself) — used for Prevaly's CSV export. */
+ *  value can contain the delimiter itself) - used for Prevaly's CSV export. */
 function parseCsvLine(line: string, delimiter: string): string[] {
   const result: string[] = [];
   let cur = "";
@@ -324,7 +324,7 @@ function daysUntil(iso: string): number {
 }
 
 /** Shared "expiring/overdue" badge logic for document expiry dates and the next
- *  médecine du travail visit — same urgency language either way. */
+ *  médecine du travail visit - same urgency language either way. */
 function dateUrgency(iso: string | null): { label: string; tone: "error" | "warning" } | null {
   if (!iso) return null;
   const days = daysUntil(iso);
@@ -333,7 +333,7 @@ function dateUrgency(iso: string | null): { label: string; tone: "error" | "warn
   return null;
 }
 
-/** Small, muted "still on trial" indicator — shown wherever an employee's name appears. Deliberately not a loud warning: it's routine, not an alert. */
+/** Small, muted "still on trial" indicator - shown wherever an employee's name appears. Deliberately not a loud warning: it's routine, not an alert. */
 function TrialBadge({ hireDate }: { hireDate: string | null }) {
   const trial = isInTrialPeriod(hireDate, today());
   if (!trial) return null;
@@ -348,7 +348,7 @@ function TrialBadge({ hireDate }: { hireDate: string | null }) {
 }
 
 function fmtMinutes(min: number | null | undefined) {
-  if (min === null || min === undefined) return "—";
+  if (min === null || min === undefined) return "-";
   const h = Math.floor(min / 60);
   const m = Math.abs(min % 60);
   return `${h}h${m.toString().padStart(2, "0")}`;
@@ -358,7 +358,7 @@ function employeeName(e: { first_name: string; last_name: string }) {
   return `${e.last_name} ${e.first_name}`.trim();
 }
 
-/** French label with a small, muted Russian translation stacked underneath —
+/** French label with a small, muted Russian translation stacked underneath -
  * the bilingual pattern established in the sidebar nav and Organigramme. */
 function Bi({
   fr,
@@ -369,7 +369,7 @@ function Bi({
   fr: React.ReactNode;
   ru?: string;
   className?: string;
-  /** Rendered inline right after `fr`, on the same line — e.g. an InfoNote
+  /** Rendered inline right after `fr`, on the same line - e.g. an InfoNote
    *  icon, which would otherwise vertically center against the full
    *  two-line fr+ru block instead of lining up with the fr text itself. */
   after?: React.ReactNode;
@@ -389,7 +389,7 @@ function Bi({
   );
 }
 
-/** Small "i" button next to a section title — opens a modal with a full
+/** Small "i" button next to a section title - opens a modal with a full
  *  Russian explanation of what the section is for and how to use it. */
 function InfoNote({ title, text }: { title: string; text: string }) {
   const [open, setOpen] = useState(false);
@@ -410,7 +410,7 @@ function InfoNote({ title, text }: { title: string; text: string }) {
   );
 }
 
-/** Icon-only row action (edit/view) — used instead of a bilingual text label
+/** Icon-only row action (edit/view) - used instead of a bilingual text label
  * for links that repeat on every table row, to avoid duplicating text dozens
  * of times per screen. */
 function RowAction({
@@ -552,7 +552,7 @@ const VOLDIS_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
 ];
 
 /** Keeps a piece of UI navigation state (which section/tab is open) across a
- *  page reload — read once from localStorage on mount, written back on every
+ *  page reload - read once from localStorage on mount, written back on every
  *  change. `validValues`, when given, guards against a stale stored value
  *  from a since-renamed/removed key (e.g. the old "rupture" view). */
 function usePersistedView<T extends string>(key: string, defaultValue: T, validValues?: Set<string>): [T, (v: T) => void] {
@@ -580,7 +580,7 @@ const ROLE_LABELS: Record<string, { fr: string; ru: string }> = {
 };
 
 /** Purement informatif (visible seulement pour rh_admin, via PageAccessBadge
- *  ci-dessous) — reflète la logique d'accès réelle ci-dessus (le filtre
+ *  ci-dessous) - reflète la logique d'accès réelle ci-dessus (le filtre
  *  `visibleNavGroups` pour "rh", et les shells séparés comptable/commercial)
  *  mais ne remplace en rien les policies RLS / requireRole côté serveur qui,
  *  elles, décident vraiment qui accède à quoi. À tenir à jour si cette
@@ -614,7 +614,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   voldis_location: ["rh_admin"],
 };
 
-/** rh_admin-only indicator of which roles can see the currently open page —
+/** rh_admin-only indicator of which roles can see the currently open page -
  *  small badge, click to expand the list (style repris d'un pattern
  *  "qui d'autre voit ceci" vu par l'utilisatrice ailleurs). */
 function PageAccessBadge({ viewKey }: { viewKey: string }) {
@@ -700,7 +700,7 @@ function PageAccessBadge({ viewKey }: { viewKey: string }) {
 }
 
 // Lets any view with an employee card/row jump straight to that person's
-// Dossier salarié — without prop-drilling a navigation callback through
+// Dossier salarié - without prop-drilling a navigation callback through
 // every view component, most of which don't otherwise need to know about
 // the "dossier" view at all.
 const DossierNavContext = createContext<(employeeId: string) => void>(() => {});
@@ -791,7 +791,7 @@ export default function AdminPage() {
   );
 
   // A dismissed notification stops showing at all (until the underlying
-  // date changes, which gives it a new key) — the real "archive" RH asked
+  // date changes, which gives it a new key) - the real "archive" RH asked
   // for, distinct from the read/unread highlight below.
   async function toggleNotificationDismissed(r: NotificationRow) {
     const key = notificationKey(r);
@@ -812,10 +812,10 @@ export default function AdminPage() {
   }
 
   // Clicking the "Notifications" nav link itself re-flags every currently
-  // listed notification as unread — a manual "remind me again" reset,
+  // listed notification as unread - a manual "remind me again" reset,
   // distinct from the automatic mark-as-seen-on-visit below. Shared across
   // everyone with rh_admin/rh access (backed by notification_flags in
-  // Supabase, not per-browser localStorage) — like a team inbox.
+  // Supabase, not per-browser localStorage) - like a team inbox.
   async function markAllNotificationsUnread() {
     const keys = notifications.map(notificationKey);
     if (keys.length === 0) return;
@@ -838,7 +838,7 @@ export default function AdminPage() {
     if (error) toast.error("Erreur lors de la mise à jour des notifications.");
   }
 
-  // Right-clicking a single notification row toggles just that one — a more
+  // Right-clicking a single notification row toggles just that one - a more
   // deliberate gesture than a plain click, so it doesn't fire by accident.
   async function toggleNotificationUnread(r: NotificationRow) {
     const key = notificationKey(r);
@@ -954,13 +954,13 @@ export default function AdminPage() {
       }
 
       // The "rh" role has no Pointage/Paie access, so it can't land on the
-      // "jour" default — send it to Employés instead.
+      // "jour" default - send it to Employés instead.
       if (roleRow?.role === "rh") {
         setView("effectif");
       }
 
       // Comptable, rh_readonly and commercial_rh all get a read-only
-      // "Employés" tab — needs team names for the filter/labels/colors/chef
+      // "Employés" tab - needs team names for the filter/labels/colors/chef
       // crowns, same as rh_admin/rh above.
       if (roleRow?.role === "comptable" || roleRow?.role === "rh_readonly" || roleRow?.role === "commercial_rh") {
         const { data: teamRows } = await supabase
@@ -991,7 +991,7 @@ export default function AdminPage() {
   }
 
   // "chef" and "boss" are legacy app_role values with no code path of their
-  // own since migration 0022 made the daily pointage form public — anyone
+  // own since migration 0022 made the daily pointage form public - anyone
   // still carrying one of those roles falls through to the gate below.
   if (
     role !== "rh_admin" &&
@@ -1017,7 +1017,7 @@ export default function AdminPage() {
     );
   }
 
-  // Comptable needs Paie plus a read-only view of the Employés roster —
+  // Comptable needs Paie plus a read-only view of the Employés roster -
   // same shell as the full admin view, just with a two-item sidebar instead
   // of the full NAV_GROUPS.
   if (role === "comptable") {
@@ -1149,7 +1149,7 @@ export default function AdminPage() {
 
   // rh_readonly (nom conservé, mais plus vraiment "readonly" depuis le
   // 30/09/2026) : Employés + Organigramme + Primes & Bonus, tous en édition
-  // complète comme rh_admin — SAUF les données confidentielles (salaire,
+  // complète comme rh_admin - SAUF les données confidentielles (salaire,
   // sécu sociale, nationalité...) sur Employés, qui restent RIB-only comme
   // pour comptable. Confirmé avec l'utilisatrice : "везде где ему даны
   // доступы, чтоб они даны были на редактирование тоже... только не к
@@ -1293,7 +1293,7 @@ export default function AdminPage() {
   }
 
   // commercial_rh: same Commercial section as 'commercial', plus the same
-  // restricted Employés view as comptable/rh_readonly — no Paie.
+  // restricted Employés view as comptable/rh_readonly - no Paie.
   if (role === "commercial_rh") {
     const commercialRhNavItems = (
       <SidebarSection title="">
@@ -1433,7 +1433,7 @@ export default function AdminPage() {
     );
   }
 
-  // Commercial only ever needs the client checklist section — same shell
+  // Commercial only ever needs the client checklist section - same shell
   // pattern as comptable above, single-item sidebar, no NAV_GROUPS.
   if (role === "commercial") {
     return (
@@ -1495,9 +1495,9 @@ export default function AdminPage() {
     );
   }
 
-  // rh: Effectif + RH sections only — no Pointage group, no Paie.
+  // rh: Effectif + RH sections only - no Pointage group, no Paie.
   // Calculateurs and HR-дашборды use only the employees table,
-  // which 'rh' already has full read/write on (see migration 0017) — no
+  // which 'rh' already has full read/write on (see migration 0017) - no
   // reason to keep them admin-only. Primes & Bonus is open to 'rh' read-only
   // (14/10/2026, migration 0110). Paie, Commercial, and the audit log
   // stay rh_admin-only (the audit log's whole point is oversight of what
@@ -1795,7 +1795,7 @@ function SidebarLink({
   );
 }
 
-// ── Vue "Par jour" — remplace les onglets DATA/APP_DATA, éditable ───────────
+// ── Vue "Par jour" - remplace les onglets DATA/APP_DATA, éditable ───────────
 type EditForm = {
   start: string;
   end: string;
@@ -1868,7 +1868,7 @@ function JourView({
       if (!teams.has(teamName)) teams.set(teamName, { teamId: e.team_id, members: [] });
       teams.get(teamName)!.members.push(e);
     });
-    // Substitutes already logged for this day (pointage_entries.team_id) —
+    // Substitutes already logged for this day (pointage_entries.team_id) -
     // shown even though they're not permanent members, so the card survives
     // a reload/date-switch-and-back.
     teams.forEach(({ teamId, members }) => {
@@ -1987,7 +1987,7 @@ function JourView({
               text={
                 "Часы всех бригад за один выбранный день. Можно менять дату, искать по имени и фильтровать по бригаде.\n\n" +
                 "Нажмите на карандаш у сотрудника, чтобы вписать или исправить его часы, отметить отсутствие и его причину.\n\n" +
-                "Это те же данные, что бригадиры вводят через открытую форму на главной странице (без входа в систему) — здесь просто видно сразу всех, и можно всё поправить."
+                "Это те же данные, что бригадиры вводят через открытую форму на главной странице (без входа в систему) - здесь просто видно сразу всех, и можно всё поправить."
               }
             />
           }
@@ -2176,22 +2176,22 @@ function JourView({
                     </div>
                     {!r ? (
                       <p className="text-stone-300 italic text-sm mt-1">
-                        — non saisi <span className="not-italic text-[0.85em] opacity-70">/ не указано</span> —
+                        - non saisi <span className="not-italic text-[0.85em] opacity-70">/ не указано</span> -
                       </p>
                     ) : r.is_absent ? (
                       <p className="text-error-600 font-semibold text-sm mt-1">
                         Absent <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
-                        {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                        {r.absence_types ? ` - ${r.absence_types.label}` : ""}
                       </p>
                     ) : (
                       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-sm mt-1.5">
                         <p>
                           <span className="text-stone-400">Début / Начало: </span>
-                          {(r.start_time ?? "—").slice(0, 5)}
+                          {(r.start_time ?? "-").slice(0, 5)}
                         </p>
                         <p>
                           <span className="text-stone-400">Fin / Конец: </span>
-                          {(r.end_time ?? "—").slice(0, 5)}
+                          {(r.end_time ?? "-").slice(0, 5)}
                         </p>
                         <p>
                           <span className="text-stone-400">Pause / Перерыв: </span>
@@ -2329,22 +2329,22 @@ function JourView({
                       </td>
                       {!r ? (
                         <td colSpan={5} className="py-2 text-stone-300 italic">
-                          — non saisi{" "}
+                          - non saisi{" "}
                           <span className="not-italic text-[0.85em] opacity-70">
                             / не указано
                           </span>{" "}
-                          —
+                          -
                         </td>
                       ) : r.is_absent ? (
                         <td colSpan={5} className="py-2 text-error-600 font-semibold">
                           Absent{" "}
                           <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
-                          {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                          {r.absence_types ? ` - ${r.absence_types.label}` : ""}
                         </td>
                       ) : (
                         <>
-                          <td className="py-2 pr-4">{(r.start_time ?? "—").slice(0, 5)}</td>
-                          <td className="py-2 pr-4">{(r.end_time ?? "—").slice(0, 5)}</td>
+                          <td className="py-2 pr-4">{(r.start_time ?? "-").slice(0, 5)}</td>
+                          <td className="py-2 pr-4">{(r.end_time ?? "-").slice(0, 5)}</td>
                           <td className="py-2 pr-4">
                             {fmtMinutes(r.pause_minutes)}
                           </td>
@@ -2430,7 +2430,7 @@ function EditTime({
   );
 }
 
-// ── Vue "Par employé" — remplace l'onglet RAPPORT ───────────────────────────
+// ── Vue "Par employé" - remplace l'onglet RAPPORT ───────────────────────────
 const EMPLOYE_VIEW_SELECT =
   "employee_id, work_date, team_id, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label), employees!pointage_entries_employee_id_fkey(first_name, last_name, teams!employees_team_id_fkey(name))";
 
@@ -2479,7 +2479,7 @@ function EmployeView({
   }, [rows]);
 
   // Employees fetched for the sidebar/team pickers only cover active
-  // chantier staff — anyone who left mid-month (or since) still needs to
+  // chantier staff - anyone who left mid-month (or since) still needs to
   // show up here if they have pointage data, so fold in their identity
   // straight from the joined pointage rows.
   const employeeDirectory = useMemo(() => {
@@ -2536,7 +2536,7 @@ function EmployeView({
             <InfoNote
               title="Par employé"
               text={
-                "Помесячный отчёт по дням: выберите месяц и год — без выбора сотрудника увидите таблицы по всем, кто отмечался в этом месяце; выбрав одного — только его.\n\n" +
+                "Помесячный отчёт по дням: выберите месяц и год - без выбора сотрудника увидите таблицы по всем, кто отмечался в этом месяце; выбрав одного - только его.\n\n" +
                 "Удобно, чтобы свериться по одному человеку или сразу по всем, не листая общий список «Par jour» по дням."
               }
             />
@@ -2554,7 +2554,7 @@ function EmployeView({
             <option value="">Sélectionner…</option>
             {employeeOptions.map((e) => (
               <option key={e.id} value={e.id}>
-                {employeeName(e)} — {e.teams?.name ?? ""}
+                {employeeName(e)} - {e.teams?.name ?? ""}
               </option>
             ))}
           </select>
@@ -2617,7 +2617,7 @@ function EmployeView({
                   <p className="mb-2 font-bold text-sm">
                     {employeeName(emp)}{" "}
                     <span className="font-normal text-stone-400">
-                      — {emp.teams?.name ?? ""}
+                      - {emp.teams?.name ?? ""}
                     </span>
                   </p>
                 )}
@@ -2661,15 +2661,15 @@ function EmployeeMonthGrid({
                 <span className="capitalize text-stone-500">{weekday}</span>
               </p>
               {!r ? (
-                <p className="text-stone-300 italic text-sm">—</p>
+                <p className="text-stone-300 italic text-sm">-</p>
               ) : r.is_absent ? (
                 <p className="text-error-600 font-semibold text-sm text-right">
                   Absent <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
-                  {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                  {r.absence_types ? ` - ${r.absence_types.label}` : ""}
                 </p>
               ) : (
                 <p className="text-sm text-right">
-                  {(r.start_time ?? "—").slice(0, 5)}–{(r.end_time ?? "—").slice(0, 5)}
+                  {(r.start_time ?? "-").slice(0, 5)}-{(r.end_time ?? "-").slice(0, 5)}
                   {r.pause_minutes ? (
                     <span className="text-stone-400"> · pause {fmtMinutes(r.pause_minutes)}</span>
                   ) : null}
@@ -2723,18 +2723,18 @@ function EmployeeMonthGrid({
                   <td className="py-1.5 pr-4">{d.getUTCDate()}</td>
                   {!r ? (
                     <td colSpan={4} className="py-1.5 text-stone-300 italic">
-                      —
+                      -
                     </td>
                   ) : r.is_absent ? (
                     <td colSpan={4} className="py-1.5 text-error-600 font-semibold">
                       Absent{" "}
                       <span className="text-[0.85em] opacity-70">/ Отсутствует</span>
-                      {r.absence_types ? ` — ${r.absence_types.label}` : ""}
+                      {r.absence_types ? ` - ${r.absence_types.label}` : ""}
                     </td>
                   ) : (
                     <>
-                      <td className="py-1.5 pr-4">{(r.start_time ?? "—").slice(0, 5)}</td>
-                      <td className="py-1.5 pr-4">{(r.end_time ?? "—").slice(0, 5)}</td>
+                      <td className="py-1.5 pr-4">{(r.start_time ?? "-").slice(0, 5)}</td>
+                      <td className="py-1.5 pr-4">{(r.end_time ?? "-").slice(0, 5)}</td>
                       <td className="py-1.5 pr-4">
                         {fmtMinutes(r.pause_minutes)}
                       </td>
@@ -2773,7 +2773,7 @@ type MoisPointageRow = {
   teams: { name: string } | null;
 };
 
-// ── Vue "Totaux du mois" — remplace l'onglet Heures totales ─────────────────
+// ── Vue "Totaux du mois" - remplace l'onglet Heures totales ─────────────────
 function MoisView({
   supabase,
   employees,
@@ -2827,7 +2827,7 @@ function MoisView({
 
   // Employés licenciés entre-temps : absents de `employees` (déjà filtré
   // actif/chantier en amont), mais on veut quand même voir leurs heures/
-  // équipe pour les mois où ils ont réellement pointé — l'équipe vient de
+  // équipe pour les mois où ils ont réellement pointé - l'équipe vient de
   // la ligne de pointage elle-même (leur équipe permanente peut avoir
   // disparu ou changé depuis), pas de employees.team_id.
   const terminatedRows = useMemo(() => {
@@ -2842,7 +2842,7 @@ function MoisView({
       map.set(key, {
         first_name: r.employees.first_name,
         last_name: r.employees.last_name,
-        teamName: r.teams?.name ?? "—",
+        teamName: r.teams?.name ?? "-",
         minutes: (existing?.minutes ?? 0) + (r.total_minutes ?? 0),
         endDate: r.employees.end_date,
       });
@@ -2861,7 +2861,7 @@ function MoisView({
       if (e.teams?.name) names.add(e.teams.name);
     });
     terminatedRows.forEach((r) => {
-      if (r.teamName && r.teamName !== "—") names.add(r.teamName);
+      if (r.teamName && r.teamName !== "-") names.add(r.teamName);
     });
     const sortedNames = Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     return new Map(sortedNames.map((name, i) => [name, PAIE_TEAM_COLOR_PALETTE[i % PAIE_TEAM_COLOR_PALETTE.length]]));
@@ -2929,10 +2929,10 @@ function MoisView({
               >
                 <div className="min-w-0">
                   <p className="font-semibold truncate">{employeeName(e)}</p>
-                  <p className="text-xs text-stone-400 truncate">{e.teams?.name ?? "—"}</p>
+                  <p className="text-xs text-stone-400 truncate">{e.teams?.name ?? "-"}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className="font-bold">{total ? fmtMinutes(total) : "—"}</p>
+                  <p className="font-bold">{total ? fmtMinutes(total) : "-"}</p>
                   <p className={`text-xs font-semibold ${total ? "text-success-600" : "text-stone-300"}`}>
                     {total ? "OK" : "Aucune donnée / Нет данных"}
                   </p>
@@ -2962,10 +2962,10 @@ function MoisView({
                       {employeeName(e)}
                     </td>
                     <td className="py-2 pr-4 text-stone-500">
-                      {e.teams?.name ?? "—"}
+                      {e.teams?.name ?? "-"}
                     </td>
                     <td className="py-2 pr-4 font-bold">
-                      {total ? fmtMinutes(total) : "—"}
+                      {total ? fmtMinutes(total) : "-"}
                     </td>
                     <td
                       className={`py-2 font-semibold ${
@@ -3034,7 +3034,7 @@ function MoisView({
                       <td className="py-2 pr-4 font-semibold">{employeeName(r)}</td>
                       <td className="py-2 pr-4 text-stone-500">{r.teamName}</td>
                       <td className="py-2 pr-4 text-stone-500">
-                        {r.endDate ? formatDateShortDMY(r.endDate) : "—"}
+                        {r.endDate ? formatDateShortDMY(r.endDate) : "-"}
                       </td>
                       <td className="py-2 pr-4 font-bold">{fmtMinutes(r.minutes)}</td>
                     </tr>
@@ -3089,7 +3089,7 @@ function parseTimeCell(v: unknown): string | null {
 function parseDateCell(v: unknown): string | null {
   if (v instanceof Date) return v.toISOString().split("T")[0];
   if (typeof v === "string") {
-    // jj/mm/aaaa (format de l'export) — new Date() l'interpréterait en mm/jj.
+    // jj/mm/aaaa (format de l'export) - new Date() l'interpréterait en mm/jj.
     const dmy = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());
     if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`;
     const d = new Date(v);
@@ -3279,15 +3279,15 @@ function ExportImportView({
               <InfoNote
                 title="Export / Import"
                 text={
-                  "Экспорт выгружает часы за выбранный период в Excel-файл — для архива или чтобы передать бухгалтеру.\n\n" +
-                  "Импорт — обратная операция: если часы были исправлены или посчитаны в Excel, загрузите файл обратно, и они запишутся в систему так же, как при ручном вводе через «Par jour»."
+                  "Экспорт выгружает часы за выбранный период в Excel-файл - для архива или чтобы передать бухгалтеру.\n\n" +
+                  "Импорт - обратная операция: если часы были исправлены или посчитаны в Excel, загрузите файл обратно, и они запишутся в систему так же, как при ручном вводе через «Par jour»."
                 }
               />
             }
           />
         </div>
         <p className="text-xs text-stone-400 mb-4">
-          Télécharge un fichier Excel des pointages sur une période — à
+          Télécharge un fichier Excel des pointages sur une période - à
           modifier puis réimporter si besoin.
         </p>
         <div className="flex flex-wrap items-end gap-4">
@@ -3320,7 +3320,7 @@ function ExportImportView({
       <div className="card">
         <p className="font-bold mb-1"><Bi fr="Importer" ru="Импорт" /></p>
         <p className="text-xs text-stone-400 mb-4">
-          Réimporte un fichier au même format que l&apos;export — les lignes
+          Réimporte un fichier au même format que l&apos;export - les lignes
           remplacent les données existantes pour la même date et le même
           employé (identifiées par la colonne <code>employee_id</code>).
         </p>
@@ -3368,7 +3368,7 @@ function ExportImportView({
   );
 }
 
-// ── Vue "Employés" — gestion de l'effectif (équipe, statut, départs) ────────
+// ── Vue "Employés" - gestion de l'effectif (équipe, statut, départs) ────────
 const STATUS_LABELS: Record<EmployeeStatus, string> = {
   active: "Actif",
   on_leave: "En congé",
@@ -3405,9 +3405,9 @@ function EmployeesView({
   onChanged: () => void;
   onToggleChef: (teamId: string, employeeId: string) => void;
   readOnly?: boolean;
-  /** "rib_only" hides employee_confidential entirely except the RIB, for comptable — see EmployeeDetailPanel. */
+  /** "rib_only" hides employee_confidential entirely except the RIB, for comptable - see EmployeeDetailPanel. */
   confidentialMode?: "full" | "rib_only";
-  /** Only rh/rh_admin can reach Dossier salarié — the comptable/commercial_rh/rh_readonly shells reuse this same view without it. */
+  /** Only rh/rh_admin can reach Dossier salarié - the comptable/commercial_rh/rh_readonly shells reuse this same view without it. */
   canOpenDossier?: boolean;
 }) {
   const [employees, setEmployees] = useState<EmployeeFull[]>([]);
@@ -3501,7 +3501,7 @@ function EmployeesView({
   const groupedFiltered = useMemo(() => {
     const bureau = filtered.filter((e) => e.category === "bureau");
     // Bureau staff with a "équipe rattachée" show up here too, alongside the
-    // team's actual chantier members — they still appear in Bureau above as
+    // team's actual chantier members - they still appear in Bureau above as
     // well, this is purely an additional listing, not a move.
     const chantier = filtered
       .filter((e) => e.category !== "bureau" || e.secondary_team_id)
@@ -3528,7 +3528,7 @@ function EmployeesView({
       const teamName = e.secondary_team_id ? teamsById.get(e.secondary_team_id) : null;
       return teamName ? `${role} · ${teamName}` : role;
     }
-    return e.team_id ? teamsById.get(e.team_id) ?? "—" : "—";
+    return e.team_id ? teamsById.get(e.team_id) ?? "-" : "-";
   }
 
   function teamNumberLabel(e: EmployeeFull): string | null {
@@ -3639,8 +3639,8 @@ function EmployeesView({
                   ? "Полный список сотрудников: бригада или должность в офисе, статус (активен / в отпуске / уволен), корона бригадира, личный значок.\n\n" +
                     "Доступ в режиме просмотра: «Подробнее» открывает карточку сотрудника (без конфиденциальных данных: RIB, зарплата и т.д.), редактирование недоступно."
                   : "Полный список сотрудников: бригада или должность в офисе, статус (активен / в отпуске / уволен), корона бригадира, личный значок.\n\n" +
-                    "«Изменить» — быстрая правка прямо в строке (бригада, статус, даты). «Подробнее» — открывает полную карточку: паспортные данные, зарплата, RIB, вид на жительство и т.д.\n\n" +
-                    "Корону бригадира можно поставить или снять здесь же, или в разделе «Organigramme» — это один и тот же параметр."
+                    "«Изменить» - быстрая правка прямо в строке (бригада, статус, даты). «Подробнее» - открывает полную карточку: паспортные данные, зарплата, RIB, вид на жительство и т.д.\n\n" +
+                    "Корону бригадира можно поставить или снять здесь же, или в разделе «Organigramme» - это один и тот же параметр."
               }
             />
           </div>
@@ -3793,7 +3793,7 @@ function EmployeesView({
                 setNewEmployee({ ...newEmployee, teamId: e.target.value })
               }
             >
-              <option value="">—</option>
+              <option value="">-</option>
               {teams.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -3902,7 +3902,7 @@ function EmployeesView({
                               value={editForm.bureauRole}
                               onChange={(ev) => setEditForm({ ...editForm, bureauRole: ev.target.value })}
                             >
-                              <option value="">—</option>
+                              <option value="">-</option>
                               {BUREAU_ROLE_ORDER.map((role) => (
                                 <option key={role} value={role}>
                                   {BUREAU_ROLE_LABELS[role]}
@@ -3918,7 +3918,7 @@ function EmployeesView({
                               value={editForm.teamId}
                               onChange={(ev) => setEditForm({ ...editForm, teamId: ev.target.value })}
                             >
-                              <option value="">—</option>
+                              <option value="">-</option>
                               {teams.map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}
@@ -3936,7 +3936,7 @@ function EmployeesView({
                             value={editForm.secondaryTeamId}
                             onChange={(ev) => setEditForm({ ...editForm, secondaryTeamId: ev.target.value })}
                           >
-                            <option value="">—</option>
+                            <option value="">-</option>
                             {teams.map((t) => (
                               <option key={t.id} value={t.id}>
                                 {t.name}
@@ -4007,7 +4007,7 @@ function EmployeesView({
                         }`}
                       >
                         {STATUS_LABELS[e.status]}
-                        {e.end_date && <span className="ml-1 font-normal text-stone-400">— {fmtDate(e.end_date)}</span>}
+                        {e.end_date && <span className="ml-1 font-normal text-stone-400">- {fmtDate(e.end_date)}</span>}
                       </p>
                     </div>
                   )}
@@ -4087,7 +4087,7 @@ function EmployeesView({
                                   setEditForm({ ...editForm, bureauRole: ev.target.value })
                                 }
                               >
-                                <option value="">—</option>
+                                <option value="">-</option>
                                 {BUREAU_ROLE_ORDER.map((role) => (
                                   <option key={role} value={role}>
                                     {BUREAU_ROLE_LABELS[role]}
@@ -4104,7 +4104,7 @@ function EmployeesView({
                                 }
                               >
                                 <option value="">
-                                  — équipe / команда —
+                                  - équipe / команда -
                                 </option>
                                 {teams.map((t) => (
                                   <option key={t.id} value={t.id}>
@@ -4122,7 +4122,7 @@ function EmployeesView({
                                 setEditForm({ ...editForm, teamId: ev.target.value })
                               }
                             >
-                              <option value="">—</option>
+                              <option value="">-</option>
                               {teams.map((t) => (
                                 <option key={t.id} value={t.id}>
                                   {t.name}
@@ -4273,7 +4273,7 @@ function EmployeesView({
   );
 }
 
-// ── Panneau détail employé — profil étendu + confidentiel (RIB, SS, visa) ───
+// ── Panneau détail employé - profil étendu + confidentiel (RIB, SS, visa) ───
 
 const SEX_OPTIONS = [
   { value: "M", label: "Homme" },
@@ -4452,7 +4452,7 @@ function EmployeeDetailPanel({
   supabase: ReturnType<typeof createClient>;
   employee: EmployeeFull;
   readOnly?: boolean;
-  /** "rib_only" fetches just the RIB via the get_employee_rib() RPC instead of the full employee_confidential row — for comptable, who shouldn't see nationalité/sécu sociale/salaire etc. */
+  /** "rib_only" fetches just the RIB via the get_employee_rib() RPC instead of the full employee_confidential row - for comptable, who shouldn't see nationalité/sécu sociale/salaire etc. */
   confidentialMode?: "full" | "rib_only";
 }) {
   const employeeId = employee.id;
@@ -4502,7 +4502,7 @@ function EmployeeDetailPanel({
   }, [employeeId, supabase, confidentialMode]);
 
   // Shows the employee's own "Photo" dossier document instead of the
-  // initials circle, when they have one on file — the "photo" category is
+  // initials circle, when they have one on file - the "photo" category is
   // a deliberate RH-curated headshot, unlike ID-scan categories.
   useEffect(() => {
     async function loadPhoto() {
@@ -4531,7 +4531,7 @@ function EmployeeDetailPanel({
       .update(profile)
       .eq("id", employeeId);
     // rib_only ne charge JAMAIS le reste de employee_confidential (salaire,
-    // sécu sociale, nationalité...) — un upsert direct de `confidential` ici
+    // sécu sociale, nationalité...) - un upsert direct de `confidential` ici
     // écraserait ces champs avec les valeurs vides de EMPTY_CONFIDENTIAL.
     // set_employee_rib() ne touche QUE la colonne rib, en SECURITY DEFINER,
     // pour rester utilisable par les rôles qui n'ont pas accès en écriture
@@ -4672,14 +4672,14 @@ function EmployeeDetailPanel({
           <>
             <DetailField
               label="Jour de naissance (année inconnue)"
-              labelRu="День рождения — число (год неизвестен)"
+              labelRu="День рождения - число (год неизвестен)"
               type="number"
               value={profile.birthday_day?.toString() ?? null}
               onChange={(v) => setProfile({ ...profile, birthday_day: v === "" ? null : Number(v) })}
             />
             <DetailField
-              label="Jour de naissance — mois (année inconnue)"
-              labelRu="День рождения — месяц (год неизвестен)"
+              label="Jour de naissance - mois (année inconnue)"
+              labelRu="День рождения - месяц (год неизвестен)"
               type="number"
               value={profile.birthday_month?.toString() ?? null}
               onChange={(v) => setProfile({ ...profile, birthday_month: v === "" ? null : Number(v) })}
@@ -4731,8 +4731,8 @@ function EmployeeDetailPanel({
           onChange={(v) => setProfile({ ...profile, hire_date: v })}
         />
         <DetailSelectField
-          label="Classification (groupe A–I)"
-          labelRu="Классификация (группа A–I)"
+          label="Classification (groupe A-I)"
+          labelRu="Классификация (группа A-I)"
           value={profile.classification}
           onChange={(v) => setProfile({ ...profile, classification: v })}
           options={CLASSIFICATION_OPTIONS}
@@ -4780,7 +4780,7 @@ function EmployeeDetailPanel({
       </DetailSection>
 
       {confidentialMode === "rib_only" ? (
-        <DetailSection title="Confidentiel — RH uniquement" titleRu="Конфиденциально — только для кадров" tone="warning">
+        <DetailSection title="Confidentiel - RH uniquement" titleRu="Конфиденциально - только для кадров" tone="warning">
           <DetailField
             label="RIB"
             labelRu="Банковские реквизиты"
@@ -4789,7 +4789,7 @@ function EmployeeDetailPanel({
           />
         </DetailSection>
       ) : (
-        <DetailSection title="Confidentiel — RH uniquement" titleRu="Конфиденциально — только для кадров" tone="warning">
+        <DetailSection title="Confidentiel - RH uniquement" titleRu="Конфиденциально - только для кадров" tone="warning">
           <DetailField
             label="RIB"
             labelRu="Банковские реквизиты"
@@ -4909,7 +4909,7 @@ function DetailField({
       {type === "number" ? (
         // Uncontrolled + onBlur-commit: a live-controlled number input fights
         // the browser's own comma-decimal handling mid-keystroke and can
-        // mangle the value (e.g. "1867,06" -> "18676") — see the same fix
+        // mangle the value (e.g. "1867,06" -> "18676") - see the same fix
         // applied to the document-generation form's number fields.
         <input
           type="number"
@@ -4961,7 +4961,7 @@ function DetailSelectField({
         <Bi fr={label} ru={labelRu} />
       </label>
       <select className="input" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
-        <option value="">—</option>
+        <option value="">-</option>
         {knownValue && <option value={value!}>{value}</option>}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -4973,7 +4973,7 @@ function DetailSelectField({
   );
 }
 
-// ── Vue "Médical" — RDV médecine du travail ─────────────────────────────────
+// ── Vue "Médical" - RDV médecine du travail ─────────────────────────────────
 
 const VISIT_SUBTYPE_OPTIONS = [
   "Embauche",
@@ -5006,8 +5006,8 @@ type MedicalVisit = {
   } | null;
 };
 
-/** Embeds the field team's own weekly planning — a hand-maintained Google
- *  Sheet (équipe × semaine, one site per team per week) — directly, with
+/** Embeds the field team's own weekly planning - a hand-maintained Google
+ *  Sheet (équipe × semaine, one site per team per week) - directly, with
  *  full edit access, instead of mirroring it into a read-only table. */
 function PlanningView() {
   return (
@@ -5030,7 +5030,7 @@ function PlanningView() {
           src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit`}
           className="w-full border-0"
           style={{ height: "80vh", overscrollBehavior: "contain" }}
-          title="Planning chantiers — Google Sheets"
+          title="Planning chantiers - Google Sheets"
         />
       </div>
     </div>
@@ -5039,7 +5039,7 @@ function PlanningView() {
 
 // "Médical" now covers two unrelated things RH tracks by hand: medecine du
 // travail visits (MedicalView, unchanged below) and CPAM/Harmonie insurance
-// affiliation progress (InsuranceTrackingView, further down) — a thin tab
+// affiliation progress (InsuranceTrackingView, further down) - a thin tab
 // switcher on top rather than merging either view's internals together.
 function MedicalSectionView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [tab, setTab] = useState<"visites" | "assurances">("visites");
@@ -5108,7 +5108,7 @@ const REQUEST_STATUS_LABELS: Record<RequestStatus, { fr: string; ru: string; cla
 
 // One composite status per employee, replacing the old three-way split
 // (a red "no visit" card, a bare exclamation icon on the date, and a
-// separate 90-day "urgent" grouping) with a single plain-language pill —
+// separate 90-day "urgent" grouping) with a single plain-language pill -
 // agreed with the user as the whole point of this table: filterable by
 // status, no icon-only signal to decode.
 type EmployeeMedicalStatus = "jamais_visite" | "a_renouveler" | "visite_prevue" | "a_jour" | "exempte";
@@ -5175,7 +5175,7 @@ async function copySuggestionsForEmail(suggestions: MedicalPlanningSuggestion[])
       (s) =>
         `<tr><td style="padding:4px 8px;border:1px solid #ccc">${s.lastName}</td>` +
         `<td style="padding:4px 8px;border:1px solid #ccc">${s.firstName}</td>` +
-        `<td style="padding:4px 8px;border:1px solid #ccc">${formatDateShortDMY(s.dateFrom)}–${formatDateShortDMY(s.dateTo)}</td></tr>`
+        `<td style="padding:4px 8px;border:1px solid #ccc">${formatDateShortDMY(s.dateFrom)}-${formatDateShortDMY(s.dateTo)}</td></tr>`
     )
     .join("");
   const html =
@@ -5188,7 +5188,7 @@ async function copySuggestionsForEmail(suggestions: MedicalPlanningSuggestion[])
   const text =
     `Bonjour,\n\n${intro}\n\n` +
     suggestions
-      .map((s) => `${s.lastName}\t${s.firstName}\t${formatDateShortDMY(s.dateFrom)}–${formatDateShortDMY(s.dateTo)}`)
+      .map((s) => `${s.lastName}\t${s.firstName}\t${formatDateShortDMY(s.dateFrom)}-${formatDateShortDMY(s.dateTo)}`)
       .join("\n") +
     `\n\n${outro}\n\nCordialement,`;
 
@@ -5203,7 +5203,7 @@ async function copySuggestionsForEmail(suggestions: MedicalPlanningSuggestion[])
     } else {
       await navigator.clipboard.writeText(text);
     }
-    toast.success("Copié — collez directement dans votre e-mail / Скопировано — вставьте прямо в письмо");
+    toast.success("Copié - collez directement dans votre e-mail / Скопировано - вставьте прямо в письмо");
   } catch {
     toast.error("Impossible de copier automatiquement.");
   }
@@ -5223,9 +5223,9 @@ function NextVisitCell({
   onOpenHistory: () => void;
 }) {
   // The date is already covered by a confirmed last_visit_date (the visit
-  // happened) — showing it as "next" would read as a still-pending
+  // happened) - showing it as "next" would read as a still-pending
   // appointment, especially once the date itself has passed.
-  if (!visit?.next_visit_date || alreadyDone) return <>—</>;
+  if (!visit?.next_visit_date || alreadyDone) return <>-</>;
   const dateText = formatDateShortDMY(visit.next_visit_date);
   const timeText = visit.next_visit_time ? visit.next_visit_time.slice(0, 5) : "";
   const isEmail = visit.next_visit_source === "email";
@@ -5241,10 +5241,10 @@ function NextVisitCell({
       }${
         visit.next_visit_source_subject ? ` : « ${visit.next_visit_source_subject} »` : ""
       }${
-        replacedManual ? ` — remplace une date saisie à la main (${replacedManualText})` : ""
-      } — cliquer pour voir la correspondance / Определено автоматически из письма${
+        replacedManual ? ` - remplace une date saisie à la main (${replacedManualText})` : ""
+      } - cliquer pour voir la correspondance / Определено автоматически из письма${
         replacedManual ? `, заменена ручная дата (${replacedManualText})` : ""
-      } — нажмите, чтобы посмотреть переписку`
+      } - нажмите, чтобы посмотреть переписку`
     : "Saisi à la main / Введено вручную";
   const content = (
     <>
@@ -5319,7 +5319,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [teamFilter, setTeamFilter] = useState("all");
-  // Empty set = no status filter (show everyone) — several status badges can
+  // Empty set = no status filter (show everyone) - several status badges can
   // be active at once instead of only one at a time.
   const [activeStatuses, setActiveStatuses] = useState<Set<EmployeeMedicalStatus>>(new Set());
   const [search, setSearch] = useState("");
@@ -5542,9 +5542,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
     load();
   }, [supabase, refreshKey]);
 
-  // Full active roster, so employees with ZERO medical_visits row — never
+  // Full active roster, so employees with ZERO medical_visits row - never
   // shown at all otherwise, since the list above is built from visits, not
-  // employees — can be surfaced and flagged instead of silently missing.
+  // employees - can be surfaced and flagged instead of silently missing.
   useEffect(() => {
     async function load() {
       const { data } = await supabase
@@ -5651,7 +5651,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
               next_visit_date: u.next_visit_date,
               visit_subtype: u.visit_subtype,
               // A bulk CSV import is a deliberate human action, same as a
-              // hand edit — must not keep a stale "from this e-mail" label.
+              // hand edit - must not keep a stale "from this e-mail" label.
               next_visit_source: "manual",
               next_visit_source_at: null,
               next_visit_source_subject: null,
@@ -5718,7 +5718,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
         next_visit_date: editForm.next || null,
         next_visit_time: editForm.nextTime || null,
         visit_subtype: editForm.subtype || null,
-        // Hand edit overrides whatever a convocation e-mail set before —
+        // Hand edit overrides whatever a convocation e-mail set before -
         // future e-mail syncs must not clobber it back.
         next_visit_source: "manual",
         next_visit_source_at: null,
@@ -5737,14 +5737,14 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   }
 
   const todayIso = today();
-  /** Visite médicale obligatoire tous les 2 ans — signale qu'il faut prendre
+  /** Visite médicale obligatoire tous les 2 ans - signale qu'il faut prendre
    *  un nouveau rendez-vous dès que 2 ans se sont écoulés depuis la dernière visite. */
   function needsNewAppointment(v: MedicalVisit): boolean {
     if (!v.last_visit_date) return false;
     return v.last_visit_date <= addYearsIsoLocal(todayIso, -2);
   }
 
-  // One row per active employee (not per visit row) — the whole point being
+  // One row per active employee (not per visit row) - the whole point being
   // that someone with zero medical_visits rows still shows up, with a status
   // instead of only appearing in a separate "missing" list.
   const employeeRows: EmployeeMedicalRow[] = useMemo(() => {
@@ -5766,12 +5766,12 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       }
 
       // A next_visit_date already covered by a confirmed last_visit_date
-      // (the visit happened — e.g. a Prevaly "aptitude" confirmation
+      // (the visit happened - e.g. a Prevaly "aptitude" confirmation
       // e-mail) is stale and must not still read as "scheduled".
       const alreadyDone =
         !!visit?.last_visit_date && !!visit?.next_visit_date && visit.last_visit_date >= visit.next_visit_date;
       // The 2-year legal deadline always wins over a stored next_visit_date
-      // — Prevaly's "estimated next visit" can land years out (a longer
+      // - Prevaly's "estimated next visit" can land years out (a longer
       // interval for a lower-risk category), but if the last real visit is
       // already more than 2 years old, that estimate doesn't excuse it.
       let status: EmployeeMedicalStatus;
@@ -5843,7 +5843,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       startEdit(row.visit);
       return;
     }
-    // No medical_visits row yet — create a blank one, then open it for
+    // No medical_visits row yet - create a blank one, then open it for
     // editing once the refetch brings it back.
     setAddingVisitFor(row.employee.id);
     const { data, error } = await supabase
@@ -5885,15 +5885,15 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             <InfoNote
               title="Médical"
               text={
-                "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет — пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
-                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Кнопка «Sans visite valide» показывает сразу «Jamais visité» + «À renouveler» — то есть всех, у кого сейчас нет действующего медосмотра. Фон строки — цвет бригады, как в разделе Employés; строки без цвета — сотрудники без бригады.\n\n" +
-                "Значок «⊘» на строке — «Медосмотр не касается» (статус «Non applicable»): для тех, к кому это требование не относится. Отмечается там же или в карточке сотрудника (раздел «Médical»); туда же можно вписать причину.\n\n" +
-                "Заголовки таблицы (Nom, Équipe, даты, Statut) кликабельны — сортируют список по этому столбцу.\n\n" +
+                "Один статус на каждого активного сотрудника: «Jamais visité» (медосмотра вообще не было), «À renouveler» (прошло больше 2 лет - пора заново), «Visite prévue» (следующая дата уже назначена), «À jour» (всё в порядке).\n\n" +
+                "Кликните по цветной цифре, чтобы отфильтровать список по этому статусу. Кнопка «Sans visite valide» показывает сразу «Jamais visité» + «À renouveler» - то есть всех, у кого сейчас нет действующего медосмотра. Фон строки - цвет бригады, как в разделе Employés; строки без цвета - сотрудники без бригады.\n\n" +
+                "Значок «⊘» на строке - «Медосмотр не касается» (статус «Non applicable»): для тех, к кому это требование не относится. Отмечается там же или в карточке сотрудника (раздел «Médical»); туда же можно вписать причину.\n\n" +
+                "Заголовки таблицы (Nom, Équipe, даты, Statut) кликабельны - сортируют список по этому столбцу.\n\n" +
                 "Наведите курсор на дату «Prochaine visite», чтобы увидеть, введена ли она вручную или найдена автоматически в письме-конвокасьене от Prevaly; в этом случае можно кликнуть, чтобы прочитать переписку по этому сотруднику.\n\n" +
-                "Кнопка «Vérifier les e-mails» подтягивает конвокасьены (и их отмены — ANNULATION) с почты (assistant@vladis.fr и contact@vladis.fr) и сама обновляет даты; если визит отменили, дата очищается.\n\n" +
-                "Когда визит завершён, Prevaly присылает письмо с «avis d'aptitude» — дата последнего визита подставляется автоматически, а ссылку на сам документ нужно открыть после входа в личный кабинет Prevaly (я туда войти не могу) — она появится жёлтым блоком выше.\n\n" +
+                "Кнопка «Vérifier les e-mails» подтягивает конвокасьены (и их отмены - ANNULATION) с почты (assistant@vladis.fr и contact@vladis.fr) и сама обновляет даты; если визит отменили, дата очищается.\n\n" +
+                "Когда визит завершён, Prevaly присылает письмо с «avis d'aptitude» - дата последнего визита подставляется автоматически, а ссылку на сам документ нужно открыть после входа в личный кабинет Prevaly (я туда войти не могу) - она появится жёлтым блоком выше.\n\n" +
                 "Кнопка «Importer Prevaly» загружает CSV-выгрузку из системы Prevaly.\n\n" +
-                "Кнопка «Exporter» выгружает в Excel ровно то, что видно в таблице сейчас — если нажать на статус «Jamais visité», выгрузится список тех, кто вообще не проходил медосмотр."
+                "Кнопка «Exporter» выгружает в Excel ровно то, что видно в таблице сейчас - если нажать на статус «Jamais visité», выгрузится список тех, кто вообще не проходил медосмотр."
               }
             />
           </div>
@@ -6003,7 +6003,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             title="Suggestions de rendez-vous"
             text={
               "Здесь показаны сотрудники без действующего медосмотра («Jamais visité» / «À renouveler»), у которых по плану (Planning chantiers) на ближайшую неделю есть объект в пределах ~1,5 часа езды от Prevaly Labège.\n\n" +
-              "Время в пути — грубая оценка по прямой (координаты объекта из таблицы плана, ×1,3 на извилистость дорог, средняя скорость 70 км/ч), а не настоящий маршрут — перепроверяйте перед тем как писать письмо в Prevaly или переставлять человека.\n\n" +
+              "Время в пути - грубая оценка по прямой (координаты объекта из таблицы плана, ×1,3 на извилистость дорог, средняя скорость 70 км/ч), а не настоящий маршрут - перепроверяйте перед тем как писать письмо в Prevaly или переставлять человека.\n\n" +
               "Дальше действуете сами: пишете Prevaly и/или переставляете сотрудников по датам в самой таблице планирования."
             }
           />
@@ -6030,7 +6030,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 const distanceLabel =
                   s.estimatedMinutesFromLabege === s.estimatedMinutesFromLabegeMax
                     ? `~${s.estimatedMinutesFromLabege} min`
-                    : `~${s.estimatedMinutesFromLabege}–${s.estimatedMinutesFromLabegeMax} min`;
+                    : `~${s.estimatedMinutesFromLabege}-${s.estimatedMinutesFromLabegeMax} min`;
                 return (
                   <div key={i} className="rounded-lg bg-stone-50">
                     <div
@@ -6065,9 +6065,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         <Bi fr="Éq." ru="Ком." /> {s.team}
                       </span>
                       <p className="text-xs text-stone-400 whitespace-nowrap">
-                        {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                        {formatDateShortDMY(s.dateFrom)}-{formatDateShortDMY(s.dateTo)}
                       </p>
-                      <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "—"}</p>
+                      <p className="text-sm text-stone-500 truncate flex-1 min-w-[120px]">{s.site ?? "-"}</p>
                       <span className="text-xs font-bold text-primary-700 whitespace-nowrap shrink-0">
                         {distanceLabel} <Bi fr="de Labège" ru="от Лябежа" />
                       </span>
@@ -6077,9 +6077,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         {s.details.map((d, di) => (
                           <div key={di} className="flex flex-wrap items-center gap-2 text-xs text-stone-500 border-t border-stone-200 pt-1">
                             <span className="whitespace-nowrap">
-                              {formatDateShortDMY(d.dateFrom)}–{formatDateShortDMY(d.dateTo)}
+                              {formatDateShortDMY(d.dateFrom)}-{formatDateShortDMY(d.dateTo)}
                             </span>
-                            <span className="truncate flex-1 min-w-[120px]">{d.site ?? "—"}</span>
+                            <span className="truncate flex-1 min-w-[120px]">{d.site ?? "-"}</span>
                             <span className="font-bold text-primary-700 whitespace-nowrap">
                               ~{d.estimatedMinutesFromLabege} min
                             </span>
@@ -6129,7 +6129,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           <td className="py-1 pr-3 font-semibold whitespace-nowrap">{s.lastName}</td>
                           <td className="py-1 pr-3 whitespace-nowrap">{s.firstName}</td>
                           <td className="py-1 whitespace-nowrap">
-                            {formatDateShortDMY(s.dateFrom)}–{formatDateShortDMY(s.dateTo)}
+                            {formatDateShortDMY(s.dateFrom)}-{formatDateShortDMY(s.dateTo)}
                           </td>
                         </tr>
                       ))}
@@ -6149,8 +6149,8 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             <InfoNote
               title="Suivi des demandes"
               text={
-                "Здесь фиксируется переписка с медицинской службой (Prevaly / почта / телефон): что мы запросили, когда, и на каком этапе дело — ждём ответа, ответ получен, визит запланирован, вопрос закрыт.\n\n" +
-                "Это не сами визиты (они выше), а именно история обращений — чтобы не забыть, что мы уже спрашивали и что ещё нет ответа."
+                "Здесь фиксируется переписка с медицинской службой (Prevaly / почта / телефон): что мы запросили, когда, и на каком этапе дело - ждём ответа, ответ получен, визит запланирован, вопрос закрыт.\n\n" +
+                "Это не сами визиты (они выше), а именно история обращений - чтобы не забыть, что мы уже спрашивали и что ещё нет ответа."
               }
             />
           </div>
@@ -6172,7 +6172,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
             <p className="text-xs font-bold text-warning-700 mb-2">
               <Bi
                 fr="Avis d'aptitude à récupérer (connexion à l'espace Prevaly nécessaire)"
-                ru="Нужно скачать заключения (avis d'aptitude) — требуется вход в личный кабинет Prevaly"
+                ru="Нужно скачать заключения (avis d'aptitude) - требуется вход в личный кабинет Prevaly"
               />
             </p>
             <div className="space-y-1">
@@ -6180,7 +6180,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 <div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5">
                   <p className="text-sm">
                     <span className="font-semibold">{d.employeeName}</span>{" "}
-                    <span className="text-stone-400">— {formatDateShortDMY(d.visitDate)}</span>
+                    <span className="text-stone-400">- {formatDateShortDMY(d.visitDate)}</span>
                   </p>
                   <a
                     href={d.documentUrl}
@@ -6220,7 +6220,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-semibold text-sm truncate min-w-0">{m.subject}</p>
                       <p className="text-xs text-stone-400 whitespace-nowrap shrink-0">
-                        {m.date ? formatDateShortDMY(m.date.slice(0, 10)) : "—"}
+                        {m.date ? formatDateShortDMY(m.date.slice(0, 10)) : "-"}
                       </p>
                     </div>
                     <p className="text-xs text-stone-400 truncate min-w-0">{m.from}</p>
@@ -6240,7 +6240,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 value={newRequest.employeeId}
                 onChange={(e) => setNewRequest({ ...newRequest, employeeId: e.target.value })}
               >
-                <option value="">— Salarié —</option>
+                <option value="">- Salarié -</option>
                 {roster.map((e) => (
                   <option key={e.id} value={e.id}>
                     {employeeName(e)}
@@ -6303,7 +6303,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 <div key={r.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
                   <div className="min-w-[160px]">
                     <p className="font-semibold text-sm truncate">
-                      {r.employees ? employeeName(r.employees) : "—"}
+                      {r.employees ? employeeName(r.employees) : "-"}
                     </p>
                     <p className="text-xs text-stone-400 truncate">{r.subject}</p>
                   </div>
@@ -6395,7 +6395,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="min-w-0">
                     <p className="font-semibold truncate">{employeeName(row.employee)}</p>
-                    <p className="text-xs text-stone-400 truncate">{row.employee.teams?.name ?? "—"}</p>
+                    <p className="text-xs text-stone-400 truncate">{row.employee.teams?.name ?? "-"}</p>
                   </div>
                   {!isEditing && (
                     <div className="flex items-center gap-1 shrink-0">
@@ -6455,7 +6455,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         value={editForm.subtype}
                         onChange={(e) => setEditForm({ ...editForm, subtype: e.target.value })}
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {editForm.subtype &&
                           !VISIT_SUBTYPE_OPTIONS.some((o) => o.value === editForm.subtype) && (
                             <option value={editForm.subtype}>{editForm.subtype}</option>
@@ -6487,7 +6487,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     </span>
                     <p>
                       <span className="text-stone-400">Dernière: </span>
-                      {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
+                      {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "-"}
                     </p>
                     <p>
                       <span className="text-stone-400">Prochaine: </span>
@@ -6532,7 +6532,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     <td className="py-2 pr-4 font-semibold">{employeeName(row.employee)}</td>
                     {isEditing && editForm ? (
                       <>
-                        <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "—"}</td>
+                        <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "-"}</td>
                         <td className="py-2 pr-4">
                           <DateInput
                             className="input text-sm px-2 py-1"
@@ -6563,7 +6563,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             value={editForm.subtype}
                             onChange={(e) => setEditForm({ ...editForm, subtype: e.target.value })}
                           >
-                            <option value="">—</option>
+                            <option value="">-</option>
                             {editForm.subtype &&
                               !VISIT_SUBTYPE_OPTIONS.some((o) => o.value === editForm.subtype) && (
                                 <option value={editForm.subtype}>{editForm.subtype}</option>
@@ -6590,9 +6590,9 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                       </>
                     ) : (
                       <>
-                        <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "—"}</td>
+                        <td className="py-2 pr-4 text-stone-500">{row.employee.teams?.name ?? "-"}</td>
                         <td className="py-2 pr-4">
-                          {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"}
+                          {v?.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "-"}
                         </td>
                         <td className="py-2 pr-4">
                           <NextVisitCell
@@ -6648,11 +6648,11 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       >
         <p className="text-sm text-stone-500 mb-3">
           Sélectionnez l&apos;export CSV de Prevaly (salaries-….csv). On y récupère le nom, la
-          date de dernière visite, la date de prochaine visite estimée et son sous-type — le
+          date de dernière visite, la date de prochaine visite estimée et son sous-type - le
           reste des colonnes est ignoré.{" "}
           <span className="opacity-70">
             / Выберите CSV-выгрузку из Prevaly. Оттуда берутся имя, дата последнего визита, дата
-            следующего визита и его подтип — остальные столбцы игнорируются.
+            следующего визита и его подтип - остальные столбцы игнорируются.
           </span>
         </p>
         <label className={`btn btn-secondary inline-flex ${importingPrevaly ? "" : "cursor-pointer"}`}>
@@ -6699,7 +6699,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
       <Modal
         open={!!historyFor}
         onClose={() => setHistoryFor(null)}
-        title={historyFor ? `Correspondance Prevaly — ${historyFor.name}` : "Correspondance Prevaly"}
+        title={historyFor ? `Correspondance Prevaly - ${historyFor.name}` : "Correspondance Prevaly"}
         maxWidth="max-w-lg"
       >
         <p className="text-xs text-stone-400 mb-3">
@@ -6722,7 +6722,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold text-sm truncate min-w-0">{m.subject}</p>
                   <p className="text-xs text-stone-400 whitespace-nowrap shrink-0">
-                    {m.date ? formatDateShortDMY(m.date.slice(0, 10)) : "—"}
+                    {m.date ? formatDateShortDMY(m.date.slice(0, 10)) : "-"}
                   </p>
                 </div>
                 <p className="text-xs text-stone-400 truncate min-w-0">{m.from}</p>
@@ -6741,7 +6741,7 @@ function MedicalView({ supabase }: { supabase: ReturnType<typeof createClient> }
   );
 }
 
-// ── Vue "Suivi des assurances" — pipeline CPAM (NIA/NIR) + Harmonie ─────────
+// ── Vue "Suivi des assurances" - pipeline CPAM (NIA/NIR) + Harmonie ─────────
 type InsuranceEmployee = { id: string; first_name: string; last_name: string; status: EmployeeStatus };
 type InsuranceConfidential = {
   employee_id: string;
@@ -6845,9 +6845,9 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                 title="Suivi des assurances"
                 text={
                   "Отслеживание двух процессов, которые RH ведёт вручную на порталах CPAM и Harmonie Mutuelle.\n\n" +
-                  "«Assurance Maladie» — этапы получения номера соцстрахования: Brouillon → En cours de traitement → " +
+                  "«Assurance Maladie» - этапы получения номера соцстрахования: Brouillon → En cours de traitement → " +
                   "En attente de pièces jointes → En attente de traduction → NIA attribué → NIR attribué (финальный этап).\n\n" +
-                  "«Harmonie» — статус оформления допстраховки (En cours / En attente / Abandonnée / Clôturée) и " +
+                  "«Harmonie» - статус оформления допстраховки (En cours / En attente / Abandonnée / Clôturée) и " +
                   "свободное поле для под-статуса.\n\n" +
                   "Изменения сохраняются сразу, без отдельной кнопки «Сохранить»."
                 }
@@ -6917,7 +6917,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                     value={conf?.assurance_maladie_statut ?? ""}
                     onChange={(ev) => updateField(e.id, { assurance_maladie_statut: ev.target.value || null })}
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {AMO_STATUT_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.fr} / {o.ru}
@@ -6925,7 +6925,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                     ))}
                   </select>
                   <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-                    <Bi fr="Harmonie — statut" ru="Harmonie — статус" />
+                    <Bi fr="Harmonie - statut" ru="Harmonie - статус" />
                   </label>
                   <select
                     className={`input text-sm mb-2 ${
@@ -6934,7 +6934,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                     value={conf?.harmonie_statut ?? ""}
                     onChange={(ev) => updateField(e.id, { harmonie_statut: ev.target.value || null })}
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {HARMONIE_STATUT_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.fr} / {o.ru}
@@ -6942,11 +6942,11 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                     ))}
                   </select>
                   <label className="block text-[10px] font-bold uppercase text-stone-400 mb-1">
-                    <Bi fr="Harmonie — sous-statut" ru="Harmonie — под-статус" />
+                    <Bi fr="Harmonie - sous-statut" ru="Harmonie - под-статус" />
                   </label>
                   <input
                     className="input text-sm"
-                    placeholder="—"
+                    placeholder="-"
                     defaultValue={conf?.harmonie_sous_statut ?? ""}
                     key={`hss-${e.id}-${conf?.harmonie_sous_statut ?? ""}`}
                     onBlur={(ev) => updateField(e.id, { harmonie_sous_statut: ev.target.value.trim() || null })}
@@ -6967,10 +6967,10 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                     <Bi fr="Assurance Maladie" ru="Соцстрахование" />
                   </th>
                   <th className="pb-2 pr-4">
-                    <Bi fr="Harmonie — statut" ru="Harmonie — статус" />
+                    <Bi fr="Harmonie - statut" ru="Harmonie - статус" />
                   </th>
                   <th className="pb-2">
-                    <Bi fr="Harmonie — sous-statut" ru="Harmonie — под-статус" />
+                    <Bi fr="Harmonie - sous-statut" ru="Harmonie - под-статус" />
                   </th>
                 </tr>
               </thead>
@@ -6988,7 +6988,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                           value={conf?.assurance_maladie_statut ?? ""}
                           onChange={(ev) => updateField(e.id, { assurance_maladie_statut: ev.target.value || null })}
                         >
-                          <option value="">—</option>
+                          <option value="">-</option>
                           {AMO_STATUT_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.fr}
@@ -7004,7 +7004,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                           value={conf?.harmonie_statut ?? ""}
                           onChange={(ev) => updateField(e.id, { harmonie_statut: ev.target.value || null })}
                         >
-                          <option value="">—</option>
+                          <option value="">-</option>
                           {HARMONIE_STATUT_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>
                               {o.fr}
@@ -7015,7 +7015,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
                       <td className="py-2">
                         <input
                           className="input text-xs py-1 px-1.5 w-full"
-                          placeholder="—"
+                          placeholder="-"
                           defaultValue={conf?.harmonie_sous_statut ?? ""}
                           key={`hss-${e.id}-${conf?.harmonie_sous_statut ?? ""}`}
                           onBlur={(ev) => updateField(e.id, { harmonie_sous_statut: ev.target.value.trim() || null })}
@@ -7033,7 +7033,7 @@ function InsuranceTrackingView({ supabase }: { supabase: ReturnType<typeof creat
   );
 }
 
-// ── Vue "Formations" — matrice des habilitations ────────────────────────────
+// ── Vue "Formations" - matrice des habilitations ────────────────────────────
 type TrainingType = { id: string; code: string; label: string };
 type EmployeeTrainingRow = {
   employee_id: string;
@@ -7070,7 +7070,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [search, setSearch] = useState("");
   // Окно «прикрепить сертификат» к зелёной ячейке.
   const [certTarget, setCertTarget] = useState<{ employee: Employee; type: TrainingType } | null>(null);
-  // Цвета бригад — как в «Схеме компании» / «Оргструктуре».
+  // Цвета бригад - как в «Схеме компании» / «Оргструктуре».
   const orgPlan = useOrgPlan(supabase, false);
   const teamColors = useMemo(() => teamColorMap(orgPlan.nodes), [orgPlan.nodes]);
 
@@ -7119,7 +7119,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     return m;
   }, [trainings]);
 
-  /** Сертификат о прохождении: явная ссылка, а если её нет — подбор по названию файла в досье. */
+  /** Сертификат о прохождении: явная ссылка, а если её нет - подбор по названию файла в досье. */
   function certFor(employeeId: string, typeId: string, code: string): FormationCert | null {
     const linked = trainingDocMap.get(`${employeeId}|${typeId}`);
     if (linked) {
@@ -7158,7 +7158,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
     });
   }, [employees, teamFilter, search]);
 
-  /** Группы по бригадам: бригадир первым, внутри — по фамилии. */
+  /** Группы по бригадам: бригадир первым, внутри - по фамилии. */
   const groups = useMemo(() => {
     const map = new Map<string, { id: string; name: string; people: Employee[] }>();
     filteredEmployees.forEach((e) => {
@@ -7176,7 +7176,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
       .sort((a, b) => (a.id === "none" ? 1 : b.id === "none" ? -1 : a.name.localeCompare(b.name, undefined, { numeric: true })));
   }, [filteredEmployees, chefIds]);
 
-  /** Клик по ячейке: — → KO → OK → — (серое «не требуется» = нет записи). */
+  /** Клик по ячейке: - → KO → OK → - (серое «не требуется» = нет записи). */
   async function cycle(employeeId: string, typeId: string, current: string | undefined) {
     const next: "ok" | "ko" | null = current === undefined ? "ko" : current === "ko" ? "ok" : null;
     if (next === null && current === "ok" && !window.confirm("Снять отметку «пройдено» и сделать ячейку «не требуется»?")) return;
@@ -7213,11 +7213,11 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         <button
           onClick={() => cycle(e.id, t.id, status)}
           disabled={saving === key}
-          title={`${t.label} — клик: ${status === undefined ? "KO" : status === "ko" ? "OK" : "не требуется"}`}
+          title={`${t.label} - клик: ${status === undefined ? "KO" : status === "ko" ? "OK" : "не требуется"}`}
           className={`block w-full rounded-md font-bold ${compact ? "px-2.5 py-1 text-xs" : "py-2 text-xs"} ${tone}`}
         >
           {compact ? `${t.code}: ` : ""}
-          {status ? status.toUpperCase() : "—"}
+          {status ? status.toUpperCase() : "-"}
         </button>
         {status === "ok" && (
           <span className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -7259,20 +7259,20 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
           <InfoNote
             title="Formations"
             text={
-              "Отметки о пройденных обучениях по каждому сотруднику и виду обучения (например, CACES, работа на высоте). Клик по ячейке меняет статус по кругу: «—» (не требуется) → KO → OK → «—».\n\n" +
-              "Красное — обучение обязательно, но не пройдено. Зелёное — пройдено; наведите на зелёную ячейку: значок со стрелкой открывает сертификат из «Dossier salarié», скрепка прикрепляет или заменяет сертификат. Серое — не требуется.\n\n" +
-              "Здесь нет дат истечения. Если для документа важна дата действия (например, «Habilitation»), загружайте его в разделе «Dossier salarié» — оттуда он попадёт в «Notifications», когда срок будет подходить."
+              "Отметки о пройденных обучениях по каждому сотруднику и виду обучения (например, CACES, работа на высоте). Клик по ячейке меняет статус по кругу: «-» (не требуется) → KO → OK → «-».\n\n" +
+              "Красное - обучение обязательно, но не пройдено. Зелёное - пройдено; наведите на зелёную ячейку: значок со стрелкой открывает сертификат из «Dossier salarié», скрепка прикрепляет или заменяет сертификат. Серое - не требуется.\n\n" +
+              "Здесь нет дат истечения. Если для документа важна дата действия (например, «Habilitation»), загружайте его в разделе «Dossier salarié» - оттуда он попадёт в «Notifications», когда срок будет подходить."
             }
           />
         </div>
         <p className="text-xs text-stone-400 mb-3">
-          Clic : — → KO → OK → — ; sur une cellule verte, les icônes ouvrent / rattachent le certificat.{" "}
-          <span className="opacity-70">/ Клик: — → KO → OK → —; на зелёной значки открывают или прикрепляют сертификат.</span>
+          Clic : - → KO → OK → - ; sur une cellule verte, les icônes ouvrent / rattachent le certificat.{" "}
+          <span className="opacity-70">/ Клик: - → KO → OK → -; на зелёной значки открывают или прикрепляют сертификат.</span>
         </p>
         <div className="flex flex-wrap items-center gap-3 text-xs">
-          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-emerald-500" /> OK — пройдено</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-red-500" /> KO — обязательно, не пройдено</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-stone-200" /> — не требуется</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-emerald-500" /> OK - пройдено</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-red-500" /> KO - обязательно, не пройдено</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-3 w-5 rounded bg-stone-200" /> - не требуется</span>
         </div>
         <div className="mt-3 flex flex-wrap items-end gap-3">
           <div>
@@ -7316,7 +7316,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
         </div>
       ) : (
         <>
-        {/* Mobile: одна карточка на бригаду, внутри — сотрудники с цветными чипами. */}
+        {/* Mobile: одна карточка на бригаду, внутри - сотрудники с цветными чипами. */}
         <div className="md:hidden space-y-3">
           {groups.map((g) => {
             const cc = ORG_COLOR_CLASSES[teamColors[g.id] ?? DEFAULT_TEAM_COLOR] ?? ORG_COLOR_CLASSES[DEFAULT_TEAM_COLOR];
@@ -7378,7 +7378,7 @@ function FormationsView({ supabase }: { supabase: ReturnType<typeof createClient
                               <Crown size={11} className="fill-current" /> Chef d&apos;équipe
                             </span>
                           ) : (
-                            <span className="text-stone-300">—</span>
+                            <span className="text-stone-300">-</span>
                           )}
                         </td>
                         {types.map((t) => (
@@ -7501,7 +7501,7 @@ function TrainingCertModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`${employeeName(employee)} — ${type.code}`} maxWidth="max-w-lg">
+    <Modal open onClose={onClose} title={`${employeeName(employee)} - ${type.code}`} maxWidth="max-w-lg">
       <p className="mb-3 text-sm text-stone-500">{type.label}. Выберите документ из досье или загрузите новый сертификат.</p>
       {docs.length === 0 ? (
         <p className="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-400">В досье пока нет документов «Formation» и «Habilitation».</p>
@@ -7549,7 +7549,7 @@ function TrainingCertModal({
   );
 }
 
-// ── Vue "Tailles" — équipement / EPI ─────────────────────────────────────────
+// ── Vue "Tailles" - équipement / EPI ─────────────────────────────────────────
 type EquipmentSize = {
   employee_id: string;
   chaussures: string | null;
@@ -7661,7 +7661,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
             title="Tailles"
             text={
               "Размеры спецодежды и обуви по каждому сотруднику: обувь, брюки, футболка.\n\n" +
-              "У полей есть подсказки — начните вводить или откройте список, и появятся частые значения, но можно вписать и своё, если нужного размера нет в списке."
+              "У полей есть подсказки - начните вводить или откройте список, и появятся частые значения, но можно вписать и своё, если нужного размера нет в списке."
             }
           />
         </div>
@@ -7747,7 +7747,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         value={editForm.tshirt}
                         onChange={(ev) => setEditForm({ ...editForm, tshirt: ev.target.value })}
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {editForm.tshirt &&
                           !TSHIRT_SIZE_OPTIONS.some((o) => o.value === editForm.tshirt) && (
                             <option value={editForm.tshirt}>{editForm.tshirt}</option>
@@ -7782,10 +7782,10 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-stone-500">
-                    <p><span className="text-stone-400">Chaussures: </span>{s?.chaussures ?? "—"}</p>
-                    <p><span className="text-stone-400">Pantalon: </span>{s?.pantalon ?? "—"}</p>
-                    <p><span className="text-stone-400">T-shirt: </span>{s?.tshirt ?? "—"}</p>
-                    <p className="col-span-2"><span className="text-stone-400">Notes: </span>{s?.notes ?? "—"}</p>
+                    <p><span className="text-stone-400">Chaussures: </span>{s?.chaussures ?? "-"}</p>
+                    <p><span className="text-stone-400">Pantalon: </span>{s?.pantalon ?? "-"}</p>
+                    <p><span className="text-stone-400">T-shirt: </span>{s?.tshirt ?? "-"}</p>
+                    <p className="col-span-2"><span className="text-stone-400">Notes: </span>{s?.notes ?? "-"}</p>
                   </div>
                 )}
               </div>
@@ -7845,7 +7845,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                               setEditForm({ ...editForm, tshirt: ev.target.value })
                             }
                           >
-                            <option value="">—</option>
+                            <option value="">-</option>
                             {editForm.tshirt &&
                               !TSHIRT_SIZE_OPTIONS.some((o) => o.value === editForm.tshirt) && (
                                 <option value={editForm.tshirt}>{editForm.tshirt}</option>
@@ -7885,15 +7885,15 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                     ) : (
                       <>
                         <td className="py-2 pr-4 text-stone-500">
-                          {s?.chaussures ?? "—"}
+                          {s?.chaussures ?? "-"}
                         </td>
                         <td className="py-2 pr-4 text-stone-500">
-                          {s?.pantalon ?? "—"}
+                          {s?.pantalon ?? "-"}
                         </td>
                         <td className="py-2 pr-4 text-stone-500">
-                          {s?.tshirt ?? "—"}
+                          {s?.tshirt ?? "-"}
                         </td>
-                        <td className="py-2 pr-4 text-stone-500">{s?.notes ?? "—"}</td>
+                        <td className="py-2 pr-4 text-stone-500">{s?.notes ?? "-"}</td>
                         <td className="py-2">
                           <RowAction
                             icon={Pencil}
@@ -7926,7 +7926,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
   );
 }
 
-// ── Vue "Documents" — génération de contrats/NDA/attestations/ruptures ──────
+// ── Vue "Documents" - génération de contrats/NDA/attestations/ruptures ──────
 type DocEmployeeListRow = {
   id: string;
   first_name: string;
@@ -8085,7 +8085,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
           onClick={() => setListCollapsed(false)}
           title={
             selectedEmployeeRow
-              ? `${employeeName(selectedEmployeeRow)} — afficher la liste / показать список`
+              ? `${employeeName(selectedEmployeeRow)} - afficher la liste / показать список`
               : "Afficher la liste / Показать список"
           }
           className="card w-full lg:w-14 shrink-0 flex flex-row lg:flex-col items-center justify-between lg:justify-center gap-2 px-4 lg:px-0 py-3 lg:py-4 hover:bg-stone-50"
@@ -8134,7 +8134,7 @@ function DocumentsView({ supabase }: { supabase: ReturnType<typeof createClient>
                 title="Documents"
                 text={
                   "Здесь создаются готовые документы: трудовые договоры, письма о расторжении, уведомления, приглашения на собеседование и т.д.\n\n" +
-                  "Выберите сотрудника слева, тип документа сверху справа — часть полей уже подставится из карточки сотрудника, остальное впишите вручную — и скачайте готовый файл в PDF или Word."
+                  "Выберите сотрудника слева, тип документа сверху справа - часть полей уже подставится из карточки сотрудника, остальное впишите вручную - и скачайте готовый файл в PDF или Word."
                 }
               />
             }
@@ -8313,11 +8313,11 @@ function DocumentsForm({
       {definition?.legalRisk && (
         <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
           <p>
-            Brouillon — à vérifier avant envoi. Ce document engage l&apos;entreprise ; relisez-le
+            Brouillon - à vérifier avant envoi. Ce document engage l&apos;entreprise ; relisez-le
             (et faites-le relire si besoin) avant signature ou envoi au salarié.
           </p>
           <p className="opacity-70 mt-1">
-            Черновик — проверьте перед отправкой. Этот документ юридически обязывает компанию;
+            Черновик - проверьте перед отправкой. Этот документ юридически обязывает компанию;
             перечитайте его (и дайте перечитать кому-то ещё при необходимости) перед подписанием
             или отправкой сотруднику.
           </p>
@@ -8368,7 +8368,7 @@ function DocumentsForm({
                       setFormValues((prev) => ({ ...prev, [f.key]: ev.target.value }))
                     }
                   >
-                    <option value="">—</option>
+                    <option value="">-</option>
                     {f.options?.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
@@ -8469,7 +8469,7 @@ function DocumentsForm({
   );
 }
 
-// ── Vue "Calculateurs" — onglets Rupture / Congés payés ─────────────────────
+// ── Vue "Calculateurs" - onglets Rupture / Congés payés ─────────────────────
 function CalculatorsView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [tab, setTab] = usePersistedView<"rupture" | "conges">("admin_calculators_tab", "rupture");
 
@@ -8498,7 +8498,7 @@ function CalculatorsView({ supabase }: { supabase: ReturnType<typeof createClien
   );
 }
 
-// ── Vue "Calculateur de rupture" — préavis, procédure RC et indemnités ──────
+// ── Vue "Calculateur de rupture" - préavis, procédure RC et indemnités ──────
 function ageFromBirthDate(dobIso: string, refIso: string): number {
   const dob = new Date(dobIso + "T00:00:00Z");
   const ref = new Date(refIso + "T00:00:00Z");
@@ -8514,7 +8514,7 @@ const RUPTURE_TYPE_OPTIONS: { value: RuptureType; label: string; labelRu: string
   { value: "RC", label: "Rupture conventionnelle (RC)", labelRu: "По соглашению сторон (RC)" },
 ];
 
-/** Label/value pairs read top-to-bottom as a plain table — labels can run
+/** Label/value pairs read top-to-bottom as a plain table - labels can run
  *  long (RC procedure steps), which the compact 4-col DetailSection grid
  *  isn't built for. */
 function RuptureResultSection({
@@ -8642,9 +8642,9 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
           <InfoNote
             title="Calculateur de rupture"
             text={
-              "Считает дату уведомления (начало срока предупреждения) для démission/licenciement, и сроки процедуры расторжения по соглашению сторон (RC) — по правилам Convention Collective Métallurgie.\n\n" +
-              "Выберите сотрудника слева — дата приёма, группа и возраст подставятся автоматически, остальное впишите вручную: тип увольнения и желаемую дату.\n\n" +
-              "Это расчёт-подсказка, не готовый документ — для реального увольнения всегда проверяйте цифры и при спорных случаях консультируйтесь с юристом."
+              "Считает дату уведомления (начало срока предупреждения) для démission/licenciement, и сроки процедуры расторжения по соглашению сторон (RC) - по правилам Convention Collective Métallurgie.\n\n" +
+              "Выберите сотрудника слева - дата приёма, группа и возраст подставятся автоматически, остальное впишите вручную: тип увольнения и желаемую дату.\n\n" +
+              "Это расчёт-подсказка, не готовый документ - для реального увольнения всегда проверяйте цифры и при спорных случаях консультируйтесь с юристом."
             }
           />
         </p>
@@ -8710,8 +8710,8 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
             <DetailSection title="Données salariées" titleRu="Данные сотрудника">
               <DetailSelectField
-                label="Groupe d'emploi (A–I)"
-                labelRu="Группа занятости (A–I)"
+                label="Groupe d'emploi (A-I)"
+                labelRu="Группа занятости (A-I)"
                 value={group}
                 onChange={setGroup}
                 options={CLASSIFICATION_OPTIONS}
@@ -8765,7 +8765,7 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             {
                               label: "Durée du préavis",
                               labelRu: "Срок предупреждения",
-                              value: result.preavisDays === null ? "—" : `${result.preavisDays} jours calendaires`,
+                              value: result.preavisDays === null ? "-" : `${result.preavisDays} jours calendaires`,
                             },
                             {
                               label: "Date de notification / début préavis",
@@ -8778,10 +8778,10 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
                   {needsAgeForBracket && (
                     <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
-                      Groupe F–I avec 3 ans d&apos;ancienneté ou plus : l&apos;âge du salarié est
+                      Groupe F-I avec 3 ans d&apos;ancienneté ou plus : l&apos;âge du salarié est
                       nécessaire pour déterminer le préavis exact.{" "}
                       <span className="opacity-70">
-                        / Группа F–I со стажем от 3 лет — нужен возраст сотрудника, чтобы точно
+                        / Группа F-I со стажем от 3 лет - нужен возраст сотрудника, чтобы точно
                         определить срок предупреждения.
                       </span>
                     </div>
@@ -8789,17 +8789,17 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
                   {result.rc && (
                     <RuptureResultSection
-                      title="Procédure — Rupture conventionnelle"
+                      title="Procédure - Rupture conventionnelle"
                       titleRu="Процедура RC"
                       rows={[
                         {
-                          label: "Convocation — au plus tard",
-                          labelRu: "Приглашение на встречу — не позднее",
+                          label: "Convocation - au plus tard",
+                          labelRu: "Приглашение на встречу - не позднее",
                           value: fmtDate(result.rc.convocationDeadline),
                         },
                         {
-                          label: "Entretien + signature — au plus tard",
-                          labelRu: "Собеседование + подпись — не позднее",
+                          label: "Entretien + signature - au plus tard",
+                          labelRu: "Собеседование + подпись - не позднее",
                           value: fmtDate(result.rc.entretienSignatureDeadline),
                         },
                         {
@@ -8850,7 +8850,7 @@ function RuptureView({ supabase }: { supabase: ReturnType<typeof createClient> }
   );
 }
 
-// ── Vue "Congés payés" — retenue & indemnisation (méthode maintien vs dixième) ──
+// ── Vue "Congés payés" - retenue & indemnisation (méthode maintien vs dixième) ──
 type CongesEmployee = PaieEmployee & {
   employee_confidential: { monthly_gross_salary: number | null } | { monthly_gross_salary: number | null }[] | null;
 };
@@ -8876,7 +8876,7 @@ function defaultMonthlyGrossSalary(e: CongesEmployee): number | null {
   return confidential?.monthly_gross_salary ?? null;
 }
 
-/** Jours sans solde = ce qui dépasse le solde accumulé — jamais saisi à la
+/** Jours sans solde = ce qui dépasse le solde accumulé - jamais saisi à la
  *  main, toujours dérivé de "Jours de congés posés" (total) moins "Jours
  *  acquis période réf." (ce qui est réellement couvert par l'indemnité). */
 function sansSoldeFor(joursConges: string, joursAcquisPeriodeReference: string): string {
@@ -9006,10 +9006,10 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
           title="Congés payés"
           text={
             "Считает две строки, которые идут в расчётном листке при уходе сотрудника в отпуск:\n\n" +
-            "• Retenue de congés payés — всегда по методу maintien (сохранение оклада): оклад / 21.67 × число дней.\n" +
-            "• Indemnité de congés payés — берётся более выгодный из двух методов: maintien или dixième (десятина): (сумма брутто за период приобретения / приобретённые дни) × 10% × число взятых дней.\n\n" +
-            "Период приобретения отпускных — с 1 июня по 31 мая следующего года. «Сумму брутто за период» и «приобретённые дни» нужно вписать вручную для каждого, кто уходит в отпуск — в приложении это не отслеживается.\n\n" +
-            "Net estimé — это прикидка после вычета ставки взносов ниже, а не точная цифра — процент дал бухгалтер как ориентир, не как точное правило."
+            "• Retenue de congés payés - всегда по методу maintien (сохранение оклада): оклад / 21.67 × число дней.\n" +
+            "• Indemnité de congés payés - берётся более выгодный из двух методов: maintien или dixième (десятина): (сумма брутто за период приобретения / приобретённые дни) × 10% × число взятых дней.\n\n" +
+            "Период приобретения отпускных - с 1 июня по 31 мая следующего года. «Сумму брутто за период» и «приобретённые дни» нужно вписать вручную для каждого, кто уходит в отпуск - в приложении это не отслеживается.\n\n" +
+            "Net estimé - это прикидка после вычета ставки взносов ниже, а не точная цифра - процент дал бухгалтер как ориентир, не как точное правило."
           }
         />
       </div>
@@ -9067,7 +9067,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                       <PaieEmployeeName employee={e} />
                     </p>
                     {isFopContractor(e) ? (
-                      <p className="italic text-stone-500 text-sm">FOP — hors calcul</p>
+                      <p className="italic text-stone-500 text-sm">FOP - hors calcul</p>
                     ) : (
                       <div className="space-y-2 text-sm">
                         <label className="block">
@@ -9212,7 +9212,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                             <PaieEmployeeName employee={e} />
                           </td>
                           <td colSpan={8} className="py-2 pr-4 italic text-stone-500">
-                            FOP — hors calcul de paie
+                            FOP - hors calcul de paie
                           </td>
                         </tr>
                       ) : (
@@ -9268,12 +9268,12 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
                             {sansSoldeFor(l.joursConges, l.joursAcquisPeriodeReference) || "0"}
                           </td>
                           <td className="py-2 pr-4 font-semibold text-stone-500">
-                            {r ? formatEuros(r.retenueCongesPayes) : "—"}
+                            {r ? formatEuros(r.retenueCongesPayes) : "-"}
                           </td>
                           <td className="py-2 pr-4 font-semibold text-primary-700">
-                            {r ? `${formatEuros(r.indemniteCongesPayes)} (${r.methodeRetenue})` : "—"}
+                            {r ? `${formatEuros(r.indemniteCongesPayes)} (${r.methodeRetenue})` : "-"}
                           </td>
-                          <td className="py-2 pr-4 font-semibold text-primary-700">{r ? formatEuros(r.netEstime) : "—"}</td>
+                          <td className="py-2 pr-4 font-semibold text-primary-700">{r ? formatEuros(r.netEstime) : "-"}</td>
                         </tr>
                       )}
                     </Fragment>
@@ -9293,7 +9293,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
             ⚠ Le net estimé utilise un taux de cotisations approximatif, pas un calcul de paie
             exact. Vérifiez toujours avec le comptable avant émission du bulletin.
             <span className="block opacity-70">
-              Расчёт «на руки» — приблизительный, не точный расчёт зарплаты. Перед выпуском
+              Расчёт «на руки» - приблизительный, не точный расчёт зарплаты. Перед выпуском
               расчётного листка всегда сверяйтесь с бухгалтером.
             </span>
           </p>
@@ -9303,7 +9303,7 @@ function CongesPayesView({ supabase }: { supabase: ReturnType<typeof createClien
   );
 }
 
-// ── Vue "Commercial" — check-lists clients + dossiers + intégration Sinao ──
+// ── Vue "Commercial" - check-lists clients + dossiers + intégration Sinao ──
 type CommercialClientRow = { id: string; name: string; active: boolean };
 type CommercialCaseRow = {
   id: string;
@@ -9343,7 +9343,7 @@ const COMMERCIAL_ITEM_SELECT =
 const COMMERCIAL_UNITE_OPTIONS = ["kWc", "ml", "m²", "unité", "pièce", "jour", "semaine", "heure", "forfait"];
 const COMMERCIAL_VAT_OPTIONS = [5, 10, 20];
 
-/** `price_ht` is the UNIT price HT ("prix unitaire HT") — Total HT is
+/** `price_ht` is the UNIT price HT ("prix unitaire HT") - Total HT is
  *  quantite × price_ht, never stored (existing rows keep their old total
  *  exactly since quantite defaults to 1). */
 function commercialItemTotalHt(item: CommercialItemRow): number | null {
@@ -9376,7 +9376,7 @@ const COMMERCIAL_STATUS_LABEL_CLASS: Record<CommercialItemStatus, string> = {
 };
 
 /** Above this, flag the price as worth double-checking rather than block it
- *  outright — a big devis line legitimately can cost this much, but it's
+ *  outright - a big devis line legitimately can cost this much, but it's
  *  also the size a missing decimal point (1202,20 → 120220) produces. */
 const COMMERCIAL_PRICE_WARN_THRESHOLD = 100000;
 
@@ -9384,26 +9384,26 @@ const COMMERCIAL_CASE_SELECT =
   "id, title, status, desired_start_date, desired_end_date, sinao_quote_id, client_doc_sent_at, team_doc_generated_at, puissance_kwc, longueur_cable_m, surface_toiture_m2, toiture_materiau";
 
 /** Stub quote ids (no Sinao API key configured yet) are prefixed so the UI
- *  can tell a simulated push apart from a real one — a stub still allows
+ *  can tell a simulated push apart from a real one - a stub still allows
  *  re-pushing for real later instead of looking "already sent". */
 function isSinaoStub(quoteId: string | null): boolean {
   return Boolean(quoteId?.startsWith("STUB-"));
 }
 
-/** Juste le nombre — la colonne "Délai prévu" précise elle-même que c'est en jours. */
+/** Juste le nombre - la colonne "Délai prévu" précise elle-même que c'est en jours. */
 function formatJoursLabel(jours: number): string {
   const rounded = Math.round(jours * 10) / 10;
   return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}`;
 }
 
 /** Une checklist qui contient "Pose SI" et/ou "Pose PPV" EST ce qui fait
- *  d'un dossier une "ombrière" — pas de champ séparé à cocher. */
+ *  d'un dossier une "ombrière" - pas de champ séparé à cocher. */
 function checklistHasOmbriereLines(labels: string[]): boolean {
   return labels.some((l) => /pose\s*si\b/i.test(l) || /pose\s*ppv\b/i.test(l));
 }
 
 /** Les normes elles-mêmes (points x→jours) viennent de la table éditable
- *  `commercial_duration_norms`/`..._points` (onglet "Normes") — cette map
+ *  `commercial_duration_norms`/`..._points` (onglet "Normes") - cette map
  *  est construite une fois par `CommercialView` et passée partout où un
  *  calcul de délai est nécessaire, plutôt que hardcodée dans le code. */
 type NormsMap = Record<string, NormDef>;
@@ -9411,7 +9411,7 @@ type NormsMap = Record<string, NormDef>;
 /** Correspondance libellé de checklist → norme, factorisée pour être
  *  ré-appliquée à chaque fois que le jeu de lignes change (édition
  *  puissance/câble, création du dossier, ou ajout d'une ligne depuis
- *  "Autres" — une ligne "Pose SI"/"Pose PPV" ajoutée après coup doit être
+ *  "Autres" - une ligne "Pose SI"/"Pose PPV" ajoutée après coup doit être
  *  remplie tout de suite, sans attendre que la puissance soit re-saisie). */
 function computeDelaiFills(
   itemsToScan: { id: string; label: string }[],
@@ -9435,7 +9435,7 @@ function computeDelaiFills(
     } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_ppv, puissanceKwc).jours) });
     } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
-      // Un toit est soit bac acier, soit fibrociment, jamais les deux — le
+      // Un toit est soit bac acier, soit fibrociment, jamais les deux - le
       // libellé de la ligne ("Dépose Bac acier") ne change jamais, seule la
       // norme qui alimente son "Délai prévu" dépend du matériau du dossier.
       const code = toitureMateriau === "fibrociment" ? "depose_fibrociment" : "depose_bac_acier";
@@ -9445,10 +9445,10 @@ function computeDelaiFills(
     } else if (/d[ée]monte?r?\s*panneau/.test(label)) {
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.demontage_panneau, 0).jours) });
     } else if (/s[ée]curit[ée]\s+colle?ctive/.test(label) && puissanceKwc && puissanceKwc > 0) {
-      // "Pose & dépose sécurité colective" — filet de périmètre, par puissance.
+      // "Pose & dépose sécurité colective" - filet de périmètre, par puissance.
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.securite_collective, puissanceKwc).jours) });
     } else if (/^pose\b.*fille\s+sur\s+face/.test(label) && surfaceToitureM2 && surfaceToitureM2 > 0) {
-      // "Pose /depose fille sur face" (filet sous bac acier), par surface de toiture —
+      // "Pose /depose fille sur face" (filet sous bac acier), par surface de toiture -
       // "Fournis fille sur face" (fourniture, pas pose) est délibérément exclu.
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.filet_sur_face, surfaceToitureM2).jours) });
     }
@@ -9456,16 +9456,16 @@ function computeDelaiFills(
   return fills;
 }
 
-/** Unité de facturation par défaut pour les lignes de checklist connues —
+/** Unité de facturation par défaut pour les lignes de checklist connues -
  *  reprend telles quelles les unités de la feuille "Normes de travail"
  *  (Checklists_Modeles_Clients_VLADIS.numbers) : m² pour bac acier/fibro-
  *  ciment/sécurité collective/filet sous bac, pièce pour le démontage
  *  panneau, kWc pour Pose SI/PPV et la main-d'œuvre ombrière, jour pour la
  *  main-d'œuvre standard, ml pour Tirage AC (norme en mètres). Fournis
- *  ENGIN/BAC Acier n'ont pas de norme dédiée dans cette feuille — forfait,
+ *  ENGIN/BAC Acier n'ont pas de norme dédiée dans cette feuille - forfait,
  *  comme une fourniture livrée en une fois. Une ligne qui ne correspond à
  *  aucun de ces libellés connus (venue d'"Autres", ou personnalisée) reste
- *  null — jamais devinée. */
+ *  null - jamais devinée. */
 function defaultUniteForLabel(label: string, ombriere: boolean): string | null {
   const l = label.toLowerCase().trim();
   if (/main.?d.?(œuvre|oeuvre)/.test(l)) return ombriere ? "kWc" : "jour";
@@ -9498,7 +9498,7 @@ function normUnitLabel(unit: DurationNormRow["unit"]): string {
   return unit === "kwc" ? "kWc" : unit === "m2" ? "m²" : "m";
 }
 
-/** Onglet "Normes" du module Commercial — la table éditable qui alimente
+/** Onglet "Normes" du module Commercial - la table éditable qui alimente
  *  computeDelaiFills. Éditer un point ici change le résultat pour tous les
  *  dossiers, tout de suite, sans toucher au code. */
 function CommercialNormsView({
@@ -9551,8 +9551,8 @@ function CommercialNormsView({
     <div className="space-y-4">
       <p className="max-w-2xl text-sm text-stone-500">
         <Bi
-          fr="Ces valeurs alimentent directement le calcul des délais (Puissance/Tirage de câble/Surface toiture → Délai prévu sur la checklist). Modifier un point ici change le résultat pour tous les dossiers, tout de suite — sans code à changer."
-          ru="Эти значения напрямую используются в расчёте сроков (мощность/кабель/поверхность → Délai prévu в чек-листе). Изменение точки здесь сразу меняет результат для всех досье — без изменений в коде."
+          fr="Ces valeurs alimentent directement le calcul des délais (Puissance/Tirage de câble/Surface toiture → Délai prévu sur la checklist). Modifier un point ici change le résultat pour tous les dossiers, tout de suite - sans code à changer."
+          ru="Эти значения напрямую используются в расчёте сроков (мощность/кабель/поверхность → Délai prévu в чек-листе). Изменение точки здесь сразу меняет результат для всех досье - без изменений в коде."
         />
       </p>
       {normRows.map((norm) => {
@@ -9641,7 +9641,7 @@ function CommercialNormsView({
 }
 
 /** Point d'entrée du module Commercial : bascule entre les dossiers
- *  (CommercialView, inchangée) et l'onglet "Normes" éditable — les normes
+ *  (CommercialView, inchangée) et l'onglet "Normes" éditable - les normes
  *  sont chargées une fois ici et passées en prop, comme un calculateur avec
  *  une feuille de données séparée que le calcul principal va lire. */
 function CommercialSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
@@ -9830,7 +9830,7 @@ function CommercialView({
 
     // Une ligne ajoutée depuis "Autres" (Pose SI/Pose PPV, typiquement) doit
     // recevoir son délai tout de suite si la puissance/le câble du dossier
-    // sont déjà connus — sans attendre que l'utilisatrice retouche ces
+    // sont déjà connus - sans attendre que l'utilisatrice retouche ces
     // champs pour que le calcul se redéclenche.
     const ombriere = checklistHasOmbriereLines(freshItems.map((i) => i.label));
     const fills = computeDelaiFills(
@@ -10103,7 +10103,7 @@ function CommercialView({
   }
 
   /** Puissance/Tirage de câble live directly in the dossier header (no
-   *  separate panel) — editing either one re-derives "Fin souhaitée" and
+   *  separate panel) - editing either one re-derives "Fin souhaitée" and
    *  re-fills the matching checklist lines via saveCaseDurationInputs,
    *  keeping the other field's current value untouched. */
   function updateCasePuissance(caseId: string, value: string) {
@@ -10156,9 +10156,9 @@ function CommercialView({
    *  one is already set, otherwise defaulting it to today), and auto-fills
    *  "Délai prévu" on the checklist lines these norms are actually known
    *  for (Main-d'œuvre, Tirage AC, and Pose SI/Pose PPV whenever the
-   *  dossier's checklist happens to contain those lines — no separate
+   *  dossier's checklist happens to contain those lines - no separate
    *  "type de site" needed, the checklist itself says whether it's an
-   *  ombrière) — every other line (Com/Fournis/Livraison/Récupération,
+   *  ombrière) - every other line (Com/Fournis/Livraison/Récupération,
    *  administratif, Pose/Dépose Bac acier…) is left exactly as it was, no
    *  norm for those yet. */
   async function saveCaseDurationInputs(
@@ -10205,11 +10205,11 @@ function CommercialView({
       )
     );
 
-    // Auto-fill "Délai prévu" on the checklist lines these norms cover —
+    // Auto-fill "Délai prévu" on the checklist lines these norms cover -
     // matched by label, since items are free-text copied from the client's
     // template rather than a fixed enum (le libellé lui-même n'est jamais
     // modifié). Pose SI/Pose PPV/Main-d'œuvre-ombrière fillent dès que ces
-    // lignes existent, quel que soit le client — leur présence dans la
+    // lignes existent, quel que soit le client - leur présence dans la
     // checklist du dossier EST ce qui en fait une "ombrière". Pose/Dépose
     // Bac acier et Démonter panneau n'ont qu'un seul point de mesure dans
     // la source (pas de courbe) : la valeur s'applique dès que la ligne
@@ -10228,7 +10228,7 @@ function CommercialView({
     }
 
     // Complète aussi "Unité" pour les lignes connues qui n'en ont pas encore
-    // — jamais une ligne déjà renseignée à la main (choix délibéré, on ne
+    // - jamais une ligne déjà renseignée à la main (choix délibéré, on ne
     // l'écrase pas comme le délai ci-dessus).
     const uniteFills = items
       .filter((i) => !i.unite)
@@ -10351,7 +10351,7 @@ function CommercialView({
       if (!res.ok) throw new Error(body.error ?? `Erreur ${res.status}`);
       if (body.stub) {
         toast.warning(
-          "Sinao pas encore branché (pas de clé API) — devis simulé pour tester le circuit. À renvoyer pour de vrai une fois la clé fournie."
+          "Sinao pas encore branché (pas de clé API) - devis simulé pour tester le circuit. À renvoyer pour de vrai une fois la clé fournie."
         );
       } else if (body.updated) {
         toast.success("Devis mis à jour dans Sinao.");
@@ -10418,13 +10418,13 @@ function CommercialView({
         <button
           type="button"
           onClick={() => setPickerCollapsed(false)}
-          title={`${selectedClient?.name ?? ""} — ${selectedCase?.title ?? ""} — afficher`}
+          title={`${selectedClient?.name ?? ""} - ${selectedCase?.title ?? ""} - afficher`}
           className="card w-full lg:w-14 shrink-0 flex flex-row lg:flex-col items-center justify-between lg:justify-center gap-2 px-4 lg:px-0 py-3 lg:py-4 hover:bg-stone-50"
         >
           <span className="flex items-center gap-2 text-sm font-semibold text-stone-700 min-w-0 lg:hidden">
             <Briefcase size={16} className="shrink-0" />
             <span className="truncate">
-              {selectedClient?.name} — {selectedCase?.title}
+              {selectedClient?.name} - {selectedCase?.title}
             </span>
           </span>
           <Briefcase size={18} className="hidden lg:block text-stone-500" />
@@ -10584,7 +10584,7 @@ function CommercialView({
                   ) : (
                     <div className="flex items-center gap-1">
                       <span className="text-xs">
-                        {selectedCase?.desired_start_date ? formatDateShortDMY(selectedCase.desired_start_date) : "—"}
+                        {selectedCase?.desired_start_date ? formatDateShortDMY(selectedCase.desired_start_date) : "-"}
                       </span>
                       <button
                         className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
@@ -10599,7 +10599,7 @@ function CommercialView({
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <label className="text-[10px] font-bold uppercase text-stone-400">Fin souhaitée</label>
                   <span className="text-xs">
-                    {selectedCase?.desired_end_date ? formatDateShortDMY(selectedCase.desired_end_date) : "—"}
+                    {selectedCase?.desired_end_date ? formatDateShortDMY(selectedCase.desired_end_date) : "-"}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
@@ -10621,7 +10621,7 @@ function CommercialView({
                     />
                   ) : (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs">{selectedCase?.puissance_kwc ?? "—"}</span>
+                      <span className="text-xs">{selectedCase?.puissance_kwc ?? "-"}</span>
                       <button
                         className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
                         title="Modifier la puissance"
@@ -10651,7 +10651,7 @@ function CommercialView({
                     />
                   ) : (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs">{selectedCase?.longueur_cable_m ?? "—"}</span>
+                      <span className="text-xs">{selectedCase?.longueur_cable_m ?? "-"}</span>
                       <button
                         className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
                         title="Modifier la longueur de câble"
@@ -10681,7 +10681,7 @@ function CommercialView({
                     />
                   ) : (
                     <div className="flex items-center gap-1">
-                      <span className="text-xs">{selectedCase?.surface_toiture_m2 ?? "—"}</span>
+                      <span className="text-xs">{selectedCase?.surface_toiture_m2 ?? "-"}</span>
                       <button
                         className="text-stone-400 hover:text-stone-700 opacity-60 hover:opacity-100"
                         title="Modifier la surface de toiture"
@@ -10773,11 +10773,11 @@ function CommercialView({
 
             {pendingCount > 0 && (
               <div className="rounded-xl bg-warning-50 border border-warning-200 text-warning-800 text-sm px-3 py-2 mb-4">
-                ⚠ {pendingCount} ligne(s) en question — à clarifier avant l&apos;envoi vers Sinao.
+                ⚠ {pendingCount} ligne(s) en question - à clarifier avant l&apos;envoi vers Sinao.
               </div>
             )}
 
-            {/* Mobile: stacked cards instead of a wide table — the date-range +
+            {/* Mobile: stacked cards instead of a wide table - the date-range +
                 HT/TTC columns don't fit a phone width even after collapsing
                 the client/dossier pickers. */}
             <div className="md:hidden space-y-4">
@@ -10820,10 +10820,10 @@ function CommercialView({
                                 className={`${COMMERCIAL_STATUS_ICON_CLASS[item.status]} shrink-0`}
                                 title={
                                   item.status === "active"
-                                    ? "Actif — cliquer pour marquer non applicable"
+                                    ? "Actif - cliquer pour marquer non applicable"
                                     : item.status === "inactive"
-                                      ? "Non applicable — cliquer pour marquer en question"
-                                      : "En question — cliquer pour marquer actif"
+                                      ? "Non applicable - cliquer pour marquer en question"
+                                      : "En question - cliquer pour marquer actif"
                                 }
                               >
                                 <StatusIcon size={18} />
@@ -10866,7 +10866,7 @@ function CommercialView({
                                 key={`m-unite-${item.id}-${item.unite ?? ""}`}
                                 onChange={(e) => updateItemUnite(item.id, e.target.value)}
                               >
-                                <option value="">—</option>
+                                <option value="">-</option>
                                 {COMMERCIAL_UNITE_OPTIONS.map((u) => (
                                   <option key={u} value={u}>
                                     {u}
@@ -10886,7 +10886,7 @@ function CommercialView({
                             <div className="flex items-center gap-2 mt-2 ml-7">
                               <label className="text-[10px] font-bold uppercase text-stone-400 shrink-0">P.U. HT</label>
                               {priceTooHigh && (
-                                <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
+                                <span title="Vérifiez : montant supérieur à 100 000 € - pas une erreur de frappe ?">
                                   <AlertTriangle size={13} className="text-warning-600 shrink-0" />
                                 </span>
                               )}
@@ -10918,11 +10918,11 @@ function CommercialView({
                             <div className="flex items-center gap-2 mt-2 ml-7 text-sm">
                               <span className="text-[10px] font-bold uppercase text-stone-400 shrink-0">Total HT</span>
                               <span className="flex-1 text-right font-semibold text-stone-600">
-                                {totalHt != null ? totalHt.toFixed(2) : "—"}
+                                {totalHt != null ? totalHt.toFixed(2) : "-"}
                               </span>
                               <span className="text-[10px] font-bold uppercase text-stone-400 shrink-0">TTC</span>
                               <span className="flex-1 text-right font-semibold text-stone-600">
-                                {ttc != null ? ttc.toFixed(2) : "—"}
+                                {ttc != null ? ttc.toFixed(2) : "-"}
                               </span>
                             </div>
                             {noteEditingId === item.id && (
@@ -11029,10 +11029,10 @@ function CommercialView({
                                     className={COMMERCIAL_STATUS_ICON_CLASS[item.status]}
                                     title={
                                       item.status === "active"
-                                        ? "Actif — cliquer pour marquer non applicable"
+                                        ? "Actif - cliquer pour marquer non applicable"
                                         : item.status === "inactive"
-                                          ? "Non applicable — cliquer pour marquer en question"
-                                          : "En question — cliquer pour marquer actif"
+                                          ? "Non applicable - cliquer pour marquer en question"
+                                          : "En question - cliquer pour marquer actif"
                                     }
                                   >
                                     <StatusIcon size={18} />
@@ -11066,7 +11066,7 @@ function CommercialView({
                                     key={`unite-${item.id}-${item.unite ?? ""}`}
                                     onChange={(e) => updateItemUnite(item.id, e.target.value)}
                                   >
-                                    <option value="">—</option>
+                                    <option value="">-</option>
                                     {COMMERCIAL_UNITE_OPTIONS.map((u) => (
                                       <option key={u} value={u}>
                                         {u}
@@ -11098,12 +11098,12 @@ function CommercialView({
                                 <td className="py-1.5 pr-3 text-right">
                                   <div className="flex items-center justify-end gap-1">
                                     {priceTooHigh && (
-                                      <span title="Vérifiez : montant supérieur à 100 000 € — pas une erreur de frappe ?">
+                                      <span title="Vérifiez : montant supérieur à 100 000 € - pas une erreur de frappe ?">
                                         <AlertTriangle size={13} className="text-warning-600 shrink-0" />
                                       </span>
                                     )}
                                     <span className="font-semibold text-stone-600">
-                                      {totalHt != null ? totalHt.toFixed(2) : "—"}
+                                      {totalHt != null ? totalHt.toFixed(2) : "-"}
                                     </span>
                                   </div>
                                 </td>
@@ -11124,7 +11124,7 @@ function CommercialView({
                                   </select>
                                 </td>
                                 <td className="py-1.5 pr-3 text-right font-semibold text-stone-600">
-                                  {ttc != null ? ttc.toFixed(2) : "—"}
+                                  {ttc != null ? ttc.toFixed(2) : "-"}
                                 </td>
                                 <td className="py-1.5 pl-1 pr-1">
                                   <button
@@ -11250,7 +11250,7 @@ function CommercialView({
               value={newToitureMateriau}
               onChange={(e) => setNewToitureMateriau(e.target.value as "" | "bac_acier" | "fibrociment")}
             >
-              <option value="">—</option>
+              <option value="">-</option>
               <option value="bac_acier">Bac acier</option>
               <option value="fibrociment">Fibrociment</option>
             </select>
@@ -11263,7 +11263,7 @@ function CommercialView({
                 value={newTemplateId ?? ""}
                 onChange={(e) => setNewTemplateId(e.target.value || null)}
               >
-                <option value="">—</option>
+                <option value="">-</option>
                 {clientTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.variant_label}
@@ -11347,7 +11347,7 @@ function CommercialView({
   );
 }
 
-// ── Vue "Téléphones pro" — liste officielle (feuille "telefon"), visible par tous les rôles ──
+// ── Vue "Téléphones pro" - liste officielle (feuille "telefon"), visible par tous les rôles ──
 type PhoneDirectoryRow = {
   role_label: string;
   phone: string | null;
@@ -11469,7 +11469,7 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
                     <td className="py-2 pr-4 text-stone-400">{i + 1}</td>
                     <td className="py-2 pr-4 font-semibold">
                       {r.role_label}
-                      <span className="block text-[12px] font-medium text-stone-700">{r.holder_name ?? "—"}</span>
+                      <span className="block text-[12px] font-medium text-stone-700">{r.holder_name ?? "-"}</span>
                       {r.note && r.note.toLowerCase() !== r.role_label.toLowerCase() && (
                         <span className="block text-[11px] font-normal text-stone-400">{r.note}</span>
                       )}
@@ -11514,7 +11514,7 @@ function PhoneDirectoryView({ supabase }: { supabase: ReturnType<typeof createCl
 }
 
 /** Liens privés /equipe/<jeton> : chaque équipe ouvre ses lignes Primes & Bonus
- *  (lecture seule) depuis son téléphone. Visible seulement pour rh_admin — la RLS
+ *  (lecture seule) depuis son téléphone. Visible seulement pour rh_admin - la RLS
  *  de team_access_links ne renvoie rien aux autres rôles, le bloc disparaît alors. */
 function TeamAccessLinksCard({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [links, setLinks] = useState<{ team_id: string; token: string; name: string }[]>([]);
@@ -11530,7 +11530,7 @@ function TeamAccessLinksCard({ supabase }: { supabase: ReturnType<typeof createC
         const rows = ((data ?? []) as unknown as { team_id: string; token: string; teams: { name: string } | null }[]).map((r) => ({
           team_id: r.team_id,
           token: r.token,
-          name: r.teams?.name ?? "—",
+          name: r.teams?.name ?? "-",
         }));
         rows.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
         setLinks(rows);
@@ -11603,7 +11603,7 @@ function TeamAccessLinksCard({ supabase }: { supabase: ReturnType<typeof createC
   );
 }
 
-// ── Vue "Registre du personnel" — copie fidèle du Registre unique du personnel ──
+// ── Vue "Registre du personnel" - copie fidèle du Registre unique du personnel ──
 type RegistreRow = {
   id: string;
   employee_id: string | null;
@@ -11638,7 +11638,7 @@ type RegistreEditForm = {
   date_sortie: string;
 };
 
-// EU/EEA/Switzerland nationals don't need a work permit in France — only nationalities
+// EU/EEA/Switzerland nationals don't need a work permit in France - only nationalities
 // outside this list should be flagged as needing a titre de séjour/travail check.
 
 function toRegistreEditForm(r: RegistreRow): RegistreEditForm {
@@ -11758,7 +11758,7 @@ const CURATED_TYPE_CONTRAT_OPTIONS = [
   "Stage",
 ];
 
-// ── Vue "Échéances" — vue d'ensemble des documents/visites à renouveler ─────
+// ── Vue "Échéances" - vue d'ensemble des documents/visites à renouveler ─────
 type NotificationTier = "day" | "week" | "month";
 
 type NotificationRow = {
@@ -11770,7 +11770,7 @@ type NotificationRow = {
   tier: NotificationTier;
 };
 
-/** month/week/day thresholds — an item only ever appears in its most urgent
+/** month/week/day thresholds - an item only ever appears in its most urgent
  *  matching tier, never duplicated across tiers. */
 function notificationTier(dateIso: string): NotificationTier | null {
   const days = daysUntil(dateIso);
@@ -11785,7 +11785,7 @@ function isLeapYear(y: number): boolean {
 }
 
 /** Next occurrence (this year, or next year if already passed) of a
- *  recurring month/day — clamps Feb 29 to Feb 28 on non-leap years. */
+ *  recurring month/day - clamps Feb 29 to Feb 28 on non-leap years. */
 function nextOccurrenceOfMonthDay(mo: number, d: number): string {
   const todayIso = today();
   const thisYear = Number(todayIso.split("-")[0]);
@@ -11802,7 +11802,7 @@ function nextBirthdayIso(dobIso: string): string {
   return nextOccurrenceOfMonthDay(Number(moStr), Number(dStr));
 }
 
-/** Russian pluralization for "года/лет/год" — e.g. 21 год, 22 года, 25 лет. */
+/** Russian pluralization for "года/лет/год" - e.g. 21 год, 22 года, 25 лет. */
 function ruYears(n: number): string {
   const mod10 = n % 10;
   const mod100 = n % 100;
@@ -11815,7 +11815,7 @@ function notificationKey(r: NotificationRow): string {
   return `${r.employeeId}|${r.type}|${r.date}`;
 }
 
-/** Single source of truth for the notification list — called once from
+/** Single source of truth for the notification list - called once from
  *  AdminPage (for the sidebar badge count) and handed down to
  *  NotificationsView as a prop, rather than fetched twice. */
 async function fetchNotificationRows(
@@ -11894,7 +11894,7 @@ async function fetchNotificationRows(
     if (!v.employees || v.employees.status === "terminated" || v.employees.medical_visit_exempt) return;
 
     // A next_visit_date already covered by a confirmed last_visit_date (the
-    // visit happened — e.g. Prevaly's "aptitude" e-mail set it) is stale and
+    // visit happened - e.g. Prevaly's "aptitude" e-mail set it) is stale and
     // must stop nagging, even though the date itself hasn't moved.
     const alreadyDone = !!v.last_visit_date && !!v.next_visit_date && v.last_visit_date >= v.next_visit_date;
     if (v.next_visit_date && !alreadyDone) {
@@ -11918,7 +11918,7 @@ async function fetchNotificationRows(
         rows.push({
           employeeId: v.employee_id,
           employeeName: employeeName(v.employees),
-          type: "Rappel légal — visite médicale (2 ans)",
+          type: "Rappel légal - visite médicale (2 ans)",
           date: legalDeadline,
           tier,
         });
@@ -12017,11 +12017,11 @@ function NotificationsView({
               <InfoNote
                 title="Notifications"
                 text={
-                  "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 2 года (по закону) — и дни рождения сотрудников.\n\n" +
-                  "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз — в самой срочной из подходящих групп.\n\n" +
+                  "Всё, что скоро понадобится сделать: документы, у которых истекает срок действия, ближайшие медосмотры, обязательный повторный медосмотр раз в 2 года (по закону) - и дни рождения сотрудников.\n\n" +
+                  "Список разбит на три группы по срочности: «Сегодня/завтра», «На этой неделе», «В этом месяце». Каждая запись показывается только один раз - в самой срочной из подходящих групп.\n\n" +
                   "Красная точка рядом с «Notifications» в меню слева означает, что появилось что-то новое, чего вы ещё не открывали. Она пропадает, как только вы зайдёте на эту страницу.\n\n" +
-                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз — все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке). Кнопка-глаз на каждой строке отмечает прочитанным/непрочитанным только её одну.\n\n" +
-                  "Кнопка-архив на строке убирает уведомление из списка насовсем (даже если дата/причина ещё актуальна) — например, если вы уже в курсе и разбираетесь с этим. Посмотреть и вернуть архивные можно кнопкой «Archivées» выше таблицы."
+                  "Хотите вернуть точку и напоминание позже? Кликните по слову «Notifications» в меню ещё раз - все текущие уведомления снова станут непрочитанными (это видно по синей точке рядом с именем в списке). Кнопка-глаз на каждой строке отмечает прочитанным/непрочитанным только её одну.\n\n" +
+                  "Кнопка-архив на строке убирает уведомление из списка насовсем (даже если дата/причина ещё актуальна) - например, если вы уже в курсе и разбираетесь с этим. Посмотреть и вернуть архивные можно кнопкой «Archivées» выше таблицы."
                 }
               />
             }
@@ -12182,7 +12182,7 @@ function NotificationsView({
                         {urgency ? (
                           <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>
                         ) : (
-                          "—"
+                          "-"
                         )}
                       </td>
                       <td className="py-2">
@@ -12214,7 +12214,7 @@ function NotificationsView({
   );
 }
 
-// ── Vue "Journal d'audit" — qui a changé quoi, sur Employés/Registre/Paie ──
+// ── Vue "Journal d'audit" - qui a changé quoi, sur Employés/Registre/Paie ──
 type AuditLogRow = {
   id: string;
   entity_type: string;
@@ -12240,7 +12240,7 @@ const AUDIT_ENTITY_LABELS: Record<string, { fr: string; ru: string }> = {
   org_scenarios: { fr: "Scénario d'organigramme", ru: "Сценарий оргструктуры" },
 };
 
-/** Champs lisibles pour le résumé du journal — les champs calculés/techniques
+/** Champs lisibles pour le résumé du journal - les champs calculés/techniques
  *  (БАНК fin, part contrôleur, auteur/date des raisons…) restent dans le détail. */
 const AUDIT_FIELD_LABELS: Record<string, string> = {
   taux_journalier: "Ставка",
@@ -12300,7 +12300,7 @@ function auditSummary(
       .map(([k, v]) => `${AUDIT_FIELD_LABELS[k]} : ${auditValueText(v)}`)
       .join(" · ");
   }
-  return [parts.join(" · "), changes].filter(Boolean).join(" — ");
+  return [parts.join(" · "), changes].filter(Boolean).join(" - ");
 }
 
 const AUDIT_ACTION_LABELS: Record<AuditLogRow["action"], { fr: string; ru: string; badge: string }> = {
@@ -12326,7 +12326,7 @@ function auditChangedFields(row: AuditLogRow): { field: string; before: unknown;
 }
 
 function auditValueText(v: unknown): string {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined) return "-";
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
@@ -12417,7 +12417,7 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
                 title="Journal d'audit"
                 text={
                   "Кто и когда изменил данные в трёх самых чувствительных разделах: Employés, Registre du personnel, Paie.\n\n" +
-                  "Записи создаются автоматически на уровне базы данных при каждом изменении — их невозможно случайно " +
+                  "Записи создаются автоматически на уровне базы данных при каждом изменении - их невозможно случайно " +
                   "забыть добавить в новом коде. Видно только rh_admin.\n\n" +
                   "«Подробнее» показывает изменённые поля (было → стало) для правок, или полный снимок записи для " +
                   "создания/удаления."
@@ -12427,8 +12427,8 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
           />
         </div>
         <p className="text-xs text-stone-400 mb-3">
-          Qui a modifié quoi, et quand — limité aux 300 dernières actions.{" "}
-          <span className="opacity-70">/ Кто и что изменил — последние 300 записей.</span>
+          Qui a modifié quoi, et quand - limité aux 300 dernières actions.{" "}
+          <span className="opacity-70">/ Кто и что изменил - последние 300 записей.</span>
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <div>
@@ -12555,7 +12555,7 @@ function AuditLogView({ supabase }: { supabase: ReturnType<typeof createClient> 
               </span>
               <span className="text-stone-500">{auditEntityLabel(detailRow.entity_type).fr}</span>
               <span className="text-stone-400">·</span>
-              <span className="text-stone-500">{detailRow.actor_email ?? "—"}</span>
+              <span className="text-stone-500">{detailRow.actor_email ?? "-"}</span>
               <span className="text-stone-400">·</span>
               <span className="text-stone-500">{new Date(detailRow.created_at).toLocaleString("fr-FR")}</span>
             </div>
@@ -12622,7 +12622,7 @@ function DashEmployeeRow({ e, todayIso }: { e: DashEmployee; todayIso: string })
         </span>
       </td>
       <td className="py-1.5 pr-4">{formatYearsMonths(tenureMonths)}</td>
-      <td className="py-1.5 pr-4">{ageMonths !== null ? Math.floor(ageMonths / 12) : "—"}</td>
+      <td className="py-1.5 pr-4">{ageMonths !== null ? Math.floor(ageMonths / 12) : "-"}</td>
       <td className="py-1.5 pr-4">{fmtDate(e.hire_date)}</td>
       <td className="py-1.5 pr-4">
         <Bi fr={STATUS_LABELS[e.status]} ru={STATUS_LABELS_RU[e.status]} />
@@ -12631,7 +12631,7 @@ function DashEmployeeRow({ e, todayIso }: { e: DashEmployee; todayIso: string })
   );
 }
 
-/** The 4 quick filters asked for — a subset of HR_GROUPS, not a parallel list, so they can't drift apart. */
+/** The 4 quick filters asked for - a subset of HR_GROUPS, not a parallel list, so they can't drift apart. */
 const DASH_FILTER_KEYS: HrGroupKey[] = ["all", "chantier", "bureau", "chef"];
 
 type DashPeriodMode = "rolling12" | "all" | "year" | "quarter" | "custom";
@@ -12652,7 +12652,7 @@ const DASH_MONTH_OPTIONS: { value: number; fr: string; ru: string }[] = [
 ];
 
 /**
- * Fully custom dropdown — not a native <select> — because the browser/OS
+ * Fully custom dropdown - not a native <select> - because the browser/OS
  * draws its own open-list chrome (row height, the selected-item checkmark)
  * and none of that is reachable from CSS. Same pill look as the period
  * chips for the closed state; the open list is our own markup so every
@@ -12764,11 +12764,11 @@ function DashboardsView({
       }
 
       // The registre is the authoritative source (0048/0056 keep it in sync
-      // on hire/terminate) — employees.status can still lag behind a rehire
+      // on hire/terminate) - employees.status can still lag behind a rehire
       // in older records (see e.g. HRYTSENKO this session), which would
       // otherwise make the dashboard double-count a comeback as a real
       // departure. An open episode (no date_sortie) overrides a stale
-      // "terminated" status for dashboard purposes only — it never writes
+      // "terminated" status for dashboard purposes only - it never writes
       // back to the employees row itself.
       const withEpisodes = ((data as unknown as DashEmployee[]) ?? []).map((e) => {
         const episodes = episodesByEmployee.get(e.id) ?? [];
@@ -12786,7 +12786,7 @@ function DashboardsView({
 
   const todayIso = today();
 
-  // Always the full breakdown, regardless of the filter chips below — narrowing a breakdown table by one of its own rows would be self-defeating.
+  // Always the full breakdown, regardless of the filter chips below - narrowing a breakdown table by one of its own rows would be self-defeating.
   const groupRows = useMemo(
     () =>
       HR_GROUPS.map((g) => {
@@ -12871,7 +12871,7 @@ function DashboardsView({
     if (periodMode === "quarter" && periodQuarter) return `T${periodQuarter.quarter} ${periodQuarter.year}`;
     if (periodMode === "all") return "Tout / Всё время";
     if (periodMode === "custom" && appliedCustomRange) {
-      return `${isoToDmy(appliedCustomRange.startIso.slice(0, 7) + "-01").slice(3)} — ${isoToDmy(appliedCustomRange.endIso.slice(0, 7) + "-01").slice(3)}`;
+      return `${isoToDmy(appliedCustomRange.startIso.slice(0, 7) + "-01").slice(3)} - ${isoToDmy(appliedCustomRange.endIso.slice(0, 7) + "-01").slice(3)}`;
     }
     return "12 mois / 12 мес.";
   }, [periodMode, periodYear, periodQuarter, appliedCustomRange]);
@@ -12903,7 +12903,7 @@ function DashboardsView({
         <p className="text-sm text-stone-500 mt-1">
           <Bi
             fr="Ancienneté, âge et turnover, calculés en direct à partir des dates d'embauche, de naissance et de fin de contrat."
-            ru="Стаж, возраст и текучесть — считаются в реальном времени по датам найма, рождения и увольнения."
+            ru="Стаж, возраст и текучесть - считаются в реальном времени по датам найма, рождения и увольнения."
           />
         </p>
       </div>
@@ -12946,7 +12946,7 @@ function DashboardsView({
           } gap-2 px-3 py-1.5`}
         >
           <span className="text-xl font-extrabold leading-none">
-            {filteredStats.turnoverRate !== null ? `${filteredStats.turnoverRate.toFixed(0)}%` : "—"}
+            {filteredStats.turnoverRate !== null ? `${filteredStats.turnoverRate.toFixed(0)}%` : "-"}
           </span>
           <Bi fr="turnover (12 mois)" ru="текучесть (12 мес)" />
         </span>
@@ -13045,7 +13045,7 @@ function DashboardsView({
                     <td className="py-2 pr-4">{formatYearsMonths(stats.avgAgeMonths)}</td>
                     <td className="py-2 pr-4">{stats.hires12mo}</td>
                     <td className="py-2 pr-4">{stats.departures12mo}</td>
-                    <td className="py-2 pr-4">{stats.turnoverRate !== null ? `${stats.turnoverRate.toFixed(1)}%` : "—"}</td>
+                    <td className="py-2 pr-4">{stats.turnoverRate !== null ? `${stats.turnoverRate.toFixed(1)}%` : "-"}</td>
                   </tr>
                   {expanded && (
                     <tr className="border-t border-stone-100 bg-stone-50/60">
@@ -13189,7 +13189,7 @@ function DashboardsView({
               <DashDropdown value={customFromMonth} onChange={setCustomFromMonth} width={200} options={dashMonthDropdownOptions} />
               <DashDropdown value={customFromYear} onChange={setCustomFromYear} width={90} options={manualYearDropdownOptions} />
             </div>
-            <span className="text-stone-400">—</span>
+            <span className="text-stone-400">-</span>
             <div className="flex items-center gap-1.5">
               <span className="text-stone-500 shrink-0">по</span>
               <DashDropdown value={customToMonth} onChange={setCustomToMonth} width={200} options={dashMonthDropdownOptions} />
@@ -13206,7 +13206,7 @@ function DashboardsView({
             type="button"
             disabled={rangeResult.hires.length === 0}
             className="rounded-xl border border-stone-100 p-3 text-left hover:bg-stone-50 disabled:cursor-default"
-            onClick={() => setDrillDown({ title: `Recrutements — ${periodLabel}`, employees: rangeResult.hires })}
+            onClick={() => setDrillDown({ title: `Recrutements - ${periodLabel}`, employees: rangeResult.hires })}
           >
             <p className="text-xs font-bold uppercase tracking-wide text-stone-400">Нанято</p>
             <p className="text-3xl font-extrabold text-primary-600">{rangeResult.hires.length}</p>
@@ -13216,7 +13216,7 @@ function DashboardsView({
             type="button"
             disabled={rangeResult.departures.length === 0}
             className="rounded-xl border border-stone-100 p-3 text-left hover:bg-stone-50 disabled:cursor-default"
-            onClick={() => setDrillDown({ title: `Départs — ${periodLabel}`, employees: rangeResult.departures })}
+            onClick={() => setDrillDown({ title: `Départs - ${periodLabel}`, employees: rangeResult.departures })}
           >
             <p className="text-xs font-bold uppercase tracking-wide text-stone-400">Ушло</p>
             <p className="text-3xl font-extrabold text-error-600">{rangeResult.departures.length}</p>
@@ -13284,7 +13284,7 @@ function DashboardsView({
                   className="flex-1 bg-success-600 rounded-t hover:bg-success-700 transition-colors disabled:opacity-30 disabled:cursor-default"
                   style={{ height: `${(m.hires.length / maxRangeTrend) * 100}%`, minHeight: m.hires.length > 0 ? 2 : 0 }}
                   title={`${m.label} : +${m.hires.length}`}
-                  onClick={() => setDrillDown({ title: `Recrutements — ${m.label}`, employees: m.hires })}
+                  onClick={() => setDrillDown({ title: `Recrutements - ${m.label}`, employees: m.hires })}
                 />
                 <button
                   type="button"
@@ -13295,7 +13295,7 @@ function DashboardsView({
                     minHeight: m.departures.length > 0 ? 2 : 0,
                   }}
                   title={`${m.label} : -${m.departures.length}`}
-                  onClick={() => setDrillDown({ title: `Départs — ${m.label}`, employees: m.departures })}
+                  onClick={() => setDrillDown({ title: `Départs - ${m.label}`, employees: m.departures })}
                 />
               </div>
               <span className="text-[0.6rem] text-stone-400 whitespace-nowrap">{m.label.slice(5)}</span>
@@ -13343,7 +13343,7 @@ function DashboardsView({
   );
 }
 
-/** Same calendar anniversary N years later/earlier (not a fixed day-count —
+/** Same calendar anniversary N years later/earlier (not a fixed day-count -
  *  365×N drifts by a day whenever a Feb 29 falls inside the span). */
 function addYearsIsoLocal(iso: string, years: number): string {
   const d = new Date(iso + "T00:00:00Z");
@@ -13388,7 +13388,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  // Curated lists only — a row's own pre-existing value is appended if it
+  // Curated lists only - a row's own pre-existing value is appended if it
   // isn't already covered, so opening the edit modal on old (messy) data
   // never silently blanks it out. We deliberately don't merge in every
   // distinct value ever saved to this column: that's what let spelling
@@ -13521,7 +13521,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
               title="Registre du personnel"
               text={
                 "Официальный реестр личного состава (Registre Unique du Personnel), обязательный по французскому законодательству: даты приёма и увольнения, гражданство и другие сведения по каждому сотруднику.\n\n" +
-                "Даты приёма из этого реестра используются также в разделе «Dossier salarié» — например, чтобы подставить дату приёма на работу в название загруженного трудового договора."
+                "Даты приёма из этого реестра используются также в разделе «Dossier salarié» - например, чтобы подставить дату приёма на работу в название загруженного трудового договора."
               }
             />
           </div>
@@ -13530,7 +13530,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
           </button>
         </div>
         <p className="text-xs text-stone-400 mb-4">
-          Copie fidèle du registre — un enregistrement par embauche (un salarié réembauché
+          Copie fidèle du registre - un enregistrement par embauche (un salarié réembauché
           apparaît plusieurs fois). Les lignes surlignées correspondent aux salariés de
           nationalité étrangère.
         </p>
@@ -13629,7 +13629,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                       value={editForm[f.key]}
                       onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
                     >
-                      <option value="">—</option>
+                      <option value="">-</option>
                       {registreSelectOptions(f.key).map((opt) => (
                         <option key={opt} value={opt}>
                           {opt}
@@ -13687,7 +13687,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-bold truncate">{r.nom_prenom}</p>
-                      <p className="text-xs text-stone-400">N° {r.numero ?? "—"}</p>
+                      <p className="text-xs text-stone-400">N° {r.numero ?? "-"}</p>
                     </div>
                     <div className="flex shrink-0">
                       {r.employee_id && (
@@ -13704,15 +13704,15 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm mt-2">
                     <p><span className="text-stone-400">Entrée: </span>{fmtDate(r.date_entree)}</p>
                     <p><span className="text-stone-400">Sortie: </span>{fmtDate(r.date_sortie)}</p>
-                    <p><span className="text-stone-400">Nationalité: </span>{r.nationalite ?? "—"}</p>
+                    <p><span className="text-stone-400">Nationalité: </span>{r.nationalite ?? "-"}</p>
                     <p><span className="text-stone-400">Naissance: </span>{fmtDate(r.date_naissance)}</p>
-                    <p><span className="text-stone-400">Sexe: </span>{r.sexe ?? "—"}</p>
-                    <p><span className="text-stone-400">Contrat: </span>{r.type_contrat ?? "—"}</p>
-                    <p className="col-span-2"><span className="text-stone-400">Emploi: </span>{r.emploi ?? "—"}</p>
-                    <p><span className="text-stone-400">Qualification: </span>{r.qualification ?? "—"}</p>
-                    <p><span className="text-stone-400">Temps partiel: </span>{r.temps_partiel ?? "—"}</p>
-                    <p><span className="text-stone-400">Type titre: </span>{r.type_titre ?? "—"}</p>
-                    <p><span className="text-stone-400">N° titre: </span>{r.numero_titre ?? "—"}</p>
+                    <p><span className="text-stone-400">Sexe: </span>{r.sexe ?? "-"}</p>
+                    <p><span className="text-stone-400">Contrat: </span>{r.type_contrat ?? "-"}</p>
+                    <p className="col-span-2"><span className="text-stone-400">Emploi: </span>{r.emploi ?? "-"}</p>
+                    <p><span className="text-stone-400">Qualification: </span>{r.qualification ?? "-"}</p>
+                    <p><span className="text-stone-400">Temps partiel: </span>{r.temps_partiel ?? "-"}</p>
+                    <p><span className="text-stone-400">Type titre: </span>{r.type_titre ?? "-"}</p>
+                    <p><span className="text-stone-400">N° titre: </span>{r.numero_titre ?? "-"}</p>
                   </div>
                 </div>
               );
@@ -13742,18 +13742,18 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
                       key={r.id}
                       className={`border-t border-stone-100 ${foreign ? "bg-warning-50" : ""}`}
                     >
-                      <td className="py-2 pr-4 text-stone-400 whitespace-nowrap">{r.numero ?? "—"}</td>
+                      <td className="py-2 pr-4 text-stone-400 whitespace-nowrap">{r.numero ?? "-"}</td>
                       <td className="py-2 pr-4 font-bold whitespace-nowrap">{r.nom_prenom}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{fmtDate(r.date_entree)}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.nationalite ?? "-"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{fmtDate(r.date_naissance)}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "—"}</td>
-                      <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.qualification ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.type_titre ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.numero_titre ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.type_contrat ?? "—"}</td>
-                      <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "—"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.sexe ?? "-"}</td>
+                      <td className="py-2 pr-4 min-w-[16rem]">{r.emploi ?? "-"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.qualification ?? "-"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.type_titre ?? "-"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.numero_titre ?? "-"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.type_contrat ?? "-"}</td>
+                      <td className="py-2 pr-4 whitespace-nowrap">{r.temps_partiel ?? "-"}</td>
                       <td className="py-2 pr-4 whitespace-nowrap">{fmtDate(r.date_sortie)}</td>
                       <td className="py-2 pr-2 whitespace-nowrap">
                         {r.employee_id && (
@@ -13790,7 +13790,7 @@ function RegistreView({ supabase }: { supabase: ReturnType<typeof createClient> 
   );
 }
 
-// ── Vue "Organigramme" — dérivée en direct des rôles bureau et des équipes ──
+// ── Vue "Organigramme" - dérivée en direct des rôles bureau et des équipes ──
 function orgTileLabel(e: OrgEmployee): string {
   const suffix = [e.badge_emoji, e.can_substitute ? "🔁" : null].filter(Boolean).join(" ");
   return suffix ? `${employeeName(e)} ${suffix}` : employeeName(e);
@@ -14131,7 +14131,7 @@ function OrgCandidatesSection({
   );
   const teamOptions = useMemo(
     () => [
-      { value: "", label: "—" },
+      { value: "", label: "-" },
       ...chantierTeams.map((t) => ({ value: t.id, label: t.name })),
       ...Array.from(new Set(candidates.map((c) => c.team_label).filter((l): l is string => !!l))).map((l) => ({
         value: `label:${l}`,
@@ -14151,7 +14151,7 @@ function OrgCandidatesSection({
     <div className="card mt-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <p className="font-bold">
-          Кандидаты — планируемые сотрудники{" "}
+          Кандидаты - планируемые сотрудники{" "}
           <span className="font-normal text-stone-400">({activeCount})</span>
         </p>
         {!readOnly && (
@@ -14162,7 +14162,7 @@ function OrgCandidatesSection({
         )}
       </div>
       <p className="mb-3 text-xs text-stone-400">
-        Рассматриваемые люди по должностям — существующая или новая должность, ожидаемые даты, статус.
+        Рассматриваемые люди по должностям - существующая или новая должность, ожидаемые даты, статус.
       </p>
 
       {error && (
@@ -14181,7 +14181,7 @@ function OrgCandidatesSection({
             <label className="text-[10px] font-bold uppercase text-stone-400">
               Должность
               <select className="input mt-1 normal-case" value={draft.positionChoice} onChange={(e) => setDraft({ ...draft, positionChoice: e.target.value })}>
-                <option value="">—</option>
+                <option value="">-</option>
                 {positionOptions.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -14297,9 +14297,9 @@ function OrgCandidatesSection({
                       <tr key={c.id} className={`border-t border-stone-100 align-top ${c.status === "rejected" ? "opacity-50" : ""}`}>
                         <td className="py-1.5 pr-2 font-semibold">
                           {readOnly ? (
-                            c.full_name || "—"
+                            c.full_name || "-"
                           ) : (
-                            <input className="input text-xs" defaultValue={c.full_name ?? ""} key={`n-${c.id}-${c.full_name ?? ""}`} placeholder="—"
+                            <input className="input text-xs" defaultValue={c.full_name ?? ""} key={`n-${c.id}-${c.full_name ?? ""}`} placeholder="-"
                               onBlur={(e) => e.target.value.trim() !== (c.full_name ?? "") && updateCandidate(c.id, { full_name: e.target.value.trim() || null })} />
                           )}
                         </td>
@@ -14331,7 +14331,7 @@ function OrgCandidatesSection({
                         </td>
                         <td className="py-1.5 pr-2 whitespace-nowrap">
                           {readOnly ? (
-                            teamName(c.team_id) || c.team_label || "—"
+                            teamName(c.team_id) || c.team_label || "-"
                           ) : (
                             <SelectWithNew
                               className="input text-xs"
@@ -14353,7 +14353,7 @@ function OrgCandidatesSection({
                         ))}
                         <td className="py-1.5 pr-2">
                           {readOnly ? (
-                            c.phone || "—"
+                            c.phone || "-"
                           ) : (
                             <input className="input text-xs" defaultValue={c.phone ?? ""} key={`p-${c.id}-${c.phone ?? ""}`}
                               onBlur={(e) => e.target.value.trim() !== (c.phone ?? "") && updateCandidate(c.id, { phone: e.target.value.trim() || null })} />
@@ -14361,7 +14361,7 @@ function OrgCandidatesSection({
                         </td>
                         <td className="py-1.5 pr-2" style={{ minWidth: "10rem" }}>
                           {readOnly ? (
-                            c.notes || "—"
+                            c.notes || "-"
                           ) : (
                             <input className="input text-xs" defaultValue={c.notes ?? ""} key={`o-${c.id}-${c.notes ?? ""}`}
                               onBlur={(e) => e.target.value.trim() !== (c.notes ?? "") && updateCandidate(c.id, { notes: e.target.value.trim() || null })} />
@@ -14372,7 +14372,7 @@ function OrgCandidatesSection({
                             {readOnly
                               ? f.field_type === "date"
                                 ? fmtDate(c.custom_data?.[f.id])
-                                : c.custom_data?.[f.id] || "—"
+                                : c.custom_data?.[f.id] || "-"
                               : customInput(f, c.custom_data?.[f.id] ?? "", (v) => updateCandidate(c.id, { custom_data: { ...c.custom_data, [f.id]: v } }), f.field_type !== "date")}
                           </td>
                         ))}
@@ -14549,7 +14549,7 @@ function OrganigrammeView({
     [bureauColumns, bureauEmployees]
   );
   // Bureau staff with a "équipe rattachée" show up in that team's column too
-  // — same as the Effectif list — without joining chantierEmployees itself
+  // - same as the Effectif list - without joining chantierEmployees itself
   // (payroll/pointage/turnover stats stay untouched, this is display-only).
   const attachedBureau = useMemo(
     () => bureauEmployees.filter((e) => e.secondary_team_id),
@@ -14610,7 +14610,7 @@ function OrganigrammeView({
             title="Organigramme"
             text={
               "Оргструктура компании: офис (Bureau) сверху, бригады на стройке (Chantier) ниже.\n\n" +
-              "Перетаскивайте карточки, чтобы менять порядок внутри колонки. В бригадах можно нажать на карточку сотрудника, чтобы назначить его бригадиром (корона) или снять — то же самое можно сделать в разделе «Employés», это один и тот же параметр."
+              "Перетаскивайте карточки, чтобы менять порядок внутри колонки. В бригадах можно нажать на карточку сотрудника, чтобы назначить его бригадиром (корона) или снять - то же самое можно сделать в разделе «Employés», это один и тот же параметр."
             }
           />
         </div>
@@ -14659,7 +14659,7 @@ function OrganigrammeView({
 
       <div className="card mb-4">
         <p className="font-bold">
-          Chantier — par équipe <span className="ml-1 font-normal text-stone-400">Стройка — по бригадам</span>
+          Chantier - par équipe <span className="ml-1 font-normal text-stone-400">Стройка - по бригадам</span>
         </p>
         <p className="text-xs text-stone-400 mb-3">
           Glissez-déposez une personne pour changer son ordre dans son équipe. Cliquez sur une
@@ -14706,7 +14706,7 @@ function OrganigrammeView({
       </>
       )}
 
-      {/* Список кандидатов — только в режиме «План» (в «Сейчас» показываем лишь реальный состав). */}
+      {/* Список кандидатов - только в режиме «План» (в «Сейчас» показываем лишь реальный состав). */}
       {(showPlan || plan.schemaReady === false) && (
         <OrgCandidatesSection supabase={supabase} teams={teams} readOnly={readOnly} />
       )}
@@ -14714,7 +14714,7 @@ function OrganigrammeView({
   );
 }
 
-/** Colored square tile — hierarchy tier is conveyed by color rather than by
+/** Colored square tile - hierarchy tier is conveyed by color rather than by
  *  which column it's in: boss (brand blue) > bureau staff (amber) > team lead
  *  (green) > regular team member (plain), matching how the org chart is read
  *  at a glance. */
@@ -14761,7 +14761,7 @@ function OrgColumn({
   /** Ключ цвета блока (как в «Схеме компании»); без него заголовок тёмный. */
   headerColor?: string;
   employees: OrgEmployee[];
-  /** Перетаскивание самой колонки (блока) за заголовок — меняет порядок блоков. */
+  /** Перетаскивание самой колонки (блока) за заголовок - меняет порядок блоков. */
   headerDnd?: { onDragStart: () => void; onDragEnd: () => void; onDragOver: () => void; onDrop: () => void; isOver: boolean };
   chefId?: string | null;
   /** When provided, tiles become drag-and-drop reorderable within this column. */
@@ -14833,7 +14833,7 @@ function OrgColumn({
       </div>
       {employees.length === 0 ? (
         <div className="rounded-lg border-2 border-error-600 bg-error-600 px-2.5 py-2 text-center text-xs font-bold text-white">
-          —
+          -
         </div>
       ) : (
         employees.map((e, i) => (
@@ -14910,7 +14910,7 @@ function OrgColumn({
   );
 }
 
-// ── Vue "Cours de français" — présence par séance ──────────────────────────
+// ── Vue "Cours de français" - présence par séance ──────────────────────────
 type FrenchStudent = { employee_id: string; employees: { first_name: string; last_name: string } };
 type FrenchSession = { id: string; session_date: string };
 type FrenchAttendance = {
@@ -15147,8 +15147,8 @@ function FrancaisView({ supabase }: { supabase: ReturnType<typeof createClient> 
   );
 }
 
-/** Null-safe jj/mm/aaaa for display — falls back to the raw text if it isn't an ISO date. */
-function fmtDate(iso: string | null | undefined, fallback = "—"): string {
+/** Null-safe jj/mm/aaaa for display - falls back to the raw text if it isn't an ISO date. */
+function fmtDate(iso: string | null | undefined, fallback = "-"): string {
   if (!iso) return fallback;
   return isoToDmy(iso) || iso;
 }
@@ -15158,7 +15158,7 @@ function formatDateShortDMY(iso: string): string {
   return `${d}/${m}/${y}`;
 }
 
-// ── Vue "Paie" — table de saisie net→brut (repas → HS+25% → HS+50% → prime) ──
+// ── Vue "Paie" - table de saisie net→brut (repas → HS+25% → HS+50% → prime) ──
 type PaieEmployee = {
   id: string;
   first_name: string;
@@ -15177,7 +15177,7 @@ type PaieEmployee = {
 };
 
 /** FOP (auto-entrepreneur) contractors like Kirichok Kateryna aren't payroll
- *  employees — their compensation is worked out entirely outside this system,
+ *  employees - their compensation is worked out entirely outside this system,
  *  so their row is excluded from every formula/bulk-apply/import/sync path. */
 function PaieEmployeeName({
   employee: e,
@@ -15246,7 +15246,7 @@ function RaisonButton({
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const left = Math.max(4, rect.right - RAISON_POPOVER_WIDTH);
-    // Внизу страницы окно не помещается — открываем ВВЕРХ и ограничиваем высоту видимой областью.
+    // Внизу страницы окно не помещается - открываем ВВЕРХ и ограничиваем высоту видимой областью.
     const below = window.innerHeight - rect.bottom - 16;
     const above = rect.top - 16;
     if (below >= 300 || below >= above) setPos({ top: rect.bottom + 4, left, maxHeight: Math.max(180, below) });
@@ -15261,7 +15261,7 @@ function RaisonButton({
         onClick={onToggle}
         title={
           value
-            ? `Причина: ${value}${authorLine ? `\n— ${authorLine}` : ""}`
+            ? `Причина: ${value}${authorLine ? `\n- ${authorLine}` : ""}`
             : "Ajouter une raison / Добавить причину"
         }
         className={`absolute -top-1.5 -right-1.5 rounded-full p-0.5 ${value ? activeColorClass : "bg-stone-200 text-stone-500"}`}
@@ -15312,7 +15312,7 @@ const PENALTY_SEVERITY_CLASS: Record<string, string> = {
 
 /** Быстрый выбор штрафов контролёра из справочника (lib/payroll/penalties.ts) прямо
  *  из ячейки « Штраф » : клик по пункту добавляет сумму ÷ 3 к ячейке и подробную строку
- *  (код, этап, описание, расчёт) в комментарий. Окно остаётся открытым — можно отметить
+ *  (код, этап, описание, расчёт) в комментарий. Окно остаётся открытым - можно отметить
  *  несколько пунктов подряд. Тот же портал, что RaisonButton (overflow-x-auto обрезает). */
 function PenaltyPickerButton({
   onPick,
@@ -15341,7 +15341,7 @@ function PenaltyPickerButton({
     if (!isOpen || !btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
     const left = Math.min(Math.max(4, rect.left), window.innerWidth - POPOVER_WIDTH - 8);
-    // Внизу страницы окно не помещается — открываем его ВВЕРХ от кнопки и ограничиваем высоту
+    // Внизу страницы окно не помещается - открываем его ВВЕРХ от кнопки и ограничиваем высоту
     // видимой областью (с отступом от края), иначе список уезжает за экран.
     const below = window.innerHeight - rect.bottom - 16;
     const above = rect.top - 16;
@@ -15355,7 +15355,7 @@ function PenaltyPickerButton({
   }, [search]);
 
   function unitText(c: PenaltyCatalogItem) {
-    if (c.unit === "range") return `${c.amount}–${c.amountMax} €`;
+    if (c.unit === "range") return `${c.amount}-${c.amountMax} €`;
     if (c.unit === "per_piece") return `${c.amount} €/шт`;
     if (c.unit === "per_day") return `${c.amount} €/день`;
     return `${c.amount} €`;
@@ -15413,19 +15413,19 @@ function PenaltyPickerButton({
                   value={search}
                   onChange={(ev) => setSearch(ev.target.value)}
                 />
-                <label className="flex items-center gap-1 text-[11px] text-stone-500" title="Суммы справочника — на команду из 3 человек">
+                <label className="flex items-center gap-1 text-[11px] text-stone-500" title="Суммы справочника - на команду из 3 человек">
                   ÷
                   <input className="input px-1 py-1 text-xs" style={{ width: "2.5rem" }} value={divisor} onChange={(ev) => setDivisor(ev.target.value)} />
                 </label>
               </div>
               <input
                 className="input mt-1.5 w-full text-xs px-2 py-1.5"
-                placeholder="Объект (необязательно — попадёт в комментарий)"
+                placeholder="Объект (необязательно - попадёт в комментарий)"
                 value={site}
                 onChange={(ev) => setSite(ev.target.value)}
               />
               {siteSuggestions.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1" title="Объекты команды из планинга — клик подставляет название">
+                <div className="mt-1 flex flex-wrap gap-1" title="Объекты команды из планинга - клик подставляет название">
                   {siteSuggestions.slice(0, 14).map((name) => (
                     <button
                       key={name}
@@ -15444,7 +15444,7 @@ function PenaltyPickerButton({
                 {items.map((c) => (
                   <div key={c.code} className="flex items-center gap-2 border-b border-stone-100 px-2 py-1.5 text-xs">
                     <span className="w-8 shrink-0 font-mono text-stone-500">{c.code}</span>
-                    <span className="min-w-0 flex-1" title={c.description + (c.note ? ` — ${c.note}` : "")}>
+                    <span className="min-w-0 flex-1" title={c.description + (c.note ? ` - ${c.note}` : "")}>
                       <span className="font-semibold">{c.stage}</span>
                       {c.severity && <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-semibold ${PENALTY_SEVERITY_CLASS[c.severity] ?? ""}`}>{c.severity}</span>}
                       <span className="block truncate text-[11px] text-stone-500">{c.description}</span>
@@ -15511,7 +15511,7 @@ function PenaltyPickerButton({
 }
 
 /** Bouton + popover pour saisir/corriger manuellement le solde de départ du
- *  БАНК 3000 (banqueAjustementManuel) — sert notamment à amorcer le solde
+ *  БАНК 3000 (banqueAjustementManuel) - sert notamment à amorcer le solde
  *  déjà accumulé avant que cette table n'existe, pour un salarié donné. Vide
  *  = reprendre automatiquement la fin du mois précédent (comportement par
  *  défaut, jamais retapé à la main). Même portail que RaisonButton, pour la
@@ -15563,7 +15563,7 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
               onClick={(ev) => ev.stopPropagation()}
             >
               <p className="mb-1.5 text-xs font-semibold text-stone-500">
-                <Bi fr="БАНК 3000 — solde de départ" ru="БАНК 3000 — стартовый баланс" />
+                <Bi fr="БАНК 3000 - solde de départ" ru="БАНК 3000 - стартовый баланс" />
               </p>
               <input
                 type="number"
@@ -15576,7 +15576,7 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
               <p className="mt-1.5 text-[10px] text-stone-400">
                 <Bi
                   fr="Vide = reprend automatiquement la fin du mois précédent. Rempli = remplace ce report pour ce mois."
-                  ru="Пусто — берётся конец прошлого месяца автоматически. Заполнено — заменяет перенос для этого месяца."
+                  ru="Пусто - берётся конец прошлого месяца автоматически. Заполнено - заменяет перенос для этого месяца."
                 />
               </p>
               <div className="mt-1.5 flex justify-end">
@@ -15593,9 +15593,9 @@ function BanqueAdjustButton({ value, onChange }: { value: string; onChange: (val
 }
 
 /** Commentaire libre sur un jour de la grille "Primes & Bonus" + montant
- *  optionnel (week-end uniquement — voir showAmount) qui alimente BONUS
+ *  optionnel (week-end uniquement - voir showAmount) qui alimente BONUS
  *  équipe. Pas d'icône permanente (jugée "sale" visuellement sur ~30
- *  colonnes) — clic droit n'importe où dans la case pour ouvrir, un simple
+ *  colonnes) - clic droit n'importe où dans la case pour ouvrir, un simple
  *  petit triangle en coin indique qu'un commentaire/montant existe déjà.
  *  Sauvegarde seulement à la fermeture (pas à chaque frappe). */
 function DayCell({
@@ -15636,7 +15636,7 @@ function DayCell({
   onSaveNote: (comment: string, amount: string) => void;
   /** Le <select> est déjà bloqué par le <fieldset disabled> ambiant (voir
    *  PayrollExtrasView), mais le clic droit n'est PAS un contrôle de
-   *  formulaire natif — fieldset ne le désactive pas, ni le portail de la
+   *  formulaire natif - fieldset ne le désactive pas, ni le portail de la
    *  popover (hors de l'arbre DOM du fieldset). Doit donc être coupé
    *  explicitement ici pour rh_readonly. */
   readOnly?: boolean;
@@ -15677,7 +15677,7 @@ function DayCell({
         onChange={(ev) => onStatusChange(ev.target.value)}
         title={
           hasContent
-            ? `${worked ? (halfDay ? "Demi-journée" : "Présent") : absenceCode ? absenceTypeLabel : "Absent"} — 💬 ${comment}${amount != null ? ` (${amount}€)` : ""}${authorLine ? ` [${authorLine}]` : ""} (clic droit pour modifier)`
+            ? `${worked ? (halfDay ? "Demi-journée" : "Présent") : absenceCode ? absenceTypeLabel : "Absent"} - 💬 ${comment}${amount != null ? ` (${amount}€)` : ""}${authorLine ? ` [${authorLine}]` : ""} (clic droit pour modifier)`
             : worked
               ? halfDay
                 ? "Demi-journée / Полдня (clic droit : commentaire)"
@@ -15786,7 +15786,7 @@ const PAIE_TEAM_COLOR_PALETTE = [
 type PaieGroupedRow = { employee: PaieEmployee; groupKey: string; groupLabel: string; colorClass: string };
 
 /** Bureau first, then Contrôle/Formation staff, then chantier teams in numeric
- *  order — mirrors the reference org sheet's layout so RH can scan the same
+ *  order - mirrors the reference org sheet's layout so RH can scan the same
  *  way they're used to, with a colored band per team. */
 function groupPaieEmployees(employees: PaieEmployee[]): PaieGroupedRow[] {
   const bureauCore = employees.filter(
@@ -15840,7 +15840,7 @@ function groupPaieEmployees(employees: PaieEmployee[]): PaieGroupedRow[] {
   return rows;
 }
 
-/** Uppercased, accent-stripped, sorted word list — lets "CIOBANU Valeriu" match
+/** Uppercased, accent-stripped, sorted word list - lets "CIOBANU Valeriu" match
  *  "Valeriu CIOBANU" or extra whitespace/case differences from a pasted sheet. */
 function normalizePaieNameWords(s: string): string[] {
   return s
@@ -15884,7 +15884,7 @@ function permuteWords(words: string[]): string[][] {
   return result;
 }
 
-// Known name variants that a Levenshtein distance can't safely bridge —
+// Known name variants that a Levenshtein distance can't safely bridge -
 // nicknames ("SASHA" for "ALEXANDR") aren't a spelling typo of each other,
 // and some transliteration pairs (LEVCHUK/LEVCIUC) differ by more letters
 // than is safe to allow generically. Extend as new confirmed pairs come up;
@@ -15919,7 +15919,7 @@ function wordListDistance(a: string[], b: string[]): number {
 }
 
 // Falls back to approximate matching when no employee has the exact same
-// word set — covers transliteration/spelling variants between the pasted
+// word set - covers transliteration/spelling variants between the pasted
 // sheet and the database (e.g. "KOBZAR" vs "COBZARI", "ILIN" vs "ILIIN").
 // Only ever returns a match that's unambiguous (no other employee comes
 // nearly as close), since this assigns real payroll amounts.
@@ -15933,7 +15933,7 @@ function fuzzyMatchPayableEmployee(nameWords: string[], payableEmployees: PaieEm
   }
 
   // A single pasted word (e.g. just a first or last name) matching exactly
-  // one word of exactly one employee's full name — still requires the hit
+  // one word of exactly one employee's full name - still requires the hit
   // to be unique across the whole payable list.
   if (nameWords.length === 1) {
     const word = nameWords[0];
@@ -15974,17 +15974,17 @@ const EMPTY_PAIE_LINE: PaieLineInput = {
   joursRepasManuel: "",
 };
 
-/** Bureau core staff aren't tracked day-by-day the way chantier crews are —
+/** Bureau core staff aren't tracked day-by-day the way chantier crews are -
  *  always 0. For chantier employees, default to the weekdays they were
- *  actually present this month, prorated from hire_date/end_date — hired
+ *  actually present this month, prorated from hire_date/end_date - hired
  *  mid-month, on leave, or terminated partway through shouldn't default to
  *  a full month worked. end_date is reused for "on_leave" too (départ en
- *  congé), not just "terminated" — both mean "stopped being present
+ *  congé), not just "terminated" - both mean "stopped being present
  *  partway through". */
 // "Contrôle & Formation" staff are category "bureau" in the DB (that's how
 // groupPaieEmployees splits them from chantier teams) but they aren't
 // desk-only office workers, so the office-always-0 rule doesn't apply to
-// them — only to the bureau core (secrétariat, direction, etc.).
+// them - only to the bureau core (secrétariat, direction, etc.).
 function isOfficeCore(e: PaieEmployee): boolean {
   return e.category === "bureau" && !PAIE_CONTROL_FORMATION_ROLES.has(e.bureau_role ?? "");
 }
@@ -16006,7 +16006,7 @@ function PaieView({
   canOpenDossier = false,
 }: {
   supabase: ReturnType<typeof createClient>;
-  /** Only rh/rh_admin can reach Dossier salarié — comptable reuses this same view without it. */
+  /** Only rh/rh_admin can reach Dossier salarié - comptable reuses this same view without it. */
   canOpenDossier?: boolean;
 }) {
   const now = new Date();
@@ -16024,7 +16024,7 @@ function PaieView({
   const [showParams, setShowParams] = useState(false);
   const [holidayCountSelection, setHolidayCountSelection] = useState("0");
   const [joursTravaillesSelection, setJoursTravaillesSelection] = useState("0");
-  // Real attendance (pointage_entries), same computation as Primes & Bonus —
+  // Real attendance (pointage_entries), same computation as Primes & Bonus -
   // used as the default for "Jours travaillés" instead of a calendar
   // estimate, so it's not retyped from scratch here too.
   const [joursReelsByEmployee, setJoursReelsByEmployee] = useState<Record<string, number>>({});
@@ -16053,10 +16053,10 @@ function PaieView({
             "id, first_name, last_name, category, bureau_role, team_id, teams!employees_team_id_fkey(name, chef_employee_id), contract_type, status, hire_date, end_date, salaire_base_net, classification"
           )
           // Someone terminated mid-month, or on leave since mid-month, still
-          // worked part of it and needs a partial-month line — excluding them
+          // worked part of it and needs a partial-month line - excluding them
           // outright as soon as status flips would drop their last paycheck
           // entirely. end_date doubles as "départ en congé" for on_leave
-          // (RH sets it same as for terminated) — a null end_date on_leave
+          // (RH sets it same as for terminated) - a null end_date on_leave
           // just means it hasn't been entered yet, so still include them.
           .or(
             `status.eq.active,` +
@@ -16115,7 +16115,7 @@ function PaieView({
       }
       setRunId(run?.id ?? null);
 
-      // Real pointage takes priority when it exists — only a genuinely
+      // Real pointage takes priority when it exists - only a genuinely
       // unpointed employee falls back to the calendar estimate.
       function defaultJours(employee: PaieEmployee): string {
         const real = joursReels[employee.id];
@@ -16141,7 +16141,7 @@ function PaieView({
             majJoursFeries: l?.maj_jours_feries ? String(l.maj_jours_feries) : "",
             heuresNuit: l?.heures_nuit ? String(l.heures_nuit) : "",
             joursRepasManuel: l?.jours_repas_manuel != null ? String(l.jours_repas_manuel) : "",
-            // Office core staff never worked chantier days — enforced even
+            // Office core staff never worked chantier days - enforced even
             // over an old saved value, since it's a hard rule, not just a
             // suggested default. Otherwise: no saved line yet this month →
             // suggest a prorated day count instead of leaving it blank.
@@ -16194,7 +16194,7 @@ function PaieView({
     });
   }
 
-  /** Flat override for everyone at once — the smart per-employee suggestion above (dates-based) isn't always what's wanted; sometimes it's just "everyone worked N days". */
+  /** Flat override for everyone at once - the smart per-employee suggestion above (dates-based) isn't always what's wanted; sometimes it's just "everyone worked N days". */
   function applyJoursTravaillesCountToAll() {
     if (!joursTravaillesSelection) return;
     setInputs((prev) => {
@@ -16219,7 +16219,7 @@ function PaieView({
     if (error) toast.error("Erreur : " + error.message);
   }
 
-  /** Bulk-fills every non-FOP employee's base salary at once (e.g. everyone currently on SMIC) — defaults to params.smicNetMensuel, the explicit reference value kept up to date by whoever last heard the current SMIC from the accountant. */
+  /** Bulk-fills every non-FOP employee's base salary at once (e.g. everyone currently on SMIC) - defaults to params.smicNetMensuel, the explicit reference value kept up to date by whoever last heard the current SMIC from the accountant. */
   async function applySalaireBaseNetToAll() {
     const value = Number(salaireBaseNetBulkValue) || params.smicNetMensuel;
     if (!value) return;
@@ -16267,9 +16267,9 @@ function PaieView({
 
   // Accepts three paste shapes: "Nom [tab] Montant" pairs (matched by name,
   // robust to word order/case/accents); a bare list of amounts (applied in
-  // the table's current visual/grouped order); or — since Nom and Montant
+  // the table's current visual/grouped order); or - since Nom and Montant
   // often aren't adjacent columns in the source sheet and can't be copied
-  // together as one range — a Nom column pasted in full followed immediately
+  // together as one range - a Nom column pasted in full followed immediately
   // by a Montant column pasted for that same row range. In that last shape,
   // filler rows (team-header rows, vacant slots) land at the same line
   // position in both halves, so pairing by index and skipping any pair
@@ -16312,7 +16312,7 @@ function PaieView({
 
     // Two-block paste: every name first, then every amount. Split by CONTENT
     // (where non-blank lines stop being names and start being amounts) rather
-    // than by position — team groups are often separated by blank lines in
+    // than by position - team groups are often separated by blank lines in
     // the source spreadsheet, and those separators don't necessarily line up
     // 1-for-1 between the name column and the amount column, which used to
     // make a plain half-and-half split (and its even-total-lines requirement)
@@ -16334,7 +16334,7 @@ function PaieView({
     if (looksTwoBlock) {
       if (namesBlock.length !== amountsBlock.length) {
         unmatchedLines.push(
-          `⚠ ${namesBlock.length} nom(s) collé(s) mais ${amountsBlock.length} montant(s) — vérifiez la sélection copiée (rien n'a été appliqué).`
+          `⚠ ${namesBlock.length} nom(s) collé(s) mais ${amountsBlock.length} montant(s) - vérifiez la sélection copiée (rien n'a été appliqué).`
         );
       } else {
         for (let i = 0; i < namesBlock.length; i++) {
@@ -16344,7 +16344,7 @@ function PaieView({
           const nameWords = normalizePaieNameWords(name);
           const match = matchPayableEmployee(nameWords, payableEmployees);
           if (!match) {
-            unmatchedLines.push(`${name} — ${amountsBlock[i]}`);
+            unmatchedLines.push(`${name} - ${amountsBlock[i]}`);
             continue;
           }
           updates[match.employee.id] = String(amount);
@@ -16394,7 +16394,7 @@ function PaieView({
     }
 
     setImportResult({ matchedCount: matchedNames.length, fuzzyMatches, unmatched: unmatchedLines });
-    const fuzzyNote = fuzzyMatches.length > 0 ? ` (dont ${fuzzyMatches.length} par correspondance approximative — à vérifier)` : "";
+    const fuzzyNote = fuzzyMatches.length > 0 ? ` (dont ${fuzzyMatches.length} par correspondance approximative - à vérifier)` : "";
     if (unmatchedLines.length === 0) {
       toast.success(`${matchedNames.length} montant(s) appliqué(s)${fuzzyNote}.`);
     } else {
@@ -16512,7 +16512,7 @@ function PaieView({
   }
 
   function exportExcel() {
-    // FOP contractors (e.g. Kirichok Kateryna) aren't payroll lines at all —
+    // FOP contractors (e.g. Kirichok Kateryna) aren't payroll lines at all -
     // their pay is handled entirely outside this table, so they're left out
     // of the export by default rather than shown as an empty placeholder row.
     const payableRowsForExport = groupedRows.filter((row) => !isFopContractor(row.employee));
@@ -16579,7 +16579,7 @@ function PaieView({
   }
 
   // Replaces each already-logged day's overtime_minutes with an even split of
-  // this month's computed HS+25%/HS+50% total — pointage_entries doesn't track
+  // this month's computed HS+25%/HS+50% total - pointage_entries doesn't track
   // the 25%/50% split per day, only a single overtime figure, so both get
   // combined before distributing. Employees with no pointage entry this month
   // are skipped (nothing to distribute across) and reported back.
@@ -16648,8 +16648,8 @@ function PaieView({
             <InfoNote
               title="Paie"
               text={
-                "Расчёт зарплаты: вы вводите желаемую сумму на руки (net souhaité), учитываете переработки, праздничные дни, тикеты-ресторан — система считает переработки +25%/+50% и итоговую сумму по каждому сотруднику.\n\n" +
-                "Здесь НЕ создаётся официальный расчётный листок (bulletin de paie) — это только подготовка цифр, которые потом передаются бухгалтеру.\n\n" +
+                "Расчёт зарплаты: вы вводите желаемую сумму на руки (net souhaité), учитываете переработки, праздничные дни, тикеты-ресторан - система считает переработки +25%/+50% и итоговую сумму по каждому сотруднику.\n\n" +
+                "Здесь НЕ создаётся официальный расчётный листок (bulletin de paie) - это только подготовка цифр, которые потом передаются бухгалтеру.\n\n" +
                 "Сотрудники сгруппированы по офису/контролю-обучению/бригадам. У сотрудников-подрядчиков (FOP) эти формулы не применяются."
               }
             />
@@ -16713,8 +16713,8 @@ function PaieView({
         <p className="text-sm text-stone-400">Jours travaillés</p>
         <p className="text-sm text-stone-600 mt-2 max-w-2xl">
           Определяет базовую часть зарплаты (дни × дневная ставка из «Базы netto») и максимум дней
-          питания. Считается только для тех, кто работает на объектах (стройка) — для офиса всегда
-          0. По умолчанию — количество дней, когда сотрудник реально числился работающим в этом
+          питания. Считается только для тех, кто работает на объектах (стройка) - для офиса всегда
+          0. По умолчанию - количество дней, когда сотрудник реально числился работающим в этом
           месяце (с учётом даты приёма на работу, ухода в отпуск или увольнения).
         </p>
         <p className="text-xs text-stone-400 mt-1">
@@ -16761,7 +16761,7 @@ function PaieView({
         <p className="text-sm text-stone-400">Salaire base net</p>
         <p className="text-sm text-stone-600 mt-2 max-w-2xl">
           Оклад сотрудника, от которого считается базовая часть зарплаты (см. «Дни отработано»).
-          Меняется редко — заполняется один раз, дальше просто хранится у сотрудника.
+          Меняется редко - заполняется один раз, дальше просто хранится у сотрудника.
         </p>
         <div className="text-xs text-stone-400 mt-1 flex items-center gap-2 flex-wrap">
           {editingSmic ? (
@@ -16788,11 +16788,11 @@ function PaieView({
           ) : (
             <>
               <span>
-                SMIC net actuel : <span className="font-bold text-stone-600">{params.smicNetMensuel} €</span> —
+                SMIC net actuel : <span className="font-bold text-stone-600">{params.smicNetMensuel} €</span> -
                 valeur de référence tenue à jour manuellement, jamais devinée automatiquement
                 <span className="opacity-70">
                   {" "}
-                  / Актуальный SMIC netto — эталонное значение, вручную обновляется, никогда не
+                  / Актуальный SMIC netto - эталонное значение, вручную обновляется, никогда не
                   угадывается
                 </span>
                 .
@@ -16838,7 +16838,7 @@ function PaieView({
           <p className="text-sm text-stone-400">Jours fériés travaillés</p>
           <p className="text-sm text-stone-600 mt-2 max-w-2xl">
             Сколько праздничных дней в этом месяце сотрудник реально отработал (например, вышел на
-            объект 14 июля). По умолчанию 0 — проставьте вручную тем, кто действительно работал в
+            объект 14 июля). По умолчанию 0 - проставьте вручную тем, кто действительно работал в
             эти дни.
           </p>
           <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-stone-100">
@@ -16897,7 +16897,7 @@ function PaieView({
           </p>
           <p className="text-xs text-stone-400 mb-3">
             Ces valeurs viennent du classeur Excel de référence. À ajuster seulement si le taux
-            horaire, le SMIC ou les cotisations changent — le calcul ci-dessous s&apos;appuiera
+            horaire, le SMIC ou les cotisations changent - le calcul ci-dessous s&apos;appuiera
             immédiatement sur les nouvelles valeurs.
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
@@ -16947,7 +16947,7 @@ function PaieView({
         </div>
       ) : (
         <>
-        {/* Mobile: one card per employee instead of a 7-column table — the
+        {/* Mobile: one card per employee instead of a 7-column table - the
             two selects (holiday bonus, repas days) don't fit a phone width. */}
         <div className="md:hidden space-y-3">
           {groupedRows.map((row, idx) => {
@@ -16969,7 +16969,7 @@ function PaieView({
                   </p>
                   {isFopContractor(e) ? (
                     <p className="italic text-stone-500 text-sm">
-                      FOP — rémunération hors paie, calcul non applicable
+                      FOP - rémunération hors paie, calcul non applicable
                     </p>
                   ) : (
                     <div className="space-y-2 text-sm">
@@ -17046,7 +17046,7 @@ function PaieView({
                         className="text-primary-700 font-semibold underline decoration-dotted underline-offset-2"
                         title={
                           n
-                            ? `15% du SMH conventionnel du groupe ${n.group} (${n.hourlyRateSmh.toFixed(2)} €/h) = ${n.hourlyPremium.toFixed(2)} €/h de nuit × ${n.heuresNuit}h = ${n.amount.toFixed(2)} €.\nConvention Collective Métallurgie (IDCC 3248) : majoration travail de nuit (21h-6h), en plus de la paie normale de ces heures.\n\n15% от справочной минималки (SMH) группы ${n.group} (${n.hourlyRateSmh.toFixed(2)}€/ч) = ${n.hourlyPremium.toFixed(2)}€/ч за ночной час × ${n.heuresNuit}ч = ${n.amount.toFixed(2)}€. По конвенции металлургии — доплата сверху обычной оплаты этих часов.`
+                            ? `15% du SMH conventionnel du groupe ${n.group} (${n.hourlyRateSmh.toFixed(2)} €/h) = ${n.hourlyPremium.toFixed(2)} €/h de nuit × ${n.heuresNuit}h = ${n.amount.toFixed(2)} €.\nConvention Collective Métallurgie (IDCC 3248) : majoration travail de nuit (21h-6h), en plus de la paie normale de ces heures.\n\n15% от справочной минималки (SMH) группы ${n.group} (${n.hourlyRateSmh.toFixed(2)}€/ч) = ${n.hourlyPremium.toFixed(2)}€/ч за ночной час × ${n.heuresNuit}ч = ${n.amount.toFixed(2)}€. По конвенции металлургии - доплата сверху обычной оплаты этих часов.`
                             : undefined
                         }
                       >
@@ -17143,7 +17143,7 @@ function PaieView({
                           <PaieEmployeeName employee={e} canOpenDossier={canOpenDossier} />
                         </td>
                         <td colSpan={8} className="py-2 pr-4 italic text-stone-500">
-                          FOP — rémunération hors paie, calcul non applicable
+                          FOP - rémunération hors paie, calcul non applicable
                         </td>
                       </tr>
                     ) : (
@@ -17209,7 +17209,7 @@ function PaieView({
                         value={line.joursRepasManuel}
                         placeholder={String(c?.joursRepas ?? 0)}
                         onChange={(ev) => updateInput(e.id, "joursRepasManuel", ev.target.value)}
-                        title="Vide = calcul automatique ; saisir un nombre pour le fixer à la main / Пусто — считается автоматически; введи число, чтобы задать вручную"
+                        title="Vide = calcul automatique ; saisir un nombre pour le fixer à la main / Пусто - считается автоматически; введи число, чтобы задать вручную"
                       />
                     </td>
                     <td className="py-2 pr-4 font-semibold text-primary-700">{c?.hs25Heures ?? 0} h</td>
@@ -17230,7 +17230,7 @@ function PaieView({
                       className="py-2 pr-4 font-semibold text-primary-700 underline decoration-dotted underline-offset-2 cursor-help"
                       title={
                         n
-                          ? `15% du SMH conventionnel du groupe ${n.group} (${n.hourlyRateSmh.toFixed(2)} €/h) = ${n.hourlyPremium.toFixed(2)} €/h de nuit × ${n.heuresNuit}h = ${n.amount.toFixed(2)} €.\nConvention Collective Métallurgie (IDCC 3248) : majoration travail de nuit (21h-6h), en plus de la paie normale de ces heures.\n\n15% от справочной минималки (SMH) группы ${n.group} (${n.hourlyRateSmh.toFixed(2)}€/ч) = ${n.hourlyPremium.toFixed(2)}€/ч за ночной час × ${n.heuresNuit}ч = ${n.amount.toFixed(2)}€. По конвенции металлургии — доплата сверху обычной оплаты этих часов.`
+                          ? `15% du SMH conventionnel du groupe ${n.group} (${n.hourlyRateSmh.toFixed(2)} €/h) = ${n.hourlyPremium.toFixed(2)} €/h de nuit × ${n.heuresNuit}h = ${n.amount.toFixed(2)} €.\nConvention Collective Métallurgie (IDCC 3248) : majoration travail de nuit (21h-6h), en plus de la paie normale de ces heures.\n\n15% от справочной минималки (SMH) группы ${n.group} (${n.hourlyRateSmh.toFixed(2)}€/ч) = ${n.hourlyPremium.toFixed(2)}€/ч за ночной час × ${n.heuresNuit}ч = ${n.amount.toFixed(2)}€. По конвенции металлургии - доплата сверху обычной оплаты этих часов.`
                           : undefined
                       }
                     >
@@ -17255,7 +17255,7 @@ function PaieView({
                   <td className="py-2 pr-4">
                     TOTAL <span className="font-normal opacity-60">/ ИТОГО</span>
                   </td>
-                  <td className="py-2 pr-4">—</td>
+                  <td className="py-2 pr-4">-</td>
                   <td className="py-2 pr-4">{totals.joursTravailles}</td>
                   <td className="py-2 pr-4">{totals.netSouhaite.toFixed(2)} €</td>
                   <td className="py-2 pr-4">{totals.majJoursFeries}</td>
@@ -17320,7 +17320,7 @@ function PaieView({
             <p className="text-success-600 font-semibold">{importResult.matchedCount} montant(s) appliqué(s).</p>
             {importResult.fuzzyMatches.length > 0 && (
               <div className="mt-1 text-warning-700">
-                <p className="font-semibold">Correspondance approximative — à vérifier :</p>
+                <p className="font-semibold">Correspondance approximative - à vérifier :</p>
                 <ul className="list-disc pl-5">
                   {importResult.fuzzyMatches.map((m, i) => (
                     <li key={i}>
@@ -17390,23 +17390,23 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
 };
 
 /** Explique en une phrase (FR + RU) le calcul d'un montant, avec les vrais
- *  nombres de la ligne — affiché en title au survol, même esprit que la
+ *  nombres de la ligne - affiché en title au survol, même esprit que la
  *  prime de nuit dans Paie. */
 function extrasTooltip(label: string, formula: string, labelRu: string, formulaRu: string): string {
   return `${label} : ${formula}\n\n${labelRu}: ${formulaRu}`;
 }
 
 // Couleurs mesurées directement dans le fichier Numbers d'origine (via
-// AppleScript, background color of cell) — même palette, à l'identique.
+// AppleScript, background color of cell) - même palette, à l'identique.
 const EXTRAS_COLOR_MONTH_HEADER = "#F9CAA5"; // en-tête du mois
 const EXTRAS_COLOR_PENALTY_HEADER = "#FF0000"; // Штраф контроль
-const EXTRAS_COLOR_PENALTY_DIRECTE_HEADER = "#EA580C"; // Штраф direct — orange, distinct du rouge du Штраф контроль
+const EXTRAS_COLOR_PENALTY_DIRECTE_HEADER = "#EA580C"; // Штраф direct - orange, distinct du rouge du Штраф контроль
 const EXTRAS_COLOR_BANK_HEADER = "#EDFF00"; // БАНК качества
-const EXTRAS_COLOR_AVANCE_HEADER = "#00E676"; // Аванс — vert vif, comme dans "часы работы.numbers"
-const EXTRAS_COLOR_WEEKEND = "#FFFF0B"; // samedi/dimanche — pour repérer les semaines au premier coup d'œil, sur toute la hauteur de la colonne
+const EXTRAS_COLOR_AVANCE_HEADER = "#00E676"; // Аванс - vert vif, comme dans "часы работы.numbers"
+const EXTRAS_COLOR_WEEKEND = "#FFFF0B"; // samedi/dimanche - pour repérer les semaines au premier coup d'œil, sur toute la hauteur de la colonne
 const EXTRAS_COLOR_HORS_EMPLOI = "#E7E5E4"; // jour hors période d'emploi (avant l'embauche / après la sortie)
 
-/** Les 16 colonnes "primes" après les jours du mois — définition + valeurs
+/** Les 16 colonnes "primes" après les jours du mois - définition + valeurs
  *  par défaut (celles déjà en dur avant le mode édition). L'utilisatrice
  *  peut ensuite personnaliser largeur/police/couleurs elle-même (voir
  *  ExtrasColStyle plus bas) sans repasser par du code à chaque fois. */
@@ -17416,25 +17416,25 @@ type ExtrasColDef = { key: string; lines: string[]; title: string; defaultStyle:
 const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "taux", lines: ["Ставка", "€/j"], title: "Ставка €/jour / Ставка €/день", defaultStyle: { width: 85, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "salaire", lines: ["Salaire", "jours €"], title: "Salaire jours € / Оплата за дни €", defaultStyle: { width: 90, fontSize: 11, color: "#0369a1", bg: "" } },
-  { key: "isDriver", lines: ["🚗", "Водитель"], title: "Chauffeur — change le tarif de Часы в дороге (90/8 = 11,25 €/h au lieu de 9,61 €/h) / Водитель — меняет ставку часов в дороге (90/8 = 11,25 €/ч вместо 9,61 €/ч)", defaultStyle: { width: 60, fontSize: 10, color: "#a8a29e", bg: "" } },
+  { key: "isDriver", lines: ["🚗", "Водитель"], title: "Chauffeur - change le tarif de Часы в дороге (90/8 = 11,25 €/h au lieu de 9,61 €/h) / Водитель - меняет ставку часов в дороге (90/8 = 11,25 €/ч вместо 9,61 €/ч)", defaultStyle: { width: 60, fontSize: 10, color: "#a8a29e", bg: "" } },
   { key: "heuresRoute", lines: ["Часы в", "дороге"], title: "Heures de trajet, saisies à la main / Часы в дороге, вручную", defaultStyle: { width: 80, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "coutRoute", lines: ["Coût", "route €"], title: "Часы в дороге × 11,25€/ч (водитель) или 9,61€/ч (остальные) / Heures route × 11,25€/h (chauffeur) ou 9,61€/h (sinon)", defaultStyle: { width: 85, fontSize: 11, color: "#0369a1", bg: "" } },
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel — indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус — не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде — БАНК, вне команды — сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
-  { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) — toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
-  { key: "banqueDebut", lines: ["БАНК 3000", "(пред.) €"], title: "БАНК 3000 — solde du mois précédent (report automatique, ou forcé via le crayon) / БАНК 3000 — баланс за предыдущий месяц (переносится автоматически, либо задан вручную через карандашик)", defaultStyle: { width: 90, fontSize: 11, color: "#78716c", bg: "" } },
-  { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € — banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € — личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 90, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
+  { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel - indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус - не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
+  { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде - БАНК, вне команды - сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
+  { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) - toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) - всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
+  { key: "banqueDebut", lines: ["БАНК 3000", "(пред.) €"], title: "БАНК 3000 - solde du mois précédent (report automatique, ou forcé via le crayon) / БАНК 3000 - баланс за предыдущий месяц (переносится автоматически, либо задан вручную через карандашик)", defaultStyle: { width: 90, fontSize: 11, color: "#78716c", bg: "" } },
+  { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € - banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € - личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 90, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
   { key: "conges", lines: ["Congés", "payés (j)"], title: "Congés payés, jours saisis du bulletin / Отпускные, дней из билютеня", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "vacanceJ", lines: ["Vacance", "(j)"], title: "Vacance, jours saisis à la main / Вакансы, дней вручную", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
-  { key: "avance", lines: ["Avance", "Аванс €"], title: "Avance — pour information seulement, jamais incluse dans À payer / Аванс — только для справки, в À payer не входит", defaultStyle: { width: 80, fontSize: 11, color: "#065f46", bg: EXTRAS_COLOR_AVANCE_HEADER } },
+  { key: "avance", lines: ["Avance", "Аванс €"], title: "Avance - pour information seulement, jamais incluse dans À payer / Аванс - только для справки, в À payer не входит", defaultStyle: { width: 80, fontSize: 11, color: "#065f46", bg: EXTRAS_COLOR_AVANCE_HEADER } },
   { key: "aPayer", lines: ["À", "payer €"], title: "À payer € / К оплате €", defaultStyle: { width: 90, fontSize: 11, color: "#44403c", bg: "" } },
 ];
 
 const EXTRAS_COL_STYLES_STORAGE_KEY = "vladis_payroll_extras_col_styles_v1";
 
 /** Colonnes repliables ensemble via le bouton "Условие/Детали" (Ставка →
- *  БАНК 3000) — Congés payés, Vacance (j) et À payer restent toujours
+ *  БАНК 3000) - Congés payés, Vacance (j) et À payer restent toujours
  *  visibles. */
 const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "taux",
@@ -17451,7 +17451,7 @@ const EXTRAS_COLLAPSIBLE_KEYS = new Set([
 ]);
 const EXTRAS_DETAILS_COLLAPSED_STORAGE_KEY = "vladis_payroll_extras_details_collapsed_v1";
 
-/** Codes courts affichés dans la case (20px de large) — le libellé complet reste dans le title au survol. */
+/** Codes courts affichés dans la case (20px de large) - le libellé complet reste dans le title au survol. */
 function absenceShortCode(code: string): string {
   switch (code) {
     case "maladie":
@@ -17471,11 +17471,11 @@ function absenceShortCode(code: string): string {
   }
 }
 
-/** Couleur de fond de la case entière selon le statut du jour — le code
+/** Couleur de fond de la case entière selon le statut du jour - le code
  *  court seul (M, SS, CP…) ne se lit pas sans survoler ; la couleur donne un
  *  repère immédiat, la légende (EXTRAS_ABSENCE_LEGEND) explique chaque code
  *  une seule fois en haut du tableau plutôt que sur chaque case. Classes
- *  Tailwind écrites en toutes lettres (jamais construites dynamiquement) —
+ *  Tailwind écrites en toutes lettres (jamais construites dynamiquement) -
  *  sinon le build ne les inclut pas. */
 function absenceCellBg(worked: boolean, absenceCode: string | null, halfDay?: boolean): string {
   if (worked) return halfDay ? "#ecfccb" : "#dcfce7"; // lime-100 (demi-journée) / success-100 (présent)
@@ -17510,7 +17510,7 @@ const EXTRAS_ABSENCE_LEGEND: { code: string; label: string; labelRu: string; bg:
   { code: "✕", label: "Fin de contrat ce jour", labelRu: "Увольнение с этого дня", bg: "" },
 ];
 
-/** Contrôleur désigné pour le Банк качества — un seul pour toute
+/** Contrôleur désigné pour le Банк качества - un seul pour toute
  *  l'entreprise pour l'instant (confirmé avec l'utilisatrice, 29/09/2026).
  *  CIOBANU Valeriu, Contrôle & Formation. À rendre configurable le jour où
  *  il y en a plus d'un. */
@@ -17520,27 +17520,27 @@ const QUALITY_BANK_CONTROLLER_EMPLOYEE_ID = "878a6357-4f00-4571-8fee-5b5081716dc
  *  applicables SEULEMENT aux salariés embauchés à partir de cette date (pas
  *  de recalcul rétroactif) : 81 €/j (≈1700 €/mois) en période d'essai, 90
  *  pour un monteur confirmé, 105 pour un chef d'équipe sans français, 115
- *  avec français — cette dernière distinction n'étant pas stockée en base,
+ *  avec français - cette dernière distinction n'étant pas stockée en base,
  *  elle reste à trancher par l'utilisatrice au moment de la notification.
  *  Période d'essai = 2 mois depuis hire_date (durée réelle des contrats
- *  CDI VLADIS, voir dashIsStagiaire — pas les 30 jours du badge "Essai",
+ *  CDI VLADIS, voir dashIsStagiaire - pas les 30 jours du badge "Essai",
  *  qui est une approximation d'affichage différente). */
 const NEW_HIRE_RATE_CUTOFF = "2026-09-28";
 const STANDARD_RATE = 90;
 const CHEF_RATE_NO_FRENCH = 105;
 const CHEF_RATE_FRENCH = 115;
 
-/** Port de "часы работы.numbers" — même grille visuelle (jours du mois en
+/** Port de "часы работы.numbers" - même grille visuelle (jours du mois en
  *  colonnes, mêmes couleurs mesurées dans le fichier d'origine) mais avec
  *  un БАНК qualité qui se reporte tout seul d'un mois sur l'autre, et les
  *  mêmes règles chaque mois au lieu d'une formule géante qui changeait de
- *  forme chaque mois. Les cases de présence se cliquent directement ici —
+ *  forme chaque mois. Les cases de présence se cliquent directement ici -
  *  ça écrit dans pointage_entries tout de suite (même donnée que "Par
  *  jour", pas une copie). Alimente Jours dans Paie. */
 /** Données de la période du Банк качества SAUF le mois affiché (`excludeRunId`, dont
  *  les valeurs en direct viennent de l'écran) : lignes pénalités/BONUS enregistrées par
  *  salarié et par mois, et jours travaillés par équipe (pointage_entries.team_id) pour
- *  suivre les changements d'équipe. Toujours lu depuis les lignes enregistrées — jamais
+ *  suivre les changements d'équipe. Toujours lu depuis les lignes enregistrées - jamais
  *  depuis company_quality_bank.current_total, qu'un ancien onglet pouvait réécrire avec
  *  une valeur périmée (05/10/2026). */
 type BankOtherMonths = {
@@ -17608,7 +17608,7 @@ async function loadBankOtherMonths(
 }
 
 /** Colonnes payroll_extras écrites quand UNE case est modifiée (sauvegarde
- *  case par case, comme Numbers) — jamais toute la ligne, sinon deux
+ *  case par case, comme Numbers) - jamais toute la ligne, sinon deux
  *  personnes qui éditent la même ligne s'écraseraient. */
 function extrasFieldColumns(
   field: keyof ExtrasLineInput,
@@ -17740,7 +17740,7 @@ async function exportExtrasExcel(data: {
   wb.created = new Date();
 
   const FONT = "Calibri";
-  const EUR = '#,##0.00 "€";[Red]-#,##0.00 "€";"–"';
+  const EUR = '#,##0.00 "€";[Red]-#,##0.00 "€";"-"';
   const thin = { style: "thin" as const, color: { argb: "FFE7E5E4" } };
   const border = { top: thin, bottom: thin, left: thin, right: thin };
   const solid = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
@@ -17766,7 +17766,7 @@ async function exportExtrasExcel(data: {
     { header: "Ставка\n€/j", width: 10, fmt: EUR, value: (r) => r.taux },
     { header: "Salaire\njours €", width: 13, fmt: EUR, value: (r) => r.salaire, sum: true },
     { header: "Водитель\nChauffeur", width: 10, value: (r) => (r.isDriver ? "oui / да" : null) },
-    { header: "Часы в\nдороге", width: 9, fmt: "0.0;;\"–\"", value: (r) => r.heuresRoute, sum: true },
+    { header: "Часы в\nдороге", width: 9, fmt: "0.0;;\"-\"", value: (r) => r.heuresRoute, sum: true },
     { header: "Coût\nroute €", width: 12, fmt: EUR, value: (r) => r.coutRoute, sum: true },
     { header: "BONUS\néquipe €", width: 12, fmt: EUR, value: (r) => r.bonus, sum: true },
     { header: "Bonus\nпрочее €", width: 12, fmt: EUR, value: (r) => r.bonusDirect, sum: true },
@@ -17774,8 +17774,8 @@ async function exportExtrasExcel(data: {
     { header: "Штраф\nпрочее €", width: 13, fill: "FFEA580C", color: "FFFFFFFF", fmt: EUR, value: (r) => r.penaliteDirecte, sum: true },
     { header: "БАНК 3000\n(пред.) €", width: 13, fmt: EUR, value: (r) => (r.bureauOrControl ? null : r.banqueDebut), office: true },
     { header: "БАНК\n3000 €", width: 12, fill: "FFEDFF00", color: "FF1C1917", fmt: EUR, value: (r) => (r.bureauOrControl ? null : r.banqueFin), office: true },
-    { header: "Congés\npayés (j)", width: 10, fmt: "0.0;;\"–\"", value: (r) => r.conges },
-    { header: "Vacance\n(j)", width: 10, fmt: "0.0;;\"–\"", value: (r) => r.vacance || null },
+    { header: "Congés\npayés (j)", width: 10, fmt: "0.0;;\"-\"", value: (r) => r.conges },
+    { header: "Vacance\n(j)", width: 10, fmt: "0.0;;\"-\"", value: (r) => r.vacance || null },
     { header: "Аванс\nAvance €", width: 12, fill: "FF00E676", color: "FF065F46", fmt: EUR, value: (r) => r.avance, sum: true },
     { header: "À payer\nК оплате €", width: 14, fill: "FF1D4ED8", color: "FFFFFFFF", fmt: EUR, value: (r) => r.aPayer, sum: true },
   ];
@@ -17784,7 +17784,7 @@ async function exportExtrasExcel(data: {
 
   ws.mergeCells(`A1:${lastColLetter}1`);
   const title = ws.getCell("A1");
-  title.value = "VLADIS — Primes & Bonus";
+  title.value = "VLADIS - Primes & Bonus";
   title.font = { name: FONT, size: 18, bold: true, color: { argb: "FFFFFFFF" } };
   title.fill = solid("FF1E293B");
   title.alignment = { vertical: "middle", indent: 1 };
@@ -17801,7 +17801,7 @@ async function exportExtrasExcel(data: {
   ws.mergeCells(`A3:${lastColLetter}3`);
   const bankCell = ws.getCell("A3");
   bankCell.value = data.bank
-    ? `Банк качества (entreprise) : ${data.bank.total.toFixed(0)} €   ·   Contrôleur ${data.bank.controllerName} — part du mois ${data.bank.controllerShare.toFixed(2)} €`
+    ? `Банк качества (entreprise) : ${data.bank.total.toFixed(0)} €   ·   Contrôleur ${data.bank.controllerName} - part du mois ${data.bank.controllerShare.toFixed(2)} €`
     : "";
   bankCell.font = { name: FONT, size: 10, italic: true, color: { argb: "FF64748B" } };
   bankCell.alignment = { vertical: "middle", indent: 1 };
@@ -17841,7 +17841,7 @@ async function exportExtrasExcel(data: {
     cols.forEach((c, i) => {
       const cell = row.getCell(i + 1);
       const v = c.value(r);
-      cell.value = v === null ? (c.office && r.bureauOrControl ? "—" : null) : v;
+      cell.value = v === null ? (c.office && r.bureauOrControl ? "-" : null) : v;
       cell.font = { name: FONT, size: 10, bold: i === 0 || i === cols.length - 1, color: { argb: c.office && r.bureauOrControl ? "FFA8A29E" : "FF1C1917" } };
       cell.fill = solid(tint.light);
       cell.border = border;
@@ -17886,7 +17886,7 @@ async function exportExtrasExcel(data: {
   const pLast = wp.getColumn(data.dayColumns.length + 2).letter;
   wp.mergeCells(`A1:${pLast}1`);
   const pt = wp.getCell("A1");
-  pt.value = `Présence — ${data.monthTitle.charAt(0).toUpperCase()}${data.monthTitle.slice(1)}`;
+  pt.value = `Présence - ${data.monthTitle.charAt(0).toUpperCase()}${data.monthTitle.slice(1)}`;
   pt.font = { name: FONT, size: 16, bold: true, color: { argb: "FFFFFFFF" } };
   pt.fill = solid("FF1E293B");
   pt.alignment = { vertical: "middle", indent: 1 };
@@ -18043,7 +18043,7 @@ async function exportExtrasExcel(data: {
   URL.revokeObjectURL(url);
 }
 
-/** Données 100 % fictives pour enregistrer une vidéo de démonstration —
+/** Données 100 % fictives pour enregistrer une vidéo de démonstration -
  *  jamais lues ni écrites en base. Le contrôleur reprend l'id réel du
  *  contrôleur désigné pour que sa part (25 % des pénalités d'équipe) se calcule
  *  comme en vrai. Les scénarios couvrent : chef d'équipe/chauffeur, БАНК 3000
@@ -18160,7 +18160,7 @@ function buildDemoPayrollData(year: number, month: number) {
   const dayNotes: Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>> = {};
   if (saturdays[0]) {
     dayNotes["demo-riviere"] = {
-      [saturdays[0]]: { comment: "Samedi travaillé — chantier urgent", amount: 80, by: "demo@vladis.fr", at: `${saturdays[0]}T10:00:00Z` },
+      [saturdays[0]]: { comment: "Samedi travaillé - chantier urgent", amount: 80, by: "demo@vladis.fr", at: `${saturdays[0]}T10:00:00Z` },
     };
     inputs["demo-riviere"].bonusEquipe = String(600 + 80);
   }
@@ -18189,7 +18189,7 @@ function PayrollExtrasView({
 }: {
   supabase: ReturnType<typeof createClient>;
   /** comptable a un accès complet (comme prévu dès la création de payroll_extras,
-   *  voir 0074) ; rh_readonly n'a que du SELECT en RLS — l'UI doit donc être
+   *  voir 0074) ; rh_readonly n'a que du SELECT en RLS - l'UI doit donc être
    *  purement consultative pour ce rôle, sans quoi "Enregistrer" échouerait
    *  silencieusement contre la base. */
   readOnly?: boolean;
@@ -18207,7 +18207,7 @@ function PayrollExtrasView({
   const [runId, setRunId] = useState<string | null>(null);
   const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
   const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
-  // Банк качества commun à l'entreprise (pas par équipe) — confirmé avec
+  // Банк качества commun à l'entreprise (pas par équipe) - confirmé avec
   // l'utilisatrice. Un seul contrôleur pour l'instant, en dur : CIOBANU
   // Valeriu. `banqueQualitePrimeByEmployee` ne contient une valeur que pour
   // les 5 gagnants du mois exact où le pool a été distribué (lu tel quel
@@ -18216,7 +18216,7 @@ function PayrollExtrasView({
     null
   );
   const [banqueQualitePrimeByEmployee, setBanqueQualitePrimeByEmployee] = useState<Record<string, number>>({});
-  // Pénalités d'équipe des AUTRES mois de la période du Банк качества — le mois
+  // Pénalités d'équipe des AUTRES mois de la période du Банк качества - le mois
   // affiché vient de l'écran en direct (voir bankTotalLive).
   const [bankOther, setBankOther] = useState<BankOtherMonths>(EMPTY_BANK_OTHER);
   // Переводы между бригадами (employee_team_moves) : à partir de from_date, le salarié est dans team_id.
@@ -18240,17 +18240,17 @@ function PayrollExtrasView({
       cancelled = true;
     };
   }, [supabase, demo, runId]);
-  // Présence par jour — même table que "Par jour" (pointage_entries),
+  // Présence par jour - même table que "Par jour" (pointage_entries),
   // modifiable directement ici (choix dans chaque case : présent, absent,
-  // ou un type précis — maladie, congé payé, etc.).
+  // ou un type précis - maladie, congé payé, etc.).
   const [attendanceByEmployee, setAttendanceByEmployee] = useState<
     Record<string, Record<string, { worked: boolean; absenceCode: string | null; halfDay: boolean }>>
   >({});
-  // Annotation par jour, indépendante de pointage_entries — commentaire
+  // Annotation par jour, indépendante de pointage_entries - commentaire
   // libre sur n'importe quel jour + montant optionnel sur les week-ends, qui
   // alimente automatiquement BONUS équipe pour les salariés d'équipe (voir
   // saveDayNote plus bas). Demandé par l'utilisatrice, 30/09/2026.
-  // Jours = somme des présences (1 / 0,5) du mois, week-end compris — dérivé
+  // Jours = somme des présences (1 / 0,5) du mois, week-end compris - dérivé
   // des cases, donc toujours à jour quand une autre personne coche un jour.
   const joursByEmployee = useMemo(() => {
     const out: Record<string, number> = {};
@@ -18265,7 +18265,7 @@ function PayrollExtrasView({
   const [dayColumns, setDayColumns] = useState<string[]>([]);
   const [absenceTypes, setAbsenceTypes] = useState<{ id: string; code: string; label: string }[]>([]);
 
-  // Personnalisation des colonnes (largeur/police/couleurs) — un réglage par
+  // Personnalisation des colonnes (largeur/police/couleurs) - un réglage par
   // navigateur, jamais par code : lu/écrit dans localStorage seulement, rien
   // en base (préférence d'affichage personnelle, pas une donnée métier).
   const [colStyles, setColStyles] = useState<Record<string, Partial<ExtrasColStyle>>>(() => {
@@ -18274,22 +18274,22 @@ function PayrollExtrasView({
       const raw = window.localStorage.getItem(EXTRAS_COL_STYLES_STORAGE_KEY);
       return raw ? JSON.parse(raw) : {};
     } catch {
-      return {}; // localStorage indisponible (navigation privée, etc.) — reste aux valeurs par défaut.
+      return {}; // localStorage indisponible (navigation privée, etc.) - reste aux valeurs par défaut.
     }
   });
   const [editMode, setEditMode] = useState(false);
   const [editingColKey, setEditingColKey] = useState<string | null>(null);
-  // Bulle de commentaire multi-lignes (BONUS/Штраф), ancrée sous le bouton —
+  // Bulle de commentaire multi-lignes (BONUS/Штраф), ancrée sous le bouton -
   // remplace window.prompt (une seule ligne, fenêtre séparée bloquante), sur
   // le modèle de la bulle de commentaire "часы работы.numbers" (auteur/date/
-  // multi-lignes) — auteur/date ajoutés le 30/09/2026, voir raisonMetaByEmployee.
+  // multi-lignes) - auteur/date ajoutés le 30/09/2026, voir raisonMetaByEmployee.
   const [openRaisonFor, setOpenRaisonFor] = useState<string | null>(null);
-  // Email du compte connecté — sert à tamponner "qui a écrit ce commentaire".
+  // Email du compte connecté - sert à tamponner "qui a écrit ce commentaire".
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setCurrentUserEmail(data.user?.email ?? null));
   }, [supabase]);
-  // Snapshot "tel que chargé" des 4 champs raison + leur auteur/date — sert
+  // Snapshot "tel que chargé" des 4 champs raison + leur auteur/date - sert
   // à savoir, au moment de save(), quels champs ont réellement changé (pour
   // ne tamponner que ceux-là) et à reporter l'auteur/date des autres tels
   // quels plutôt que les effacer à chaque sauvegarde.
@@ -18313,7 +18313,7 @@ function PayrollExtrasView({
     >
   >({});
   // Replier Ставка → Congés payés d'un coup (demandé par l'utilisatrice,
-  // 29/09/2026) — préférence d'affichage par navigateur, comme colStyles.
+  // 29/09/2026) - préférence d'affichage par navigateur, comme colStyles.
   const [detailsCollapsed, setDetailsCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -18413,7 +18413,7 @@ function PayrollExtrasView({
       setAbsenceTypes(absTypes ?? []);
       const absenceCodeById = new Map((absTypes ?? []).map((t) => [t.id, t.code]));
 
-      // Jours = vrai pointage, pas une case à cocher — jours ouvrés (lun-ven) non absents.
+      // Jours = vrai pointage, pas une case à cocher - jours ouvrés (lun-ven) non absents.
       const { data: pointage } = await supabase
         .from("pointage_entries")
         .select("employee_id, work_date, is_absent, absence_type_id, half_day")
@@ -18455,7 +18455,7 @@ function PayrollExtrasView({
       }
       setRunId(run?.id ?? null);
 
-      // Mois précédent — reprend automatiquement le БАНК qualité de fin, et
+      // Mois précédent - reprend automatiquement le БАНК qualité de fin, et
       // propose le même taux journalier par défaut (rarement changé).
       const prevDate = new Date(Date.UTC(year, month - 2, 1));
       const prevMonthIso = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}-01`;
@@ -18546,7 +18546,7 @@ function PayrollExtrasView({
     scheduleFieldSave(employeeId, field);
   }
 
-  /** Bouton + bulle de commentaire multi-lignes pour BONUS/Штраф — remplace
+  /** Bouton + bulle de commentaire multi-lignes pour BONUS/Штраф - remplace
    *  window.prompt. Rendu en portail (voir RaisonButton) car ce tableau vit
    *  dans un .card overflow-x-auto, qui coupe court tout enfant absolute
    *  positionné qui déborde verticalement de la carte. */
@@ -18577,7 +18577,7 @@ function PayrollExtrasView({
 
   // 25 % du total des pénalités de TOUS les salariés d'équipe (tous
   // ensemble, pas ligne par ligne) revient au contrôleur désigné ce même
-  // mois — recalculé en direct à chaque frappe, comme le reste de ce
+  // mois - recalculé en direct à chaque frappe, comme le reste de ce
   // tableau. Штраф négatif = pénalité, uniquement pour les équipes chantier
   // (hors équipe : pas de système БАНК du tout, voir compute.ts).
   const totalPenalitesThisMonth = useMemo(
@@ -18608,7 +18608,7 @@ function PayrollExtrasView({
         penaliteDirecte: Number(line.penaliteDirecteMontant) || 0,
         banqueQualitePrecedente: banquePrecedenteByEmployee[e.id] ?? null,
         banqueAjustementManuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
-        // Même condition que groupPaieEmployees pour byTeam vs noTeam — Bureau,
+        // Même condition que groupPaieEmployees pour byTeam vs noTeam - Bureau,
         // Contrôle & Formation et chantier "sans équipe" n'ont pas de dépôt banque.
         faitPartieEquipe: e.category === "chantier" && !!e.team_id && !!e.teams?.name,
         controleBonusRecu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerSplit.controllerShare : 0,
@@ -18619,7 +18619,7 @@ function PayrollExtrasView({
     return map;
   }, [employees, inputs, joursByEmployee, banquePrecedenteByEmployee, controllerSplit, banqueQualitePrimeByEmployee]);
 
-  // Названия объектов из планинга по номеру команды — подсказки в окне выбора штрафов.
+  // Названия объектов из планинга по номеру команды - подсказки в окне выбора штрафов.
   const [planningSites, setPlanningSites] = useState<Record<string, string[]>>({});
   useEffect(() => {
     if (demo) return;
@@ -18630,7 +18630,7 @@ function PayrollExtrasView({
         if (!cancelled && json?.sitesByTeam) setPlanningSites(json.sitesByTeam);
       })
       .catch(() => {
-        /* подсказки необязательны — без планинга можно вводить объект вручную */
+        /* подсказки необязательны - без планинга можно вводить объект вручную */
       });
     return () => {
       cancelled = true;
@@ -18643,10 +18643,10 @@ function PayrollExtrasView({
 
   // Salariés chantier embauchés depuis le 28/09/2026 dont la période d'essai
   // (2 mois) est terminée mais dont la Ставка affichée ici est toujours
-  // celle d'essai (81) — signale qu'il faut passer à 90/105/115. Disparaît
+  // celle d'essai (81) - signale qu'il faut passer à 90/105/115. Disparaît
   // tout seul dès que la Ставка est changée, pas besoin de "confirmer" à part.
   const rateReviewCandidates = useMemo(() => {
-    // Comparé à la fin du mois AFFICHÉ, pas à la date réelle du jour — sinon
+    // Comparé à la fin du mois AFFICHÉ, pas à la date réelle du jour - sinon
     // naviguer vers un mois futur (ex. novembre, alors qu'on est en
     // septembre) ne montrait jamais l'alerte alors que l'essai y sera déjà
     // terminé (confirmé avec l'utilisatrice, 29/09/2026).
@@ -18659,7 +18659,7 @@ function PayrollExtrasView({
         const trialEnd = addMonthsIso(e.hire_date, 2);
         if (trialEnd > monthEnd) return false;
         // Pas encore graduée (81, vide, ou n'importe quelle autre valeur non
-        // conforme aux paliers) — pas seulement "toujours 81 pile", au cas
+        // conforme aux paliers) - pas seulement "toujours 81 pile", au cas
         // où le mois affiché n'a jamais été saisi/enregistré du tout.
         const currentRate = Number(inputs[e.id]?.tauxJournalier) || 0;
         return currentRate !== STANDARD_RATE && currentRate !== CHEF_RATE_NO_FRENCH && currentRate !== CHEF_RATE_FRENCH;
@@ -19001,7 +19001,7 @@ function PayrollExtrasView({
       return;
     }
     const lines = eligible
-      .map((t) => `${t.rank}. ${t.name} — ${t.amount.toFixed(0)} €`)
+      .map((t) => `${t.rank}. ${t.name} - ${t.amount.toFixed(0)} €`)
       .join("\n");
     if (
       !window.confirm(
@@ -19077,18 +19077,18 @@ function PayrollExtrasView({
       }));
       setCompanyQualityBank({ id: bank.id, current_total: 0, period_start: nextPeriodStart });
       setBankOther(EMPTY_BANK_OTHER);
-      toast.success(`🏆 Банк качества выплачен: ${bankTotalLive.toFixed(0)} € — ${eligible.length} команд`);
+      toast.success(`🏆 Банк качества выплачен: ${bankTotalLive.toFixed(0)} € - ${eligible.length} команд`);
     } finally {
       setDistributing(false);
     }
   }
 
-  /** Change le statut d'un jour directement dans cette grille — écrit dans
+  /** Change le statut d'un jour directement dans cette grille - écrit dans
    *  pointage_entries tout de suite (pas besoin du bouton "Enregistrer", qui
    *  ne concerne que les primes/bonus), sans toucher aux horaires précis si
    *  "Par jour" en a déjà saisi pour ce jour. `value` vient du <select> de la
    *  case : "present", "absent", "abs:<code>" (type d'absence précis) ou
-   *  "depart" (fin de contrat à partir de ce jour — met à jour employees
+   *  "depart" (fin de contrat à partir de ce jour - met à jour employees
    *  directement plutôt que pointage_entries, ce qui grise automatiquement
    *  ce jour et tous les suivants via `outsideEmployment`). */
   /** Équipe d'un salarié à une date donnée : dernier transfert ≤ date, sinon l'équipe actuelle. */
@@ -19112,7 +19112,7 @@ function PayrollExtrasView({
     const list = [...(teamRows ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     const answer = window.prompt(
       `${employee.first_name} ${employee.last_name} : passage dans une autre équipe à partir du ${fmtDate(dateIso)}.\n` +
-        `Перевод в другую бригаду с этой даты. Сейчас: ${employee.teams?.name ?? "—"}.\n\n` +
+        `Перевод в другую бригаду с этой даты. Сейчас: ${employee.teams?.name ?? "-"}.\n\n` +
         `Numéro de l'équipe / Номер бригады (${list.map((t) => label(t.name)).join(", ")}) :`
     );
     if (!answer) return;
@@ -19230,11 +19230,11 @@ function PayrollExtrasView({
   }
 
   /** Commentaire libre sur un jour + montant optionnel (week-end uniquement,
-   *  voir DayNoteButton) — écrit tout de suite (comme setDayStatus), pas
+   *  voir DayNoteButton) - écrit tout de suite (comme setDayStatus), pas
    *  besoin du bouton "Enregistrer". Le montant sur un jour de week-end
    *  s'AJOUTE à BONUS équipe pour ce salarié (delta entre l'ancien et le
    *  nouveau montant de ce jour précis, jamais un total qui remplace tout),
-   *  uniquement s'il fait partie d'une équipe chantier — demandé par
+   *  uniquement s'il fait partie d'une équipe chantier - demandé par
    *  l'utilisatrice, 30/09/2026 : d'abord "суммы за выходные... в бонус
    *  экип для команд", puis précisé "нужно конечно складывать с уже
    *  вписанными бонусами" après avoir vu que ça écrasait sa saisie
@@ -19280,7 +19280,7 @@ function PayrollExtrasView({
     }
   }
 
-  /** Attribut durable du salarié (comme chef d'équipe), pas mensuel — écrit
+  /** Attribut durable du salarié (comme chef d'équipe), pas mensuel - écrit
    *  tout de suite dans employees, pas besoin du bouton "Enregistrer". */
   async function toggleDriver(employee: PaieEmployee) {
     const next = !employee.is_driver;
@@ -19293,9 +19293,9 @@ function PayrollExtrasView({
   }
 
   /** Remplit en masse les jours ouvrés (lun-ven) "présent" pour les employés
-   *  donnés — ne touche JAMAIS un jour déjà saisi (présent ou absent), pour
+   *  donnés - ne touche JAMAIS un jour déjà saisi (présent ou absent), pour
    *  ne jamais écraser une absence déjà notée. Un seul upsert groupé au lieu
-   *  d'un aller-retour par case — bien plus rapide que cliquer chaque jour
+   *  d'un aller-retour par case - bien plus rapide que cliquer chaque jour
    *  un par un (demandé par l'utilisatrice, 29/09/2026). */
   async function fillWeekdaysPresent(targetEmployees: PaieEmployee[]) {
     const rows: { work_date: string; team_id: string | null; employee_id: string; is_absent: boolean }[] = [];
@@ -19336,12 +19336,12 @@ function PayrollExtrasView({
   }
 
   /** Envoie "À payer" de ce mois vers Paie ("Net souhaité" de la ligne du même
-   *  mois) en un clic — demandé le 08/10/2026. Les salariés à 0 € ou en négatif
+   *  mois) en un clic - demandé le 08/10/2026. Les salariés à 0 € ou en négatif
    *  (rien à payer / dette) sont ignorés : on n'écrase pas un Net souhaité déjà
    *  saisi dans Paie avec un zéro. Seule la colonne net_souhaite est écrite. */
   async function sendToPaie() {
     if (demo) {
-      toast.success("Démo — rien n'est envoyé / Демо — ничего не отправляется");
+      toast.success("Démo - rien n'est envoyé / Демо - ничего не отправляется");
       return;
     }
     if (!runId) return;
@@ -19367,7 +19367,7 @@ function PayrollExtrasView({
         `Отправить в Paie (${monthName}):\n` +
         `• «К оплате» → «Желаемый нетто»: ${amountsToSend.length} сотр.\n` +
         `• Отработанные дни (с половинками): ${joursToSend.length} сотр.\n` +
-        `Текущие значения у этих сотрудников в Paie будут заменены; с нулём/минусом — пропущены.`
+        `Текущие значения у этих сотрудников в Paie будут заменены; с нулём/минусом - пропущены.`
     );
     if (!ok) return;
     if (amountsToSend.length > 0) {
@@ -19407,10 +19407,10 @@ function PayrollExtrasView({
           const c = computed[e.id];
           const m = raisonMetaByEmployee[e.id];
           const raisons = [
-            { label: "BONUS équipe — raison", text: m?.bonusRaison ?? line.bonusRaison, by: m?.bonusRaisonBy ?? null, at: m?.bonusRaisonAt ?? null },
-            { label: "Bonus прочее — raison", text: m?.bonusDirectRaison ?? line.bonusDirectRaison, by: m?.bonusDirectRaisonBy ?? null, at: m?.bonusDirectRaisonAt ?? null },
-            { label: "Штраф контроль — raison", text: m?.penaliteRaison ?? line.penaliteRaison, by: m?.penaliteRaisonBy ?? null, at: m?.penaliteRaisonAt ?? null },
-            { label: "Штраф прочее — raison", text: m?.penaliteDirecteRaison ?? line.penaliteDirecteRaison, by: m?.penaliteDirecteRaisonBy ?? null, at: m?.penaliteDirecteRaisonAt ?? null },
+            { label: "BONUS équipe - raison", text: m?.bonusRaison ?? line.bonusRaison, by: m?.bonusRaisonBy ?? null, at: m?.bonusRaisonAt ?? null },
+            { label: "Bonus прочее - raison", text: m?.bonusDirectRaison ?? line.bonusDirectRaison, by: m?.bonusDirectRaisonBy ?? null, at: m?.bonusDirectRaisonAt ?? null },
+            { label: "Штраф контроль - raison", text: m?.penaliteRaison ?? line.penaliteRaison, by: m?.penaliteRaisonBy ?? null, at: m?.penaliteRaisonAt ?? null },
+            { label: "Штраф прочее - raison", text: m?.penaliteDirecteRaison ?? line.penaliteDirecteRaison, by: m?.penaliteDirecteRaisonBy ?? null, at: m?.penaliteDirecteRaisonAt ?? null },
           ].filter((x) => x.text);
           return {
             groupLabel: row.groupLabel,
@@ -19448,7 +19448,7 @@ function PayrollExtrasView({
         bank: companyQualityBank
           ? {
               total: bankTotalLive,
-              controllerName: controller ? employeeName(controller) : "—",
+              controllerName: controller ? employeeName(controller) : "-",
               controllerShare: controllerSplit.controllerShare,
             }
           : null,
@@ -19476,12 +19476,12 @@ function PayrollExtrasView({
             <InfoNote
               title="Primes & Bonus"
               text={
-                "Перенос логики из старой таблицы «часы работы» — но с одной версией правил на все месяцы (в старой таблице формула менялась почти каждый месяц), а Jours берётся из реальных отметок присутствия (Par jour), а не вводится руками.\n\n" +
-                "Ставка за дни = Jours × Ставка + Штраф контроль (для команды: только положительный; отрицательный уходит в БАНК 3000, не сюда — см. подсказку у поля) + Штраф прочее (всегда сразу сюда, для любого сотрудника — превышение скорости, поломка инструментов и т.п., БАНК 3000 не участвует).\n" +
-                "Congés payés и Vacance — просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
-                "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф контроль (отрицательный), не ниже 0 и не выше 3000. Просто копится, никакой автоматической выплаты из него нет — только карандашик, чтобы задать/поправить баланс вручную.\n" +
-                "BONUS équipe — командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом. Bonus прочее — разовый бонус для любого сотрудника (в т.ч. Bureau/Contrôle & Formation), не связан с BONUS équipe/БАНК 3000.\n" +
-                "Часы в дороге — вручную, галочка «Водитель» меняет ставку: 11,25€/ч (90/8) водителю, иначе 9,61€/ч (SMIC net). Входит в À payer.\n\n" +
+                "Перенос логики из старой таблицы «часы работы» - но с одной версией правил на все месяцы (в старой таблице формула менялась почти каждый месяц), а Jours берётся из реальных отметок присутствия (Par jour), а не вводится руками.\n\n" +
+                "Ставка за дни = Jours × Ставка + Штраф контроль (для команды: только положительный; отрицательный уходит в БАНК 3000, не сюда - см. подсказку у поля) + Штраф прочее (всегда сразу сюда, для любого сотрудника - превышение скорости, поломка инструментов и т.п., БАНК 3000 не участвует).\n" +
+                "Congés payés и Vacance - просто дни, вписываются вручную из билютеня, сумму считает и платит бухгалтерия отдельно.\n" +
+                "БАНК 3000 (личный, не путать с общим Банком качества на 10000€) = прошлый БАНК (переносится сам с прошлого месяца) + депозит 30% от BONUS минус Штраф контроль (отрицательный), не ниже 0 и не выше 3000. Просто копится, никакой автоматической выплаты из него нет - только карандашик, чтобы задать/поправить баланс вручную.\n" +
+                "BONUS équipe - командный бонус, считается снаружи по разным факторам, здесь просто вводится готовым числом. Bonus прочее - разовый бонус для любого сотрудника (в т.ч. Bureau/Contrôle & Formation), не связан с BONUS équipe/БАНК 3000.\n" +
+                "Часы в дороге - вручную, галочка «Водитель» меняет ставку: 11,25€/ч (90/8) водителю, иначе 9,61€/ч (SMIC net). Входит в À payer.\n\n" +
                 "Итог (Jours) автоматически передаётся в раздел «Paie»."
               }
             />
@@ -19518,7 +19518,7 @@ function PayrollExtrasView({
                   className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
                   disabled={loading}
                   onClick={() => fillWeekdaysPresent(employees.filter((e) => !isFopContractor(e)))}
-                  title="Remplit les jours ouvrés vides en présent, pour tout le monde — ne touche jamais un jour déjà saisi / Заполняет пустые будни как «присутствовал», для всех — уже отмеченные дни не трогает"
+                  title="Remplit les jours ouvrés vides en présent, pour tout le monde - ne touche jamais un jour déjà saisi / Заполняет пустые будни как «присутствовал», для всех - уже отмеченные дни не трогает"
                 >
                   <ClipboardCheck size={14} />
                   <Bi fr="Remplir les jours vides" ru="Заполнить пустые дни" />
@@ -19540,7 +19540,7 @@ function PayrollExtrasView({
                   title="Chaque case est enregistrée toute seule / Каждая ячейка сохраняется автоматически"
                 >
                   {demo ? (
-                    <Bi fr="Démo — rien n'est enregistré" ru="Демо — ничего не сохраняется" />
+                    <Bi fr="Démo - rien n'est enregistré" ru="Демо - ничего не сохраняется" />
                   ) : saveState === "saving" ? (
                     <Bi fr="Enregistrement…" ru="Сохранение…" />
                   ) : saveState === "error" ? (
@@ -19565,7 +19565,7 @@ function PayrollExtrasView({
                   key={p.email}
                   className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
                   style={{ backgroundColor: color }}
-                  title={p.focus ? `${p.email} — ${who ? employeeName(who) : ""} / ${cell?.slice(1).join(" ")}` : p.email}
+                  title={p.focus ? `${p.email} - ${who ? employeeName(who) : ""} / ${cell?.slice(1).join(" ")}` : p.email}
                 >
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
                   {p.email.split("@")[0]}
@@ -19580,8 +19580,8 @@ function PayrollExtrasView({
         <div className="card mb-4 border-l-4 border-primary-500 bg-primary-50/40">
           <p className="text-sm font-bold text-primary-700">
             <Bi
-              fr="Mode démo — employés fictifs, rien n'est lu ni enregistré en base. Modifie les cases librement pour simuler."
-              ru="Демо-режим — вымышленные сотрудники, ничего не читается и не сохраняется в базе. Меняй любые ячейки для симуляции."
+              fr="Mode démo - employés fictifs, rien n'est lu ni enregistré en base. Modifie les cases librement pour simuler."
+              ru="Демо-режим - вымышленные сотрудники, ничего не читается и не сохраняется в базе. Меняй любые ячейки для симуляции."
             />
           </p>
         </div>
@@ -19591,8 +19591,8 @@ function PayrollExtrasView({
         <div className="card mb-4 border-l-4 border-warning-400 bg-warning-50/40">
           <p className="text-sm font-bold text-warning-700 mb-2">
             <Bi
-              fr={`Fin de période d'essai — vérifier la Ставка (${rateReviewCandidates.length})`}
-              ru={`Испытательный срок закончился — проверь Ставку (${rateReviewCandidates.length})`}
+              fr={`Fin de période d'essai - vérifier la Ставка (${rateReviewCandidates.length})`}
+              ru={`Испытательный срок закончился - проверь Ставку (${rateReviewCandidates.length})`}
             />
           </p>
           <ul className="space-y-1 text-xs text-stone-600">
@@ -19618,8 +19618,8 @@ function PayrollExtrasView({
           <div className="card mb-4 border-l-4 border-error-400 bg-error-50/40">
             <p className="text-sm font-bold text-error-600 mb-2">
               <Bi
-                fr={`Штраф сверх БАНК 3000 — la différence est retenue sur la paie (${overflow.length})`}
-                ru={`Штраф больше, чем в БАНК 3000 — разница вычтена из зарплаты (${overflow.length})`}
+                fr={`Штраф сверх БАНК 3000 - la différence est retenue sur la paie (${overflow.length})`}
+                ru={`Штраф больше, чем в БАНК 3000 - разница вычтена из зарплаты (${overflow.length})`}
               />
             </p>
             <ul className="space-y-1 text-xs text-stone-600">
@@ -19685,7 +19685,7 @@ function PayrollExtrasView({
                   </div>
                   <div className="mt-1 flex justify-between text-[11px] text-stone-400">
                     <span>
-                      <Bi fr="Sans plafond — se remplit jusqu'au paiement" ru="Без потолка — копится до выплаты" />
+                      <Bi fr="Sans plafond - se remplit jusqu'au paiement" ru="Без потолка - копится до выплаты" />
                     </span>
                     <span className="shrink-0 font-semibold text-stone-500">
                       {daysLeft} <Bi fr="j. restants" ru="дн. осталось" />
@@ -19709,7 +19709,7 @@ function PayrollExtrasView({
                     <div className="mb-2 text-[11px] text-stone-400">
                       <Bi
                         fr={`Classement des équipes : moins de pénalités = mieux. Les ${QUALITY_BANK_EXCLUDED_WORST} pires n'ont pas de part.`}
-                        ru={`Рейтинг команд: меньше штрафов — выше. ${QUALITY_BANK_EXCLUDED_WORST} худшие без доли.`}
+                        ru={`Рейтинг команд: меньше штрафов - выше. ${QUALITY_BANK_EXCLUDED_WORST} худшие без доли.`}
                       />
                     </div>
                     <ul className="flex flex-col gap-1.5">
@@ -19742,7 +19742,7 @@ function PayrollExtrasView({
                               {t.eligible && <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${(t.amount / maxAmount) * 100}%` }} />}
                             </span>
                             <span className={`ml-auto w-20 shrink-0 text-right text-base font-extrabold tabular-nums ${t.eligible ? "text-emerald-800" : "text-stone-400"}`}>
-                              {t.eligible ? `${t.amount.toFixed(0)} €` : "—"}
+                              {t.eligible ? `${t.amount.toFixed(0)} €` : "-"}
                             </span>
                           </li>
                         </Fragment>
@@ -19795,7 +19795,7 @@ function PayrollExtrasView({
               <Bi fr={editMode ? "Terminer l'édition" : "Éditer le tableau"} ru={editMode ? "Готово" : "Редактировать таблицу"} />
             </button>
           </div>
-          {/* Grille visible sur toutes les cellules (jours + colonnes primes) — bien plus
+          {/* Grille visible sur toutes les cellules (jours + colonnes primes) - bien plus
               simple et fiable ici qu'ajouter une bordure à chacune des dizaines de <td>
               individuelles ci-dessous, dont plusieurs ont déjà leur propre style ponctuel. */}
           <style>{`
@@ -19815,13 +19815,13 @@ function PayrollExtrasView({
             .extras-grid td:last-child, .extras-grid th:last-child { border-right: none; }
           `}</style>
           {/* fieldset[disabled] cascade nativement à tous les input/select/textarea/
-              button qu'il contient — un seul point de contrôle pour rendre toute la
+              button qu'il contient - un seul point de contrôle pour rendre toute la
               grille purement consultative (rh_readonly), au lieu de passer readOnly
               à chaque champ individuellement. display:contents pour ne rien changer
               à la mise en page (table/colgroup ont besoin d'un parent transparent). */}
           {/* Ce div doit défiler réellement lui-même (hauteur bornée +
               overflow-auto sur les deux axes) pour que position:sticky
-              fonctionne — sinon c'est la page qui défilait verticalement,
+              fonctionne - sinon c'est la page qui défilait verticalement,
               pas ce conteneur, et le sticky top ne s'accrochait jamais. */}
           <div className="overflow-auto max-h-[75vh]">
           <fieldset
@@ -19976,11 +19976,11 @@ function PayrollExtrasView({
                 const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
                 const c = computed[e.id];
                 const jours = joursByEmployee[e.id] ?? 0;
-                // Même condition que groupPaieEmployees / computeControllerSplit plus haut —
+                // Même condition que groupPaieEmployees / computeControllerSplit plus haut -
                 // détermine si Штраф passe par le БАНК 3000 ou directement dans la paie (voir compute.ts).
                 const faitPartieEquipe = e.category === "chantier" && !!e.team_id && !!e.teams?.name;
                 // Bureau + Contrôle & Formation : BONUS équipe, Штраф contrôle, БАНК 3000 et Bonus
-                // qualité ne s'appliquent jamais à eux (confirmé avec l'utilisatrice, 29/09/2026) —
+                // qualité ne s'appliquent jamais à eux (confirmé avec l'utilisatrice, 29/09/2026) -
                 // grisés plutôt que masqués, pour de rares exceptions (ex. prime ponctuelle au bureau).
                 const bureauOrControl = e.category === "bureau";
                 const showGroupHeader = idx === 0 || groupedRows[idx - 1].groupKey !== row.groupKey;
@@ -20097,7 +20097,7 @@ function PayrollExtrasView({
                               checked={!!e.is_driver}
                               data-cell={`${e.id}:isDriver`}
                               onChange={() => toggleDriver(e)}
-                              title="Chauffeur — change le tarif de Часы в дороге / Водитель — меняет ставку часов в дороге"
+                              title="Chauffeur - change le tarif de Часы в дороге / Водитель - меняет ставку часов в дороге"
                               className="h-3.5 w-3.5 cursor-pointer accent-primary-600"
                             />
                           </td>
@@ -20126,7 +20126,7 @@ function PayrollExtrasView({
                             <div className="relative">
                               <input
                                 type="number"
-                                placeholder={bureauOrControl ? "—" : undefined}
+                                placeholder={bureauOrControl ? "-" : undefined}
                                 className={`input w-full px-1.5 py-1.5 text-xs ${
                                   bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
                                 }`}
@@ -20135,7 +20135,7 @@ function PayrollExtrasView({
                               data-cell={`${e.id}:bonusEquipe`}
                                 title={
                                   bureauOrControl
-                                    ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de BONUS équipe (cas rare : reste saisissable) / Не применимо — у Bureau / Contrôle & Formation нет BONUS équipe (редкий случай: поле всё ещё доступно)"
+                                    ? "Non applicable - Bureau / Contrôle & Formation n'ont pas de BONUS équipe (cas rare : reste saisissable) / Не применимо - у Bureau / Contrôle & Formation нет BONUS équipe (редкий случай: поле всё ещё доступно)"
                                     : extrasTooltip(
                                         "Bonus équipe",
                                         `${(Number(line.bonusEquipe) || 0).toFixed(2)}€ − dépôt banque(${(c?.banqueDepot ?? 0).toFixed(2)}€) = payé ${(c?.bonusEquipePaye ?? 0).toFixed(2)}€`,
@@ -20155,7 +20155,7 @@ function PayrollExtrasView({
                                 value={line.bonusDirectMontant}
                                 onChange={(ev) => updateInput(e.id, "bonusDirectMontant", ev.target.value)}
                               data-cell={`${e.id}:bonusDirectMontant`}
-                                title="Bonus ponctuel, indépendant du BONUS équipe/БАНК 3000 — disponible pour tout employé, notamment Bureau/Contrôle & Formation / Разовый бонус, не связан с BONUS équipe/БАНК 3000 — доступен любому сотруднику, в т.ч. Bureau/Contrôle & Formation"
+                                title="Bonus ponctuel, indépendant du BONUS équipe/БАНК 3000 - disponible pour tout employé, notamment Bureau/Contrôle & Formation / Разовый бонус, не связан с BONUS équipe/БАНК 3000 - доступен любому сотруднику, в т.ч. Bureau/Contrôle & Formation"
                               />
                               {raisonButton(e.id, "bonusDirectRaison", line.bonusDirectRaison, "Raison du Bonus (прочее)", "Причина бонуса (прочее)", "bg-success-500 text-white")}
                             </div>
@@ -20164,7 +20164,7 @@ function PayrollExtrasView({
                             <div className="relative">
                               <input
                                 type="number"
-                                placeholder={bureauOrControl ? "—" : undefined}
+                                placeholder={bureauOrControl ? "-" : undefined}
                                 className={`input w-full px-1.5 py-1.5 text-xs ${
                                   bureauOrControl ? "bg-stone-100 text-stone-400" : "bg-warning-50/60"
                                 }`}
@@ -20173,9 +20173,9 @@ function PayrollExtrasView({
                               data-cell={`${e.id}:penaliteMontant`}
                                 title={
                                   bureauOrControl
-                                    ? "Non applicable — Bureau / Contrôle & Formation n'ont pas de contrôle qualité chantier (cas rare : reste saisissable, ajustement direct de paie) / Не применимо — у Bureau / Contrôle & Formation нет контроля качества на объекте (редкий случай: поле всё ещё доступно, сразу влияет на зп)"
+                                    ? "Non applicable - Bureau / Contrôle & Formation n'ont pas de contrôle qualité chantier (cas rare : reste saisissable, ajustement direct de paie) / Не применимо - у Bureau / Contrôle & Formation нет контроля качества на объекте (редкий случай: поле всё ещё доступно, сразу влияет на зп)"
                                     : faitPartieEquipe
-                                      ? "Équipe : négatif = pénalité déduite du БАНК 3000 ; positif = ajustement direct de paie / В команде: отрицательное — штраф из БАНК 3000; положительное — сразу в зп"
+                                      ? "Équipe : négatif = pénalité déduite du БАНК 3000 ; positif = ajustement direct de paie / В команде: отрицательное - штраф из БАНК 3000; положительное - сразу в зп"
                                       : "Hors équipe : ajustement direct de paie, pas de БАНК 3000 / Вне команды: сразу влияет на зп, БАНК 3000 не участвует"
                                 }
                               />
@@ -20202,7 +20202,7 @@ function PayrollExtrasView({
                                 value={line.penaliteDirecteMontant}
                                 onChange={(ev) => updateInput(e.id, "penaliteDirecteMontant", ev.target.value)}
                               data-cell={`${e.id}:penaliteDirecteMontant`}
-                                title="Amende directe (excès de vitesse, casse de matériel…) — toujours retirée directement de la paie, pour tout employé, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) — всегда сразу из зп, для любого сотрудника, БАНК 3000 не участвует"
+                                title="Amende directe (excès de vitesse, casse de matériel…) - toujours retirée directement de la paie, pour tout employé, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) - всегда сразу из зп, для любого сотрудника, БАНК 3000 не участвует"
                               />
                               {raisonButton(e.id, "penaliteDirecteRaison", line.penaliteDirecteRaison, "Raison du Штраф (прочее)", "Причина штрафа (прочее)", "bg-warning-500 text-white")}
                             </div>
@@ -20213,7 +20213,7 @@ function PayrollExtrasView({
                             }`}
                             title={
                               bureauOrControl
-                                ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
+                                ? "Non applicable - pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо - у Bureau / Contrôle & Formation нет БАНК 3000"
                                 : line.banqueAjustementManuel
                                   ? "Задано вручную через карандашик (заменяет перенос с прошлого месяца) / Forcé manuellement via le crayon (remplace le report du mois précédent)"
                                   : "Перенесено автоматически с конца прошлого месяца / Reporté automatiquement depuis la fin du mois précédent"
@@ -20225,7 +20225,7 @@ function PayrollExtrasView({
                                 onChange={(v) => updateInput(e.id, "banqueAjustementManuel", v)}
                               />
                             )}
-                            {bureauOrControl ? "—" : `${(c?.banqueQualiteDebut ?? 0).toFixed(2)} €`}
+                            {bureauOrControl ? "-" : `${(c?.banqueQualiteDebut ?? 0).toFixed(2)} €`}
                           </td>
                           <td
                             className={
@@ -20235,16 +20235,16 @@ function PayrollExtrasView({
                             }
                             title={
                               bureauOrControl
-                                ? "Non applicable — pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо — у Bureau / Contrôle & Formation нет БАНК 3000"
+                                ? "Non applicable - pas de БАНК 3000 pour Bureau / Contrôle & Formation / Не применимо - у Bureau / Contrôle & Formation нет БАНК 3000"
                                 : extrasTooltip(
                                     "БАНК 3000",
-                                    `min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ — jamais négatif : l'excédent d'une pénalité est retenu sur la paie`,
+                                    `min(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (mois précédent${line.banqueAjustementManuel ? ", forcé manuellement" : ""}) + dépôt(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ - jamais négatif : l'excédent d'une pénalité est retenu sur la paie`,
                                     "БАНК 3000",
-                                    `мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ — не уходит в минус: превышение штрафа вычитается из зарплаты`
+                                    `мин(3000, ${(c?.banqueQualiteDebut ?? 0).toFixed(2)}€ (прошлый месяц${line.banqueAjustementManuel ? ", задано вручную" : ""}) + депозит(${(c?.banqueDepot ?? 0).toFixed(2)}€)) − штрафы контроля(${(c?.penalitesControle ?? 0).toFixed(2)}€) = ${(c?.banqueQualiteFin ?? 0).toFixed(2)}€ - не уходит в минус: превышение штрафа вычитается из зарплаты`
                                   )
                             }
                           >
-                            {bureauOrControl ? "—" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
+                            {bureauOrControl ? "-" : `${(c?.banqueQualiteFin ?? 0).toFixed(2)} €`}
                           </td>
                         </>
                       )}
@@ -20271,7 +20271,7 @@ function PayrollExtrasView({
                       <td className="py-2 pr-2">
                         <input
                           type="number"
-                          title="Avance — pour information, jamais dans À payer / Аванс — для справки, в À payer не входит"
+                          title="Avance - pour information, jamais dans À payer / Аванс - для справки, в À payer не входит"
                           className="input bg-green-100 w-full px-1.5 py-1.5 text-xs"
                           value={line.avance}
                           onChange={(ev) => updateInput(e.id, "avance", ev.target.value)}
@@ -20284,7 +20284,7 @@ function PayrollExtrasView({
                           "À payer",
                           `Salaire jours(${(c?.salaireJours ?? 0).toFixed(2)}€) + Bonus équipe payé(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + Bonus прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + Coût route(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + Part contrôleur(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + Prime Банк качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""}${(c?.penaliteSurPaie ?? 0) ? ` − Pénalité au-delà du БАНК(${(c?.penaliteSurPaie ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (Congés payés, Vacance jours et Аванс sont indicatifs, calculés/versés par la comptabilité)`,
                           "К оплате",
-                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""}${(c?.penaliteSurPaie ?? 0) ? ` − штраф сверх БАНКа(${(c?.penaliteSurPaie ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные, дни вакансов и аванс — только для справки, считает и платит бухгалтерия)`
+                          `Оплата за дни(${(c?.salaireJours ?? 0).toFixed(2)}€) + выплаченный бонус команды(${(c?.bonusEquipePaye ?? 0).toFixed(2)}€)${(c?.bonusDirect ?? 0) ? ` + бонус прочее(${(c?.bonusDirect ?? 0).toFixed(2)}€)` : ""}${(c?.coutRoute ?? 0) ? ` + часы в дороге(${(c?.coutRoute ?? 0).toFixed(2)}€)` : ""}${(c?.controleBonusRecu ?? 0) ? ` + доля контролёра(${(c?.controleBonusRecu ?? 0).toFixed(2)}€)` : ""}${(c?.banqueQualitePrime ?? 0) ? ` + премия Банка качества(${(c?.banqueQualitePrime ?? 0).toFixed(2)}€)` : ""}${(c?.penaliteSurPaie ?? 0) ? ` − штраф сверх БАНКа(${(c?.penaliteSurPaie ?? 0).toFixed(2)}€)` : ""} = ${(c?.aPayer ?? 0).toFixed(2)}€ (отпускные, дни вакансов и аванс - только для справки, считает и платит бухгалтерия)`
                         )}
                       >
                         {(c?.aPayer ?? 0).toFixed(2)} €
@@ -20310,7 +20310,7 @@ function PayrollExtrasView({
   );
 }
 
-// ── Vue "Dossier salarié" — documents par type, avec péremption et périodes d'embauche ──
+// ── Vue "Dossier salarié" - documents par type, avec péremption et périodes d'embauche ──
 type DossierEmployee = {
   id: string;
   first_name: string;
@@ -20327,7 +20327,7 @@ type DocumentCategory = {
   requires_issue_date: boolean;
   foreigners_only: boolean;
   per_period: boolean;
-  /** Set only for the optional départ paperwork categories — which of the
+  /** Set only for the optional départ paperwork categories - which of the
    *  two procedures they belong to, or "commun" for the 3 shared at the end
    *  of either one. Null for every ordinary, always-visible category. */
   departure_procedure: "rupture_conventionnelle" | "demission" | "commun" | null;
@@ -20397,10 +20397,10 @@ const DOSSIER_CATEGORY_ICONS: Record<string, LucideIcon> = {
   validation_vls_ts: BadgeCheck,
 };
 
-/** Short, consistent display name for an uploaded document — "Catégorie - DD-MM-YYYY.ext" —
+/** Short, consistent display name for an uploaded document - "Catégorie - DD-MM-YYYY.ext" -
  *  instead of whatever the source file happened to be called (IMG_2026.pdf, scan1.pdf...). */
 /** dateIso, when known (visit date, expiry, hire/exit date…), is always
- *  preferred over today's date — the day someone happens to upload a
+ *  preferred over today's date - the day someone happens to upload a
  *  document is rarely the date that actually matters for it later. */
 function standardFileName(
   categoryLabel: string,
@@ -20416,7 +20416,7 @@ function standardFileName(
 }
 
 /** Prevaly documents are generated for a specific visite médicale that's
- *  already tracked in medical_visits (entered via the Médical view) — use
+ *  already tracked in medical_visits (entered via the Médical view) - use
  *  that visit's actual date for the filename instead of the upload date. */
 function mostRecentMedicalVisitDate(visits: DossierMedicalVisit[]): string | null {
   const t = today();
@@ -20428,8 +20428,8 @@ function mostRecentMedicalVisitDate(visits: DossierMedicalVisit[]): string | nul
   );
 }
 
-/** Contracts carry more useful info than an upload date — whether it's signed,
- *  and the actual hire date from the Registre entry — "Contrat de travail -
+/** Contracts carry more useful info than an upload date - whether it's signed,
+ *  and the actual hire date from the Registre entry - "Contrat de travail -
  *  Signé - DD-MM-YYYY.ext". Other categories (RIB, etc.) don't need this. */
 function standardContractFileName(
   originalName: string,
@@ -20452,7 +20452,7 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
-/** "Ajouté le DD/MM/YYYY · uploader@mail" — shown under each document's name. */
+/** "Ajouté le DD/MM/YYYY · uploader@mail" - shown under each document's name. */
 function docMetaLine(doc: EmployeeDocumentRow): string {
   const date = new Date(doc.created_at).toLocaleDateString("fr-FR");
   return doc.uploaded_by_email ? `Ajouté le ${date} · ${doc.uploaded_by_email}` : `Ajouté le ${date}`;
@@ -20538,7 +20538,7 @@ function DossierPeriodCategory({
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-xs font-semibold text-stone-500">
-                    {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "—"} →{" "}
+                    {entry.date_entree ? formatDateShortDMY(entry.date_entree) : "-"} →{" "}
                     {entry.date_sortie ? formatDateShortDMY(entry.date_sortie) : "en cours"}
                   </p>
                   <label className="btn btn-secondary text-xs px-2.5 py-1 cursor-pointer">
@@ -20639,7 +20639,7 @@ function DossierView({
 }: {
   supabase: ReturnType<typeof createClient>;
   /** Set when another view's "Dossier salarié" link sends us here for a
-   *  specific person — switches straight to their file instead of leaving
+   *  specific person - switches straight to their file instead of leaving
    *  whatever was previously selected (or nothing) showing. */
   initialEmployeeId?: string | null;
 }) {
@@ -20650,11 +20650,11 @@ function DossierView({
   const [search, setSearch] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
   // Mêmes champs que "Contact" dans la fiche Employés (employees.phone /
-  // phone_pro / email) — une seule source, modifiable depuis les deux écrans.
+  // phone_pro / email) - une seule source, modifiable depuis les deux écrans.
   const [contact, setContact] = useState<{ phone: string; phone_pro: string; email: string } | null>(null);
 
   // "Adjusting state when a prop changes" (React docs) rather than an
-  // effect — initialEmployeeId only ever changes when another view sends
+  // effect - initialEmployeeId only ever changes when another view sends
   // us here for a specific person, and this must apply before that
   // render paints, not one render later.
   const [appliedInitialEmployeeId, setAppliedInitialEmployeeId] = useState<string | null | undefined>(undefined);
@@ -20862,7 +20862,7 @@ function DossierView({
       validUntil?: string;
       registreEntryId?: string;
       fileNameOverride?: string;
-      /** Real-world date the file is about (visit date, hire/exit date…) —
+      /** Real-world date the file is about (visit date, hire/exit date…) -
        *  falls back to validUntil, then to today's date if neither is known. */
       documentDateIso?: string | null;
     }
@@ -20900,7 +20900,7 @@ function DossierView({
       toast.error("Erreur : " + insertError.message);
       return;
     }
-    // A real document just landed — a leftover "non applicable" flag on the
+    // A real document just landed - a leftover "non applicable" flag on the
     // same category/period would now be a contradiction, so clear it.
     const staleFlag = findNotApplicable(categoryCode, opts?.registreEntryId ?? null);
     if (staleFlag) {
@@ -20943,7 +20943,7 @@ function DossierView({
   }
 
   /** Shared by the file-picker input and drag-and-drop for a non-period
-   *  category card — same routing (expiry modal / archive / plain upload)
+   *  category card - same routing (expiry modal / archive / plain upload)
    *  regardless of how the file arrived. */
   function handleFileForCategory(cat: DocumentCategory, file: File) {
     if (cat.requires_expiry || cat.requires_issue_date) {
@@ -20954,7 +20954,7 @@ function DossierView({
       setNoExpiryDate(false);
     } else if (cat.code === "archive") {
       // Archive is the free-form catch-all (multiple unrelated files per
-      // employee) — keep each file's own name instead of the standardized
+      // employee) - keep each file's own name instead of the standardized
       // "Catégorie - date" naming that other, one-file-per-period
       // categories rely on.
       uploadFile(cat.code, file, { fileNameOverride: file.name });
@@ -20964,7 +20964,7 @@ function DossierView({
     }
   }
 
-  // For employees whose attestation de droits (Sécu/Ameli) never arrived —
+  // For employees whose attestation de droits (Sécu/Ameli) never arrived -
   // lets RH record the NIR/NIA number by hand instead of blocking on the
   // missing document. Upserts because employee_confidential may not have a
   // row yet for this employee.
@@ -20991,7 +20991,7 @@ function DossierView({
   }
 
   // "IBAN enregistré" next to the RIB category was read-only and drifted
-  // from reality whenever an employee sent an updated RIB — editing it here
+  // from reality whenever an employee sent an updated RIB - editing it here
   // writes the same employee_confidential.rib every other view (Paie…)
   // reads, so there's a single source of truth instead of one per screen.
   async function updateRib(value: string) {
@@ -21017,7 +21017,7 @@ function DossierView({
   }
 
   // Picking (or resetting) the départ procedure for the employee's current
-  // registre entry — this is what makes the détaillée départ block above
+  // registre entry - this is what makes the détaillée départ block above
   // opt-in: nothing shows until this is set once.
   async function updateProcedureDepart(registreEntryId: string, procedure: "rupture_conventionnelle" | "demission" | null) {
     setRegistreEntries((prev) => prev.map((r) => (r.id === registreEntryId ? { ...r, procedure_depart: procedure } : r)));
@@ -21080,9 +21080,9 @@ function DossierView({
               <InfoNote
                 title="Dossier salarié"
                 text={
-                  "Личное дело сотрудника — все загруженные документы по категориям (контракт, RIB, медицина, вид на жительство и т.д.).\n\n" +
-                  "Кнопка с глазом — посмотреть файл, не скачивая его. Кнопка «Historique» у карточки сотрудника показывает, кто и когда загрузил или удалил документ.\n\n" +
-                  "Для некоторых категорий («Habilitation», «Titre de séjour», «Passeport») система попросит указать дату выдачи и дату истечения — такие документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Carte BTP» спрашивается только дата создания карточки — у неё нет срока действия. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор — дата приёма подставляется автоматически из Registre du personnel."
+                  "Личное дело сотрудника - все загруженные документы по категориям (контракт, RIB, медицина, вид на жительство и т.д.).\n\n" +
+                  "Кнопка с глазом - посмотреть файл, не скачивая его. Кнопка «Historique» у карточки сотрудника показывает, кто и когда загрузил или удалил документ.\n\n" +
+                  "Для некоторых категорий («Habilitation», «Titre de séjour», «Passeport») система попросит указать дату выдачи и дату истечения - такие документы сами появятся в разделе «Notifications», когда срок будет подходить. Для «Carte BTP» спрашивается только дата создания карточки - у неё нет срока действия. Для «Contrat de travail» вместо этого спрашивается, подписан ли договор - дата приёма подставляется автоматически из Registre du personnel."
                 }
               />
             }
@@ -21156,7 +21156,7 @@ function DossierView({
         ) : (
           <div className="card">
             <div className="flex items-center justify-between mb-4">
-              <p className="font-bold">Dossier — {employeeName(selectedEmployee)}</p>
+              <p className="font-bold">Dossier - {employeeName(selectedEmployee)}</p>
               <button
                 onClick={() => setShowHistory((v) => !v)}
                 className="btn btn-secondary text-xs px-3 py-1.5"
@@ -21329,7 +21329,7 @@ function DossierView({
                             defaultValue={confidential?.rib ?? ""}
                             key={`rib-${selectedEmployeeId}-${confidential?.rib ?? ""}`}
                             onBlur={(e) => updateRib(e.target.value)}
-                            title="Le RIB le plus récent envoyé par le salarié peut différer du fichier déjà classé — corriger ici met à jour l'IBAN partout où il est affiché / Актуальный RIB, присланный сотрудником, может отличаться от уже загруженного файла — исправление здесь обновит IBAN везде"
+                            title="Le RIB le plus récent envoyé par le salarié peut différer du fichier déjà classé - corriger ici met à jour l'IBAN partout où il est affiché / Актуальный RIB, присланный сотрудником, может отличаться от уже загруженного файла - исправление здесь обновит IBAN везде"
                           />
                         </div>
                       )}
@@ -21365,7 +21365,7 @@ function DossierView({
                         (confidential?.residence_permit_type || confidential?.residence_permit_number) && (
                           <p className="text-xs text-stone-500 mb-2">
                             {confidential.residence_permit_type ?? "Titre"}
-                            {confidential.residence_permit_number ? ` — n° ${confidential.residence_permit_number}` : ""}
+                            {confidential.residence_permit_number ? ` - n° ${confidential.residence_permit_number}` : ""}
                           </p>
                         )}
                       {cat.code === "medical_prevaly" &&
@@ -21381,9 +21381,9 @@ function DossierView({
                               return (
                                 <p key={v.id} className="text-xs text-stone-500 flex items-center gap-2 flex-wrap">
                                   <span>
-                                    {v.visit_subtype ?? "Visite"} — dernière :{" "}
-                                    {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "—"} · prochaine :{" "}
-                                    {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "—"}
+                                    {v.visit_subtype ?? "Visite"} - dernière :{" "}
+                                    {v.last_visit_date ? formatDateShortDMY(v.last_visit_date) : "-"} · prochaine :{" "}
+                                    {v.next_visit_date ? formatDateShortDMY(v.next_visit_date) : "-"}
                                     {v.next_visit_date && v.next_visit_time && ` ${v.next_visit_time.slice(0, 5)}`}
                                   </span>
                                   {urgency && <span className={`badge badge-${urgency.tone}`}>{urgency.label}</span>}
@@ -21669,7 +21669,7 @@ function DossierView({
               {!contractModal.hireDate && (
                 <span className="text-error-600 font-normal">
                   {" "}
-                  — {"non renseignée dans le Registre du personnel"}
+                  - {"non renseignée dans le Registre du personnel"}
                 </span>
               )}
               <DateInput
@@ -21708,19 +21708,19 @@ function DossierView({
   );
 }
 
-// ── Vue "Checklists RH" — parcours d'embauche / de départ par étapes, ───────
+// ── Vue "Checklists RH" - parcours d'embauche / de départ par étapes, ───────
 // avec upload de documents et marquage "non applicable" directement ici (les
-// mêmes catégories et le même stockage que Dossier salarié — juste organisés
+// mêmes catégories et le même stockage que Dossier salarié - juste organisés
 // par étape plutôt qu'en une seule longue liste).
 
 type ChecklistItemRow = { id: string; registre_entry_id: string; checklist_type: "embauche" | "depart"; item_code: string };
 type DismissedRow = { id: string; employee_id: string; registre_entry_id: string; checklist_type: "embauche" | "depart" };
 
-/** Manual-only steps with no document behind them — tracked in
+/** Manual-only steps with no document behind them - tracked in
  *  employee_checklist_items, same table/pattern as before. */
 type ManualStepDef = { code: string; label: string; labelRu: string };
 
-// "Visite médicale" isn't a manual step here — it's rendered straight from
+// "Visite médicale" isn't a manual step here - it's rendered straight from
 // medical_visits (same data as the Médical section), so it's built directly
 // in movementItems() below instead of living in this list.
 const EMBAUCHE_MANUAL_STEPS: ManualStepDef[] = [];
@@ -21731,7 +21731,7 @@ const DEPART_MANUAL_STEPS: ManualStepDef[] = [
   { code: "materiel", label: "Matériel restitué (badge, EPI, véhicule…)", labelRu: "Возвращено оборудование (бейдж, СИЗ, авто…)" },
 ];
 
-/** Some checklist items are really a small process, not a single yes/no —
+/** Some checklist items are really a small process, not a single yes/no -
  *  clicking the item pops up this sub-checklist instead of (or alongside)
  *  its own top-level state. Stored in employee_checklist_items too, under a
  *  "<itemCode>:<subCode>" item_code so no new table is needed. Keyed by the
@@ -21754,7 +21754,7 @@ const ITEM_SUBSTEPS: Record<string, ManualStepDef[]> = {
 
 /** Stage 1 in the process she described: gather what the employee provides,
  *  marking each as applicable or not. Stage 3/4: what VLADIS produces or
- *  arranges once the basics are in — habilitations, cover, etc. Stage 2
+ *  arranges once the basics are in - habilitations, cover, etc. Stage 2
  *  (contrat/dpae) and "Départ" (rupture) are per_period, rendered separately
  *  via DossierPeriodCategory. */
 const STAGE_1_CODES = ["passeport", "carte_identite", "acte_naissance", "permis_conduire", "photo", "rib"];
@@ -21793,7 +21793,7 @@ function ManualStepList({
   );
 }
 
-/** One non-period document category card — upload (click or drag-and-drop)
+/** One non-period document category card - upload (click or drag-and-drop)
  *  plus "non applicable". Mirrors DossierPeriodCategory's per_period sibling
  *  in Dossier salarié, and the same category card there, just standalone so
  *  it can be reused here grouped by stage instead of in one flat list. */
@@ -21946,7 +21946,7 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 type ChecklistEmployee = DossierEmployee & { team_name: string | null };
 
 /** Same palette and name→index assignment as Paie/Effectif's team colors
- *  (PAIE_TEAM_COLOR_PALETTE) — a team keeps the same color across views.
+ *  (PAIE_TEAM_COLOR_PALETTE) - a team keeps the same color across views.
  *  Light for the collapsed card, dark for the expanded one; both literal so
  *  Tailwind's build picks them up. */
 const CHECKLIST_TEAM_COLORS: { light: string; dark: string }[] = [
@@ -22003,7 +22003,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   const [newLastName, setNewLastName] = useState("");
   const [adding, setAdding] = useState(false);
 
-  // PostgREST caps a plain .select() at 1000 rows — employee_documents alone
+  // PostgREST caps a plain .select() at 1000 rows - employee_documents alone
   // is already past that (1900+), so a page loops until it gets a short
   // page back rather than silently dropping whatever falls past row 1000.
   async function fetchAllRows<T>(table: string, columns: string): Promise<T[]> {
@@ -22089,7 +22089,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   }, [supabase]);
 
   // Les documents peuvent être ajoutés depuis un autre onglet (Dossier
-  // salarié) pendant que celui-ci reste ouvert — on recharge dès qu'on
+  // salarié) pendant que celui-ci reste ouvert - on recharge dès qu'on
   // revient sur cet onglet/fenêtre plutôt que d'exiger un rechargement
   // complet de la page.
   useEffect(() => {
@@ -22107,7 +22107,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
   }, [supabase]);
 
   // Un nouveau salarié (même sans date d'embauche) déclenche tout de suite
-  // une ligne dans le Registre du personnel côté serveur (0048) — donc dès
+  // une ligne dans le Registre du personnel côté serveur (0048) - donc dès
   // qu'il est créé ici, sa checklist "Embauche" est déjà prête à cocher.
   async function addEmployee() {
     if (!newFirstName.trim() || !newLastName.trim()) return;
@@ -22256,7 +22256,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
           code: "visite_medicale",
           label: (
             <>
-              <Bi fr="Visite médicale" ru="Медосмотр" /> —{" "}
+              <Bi fr="Visite médicale" ru="Медосмотр" /> -{" "}
               {isScheduled ? <Bi fr="programmée" ru="назначен" /> : <Bi fr="non programmée" ru="не назначен" />}
               {urgency && <span className={`badge badge-${urgency.tone} ml-1.5`}>{urgency.label}</span>}
             </>
@@ -22304,9 +22304,9 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     return result;
   }
 
-  /** "Terminé" — resolves every still-missing item at once (doc categories
+  /** "Terminé" - resolves every still-missing item at once (doc categories
    *  become "non applicable", manual steps get checked) and hides the card
-   *  for good. Never silently invents a document — only closes the gap the
+   *  for good. Never silently invents a document - only closes the gap the
    *  same way a person would if they clicked each box by hand. */
   async function dismissMovement(m: Movement) {
     setDismissingKey(m.key);
@@ -22349,7 +22349,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
     return new Map(names.map((name, i) => [name, CHECKLIST_TEAM_COLORS[i % CHECKLIST_TEAM_COLORS.length]]));
   }, [employees]);
 
-  // Only the most recent registre episode per employee gets cards — an
+  // Only the most recent registre episode per employee gets cards - an
   // older, superseded episode (someone who left and came back) is settled
   // history at this point, not something still being worked on here.
   // registreByEmployee is sorted by date_entree descending, so [0] is it.
@@ -22598,9 +22598,9 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                 <InfoNote
                   title="Checklists RH"
                   text={
-                    "Одна карточка на каждое «движение» (приём или увольнение по конкретному периоду трудоустройства). Прогресс-бар — сколько пунктов уже закрыто.\n\n" +
+                    "Одна карточка на каждое «движение» (приём или увольнение по конкретному периоду трудоустройства). Прогресс-бар - сколько пунктов уже закрыто.\n\n" +
                     "«Изменить» открывает карточку целиком: там можно загружать документы (тем же способом, что и в Dossier salarié) или отметить пункт как неприменимый.\n\n" +
-                    "«+ Nouvel employé» — добавить совершенно нового сотрудника (достаточно имени и фамилии); карточка «Embauche» появится сразу."
+                    "«+ Nouvel employé» - добавить совершенно нового сотрудника (достаточно имени и фамилии); карточка «Embauche» появится сразу."
                   }
                 />
               }
@@ -22712,7 +22712,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                     <p className="text-xs text-stone-400">
                       <Bi fr={m.type === "embauche" ? "Embauche" : "Départ"} ru={m.type === "embauche" ? "Приём" : "Увольнение"} />
                       {" · "}
-                      {m.entry.date_entree ? formatDateShortDMY(m.entry.date_entree) : "—"} →{" "}
+                      {m.entry.date_entree ? formatDateShortDMY(m.entry.date_entree) : "-"} →{" "}
                       {m.entry.date_sortie ? formatDateShortDMY(m.entry.date_sortie) : "en cours"}
                     </p>
                   </div>
@@ -22842,7 +22842,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                       <>
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                            <Bi fr="Étape 1 — Documents personnels" ru="Этап 1 — Личные документы" />
+                            <Bi fr="Étape 1 - Documents personnels" ru="Этап 1 - Личные документы" />
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {stageCategoryCards(m.employee.id, 1, m.entry)}
@@ -22852,7 +22852,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
                         {(contratCat || dpaeCat) && (
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                              <Bi fr="Étape 2 — Contrat & déclaration" ru="Этап 2 — Договор и декларация" />
+                              <Bi fr="Étape 2 - Contrat & déclaration" ru="Этап 2 - Договор и декларация" />
                             </p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {contratCat && (
@@ -22904,7 +22904,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
 
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                            <Bi fr="Étape 3 — Habilitations & statut" ru="Этап 3 — Допуски и статус" />
+                            <Bi fr="Étape 3 - Habilitations & statut" ru="Этап 3 - Допуски и статус" />
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {stageCategoryCards(m.employee.id, 3, m.entry)}
@@ -22919,7 +22919,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
 
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wide text-stone-400 mb-2">
-                            <Bi fr="Étape 4 — Complémentaire" ru="Этап 4 — Дополнительно" />
+                            <Bi fr="Étape 4 - Complémentaire" ru="Этап 4 - Дополнительно" />
                           </p>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {stageCategoryCards(m.employee.id, 4, m.entry)}
@@ -23080,7 +23080,7 @@ function ChecklistsView({ supabase }: { supabase: ReturnType<typeof createClient
             <label className="block text-xs font-bold text-stone-400 mt-3">
               Date d&apos;embauche <span className="opacity-70">/ Дата приёма</span>
               {!contractModal.hireDate && (
-                <span className="text-error-600 font-normal"> — {"non renseignée dans le Registre du personnel"}</span>
+                <span className="text-error-600 font-normal"> - {"non renseignée dans le Registre du personnel"}</span>
               )}
               <DateInput
                 className="input text-sm mt-1"
@@ -23621,7 +23621,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Contrôle technique <span className="text-xs font-normal text-stone-400 block">Техосмотр — срок</span>
+                    Contrôle technique <span className="text-xs font-normal text-stone-400 block">Техосмотр - срок</span>
                     <DateInput
                       className="input mt-1"
                       value={selectedVehicle.ct_due_date ?? ""}
@@ -23629,7 +23629,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Assurance — société <span className="text-xs font-normal text-stone-400 block">Страховая компания</span>
+                    Assurance - société <span className="text-xs font-normal text-stone-400 block">Страховая компания</span>
                     <input
                       className="input mt-1"
                       defaultValue={selectedVehicle.insurer_name ?? ""}
@@ -23647,7 +23647,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Assurance — échéance <span className="text-xs font-normal text-stone-400 block">Страховка — срок</span>
+                    Assurance - échéance <span className="text-xs font-normal text-stone-400 block">Страховка - срок</span>
                     <DateInput
                       className="input mt-1"
                       value={selectedVehicle.insurance_end_date ?? ""}
@@ -23655,7 +23655,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Assurance — prime annuelle €{" "}
+                    Assurance - prime annuelle €{" "}
                     <span className="text-xs font-normal text-stone-400 block">Годовая премия €</span>
                     <input
                       type="number"
@@ -23670,7 +23670,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Leasing — société <span className="text-xs font-normal text-stone-400 block">Лизинговая компания</span>
+                    Leasing - société <span className="text-xs font-normal text-stone-400 block">Лизинговая компания</span>
                     <input
                       className="input mt-1"
                       defaultValue={selectedVehicle.leasing_company ?? ""}
@@ -23688,7 +23688,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Leasing — échéance <span className="text-xs font-normal text-stone-400 block">Лизинг — срок</span>
+                    Leasing - échéance <span className="text-xs font-normal text-stone-400 block">Лизинг - срок</span>
                     <DateInput
                       className="input mt-1"
                       value={selectedVehicle.leasing_end_date ?? ""}
@@ -23696,7 +23696,7 @@ function AutoparcView({ supabase }: { supabase: ReturnType<typeof createClient> 
                     />
                   </label>
                   <label className="font-bold">
-                    Leasing — mensualité €{" "}
+                    Leasing - mensualité €{" "}
                     <span className="text-xs font-normal text-stone-400 block">Ежемесячный платёж €</span>
                     <input
                       type="number"

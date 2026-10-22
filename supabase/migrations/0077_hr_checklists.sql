@@ -1,7 +1,7 @@
 -- Manual check-marks for the hiring/termination checklists (Checklists RH
 -- view). Items that can be inferred from data already in the app (a DPAE
 -- document present, a date_sortie set…) are computed live in the UI and
--- never stored here — only items with no digital trace (material handed
+-- never stored here - only items with no digital trace (material handed
 -- back, a medical visit actually scheduled…) are tracked as rows.
 -- Access mirrors employee_documents (0011/0017): rh_admin and rh only.
 create table employee_checklist_items (

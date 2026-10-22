@@ -7,7 +7,7 @@ export type AttestationHebergementParams = {
 };
 
 // The host is always the same real person hosting workers at his own home
-// (confirmed by the user — not derived per-employee), so it's fixed here
+// (confirmed by the user - not derived per-employee), so it's fixed here
 // rather than pulled from `company` (which represents the company's own
 // legal signatory, a different role) or a per-employee field.
 const HOST_NAME = "Yevhenii VORONINSKYI";
@@ -22,8 +22,8 @@ export function attestationHebergement(
   params: AttestationHebergementParams
 ): DocContent {
   const fullName = `${employee.firstName} ${employee.lastName.toUpperCase()}`;
-  const employeeBirth = employee.dateOfBirth ? formatDateShort(employee.dateOfBirth) : "—";
-  const employeeBirthPlace = employee.birthPlace ?? "—";
+  const employeeBirth = employee.dateOfBirth ? formatDateShort(employee.dateOfBirth) : "-";
+  const employeeBirthPlace = employee.birthPlace ?? "-";
 
   const blocks: Block[] = [
     { type: "title", text: "ATTESTATION D'HÉBERGEMENT" },
@@ -45,5 +45,5 @@ export function attestationHebergement(
     para(HOST_NAME, "right"),
   ];
 
-  return { title: `Attestation d'hébergement — ${fullName}`, blocks };
+  return { title: `Attestation d'hébergement - ${fullName}`, blocks };
 }

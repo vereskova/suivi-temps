@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Brand — anchored on Notion Blue (#0075de) as the 600 shade */
+  /* Brand - anchored on Notion Blue (#0075de) as the 600 shade */
   --color-primary-50: #e6f3fe;
   --color-primary-100: #cfe7fd;
   --color-primary-200: #a3d1fb;
@@ -39,13 +39,13 @@
   --color-error-700: #991b1b;
   --color-error-800: #7f1d1d;
 
-  /* Radii — 4px small, 8px buttons/inputs, 12px cards (Notion's two-shape system) */
+  /* Radii - 4px small, 8px buttons/inputs, 12px cards (Notion's two-shape system) */
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
   --radius-lg: 0.75rem;
   --radius-xl: 0.75rem;
 
-  /* Shadows — Notion cards use hairline borders, not drop shadows */
+  /* Shadows - Notion cards use hairline borders, not drop shadows */
   --shadow-card: none;
   --shadow-card-hover: none;
   --shadow-pop: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -87,7 +87,7 @@ body {
  * utility classes placed alongside these (e.g. `btn text-xs px-3 py-1`)
  * correctly override them. Unlayered plain CSS always beats Tailwind's
  * own (layered) utilities regardless of source order or the order of
- * class names in `className` — without this @layer wrapper, a "smaller
+ * class names in `className` - without this @layer wrapper, a "smaller
  * button" override like `text-xs px-3 py-1` next to `btn` is silently
  * ignored and the oversized default always wins. */
 @layer components {
@@ -193,7 +193,7 @@ body {
     box-shadow: 0 0 0 3px var(--color-primary-100);
   }
 
-  /* Reads as plain text until clicked — for dense tables (e.g. price cells)
+  /* Reads as plain text until clicked - for dense tables (e.g. price cells)
      where a bordered input on every row/cell is too visually heavy. */
   .input-ghost {
     border-color: transparent;

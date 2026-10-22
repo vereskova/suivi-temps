@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       ? await renderClientChecklistPdf(caseInfo, categories, items)
       : await renderTeamWorkOrderPdf(caseInfo, categories, items);
 
-  const docTitle = kind === "client" ? `Check-list — ${clientName} — ${caseRow.title}` : `Ordre de travail — ${clientName} — ${caseRow.title}`;
+  const docTitle = kind === "client" ? `Check-list - ${clientName} - ${caseRow.title}` : `Ordre de travail - ${clientName} - ${caseRow.title}`;
   const filename = `${docTitle
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")

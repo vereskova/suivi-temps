@@ -32,7 +32,7 @@ export type NodeFormResult = {
   notes: string | null;
 };
 
-/** Создание или правка узла схемы. `node = null` — создание под `parentId`. */
+/** Создание или правка узла схемы. `node = null` - создание под `parentId`. */
 export function OrgNodeModal({
   open,
   onClose,
@@ -103,10 +103,10 @@ export function OrgNodeModal({
           <label className="block text-[10px] font-bold uppercase text-stone-400">
             Подчиняется (родитель)
             <select className="input mt-1 normal-case" value={parent} onChange={(e) => setParent(e.target.value)}>
-              <option value="">— верхний уровень —</option>
+              <option value="">- верхний уровень -</option>
               {parentOptions.map(({ node: n, depth }) => (
                 <option key={n.id} value={n.id}>
-                  {"— ".repeat(depth)}
+                  {"- ".repeat(depth)}
                   {nodeTitle(n).ru || nodeTitle(n).fr}
                 </option>
               ))}
@@ -118,7 +118,7 @@ export function OrgNodeModal({
           <label className="block text-[10px] font-bold uppercase text-stone-400">
             Роль офиса
             <select className="input mt-1 normal-case" value={roleKey} onChange={(e) => pickRole(e.target.value)}>
-              <option value="">Своя должность — название впишу сам, людей ставлю вручную</option>
+              <option value="">Своя должность - название впишу сам, людей ставлю вручную</option>
               {BUREAU_ROLE_ORDER.map((r) => (
                 <option key={r} value={r}>
                   {BUREAU_ROLE_LABELS_RU[r]} / {BUREAU_ROLE_LABELS[r]}
@@ -136,7 +136,7 @@ export function OrgNodeModal({
           <label className="block text-[10px] font-bold uppercase text-stone-400">
             Бригада (состав подтягивается из карточек)
             <select className="input mt-1 normal-case" value={teamId} onChange={(e) => pickTeam(e.target.value)}>
-              <option value="">—</option>
+              <option value="">-</option>
               {[...teams]
                 .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
                 .map((t) => (

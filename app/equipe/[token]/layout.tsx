@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 // Page privée par jeton : jamais indexée, et le jeton ne fuit pas par le Referer.
 export const metadata: Metadata = {
-  title: "Primes & Bonus — équipe",
+  title: "Primes & Bonus - équipe",
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };

@@ -3,7 +3,7 @@
 -- show a tooltip ("saisi à la main" vs "détecté dans un e-mail du ...") and
 -- let RH open the matching correspondence for that employee. Convocation
 -- e-mails are the one Prevaly message type with a fixed, reliably parseable
--- layout — the rest of the correspondence stays free text and is never
+-- layout - the rest of the correspondence stays free text and is never
 -- auto-applied.
 alter table medical_visits add column if not exists next_visit_source text not null default 'manual';
 alter table medical_visits add column if not exists next_visit_source_at timestamptz;

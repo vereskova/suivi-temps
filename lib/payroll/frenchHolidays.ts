@@ -1,5 +1,5 @@
 /**
- * France's 11 public holidays (jours fériés) per calendar year — used to
+ * France's 11 public holidays (jours fériés) per calendar year - used to
  * suggest working-day counts and flag which holidays fall in a given month,
  * so RH can spot-check who might need "Maj. jours fériés" filled in.
  */
@@ -46,7 +46,7 @@ export function weekdayLabelFr(isoDate: string): string {
  *  from Wikimedia Commons via Special:FilePath (a stable redirect to the
  *  current file, no need to know its internal upload path). Every file below
  *  was checked on Commons and carries a free license (CC-BY or public
- *  domain) — see each File: page for the photographer/attribution. */
+ *  domain) - see each File: page for the photographer/attribution. */
 function commonsFilePath(filename: string, width = 400): string {
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=${width}`;
 }
@@ -126,8 +126,8 @@ export function frenchHolidaysInMonth(year: number, month: number): Holiday[] {
   return frenchHolidaysForYear(year).filter((h) => h.date.startsWith(prefix));
 }
 
-/** Weekdays (Mon–Fri) in the month. Public holidays are surfaced separately via
- *  frenchHolidaysInMonth() rather than subtracted here — whether a holiday
+/** Weekdays (Mon-Fri) in the month. Public holidays are surfaced separately via
+ *  frenchHolidaysInMonth() rather than subtracted here - whether a holiday
  *  reduces someone's actual working days depends on whether they were made to
  *  work it (tracked via "Maj. jours fériés"), not something this count assumes. */
 export function countWorkingDaysInMonth(year: number, month: number): number {
@@ -141,7 +141,7 @@ export function countWorkingDaysInMonth(year: number, month: number): number {
   return count;
 }
 
-/** Weekdays (Mon–Fri) between two ISO dates, inclusive on both ends. Used to
+/** Weekdays (Mon-Fri) between two ISO dates, inclusive on both ends. Used to
  *  prorate "jours repas" for someone who only worked part of the month (hired
  *  mid-month, went on leave, or was terminated) instead of assuming a full
  *  month. Returns 0 if the range is empty or inverted. */

@@ -1,5 +1,5 @@
 /**
- * Congés payés calculator — retenue (bulletin) & indemnisation, per the rules
+ * Congés payés calculator - retenue (bulletin) & indemnisation, per the rules
  * given by the cabinet comptable (méthode ouvrés: 1 semaine posée = 5 jours).
  *
  * Deux lignes distinctes apparaissent sur le bulletin :
@@ -8,7 +8,7 @@
  *    maintien et le dixième.
  * Les deux calculs se font en brut ; le "net estimé" retire un taux de
  * cotisations approximatif (par défaut 21%, donné par le comptable comme un
- * ordre de grandeur — pas une valeur légale exacte).
+ * ordre de grandeur - pas une valeur légale exacte).
  */
 export type CongesPayesInput = {
   salaireMensuelBrut: number | null; // salaire de base du mois concerné

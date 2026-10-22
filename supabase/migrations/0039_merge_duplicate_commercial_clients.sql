@@ -1,5 +1,5 @@
 -- The v2 checklist reseed (scripts/seed-commercial-checklists-v2.ts) upserts
--- commercial_clients by exact `name` — but the new reference spreadsheet
+-- commercial_clients by exact `name` - but the new reference spreadsheet
 -- spells at least one client slightly differently than the original one did
 -- ("ADVANCED EnerGies" vs "ADVANCED EnerGIes"), so the exact-name upsert
 -- created a second row instead of reusing the existing one. name_normalized
@@ -40,7 +40,7 @@ begin
   end loop;
 end $$;
 
--- Prevent this from recurring silently — a second client row that only
+-- Prevent this from recurring silently - a second client row that only
 -- differs by case/accents will now fail loudly at insert time instead of
 -- quietly duplicating the client in the picker.
 create unique index if not exists commercial_clients_name_normalized_idx on commercial_clients(name_normalized);

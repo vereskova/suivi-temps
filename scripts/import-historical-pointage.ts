@@ -27,7 +27,7 @@ const APP_DATA_CSV_URL =
 
 /**
  * These 28 names cover everyone in the historical sheet. 25 already match
- * `employees` seeded from data/equipes.ts. These 3 don't — they've since left
+ * `employees` seeded from data/equipes.ts. These 3 don't - they've since left
  * or been swapped out of their team. Their historical team was inferred from
  * which submission batch (same date+start+end+pause, written consecutively
  * by the old Apps Script) they appeared in:
@@ -73,7 +73,7 @@ function timeToMinutes(hhmm: string): number {
 
 type SheetRow = Record<string, string>;
 
-// Minimal CSV parser (handles quoted fields) — deliberately not using SheetJS
+// Minimal CSV parser (handles quoted fields) - deliberately not using SheetJS
 // here: it auto-detects cell types from CSV text and silently turned some
 // "2026-04-11"-looking Date cells into Excel serial numbers, corrupting them.
 // Plain string parsing avoids that entirely.
@@ -232,14 +232,14 @@ async function main() {
 
   if (createdEmployees.length > 0) {
     console.log(
-      `\n${createdEmployees.length} employee(s) from the historical data were not in the current roster — created as 'terminated':`
+      `\n${createdEmployees.length} employee(s) from the historical data were not in the current roster - created as 'terminated':`
     );
     createdEmployees.forEach((c) => console.log(`  - ${c}`));
   }
 
   if (skippedRows.length > 0) {
     console.log(
-      `\n${skippedRows.length} row(s) skipped (no team could be determined) — review in the Employés screen:`
+      `\n${skippedRows.length} row(s) skipped (no team could be determined) - review in the Employés screen:`
     );
     skippedRows.forEach((s) => console.log(`  - ${s}`));
   }

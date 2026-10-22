@@ -35,11 +35,11 @@ export function OrgPeersBar({ plan }: { plan: OrgPlan }) {
             key={p.email}
             className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold text-white"
             style={{ backgroundColor: peerColor(p.email) }}
-            title={`${p.email}${p.tab === "schema" ? " — во вкладке «Схема компании»" : p.tab === "organigramme" ? " — во вкладке «Оргструктура»" : ""}`}
+            title={`${p.email}${p.tab === "schema" ? " - во вкладке «Схема компании»" : p.tab === "organigramme" ? " - во вкладке «Оргструктура»" : ""}`}
           >
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
             {peerName(p.email)}
-            {me ? " (вы)" : p.focus ? ` — ${p.focus.label}` : ""}
+            {me ? " (вы)" : p.focus ? ` - ${p.focus.label}` : ""}
           </span>
         );
       })}

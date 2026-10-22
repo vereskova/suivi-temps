@@ -33,7 +33,7 @@ export type MedicalPlanningSuggestion = {
   site: string | null;
   /** Shortest estimated drive-time seen across the merged range. */
   estimatedMinutesFromLabege: number;
-  /** Longest estimated drive-time seen across the merged range — equal to
+  /** Longest estimated drive-time seen across the merged range - equal to
    *  estimatedMinutesFromLabege when the row wasn't merged from several
    *  weeks with differing estimates. */
   estimatedMinutesFromLabegeMax: number;
@@ -43,12 +43,12 @@ export type MedicalPlanningSuggestion = {
 };
 
 /** The sheet gives one row per week, so the same real multi-week assignment
- *  comes out as several back-to-back suggestions for the same person — merge
+ *  comes out as several back-to-back suggestions for the same person - merge
  *  any run of weeks with no gap between them into a single row spanning the
  *  full range, regardless of site text or estimated distance (both can vary
- *  week to week — a multi-week job's site name is often scattered/
+ *  week to week - a multi-week job's site name is often scattered/
  *  inconsistent across the sheet, and the estimated distance shifts with the
- *  exact coordinates entered — but they're still one continuous unavailable
+ *  exact coordinates entered - but they're still one continuous unavailable
  *  stretch for that person). The individual weeks stay available in
  *  `details` for anyone who wants to check exactly which site/date a given
  *  estimate came from. */
@@ -104,7 +104,7 @@ export async function GET() {
 
   // The planning sheet's "Equipe" band is the whole crew that day, but its
   // cells only ever name one or two people (whoever the sheet's author
-  // happened to write in) — the rest of that team's real members are
+  // happened to write in) - the rest of that team's real members are
   // implied, not listed. So matching is by team NUMBER (the sheet's "6" ↔
   // our own team named "Equipe 6"), not by the specific worker text.
   const teamNumberById = new Map<string, string>();
@@ -135,12 +135,12 @@ export async function GET() {
   const seen = new Set<string>();
 
   for (const job of jobs) {
-    // Only a job whose week overlaps [today, today + 2 months] — a past
+    // Only a job whose week overlaps [today, today + 2 months] - a past
     // assignment can't be proposed as a slot, and anything further out isn't
     // actionable yet.
     if (!job.dateFromIso || !job.dateToIso) continue;
     if (job.dateToIso < todayIso || job.dateFromIso > horizonIso) continue;
-    // Only a plain team number ("1".."10") maps to "Equipe N" — the "F"/"C"
+    // Only a plain team number ("1".."10") maps to "Equipe N" - the "F"/"C"
     // bands and anything else are skipped rather than guessed.
     if (!/^\d+$/.test(job.team)) continue;
 

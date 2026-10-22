@@ -38,12 +38,12 @@ export function externalId(date: string, amount: number, label: string): string 
 
 export function categoryFor(label: string): string | null {
   const l = alnum(label);
-  if (l.includes("REMBOURSEMENTDEPRET")) return "Emprunt";
-  if (l.includes("ASSUCAAEPRET")) return "Assurance emprunt";
-  if (l.includes("AXAFRANCE")) return "Assurance";
-  if (l.includes("DIRECTIONGENERALEDESFINANCES") || l.includes("IMPOTTF")) return "Taxe foncière";
-  if (l.includes("TENUEDECOMPTE")) return "Frais bancaires";
-  if (l.includes("FITECO")) return "FITECO (honoraires)";
+  if (l.includes("REMBOURSEMENTDEPRET")) return "Кредит";
+  if (l.includes("ASSUCAAEPRET")) return "Страховка кредита";
+  if (l.includes("AXAFRANCE")) return "Страховка";
+  if (l.includes("DIRECTIONGENERALEDESFINANCES") || l.includes("IMPOTTF")) return "Налог на недвижимость";
+  if (l.includes("TENUEDECOMPTE")) return "Банковские комиссии";
+  if (l.includes("FITECO")) return "FITECO (бухгалтерия)";
   return null;
 }
 

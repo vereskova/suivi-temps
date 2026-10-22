@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 
-// Publicly link-shared workbook (Google Sheets export, no auth needed) — one
+// Publicly link-shared workbook (Google Sheets export, no auth needed) - one
 // sheet per month, each a hand-maintained team × week grid. "TS" and
 // "PAS FINI" are unrelated tracking lists (devis/backlog), not the planning
 // grid, and are skipped.
@@ -17,7 +17,7 @@ export type PlanningJob = {
   month: string;
   team: string;
   week: string;
-  /** Raw "D/M" text as written in the sheet's date row — no year, meant for
+  /** Raw "D/M" text as written in the sheet's date row - no year, meant for
    *  display right under a month heading that already gives the year. */
   dateFrom: string;
   dateTo: string;
@@ -26,12 +26,12 @@ export type PlanningJob = {
    *  be parsed. */
   dateFromIso: string | null;
   dateToIso: string | null;
-  /** First text fragment found in the block — usually the worker's name. */
+  /** First text fragment found in the block - usually the worker's name. */
   worker: string | null;
-  /** Second text fragment — usually the site/chantier name. */
+  /** Second text fragment - usually the site/chantier name. */
   site: string | null;
   /** Any further text fragments (address, ad-hoc notes she jots directly
-   *  into the grid — e.g. a reminder about a colleague's medical visit —
+   *  into the grid - e.g. a reminder about a colleague's medical visit -
    *  shown as-is rather than guessed into a specific field). */
   notes: string[];
   tags: string[];
@@ -66,7 +66,7 @@ const MONTH_PREFIXES: [RegExp, number][] = [
 ];
 
 /** Sheet names are like "Janvier 2026", "Fevrier 26", "Aoùt 26 - Tableau 1"
- *  — a month name (accent/typo-tolerant) plus a 2- or 4-digit year. */
+ *  - a month name (accent/typo-tolerant) plus a 2- or 4-digit year. */
 function parseMonthLabel(label: string): { month: number; year: number } | null {
   const normalized = label
     .normalize("NFD")
@@ -84,7 +84,7 @@ function parseMonthLabel(label: string): { month: number; year: number } | null 
 /** Resolves a raw "D/M" cell (no year) against the sheet's own month/year.
  *  Each month sheet's date row spills a few days into the adjacent months
  *  (the last/first partial week), so a cell's month is always the sheet's
- *  own month, or exactly one month before/after it — which also pins down
+ *  own month, or exactly one month before/after it - which also pins down
  *  the year across a December/January boundary. */
 function resolveIsoDate(base: { month: number; year: number }, raw: string): string | null {
   const match = raw.trim().match(/^(\d{1,2})\/(\d{1,2})$/);
@@ -122,7 +122,7 @@ function findWeekColumns(weekRow: string[]): { week: string; startCol: number; e
   return starts.map((w, i) => ({ ...w, endCol: (starts[i + 1]?.startCol ?? weekRow.length) - 1 }));
 }
 
-/** Parses one month sheet into one job per (team, week) — a team works one
+/** Parses one month sheet into one job per (team, week) - a team works one
  *  site per week in this planning grid. The sheet is hand-maintained for
  *  visual browsing, not machine parsing: a job spanning several weeks has
  *  its name/site/tags scattered anywhere across that whole span rather than

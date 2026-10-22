@@ -1,6 +1,6 @@
 -- Tracks correspondence with the medecine-du-travail service (Prevaly): when
 -- something was requested (a first visit, a renewal, adding a new hire...),
--- through which channel, and whether/when it was answered — independent of
+-- through which channel, and whether/when it was answered - independent of
 -- medical_visits, since a request can exist before any visit is scheduled.
 create table medical_visit_requests (
   id              uuid primary key default gen_random_uuid(),

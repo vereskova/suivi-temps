@@ -4,10 +4,10 @@ import { Document, Font, Image, Page, StyleSheet, Text, View, pdf } from "@react
 import { Align, Block, DocContent } from "./types";
 
 /**
- * The built-in PDF fonts (Times-Roman etc.) only cover WinAnsi/Latin-1 —
+ * The built-in PDF fonts (Times-Roman etc.) only cover WinAnsi/Latin-1 -
  * Moldovan/Romanian names and places (Ă, Â, Î, Ș, Ț) fall outside that and
  * silently render as mojibake or drop the glyph entirely (e.g. "FĂLEȘTI"
- * came out as "FLEȚI"). PT Sans (ParaType, OFL) covers these — same fix
+ * came out as "FLEȚI"). PT Sans (ParaType, OFL) covers these - same fix
  * already applied to the commercial checklist PDF, see
  * lib/commercial/renderChecklistPdf.tsx for the full rationale (the
  * .ttf files here have their GSUB ligature table pre-stripped for the
@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 14, fontWeight: 700, textAlign: "center", marginBottom: 12 },
   heading: { fontSize: 14, fontWeight: 700, marginTop: 12, marginBottom: 6 },
   rule: { borderBottomWidth: 1, borderBottomColor: "#999999", marginBottom: 10 },
-  // Tightened from 8 — long contracts (10+ articles) were landing their
+  // Tightened from 8 - long contracts (10+ articles) were landing their
   // closing signature block alone on an otherwise-blank trailing page by a
   // narrow margin; this reliably reclaims enough height to avoid that
   // without hurting legibility.
@@ -87,7 +87,7 @@ function renderBlock(block: Block, index: number) {
       );
     case "heading":
       // minPresenceAhead: don't place this heading unless at least this
-      // much of what follows also fits on the same page — otherwise it
+      // much of what follows also fits on the same page - otherwise it
       // gets pushed to the next page as a unit with its body text, instead
       // of landing alone at the bottom/top of a page with an empty gap
       // under it (the article's paragraphs came right after on their own).
@@ -125,7 +125,7 @@ function renderBlock(block: Block, index: number) {
         block.align === "right" ? styles.imageRight : block.align === "center" ? styles.imageCenter : styles.imageLeft;
       return (
         <View key={index} style={alignStyle}>
-          {/* react-pdf's Image, not an HTML <img> — jsx-a11y's alt-text rule doesn't apply here. */}
+          {/* react-pdf's Image, not an HTML <img> - jsx-a11y's alt-text rule doesn't apply here. */}
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
           <Image
             src={path.join(process.cwd(), "public", block.src)}

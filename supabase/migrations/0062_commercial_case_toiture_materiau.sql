@@ -1,4 +1,4 @@
--- A roof is either bac acier or fibrociment, never both — so "Dépose Bac
+-- A roof is either bac acier or fibrociment, never both - so "Dépose Bac
 -- acier" (the only checklist line for this, name never changes) needs its
 -- Délai prévu computed from whichever norm actually applies: null defaults
 -- to 'bac_acier' to match every dossier's existing behavior before this

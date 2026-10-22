@@ -1,6 +1,6 @@
 -- Explicit client → Sinao organization correspondences, confirmed by hand
--- with the user (names don't line up closely enough — or at all, for the
--- last three — to trust fuzzy name search at push time; see
+-- with the user (names don't line up closely enough - or at all, for the
+-- last three - to trust fuzzy name search at push time; see
 -- scripts/list-sinao-organizations.ts for how the id list was pulled).
 -- Pre-filling sinao_organization_id means createDraftQuote() in
 -- lib/sinao/client.ts skips findOrganizationByName() entirely for these

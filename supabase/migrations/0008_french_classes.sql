@@ -1,5 +1,5 @@
 -- Tracking for the "Французский" (French language classes) sheet. The source sheet was a
--- blank attendance template (roster + a full year of session dates, no marks filled in yet) —
+-- blank attendance template (roster + a full year of session dates, no marks filled in yet) -
 -- this recreates that structure so attendance can actually be recorded going forward.
 create table french_class_students (
   employee_id  uuid primary key references employees(id) on delete cascade,
@@ -13,7 +13,7 @@ create table french_class_sessions (
 );
 
 -- "Н" (absent), "ДЗ" (homework done), "К" (contrôle/quiz passed) from the source sheet's
--- per-session sub-columns — nullable booleans since most sessions haven't happened yet.
+-- per-session sub-columns - nullable booleans since most sessions haven't happened yet.
 create table french_class_attendance (
   session_id     uuid not null references french_class_sessions(id) on delete cascade,
   employee_id    uuid not null references employees(id) on delete cascade,

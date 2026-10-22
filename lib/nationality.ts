@@ -1,5 +1,5 @@
 // EU/EEA/Switzerland nationalities are exempt from the French work-permit
-// (titre de séjour) requirement — used to decide who counts as "foreign" for
+// (titre de séjour) requirement - used to decide who counts as "foreign" for
 // Registre du personnel highlighting and Dossier salarié's Titre/VISA slot.
 export const EU_EEA_CH_NATIONALITY_MARKERS = [
   "FRANCE",

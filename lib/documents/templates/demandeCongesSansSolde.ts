@@ -10,7 +10,7 @@ export type DemandeCongesSansSoldeParams = {
   issueDate: string;
 };
 
-/** The unpaid-leave request letter itself, drafted on behalf of the employee to sign —
+/** The unpaid-leave request letter itself, drafted on behalf of the employee to sign -
  *  addressed to the employer, not the other way around. */
 export function demandeCongesSansSolde(
   employee: EmployeeDoc,
@@ -63,5 +63,5 @@ export function demandeCongesSansSolde(
     para(fullName),
   ];
 
-  return { title: `Demande de congé sans solde — ${fullName}`, blocks };
+  return { title: `Demande de congé sans solde - ${fullName}`, blocks };
 }

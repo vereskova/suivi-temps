@@ -45,7 +45,7 @@ async function ensureAuthUser(target: string) {
 async function main() {
   const authUserId = await ensureAuthUser(email);
 
-  // employee_id stays null — the commercial rep isn't necessarily in the employee roster.
+  // employee_id stays null - the commercial rep isn't necessarily in the employee roster.
   const { error } = await supabase
     .from("user_roles")
     .upsert({ auth_user_id: authUserId, role: "commercial", employee_id: null }, { onConflict: "auth_user_id" });

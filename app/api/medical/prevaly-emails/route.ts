@@ -24,13 +24,13 @@ export async function GET() {
     );
   }
 
-  // Convocation/RAPPEL/ANNULATION e-mails share one fixed subject shape —
+  // Convocation/RAPPEL/ANNULATION e-mails share one fixed subject shape -
   // the rest of the correspondence is free text and never auto-applied.
   const events = emails
     .map((email) => ({ email, event: parseConvocationEmail(email.subject, email.text) }))
     .filter((e): e is { email: PrevalyEmail; event: ConvocationEvent } => !!e.event);
 
-  // "Aptitude" e-mails confirm a visit actually happened — the fitness
+  // "Aptitude" e-mails confirm a visit actually happened - the fitness
   // certificate itself lives behind a Prevaly employer-portal login (never
   // done automatically), so only the visit date is applied here; the
   // document link is surfaced for RH to fetch by hand (or hand to Claude
@@ -76,7 +76,7 @@ export async function GET() {
     }
 
     // Group by matched employee, keep only each employee's most recent
-    // event (by e-mail date) — a later ANNULATION must win over an earlier
+    // event (by e-mail date) - a later ANNULATION must win over an earlier
     // convocation, and a later re-convocation must win over an earlier one.
     const byEmployee = new Map<string, { email: PrevalyEmail; event: ConvocationEvent }[]>();
     for (const e of events) {
@@ -101,10 +101,10 @@ export async function GET() {
 
       const existing = visitByEmployeeId.get(employeeId);
       // A fresh e-mail now overwrites a hand-entered date too (it used to be
-      // protected) — but the manual value is kept on the row as
+      // protected) - but the manual value is kept on the row as
       // next_visit_replaced_manual_date/_time so RH sees a flag instead of a
       // silent change. Only overwrite what was genuinely still there from a
-      // manual entry — an already e-mail-sourced row keeps its own
+      // manual entry - an already e-mail-sourced row keeps its own
       // replaced-manual memory untouched (it isn't "replacing a manual entry"
       // again, just updating from a newer e-mail).
       const wasManual = !!(existing && existing.next_visit_source === "manual" && existing.next_visit_date);
@@ -117,7 +117,7 @@ export async function GET() {
         next_visit_source: "email" as const,
         next_visit_source_at: email.date,
         next_visit_source_subject: email.subject,
-        // An annulation removes the appointment outright — no "replaced
+        // An annulation removes the appointment outright - no "replaced
         // manual value" flag to show for a row that's now empty, and any
         // leftover flag from an earlier convocation is cleared too. A
         // convocation that replaces a still-manual entry sets the flag; one

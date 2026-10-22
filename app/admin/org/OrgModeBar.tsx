@@ -15,7 +15,7 @@ export function OrgModeBar({ plan, allowLocal }: { plan: OrgPlan; allowLocal: bo
   const [from, setFrom] = useState<string>("visotsky");
   const [busy, setBusy] = useState(false);
 
-  // Cmd/Ctrl+Z — отменить, Cmd/Ctrl+Shift+Z или Ctrl+Y — вернуть (не трогаем поля ввода).
+  // Cmd/Ctrl+Z - отменить, Cmd/Ctrl+Shift+Z или Ctrl+Y - вернуть (не трогаем поля ввода).
   const { canEdit, undo, redo } = plan;
   useEffect(() => {
     if (!canEdit) return;
@@ -101,7 +101,7 @@ export function OrgModeBar({ plan, allowLocal }: { plan: OrgPlan; allowLocal: bo
               onChange={(e) => plan.chooseScenario(e.target.value || null)}
             >
               {allowLocal && <option value="">Быстрая прикидка (не сохраняется)</option>}
-              {!allowLocal && !sc && <option value="">— выберите сценарий —</option>}
+              {!allowLocal && !sc && <option value="">- выберите сценарий -</option>}
               {visibleScenarios.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title} · {ORG_STATUS_LABELS[s.status].ru}

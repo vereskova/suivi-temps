@@ -1,5 +1,5 @@
 -- Because "Automatically expose new tables" was left disabled when creating the project
--- (recommended — keeps access explicit), Postgres never granted table-level privileges to
+-- (recommended - keeps access explicit), Postgres never granted table-level privileges to
 -- the API roles. RLS policies from 0001_init.sql still apply on top of these grants.
 
 grant usage on schema public to anon, authenticated, service_role;

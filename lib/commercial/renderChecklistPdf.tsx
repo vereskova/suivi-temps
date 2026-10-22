@@ -4,22 +4,22 @@ import { formatDateShort } from "../documents/helpers";
 import { Circle, Document, Font, Page, Path, Rect, StyleSheet, Svg, Text, View, pdf } from "@react-pdf/renderer";
 
 /**
- * The standard PDF fonts (Times-Roman etc.) only cover WinAnsi/Latin-1 —
+ * The standard PDF fonts (Times-Roman etc.) only cover WinAnsi/Latin-1 -
  * any Cyrillic in an item label, a dossier title, or a clarification note
  * (this app is bilingual FR/RU end to end) renders as garbled mojibake
  * under them. PT Sans (ParaType, OFL) was designed for Latin+Cyrillic
- * together, so it's registered here instead — see public/fonts/.
+ * together, so it's registered here instead - see public/fonts/.
  *
  * The .ttf files here have their GSUB table stripped (via fontTools) from
  * the original ParaType release. PT Sans defines an "fi"/"fl" ligature
  * substitution in GSUB, and @react-pdf/renderer's text-shaping pipeline
- * silently drops the substituted glyph instead of drawing the ligature —
+ * silently drops the substituted glyph instead of drawing the ligature -
  * "confirmé" rendered as "confrmé", "Vérifier" as "Verifer", fully
  * deterministically (confirmed with a plain Node script, no Next.js
- * involved — this is a react-pdf/pdfkit bug, not a bundler quirk).
+ * involved - this is a react-pdf/pdfkit bug, not a bundler quirk).
  * Ligatures aren't needed for a checklist document, so removing the GSUB
  * table entirely (rather than patching react-pdf) was the reliable fix.
- * Regular weight only is registered — Bold isn't used by this module.
+ * Regular weight only is registered - Bold isn't used by this module.
  */
 Font.register({
   family: "PT Sans",
@@ -149,7 +149,7 @@ function groupByCategory<T extends { categoryCode: string; position: number }>(
     .sort((a, b) => a.category.sortOrder - b.category.sortOrder);
 }
 
-/** priceHt is the UNIT price HT — the line's Total HT is quantite × priceHt. */
+/** priceHt is the UNIT price HT - the line's Total HT is quantite × priceHt. */
 function itemTotalHt(item: { priceHt: number | null; quantite: number }): number | null {
   return item.priceHt == null ? null : item.priceHt * (item.quantite || 1);
 }
@@ -158,7 +158,7 @@ function itemTtc(item: { priceHt: number | null; quantite: number; vatRate: numb
   return totalHt == null ? null : totalHt * (1 + item.vatRate / 100);
 }
 
-/** Drawn as vector shapes (not Unicode glyphs — a symbol font isn't guaranteed
+/** Drawn as vector shapes (not Unicode glyphs - a symbol font isn't guaranteed
  *  to cover ✓/⚠) so the checkbox always renders correctly, matching the
  *  same active/inactive/pending language used in the on-screen checklist. */
 function StatusIcon({ status }: { status: CommercialItemStatus }) {
@@ -205,10 +205,10 @@ function ClientChecklistDocument({
     .reduce((sum, i) => sum + (itemTtc(i) ?? 0), 0);
 
   return (
-    <Document title={`Check-list — ${caseInfo.clientName} — ${caseInfo.title}`}>
+    <Document title={`Check-list - ${caseInfo.clientName} - ${caseInfo.title}`}>
       <Page size="A4" style={styles.page}>
         <View style={styles.headerBar}>
-          <Text style={styles.headerTitle}>Check-list — {caseInfo.title}</Text>
+          <Text style={styles.headerTitle}>Check-list - {caseInfo.title}</Text>
           <Text style={styles.headerSubtitle}>{caseInfo.clientName}</Text>
         </View>
 
@@ -271,9 +271,9 @@ function ClientChecklistDocument({
                       <Text style={styles.rowQty}>{item.quantite}</Text>
                       <Text style={styles.rowUnite}>{item.unite ?? ""}</Text>
                       <Text style={styles.rowPrice}>
-                        {itemTotalHt(item) != null ? itemTotalHt(item)!.toFixed(2) : "—"}
+                        {itemTotalHt(item) != null ? itemTotalHt(item)!.toFixed(2) : "-"}
                       </Text>
-                      <Text style={styles.rowPrice}>{itemTtc(item) != null ? itemTtc(item)!.toFixed(2) : "—"}</Text>
+                      <Text style={styles.rowPrice}>{itemTtc(item) != null ? itemTtc(item)!.toFixed(2) : "-"}</Text>
                     </>
                   )}
                   {item.status === "pending" && <Text style={styles.noteText}>{item.note || "à confirmer"}</Text>}
@@ -295,7 +295,7 @@ function ClientChecklistDocument({
         </View>
 
         <Text style={styles.footer} fixed>
-          Document généré automatiquement — les points « à confirmer » nécessitent votre retour avant la suite du
+          Document généré automatiquement - les points « à confirmer » nécessitent votre retour avant la suite du
           dossier.
         </Text>
       </Page>
@@ -316,12 +316,12 @@ function TeamWorkOrderDocument({
   const groups = groupByCategory(activeItems, categories);
 
   return (
-    <Document title={`Ordre de travail — ${caseInfo.clientName} — ${caseInfo.title}`}>
+    <Document title={`Ordre de travail - ${caseInfo.clientName} - ${caseInfo.title}`}>
       <Page size="A4" style={styles.page}>
         <View style={styles.headerBar}>
           <Text style={styles.headerTitle}>Ordre de travail / Наряд на работу</Text>
           <Text style={styles.headerSubtitle}>
-            {caseInfo.clientName} — {caseInfo.title}
+            {caseInfo.clientName} - {caseInfo.title}
           </Text>
         </View>
 
@@ -361,7 +361,7 @@ function TeamWorkOrderDocument({
         </View>
 
         <Text style={styles.footer} fixed>
-          Sans prix — pour information des équipes uniquement / Без цен — только для информации бригад.
+          Sans prix - pour information des équipes uniquement / Без цен - только для информации бригад.
         </Text>
       </Page>
     </Document>

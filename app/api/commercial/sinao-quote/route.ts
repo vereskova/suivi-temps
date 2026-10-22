@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
   const items = itemRows ?? [];
   if (items.some((i) => i.status === "pending")) {
     return NextResponse.json(
-      { error: "Il reste des lignes « en question » — clarifiez-les avant de pousser vers Sinao." },
+      { error: "Il reste des lignes « en question » - clarifiez-les avant de pousser vers Sinao." },
       { status: 400 }
     );
   }
@@ -68,12 +68,12 @@ export async function POST(request: NextRequest) {
         .filter((i) => i.category_code === c.code)
         .map((i) => ({
           label: i.label,
-          // Full transfer of the checklist's own pricing — price_ht is the
+          // Full transfer of the checklist's own pricing - price_ht is the
           // UNIT price HT, quantite the real quantity; Sinao multiplies them
           // itself (confirmed live) and computes TTC from amount + vat_percent.
           // Sinao's "amount" is an integer number of cents (its own SalesLine
           // schema: "Price without taxes in cents"), while price_ht here is
-          // euros as a decimal — hence the ×100. vat_percent is basis points
+          // euros as a decimal - hence the ×100. vat_percent is basis points
           // (20% = 2000).
           amount: Math.round((i.price_ht ?? 0) * 100),
           vatPercent: Math.round((i.vat_rate ?? 20) * 100),

@@ -43,5 +43,5 @@ export function attestationConges(
     para("Cachet de l'entreprise"),
   ];
 
-  return { title: `Attestation congés payés — ${fullName}`, blocks };
+  return { title: `Attestation congés payés - ${fullName}`, blocks };
 }

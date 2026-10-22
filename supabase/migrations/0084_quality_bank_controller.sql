@@ -1,4 +1,4 @@
--- Second, separate bank — the per-employee БАНК (cap 3000, already in
+-- Second, separate bank - the per-employee БАНК (cap 3000, already in
 -- payroll_extras) is each worker's OWN deferred bonus. This one is the
 -- COMPANY-WIDE "Банк качества" (cap 10000) fed by controller pénalités:
 -- whenever a worker's own БАНК takes a deduction (Контроль 1/2/3), that

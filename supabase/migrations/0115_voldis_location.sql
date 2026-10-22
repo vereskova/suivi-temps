@@ -1,4 +1,4 @@
--- VOLDIS (SCI) — 2e société du groupe (propriétaire du site 590 chemin d'Engoudes, Baziège).
+-- VOLDIS (SCI) - 2e société du groupe (propriétaire du site 590 chemin d'Engoudes, Baziège).
 -- Section « Аренда локалей » (location de boxes de stockage) : remplace Rentila.
 -- Demandé le 21/10/2026. Données importées de Rentila par scripts/seed-voldis-rentila.ts.
 -- Accès : rh_admin uniquement (finances d'une autre société, comme Paie).

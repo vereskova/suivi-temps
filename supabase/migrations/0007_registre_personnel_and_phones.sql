@@ -1,5 +1,5 @@
 -- Faithful copy of the "Registre unique du personnel" sheet from the source LISTE SALARIES
--- file — one row per hiring event (a returning employee gets multiple rows), independent of
+-- file - one row per hiring event (a returning employee gets multiple rows), independent of
 -- the current `employees` snapshot. `employee_id` links back where a match was resolved, but
 -- stays nullable since the register is an append-only legal log, not derived data.
 create table registre_unique_personnel (
@@ -28,7 +28,7 @@ create policy registre_unique_personnel_admin_only on registre_unique_personnel 
   current_role_name() = 'rh_admin'
 );
 
--- Company/team phone assignments (the "telefon" sheet) — role-keyed in the source, so
+-- Company/team phone assignments (the "telefon" sheet) - role-keyed in the source, so
 -- employee_id/team_id stay nullable where the mapping wasn't unambiguous.
 create table employee_phones (
   id                uuid primary key default gen_random_uuid(),
@@ -48,7 +48,7 @@ create policy employee_phones_admin_only on employee_phones for all using (
   current_role_name() = 'rh_admin'
 );
 
--- ── Grants (mirrors 0002_grants.sql — "Automatically expose new tables" stays off) ──
+-- ── Grants (mirrors 0002_grants.sql - "Automatically expose new tables" stays off) ──
 grant select, insert, update, delete on
   registre_unique_personnel,
   employee_phones

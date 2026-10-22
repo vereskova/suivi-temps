@@ -26,7 +26,7 @@ export function OrgCardView({
   onRemove,
 }: {
   card: PlanCard;
-  /** Бригадиры (employee id) — для короны. */
+  /** Бригадиры (employee id) - для короны. */
   chefIds: Set<string>;
   canDrag: boolean;
   onDragStart?: () => void;

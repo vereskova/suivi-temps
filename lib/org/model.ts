@@ -1,5 +1,5 @@
 // Модель оргструктуры: сценарии («План») поверх реального состава.
-// Чистые функции без обращения к базе — всё, что касается UI и Supabase, в app/admin/org/.
+// Чистые функции без обращения к базе - всё, что касается UI и Supabase, в app/admin/org/.
 // См. docs/tz-orgstructura.md.
 
 export const BUREAU_ROLE_LABELS: Record<string, string> = {
@@ -208,7 +208,7 @@ export function descendantIds(nodes: OrgNode[], id: string): Set<string> {
 }
 
 export function nodeTitle(n: OrgNode): { fr: string; ru: string } {
-  const fr = n.title_fr || (n.role_key ? BUREAU_ROLE_LABELS[n.role_key] : "") || n.title_ru || "—";
+  const fr = n.title_fr || (n.role_key ? BUREAU_ROLE_LABELS[n.role_key] : "") || n.title_ru || "-";
   const ru = n.title_ru || (n.role_key ? BUREAU_ROLE_LABELS_RU[n.role_key] : "") || "";
   return { fr, ru };
 }
@@ -235,7 +235,7 @@ export type PlanCard = {
   label?: string; // название вакансии
   /** Узел, где карточка показана сейчас (null = вне схемы). */
   nodeId: string | null;
-  /** Где человек стоит в реальности (узел по роли/бригаде) — для сотрудников. */
+  /** Где человек стоит в реальности (узел по роли/бригаде) - для сотрудников. */
   originNodeId: string | null;
   moved: boolean;
   /** Сотрудник офиса, прикреплённый к бригаде: показан в колонке бригады только для информации. */
@@ -260,7 +260,7 @@ function personSort(a: OrgPerson, b: OrgPerson): number {
 }
 
 /**
- * Кто где стоит. `useOverrides=false` — «Сейчас» (чистая реальность, размещения сценария игнорируются).
+ * Кто где стоит. `useOverrides=false` - «Сейчас» (чистая реальность, размещения сценария игнорируются).
  * Сотрудник без размещения стоит там, где он стоит в карточке (роль офиса → узел-должность,
  * бригада → узел-бригада).
  */
@@ -339,7 +339,7 @@ export function resolvePeople(args: {
   empPlacement.forEach((p, empId) => {
     if (!activeIds.has(empId)) {
       const e = employees.find((x) => x.id === empId);
-      inactivePlacements.push({ placementId: p.id, employeeName: e ? `${e.last_name} ${e.first_name}` : "—" });
+      inactivePlacements.push({ placementId: p.id, employeeName: e ? `${e.last_name} ${e.first_name}` : "-" });
     }
   });
 
@@ -362,7 +362,7 @@ export function resolvePeople(args: {
         moved: !!p,
       };
       if (p) {
-        // Явное размещение: в узел, либо «без места» (node_id null / узел удалён) — правило по умолчанию не применяется.
+        // Явное размещение: в узел, либо «без места» (node_id null / узел удалён) - правило по умолчанию не применяется.
         if (p.node_id && nodeIds.has(p.node_id)) {
           card.nodeId = p.node_id;
           push(p.node_id, card);
@@ -418,7 +418,7 @@ export function planDiff(args: {
 }): PlanDiffItem[] {
   const { nodes } = args;
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const title = (id: string | null) => (id && byId.get(id) ? nodeTitle(byId.get(id)!).ru || nodeTitle(byId.get(id)!).fr : "—");
+  const title = (id: string | null) => (id && byId.get(id) ? nodeTitle(byId.get(id)!).ru || nodeTitle(byId.get(id)!).fr : "-");
   const res = resolvePeople({ ...args, useOverrides: true });
   const out: PlanDiffItem[] = [];
   const all: PlanCard[] = [...res.unplacedEmployees, ...Array.from(res.byNode.values()).flat()];
@@ -434,7 +434,7 @@ export function planDiff(args: {
     .filter((p) => p.candidate_id && p.node_id)
     .forEach((p) => {
       const c = args.candidates.find((x) => x.id === p.candidate_id);
-      out.push({ type: "candidate", text: `Кандидат ${c?.full_name || c?.position_label || "—"} → ${title(p.node_id)}` });
+      out.push({ type: "candidate", text: `Кандидат ${c?.full_name || c?.position_label || "-"} → ${title(p.node_id)}` });
     });
   args.placements
     .filter((p) => p.vacancy_label && p.node_id)
@@ -493,7 +493,7 @@ export function flatTemplate(teams: OrgTeamLite[], roleOrder: string[] = BUREAU_
   return seeds;
 }
 
-/** Предложенная структура по Высоцкому (docs/tz-orgstructura.md, п. 6) — стартовые данные для черновика. */
+/** Предложенная структура по Высоцкому (docs/tz-orgstructura.md, п. 6) - стартовые данные для черновика. */
 export function visotskyTemplate(teams: OrgTeamLite[]): NodeSeed[] {
   const pos = (role: string, parentKey: string): NodeSeed => ({
     key: `role:${role}`,
@@ -523,7 +523,7 @@ export function visotskyTemplate(teams: OrgTeamLite[]): NodeSeed[] {
       title_fr: "Construction / Recrutement",
       title_ru: "Построения (найм и обеспечение)",
       color: "amber",
-      description: "Оргструктура, найм и ввод в должность, стандарты, коммуникации. Отели и билеты — «обеспечение».",
+      description: "Оргструктура, найм и ввод в должность, стандарты, коммуникации. Отели и билеты - «обеспечение».",
     },
     pos("rh", "b1"),
     pos("hotel", "b1"),
@@ -717,7 +717,7 @@ export const ORG_COLOR_CLASSES: Record<string, { header: string; border: string;
   brown: { header: "bg-amber-900 text-white", border: "border-amber-400", soft: "bg-amber-50" },
 };
 
-/** Цвета блоков по умолчанию (как в предложенной структуре по Высоцкому) — для режима «Сейчас», пока схема не опубликована. */
+/** Цвета блоков по умолчанию (как в предложенной структуре по Высоцкому) - для режима «Сейчас», пока схема не опубликована. */
 export const DEFAULT_ROLE_COLORS: Record<string, string> = {
   boss: "sky",
   assistant: "sky",

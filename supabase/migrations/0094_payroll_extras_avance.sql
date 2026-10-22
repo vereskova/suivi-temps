@@ -1,4 +1,4 @@
--- Аванс — colonne purement informative, saisie à la main comme Congés
+-- Аванс - colonne purement informative, saisie à la main comme Congés
 -- payés/Vacance, jamais incluse dans À payer. Existait déjà dans "часы
 -- работы.numbers" (colonne "Аванс" du mois de septembre) mais n'avait
 -- jamais été portée dans cette table. Confirmé avec l'utilisatrice,

@@ -3,7 +3,7 @@ import { requireRole } from "@/lib/auth/requireRole";
 import { fetchPlanningJobs, type PlanningJob } from "@/lib/planning/parsePlanning";
 import { siteSuggestionsByTeam } from "@/lib/planning/siteSuggestions";
 
-// Подсказки « объект » для штрафов контролёра — см. lib/planning/siteSuggestions.ts.
+// Подсказки « объект » для штрафов контролёра - см. lib/planning/siteSuggestions.ts.
 
 let cache: { at: number; jobs: PlanningJob[] } | null = null;
 const CACHE_MS = 5 * 60 * 1000;

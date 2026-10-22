@@ -1,4 +1,4 @@
--- Phase 2: Dossier salarié — document storage per employee across the 8
+-- Phase 2: Dossier salarié - document storage per employee across the 8
 -- categories the paper folders already use. Files live in the Storage
 -- bucket `dossier-salarie` (created separately via the Storage API), this
 -- table is just the metadata index.
@@ -48,7 +48,7 @@ create policy employee_documents_admin_only on employee_documents for all using 
 grant select on document_categories to authenticated, service_role;
 grant select, insert, update, delete on employee_documents to authenticated, service_role;
 
--- ── Storage RLS — bucket `dossier-salarie` is private; only rh_admin may read/write ──
+-- ── Storage RLS - bucket `dossier-salarie` is private; only rh_admin may read/write ──
 create policy dossier_salarie_admin_only on storage.objects for all using (
   bucket_id = 'dossier-salarie' and current_role_name() = 'rh_admin'
 ) with check (

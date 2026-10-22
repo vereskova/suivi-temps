@@ -7,7 +7,7 @@
  * in the folder name must appear among the employee's own first/last name
  * words) covers all but 3 folders where the source data has a spelling
  * variant (ILIN/ILIIN, Tsapko/TSAPKO Serhii/Serghii, VORONINSKIY/VORONINSKII)
- * — those 3 are hardcoded overrides, individually verified against the
+ * - those 3 are hardcoded overrides, individually verified against the
  * employees table before writing this script. Any folder that still doesn't
  * resolve to exactly one employee is skipped and reported, never guessed.
  *
@@ -15,10 +15,10 @@
  * document_categories codes (contrat, rib, assurance_maladie,
  * medical_prevaly, titre_visa, passeport, rupture, carte_btp, carte_vitale,
  * dpae, photo, formation, archive, habilitation, acte_naissance,
- * permis_conduire, autorisation_travail, validation_vls_ts) — best-effort,
+ * permis_conduire, autorisation_travail, validation_vls_ts) - best-effort,
  * unrecognized files default to "archive" rather than a guessed sensitive
  * category. contrat/rupture/dpae are "per_period" (need a
- * registre_entry_id) — resolved to that employee's own most recent
+ * registre_entry_id) - resolved to that employee's own most recent
  * registre_unique_personnel row when one exists, left unset otherwise.
  *
  * Usage:
@@ -48,7 +48,7 @@ const BUCKET = "dossier-salarie";
 
 const SKIP_FOLDERS = [".claude"];
 
-// Individually verified against `employees` — see the script comment above.
+// Individually verified against `employees` - see the script comment above.
 const FOLDER_OVERRIDES: Record<string, { last: string; first: string }> = {
   "ILIN Evghenii": { last: "ILIIN", first: "Evghenii" },
   "Tsapko Serhii": { last: "TSAPKO", first: "Serghii" },
@@ -78,7 +78,7 @@ const CATEGORY_RULES: CategoryRule[] = [
   { pattern: /contrat|cdi|cdd|avenant/i, category: "contrat" },
   { pattern: /formation|attestation.{0,3}stage/i, category: "formation" },
   { pattern: /\bphoto\b/i, category: "photo" },
-  // Folder-name fallback — only reached when no filename keyword above
+  // Folder-name fallback - only reached when no filename keyword above
   // matched, for the "3. MEDICAL_SANTE" folder some employees use
   // internally (the "contrat"/"dpae"/etc. rules above already match
   // folder names too, e.g. "2. CONTRAT/", so no separate fallback needed
@@ -154,7 +154,7 @@ function matchFolder(folder: string, emps: Emp[]): Emp | null {
 }
 
 async function main() {
-  console.log(dryRun ? "=== DRY RUN — no uploads will be made ===" : "=== Uploading Dossier salarié documents ===");
+  console.log(dryRun ? "=== DRY RUN - no uploads will be made ===" : "=== Uploading Dossier salarié documents ===");
 
   const { data: emps, error } = await supabase.from("employees").select("id, first_name, last_name, status");
   if (error) throw error;
@@ -180,7 +180,7 @@ async function main() {
 
     const emp = matchFolder(entry, emps as Emp[]);
     if (!emp) {
-      console.log(`\n✗ "${entry}" — no unambiguous employee match, skipped`);
+      console.log(`\n✗ "${entry}" - no unambiguous employee match, skipped`);
       totalSkippedFolders++;
       continue;
     }

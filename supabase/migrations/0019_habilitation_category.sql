@@ -1,5 +1,5 @@
 -- New document category for annual/renewal-on-hire qualification documents
--- (habilitation électrique, CACES, travail en hauteur, etc.) — requires_expiry
+-- (habilitation électrique, CACES, travail en hauteur, etc.) - requires_expiry
 -- so the upload flow prompts for a validity date, feeding the new
 -- "Échéances" overview alongside titre de séjour/passeport/carte BTP/visites
 -- médicales.

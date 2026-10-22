@@ -1,5 +1,5 @@
 /**
- * VOLDIS — client Powens (agrégation bancaire DSP2) : connexion du compte Crédit Agricole
+ * VOLDIS - client Powens (agrégation bancaire DSP2) : connexion du compte Crédit Agricole
  * et récupération des opérations. Réservé au serveur (utilise le service_role et les secrets).
  *
  * Variables d'environnement : POWENS_DOMAIN (ex. « voldis »), POWENS_CLIENT_ID,

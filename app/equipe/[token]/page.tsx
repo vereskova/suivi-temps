@@ -48,7 +48,7 @@ const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель",
 const REFRESH_MS = 20000;
 const BANK_CAP = 3000;
 
-/** « 1 г. 3 мес. » / « 8 мес. » / « меньше месяца » — стаж от первой даты входа до сегодня. */
+/** « 1 г. 3 мес. » / « 8 мес. » / « меньше месяца » - стаж от первой даты входа до сегодня. */
 function tenureText(hireIso: string | null): string | null {
   if (!hireIso) return null;
   const from = new Date(hireIso + "T00:00:00Z");
@@ -61,7 +61,7 @@ function tenureText(hireIso: string | null): string | null {
   return [y > 0 ? `${y} г.` : "", m > 0 ? `${m} мес.` : ""].filter(Boolean).join(" ");
 }
 
-/** Банка БАНК 3000 : заполнена на amount / 3000. Цвет — по уровню заполнения. */
+/** Банка БАНК 3000 : заполнена на amount / 3000. Цвет - по уровню заполнения. */
 function BankJar({ amount, size = 44 }: { amount: number; size?: number }) {
   const pct = Math.max(0, Math.min(1, amount / BANK_CAP));
   const bodyTop = 14;
@@ -197,7 +197,7 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
       try {
         window.localStorage.setItem(QB_STORAGE_KEY, v ? "0" : "1");
       } catch {
-        /* localStorage недоступен (приватный режим) — просто не запоминаем */
+        /* localStorage недоступен (приватный режим) - просто не запоминаем */
       }
       return !v;
     });
@@ -240,7 +240,7 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
       {open && (
         <div className="border-t border-amber-200/80 px-4 pb-4 pt-3">
           <p className="text-[12px] leading-snug text-amber-900/65">
-            Меньше штрафов — выше место. Три худшие бригады без доли. Если человек перешёл в другую бригаду, штрафы и доля считаются по дням в каждой.
+            Меньше штрафов - выше место. Три худшие бригады без доли. Если человек перешёл в другую бригаду, штрафы и доля считаются по дням в каждой.
           </p>
           {mine && (
             <div className="mt-2 flex gap-2 text-[12px] font-semibold">
@@ -262,7 +262,7 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
                   </span>
                   <span className="block text-[11px] font-normal text-stone-400">{t.penalties > 0 ? `штрафы ${eur(t.penalties)}` : "без штрафов"}</span>
                 </span>
-                <span className="shrink-0 whitespace-nowrap text-[14px] tabular-nums">{t.eligible ? eur(t.amount) : "—"}</span>
+                <span className="shrink-0 whitespace-nowrap text-[14px] tabular-nums">{t.eligible ? eur(t.amount) : "-"}</span>
               </li>
             ))}
           </ul>
@@ -282,7 +282,7 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
                       <span className="block text-[11px] text-stone-400">{num(m.days)} дн. в бригаде</span>
                     </span>
                     <span className="shrink-0 text-right">
-                      <span className="block whitespace-nowrap font-bold tabular-nums text-stone-900">{mine.eligible ? eur(m.amount) : "—"}</span>
+                      <span className="block whitespace-nowrap font-bold tabular-nums text-stone-900">{mine.eligible ? eur(m.amount) : "-"}</span>
                       <span className="block text-[10px] text-stone-400">премия</span>
                     </span>
                   </li>
@@ -488,7 +488,7 @@ export default function TeamPrimesPage() {
 
       <div className="mx-auto mt-4 max-w-xl space-y-3 px-4">
         {error === "network" && (
-          <div className="rounded-xl bg-warning-50 p-3 text-sm text-warning-800">Нет связи — показаны последние загруженные данные.</div>
+          <div className="rounded-xl bg-warning-50 p-3 text-sm text-warning-800">Нет связи - показаны последние загруженные данные.</div>
         )}
         {data === null && !error && (
           <div className="space-y-3">

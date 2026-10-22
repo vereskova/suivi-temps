@@ -3,7 +3,7 @@
 -- select-only, RIB via get_employee_rib(), nothing else from
 -- employee_confidential (no salary, sécu sociale, nationalité, mutuelle,
 -- titre de séjour). commercial_rh additionally gets the same Commercial
--- access 'commercial' already has (0027/0038/0060) — those policies use
+-- access 'commercial' already has (0027/0038/0060) - those policies use
 -- current_role_name() in ('commercial', 'rh_admin'), so commercial_rh needs
 -- its own additive policies rather than being folded into that list.
 

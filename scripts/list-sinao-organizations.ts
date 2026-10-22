@@ -2,14 +2,14 @@
  * One-off diagnostic: dumps every organization Sinao knows about (id + name)
  * so we can build an explicit correspondence table between our
  * commercial_clients names and the real Sinao contact each one should push
- * to — instead of relying on fuzzy name search at push time, which can
+ * to - instead of relying on fuzzy name search at push time, which can
  * silently match the wrong company or create a duplicate when the names
  * don't line up exactly (e.g. our "Mateos" vs Sinao's "MATEOS ELECTRICITE").
  *
  * Usage:
  *   SINAO_API_KEY=... SINAO_APP_ID=... npx tsx scripts/list-sinao-organizations.ts
  *
- * Prints "id\tname" for every organization, sorted by name. Read-only —
+ * Prints "id\tname" for every organization, sorted by name. Read-only -
  * makes no changes in Sinao or in our database.
  */
 

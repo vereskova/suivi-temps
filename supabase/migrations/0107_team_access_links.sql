@@ -1,7 +1,7 @@
 -- Lien privé par équipe pour consulter ses lignes Primes & Bonus depuis le
 -- téléphone de l'équipe (demandé le 09/10/2026). Le jeton est le seul "mot de
--- passe" : la page /equipe/<jeton> n'a ni compte ni mail à saisir — comme le
--- formulaire de pointage — mais, contrairement à lui, les données ne sont
+-- passe" : la page /equipe/<jeton> n'a ni compte ni mail à saisir - comme le
+-- formulaire de pointage - mais, contrairement à lui, les données ne sont
 -- renvoyées que pour l'équipe liée au jeton (API serveur, clé service). Seul
 -- rh_admin peut lire/régénérer les jetons ; un jeton régénéré invalide l'ancien lien.
 create table team_access_links (

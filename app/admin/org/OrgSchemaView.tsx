@@ -89,7 +89,7 @@ export function OrgSchemaView({
       ) : (
         <div className="org-print-area">
           <p className="mb-2 hidden text-sm font-bold print:block">
-            {plan.activeScenario?.title ?? "Схема компании"} — {new Date().toLocaleDateString("fr-FR")}
+            {plan.activeScenario?.title ?? "Схема компании"} - {new Date().toLocaleDateString("fr-FR")}
           </p>
           <OrgTreeBoard plan={plan} />
         </div>
@@ -418,7 +418,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
         >
           <p className="mb-2 text-[0.65rem] font-bold uppercase tracking-wide text-primary-600">
             Не размещены в схеме ({resolved.unplacedEmployees.length + resolved.unplacedCandidates.length})
-            {canEdit && " — перетащите на нужный узел"}
+            {canEdit && " - перетащите на нужный узел"}
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
             {[...resolved.unplacedEmployees, ...resolved.unplacedCandidates].map((card) => (
@@ -465,7 +465,7 @@ function OrgTreeBoard({ plan }: { plan: OrgPlan }) {
 }
 
 function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString("fr-FR") : "—";
+  return iso ? new Date(iso).toLocaleDateString("fr-FR") : "-";
 }
 
 /** Кнопки перехода по статусам: черновик → согласование → утверждён → опубликован. */

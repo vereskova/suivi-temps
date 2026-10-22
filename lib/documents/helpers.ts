@@ -32,7 +32,7 @@ export function formatDateShort(iso: string | null | undefined, fallback = "__/_
 export function formatEuros(amount: number | null | undefined, fallback = "____________"): string {
   if (amount === null || amount === undefined || isNaN(amount)) return fallback;
   // fr-FR's thousands separator is U+202F (narrow no-break space), which
-  // several fonts render as a stray mark in the generated Word doc — plain
+  // several fonts render as a stray mark in the generated Word doc - plain
   // space renders reliably everywhere and reads exactly the same.
   return (
     amount
@@ -60,7 +60,7 @@ export function daysBetweenIso(fromIso: string, toIso: string): number {
   return Math.round((to - from) / (24 * 3600 * 1000));
 }
 
-/** Today's date in the browser's own local timezone — NOT `new Date().toISOString()`,
+/** Today's date in the browser's own local timezone - NOT `new Date().toISOString()`,
  *  which converts to UTC and silently rolls back to "yesterday" for anyone in a
  *  timezone ahead of UTC (e.g. Europe/Paris) during the first hour(s) of the day. */
 export function todayIso(): string {

@@ -3,13 +3,13 @@ import { formatDateFr, addMonthsIso, addDaysIso } from "../helpers";
 import { computePreavis } from "../preavis";
 
 export type LettreDemissionParams = {
-  lastWorkDay: string; // desired/target last day of work — the letter date is computed backwards from this
+  lastWorkDay: string; // desired/target last day of work - the letter date is computed backwards from this
   ancienneteYears: number;
   ageYears: number | null;
   signingCity: string;
 };
 
-/** The resignation letter itself, drafted on behalf of the employee to sign — not the employer's reply. */
+/** The resignation letter itself, drafted on behalf of the employee to sign - not the employer's reply. */
 export function lettreDemission(
   employee: EmployeeDoc,
   company: CompanyDoc,
@@ -50,7 +50,7 @@ export function lettreDemission(
       `Conformément aux dispositions de mon contrat de travail (${
         company.conventionCollective
       }), j'effectuerai un préavis de ${preavis.label}${
-        preavis.note ? " — " + preavis.note : ""
+        preavis.note ? " - " + preavis.note : ""
       } à compter du ${formatDateFr(resignationDate)}. Mon contrat prendra donc fin le ${formatDateFr(lastDay)}.`
     ),
     para(
@@ -65,5 +65,5 @@ export function lettreDemission(
     para(fullName),
   ];
 
-  return { title: `Lettre de démission — ${fullName}`, blocks };
+  return { title: `Lettre de démission - ${fullName}`, blocks };
 }

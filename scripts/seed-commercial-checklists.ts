@@ -1,6 +1,6 @@
 /**
  * One-time import: load the per-client service checklist templates from
- * Checklists_Modeles_Clients_VLADIS.xlsx (12 sheets, one per client — a
+ * Checklists_Modeles_Clients_VLADIS.xlsx (12 sheets, one per client - a
  * Trello "modèle" card ported to Excel: N°/Tâche-Catégorie/Statut, with
  * category header rows) into commercial_clients + commercial_checklist_template_items.
  *
@@ -8,7 +8,7 @@
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/seed-commercial-checklists.ts /path/to/Checklists_Modeles_Clients_VLADIS.xlsx
  *
  * Safe to re-run: upserts the client by name, then replaces (delete+insert)
- * that client's template items entirely — the "Statut" column in the source
+ * that client's template items entirely - the "Statut" column in the source
  * file is a Trello placeholder ("□ à faire") on every single row across all
  * sheets, so it carries no real data and is ignored on import.
  */
@@ -64,7 +64,7 @@ function resolveCategory(raw: string, sheetName: string): string {
   const key = normalize(raw);
   const code = CATEGORY_MAP[key];
   if (!code) {
-    throw new Error(`Unrecognized category "${raw}" (sheet "${sheetName}") — add it to CATEGORY_MAP.`);
+    throw new Error(`Unrecognized category "${raw}" (sheet "${sheetName}") - add it to CATEGORY_MAP.`);
   }
   return code;
 }
@@ -77,7 +77,7 @@ function parseSheet(sheet: XLSX.WorkSheet, sheetName: string): TemplateRow[] {
   let currentCategory: string | null = null;
   let position = 0;
 
-  // Rows before the "N°" header are title/source-note lines — skip them.
+  // Rows before the "N°" header are title/source-note lines - skip them.
   let started = false;
   for (const row of rows) {
     const [a, b] = row as [unknown, unknown, unknown];

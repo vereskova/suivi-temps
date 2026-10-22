@@ -6,8 +6,8 @@ import { ToastProvider } from "@/components/Toast";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "VLADIS — Suivi des heures",
-  description: "Suivi des heures et gestion RH — VLADIS",
+  title: "VLADIS - Suivi des heures",
+  description: "Suivi des heures et gestion RH - VLADIS",
 };
 
 export default function RootLayout({

@@ -3,11 +3,11 @@ import { formatDateFr, formatEuros, addDaysIso, daysBetweenIso } from "../helper
 import { agr, civility, pronoun, salarieLabel } from "../gender";
 
 export type ContratCDDParams = {
-  startDate: string; // ISO — premier jour
-  endDate: string; // ISO — dernier jour (terme précis du contrat, mention obligatoire L.1242-12)
+  startDate: string; // ISO - premier jour
+  endDate: string; // ISO - dernier jour (terme précis du contrat, mention obligatoire L.1242-12)
   /** Période d'essai en jours calendaires : 1 jour par semaine de contrat, 2 semaines max pour un CDD ≤ 6 mois (L.1242-10). */
   trialDays: number;
-  /** Motif précis du recours au CDD (L.1242-12) — texte libre, modifiable dans le formulaire. */
+  /** Motif précis du recours au CDD (L.1242-12) - texte libre, modifiable dans le formulaire. */
   motif: string;
   /** Description des tâches / poste de travail, une phrase. */
   tasks: string;
@@ -42,7 +42,7 @@ export function contratCDD(employee: EmployeeDoc, company: CompanyDoc, params: C
   let articleNum = 0;
   function article(title: string): Block {
     articleNum += 1;
-    return { type: "heading", text: `ARTICLE ${articleNum} – ${title}` };
+    return { type: "heading", text: `ARTICLE ${articleNum} - ${title}` };
   }
 
   const blocks: Block[] = [
@@ -73,7 +73,7 @@ export function contratCDD(employee: EmployeeDoc, company: CompanyDoc, params: C
       `Le présent contrat n'a ni pour objet ni pour effet de pourvoir durablement un emploi lié à l'activité normale et permanente de la Société (article L.1242-1 du Code du travail).`
     ),
 
-    article("ENGAGEMENT – POSTE DE TRAVAIL"),
+    article("ENGAGEMENT - POSTE DE TRAVAIL"),
     para(
       `${name} est ${agr(sex, "engagé")} à compter du ${formatDateFr(params.startDate)} en qualité ${/^[aeiouhéèAEIOUH]/.test(job) ? "d'" : "de "}${job}, ${params.tasks.trim() || "affecté aux travaux de réparation des locaux de la Société"}, sous réserve, en application de la réglementation en vigueur, des résultats de la visite d'information et de prévention.`
     ),
@@ -199,7 +199,7 @@ export function contratCDD(employee: EmployeeDoc, company: CompanyDoc, params: C
     ),
   ];
 
-  return { title: `Contrat CDD — ${fullNameUpper}`, blocks };
+  return { title: `Contrat CDD - ${fullNameUpper}`, blocks };
 }
 
 /** Date de fin par défaut pour un CDD de N mois : le jour avant le même quantième N mois plus tard. */

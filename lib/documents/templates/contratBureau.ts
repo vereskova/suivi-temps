@@ -16,13 +16,13 @@ export type ContratBureauParams = {
   hoursIncreaseClause?: boolean;
   weeklyEffectiveHours: number; // actual contracted weekly hours
   hasStructuralOvertime: boolean; // true if weeklyEffectiveHours > 35 with built-in overtime
-  overtimeMajorationPercent: number; // e.g. 25 — only used if hasStructuralOvertime
+  overtimeMajorationPercent: number; // e.g. 25 - only used if hasStructuralOvertime
   mobiliteZone: string;
-  travelDescription: string; // free text, e.g. "des déplacements ponctuels sur les chantiers..." — leave blank to omit
+  travelDescription: string; // free text, e.g. "des déplacements ponctuels sur les chantiers..." - leave blank to omit
   dealsWithClients: boolean;
   classificationStatut: string; // e.g. "Technicien / Agent de maîtrise (ETAM)"
-  classificationReferenceCode: string; // optional repère-emploi code, e.g. "M110.01.001" — leave blank to omit
-  // Statutory minimums for the comparison paragraph in Article "Rémunération" — leave any blank to omit
+  classificationReferenceCode: string; // optional repère-emploi code, e.g. "M110.01.001" - leave blank to omit
+  // Statutory minimums for the comparison paragraph in Article "Rémunération" - leave any blank to omit
   // the whole paragraph rather than guess (these change periodically and must be RH-verified).
   smgAnnualAmount: number | null;
   smgMonthlyAmount: number | null;
@@ -46,7 +46,7 @@ export function contratBureau(
   const monthlyHours = monthlyHoursNumber.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 
   // L.1221-19 : 2 mois max. pour les ouvriers et employés, 3 pour les agents de maîtrise et
-  // techniciens, 4 pour les cadres — la phrase suit la durée choisie plutôt que de citer toutes les catégories.
+  // techniciens, 4 pour les cadres - la phrase suit la durée choisie plutôt que de citer toutes les catégories.
   const trialCategoryLabel =
     params.trialMonths >= 4
       ? "aux cadres"
@@ -57,10 +57,10 @@ export function contratBureau(
   let articleNum = 0;
   function article(title: string): Block {
     articleNum += 1;
-    return { type: "heading", text: `ARTICLE ${articleNum} – ${title}` };
+    return { type: "heading", text: `ARTICLE ${articleNum} - ${title}` };
   }
   // Article 1 cross-references the "Visite d'information et de prévention" article by number.
-  // Its position is fixed by the order of article() calls below (currently the 9th) — update
+  // Its position is fixed by the order of article() calls below (currently the 9th) - update
   // this constant if that ordering ever changes.
   const VISITE_ARTICLE_NUMBER = 9;
 
@@ -108,7 +108,7 @@ export function contratBureau(
 
   // Mentions obligatoires du contrat à temps partiel (art. L.3123-6 du Code du travail) :
   // durée hebdomadaire/mensuelle, répartition, cas et modalités de modification,
-  // limites des heures complémentaires — leur absence fait présumer un temps plein.
+  // limites des heures complémentaires - leur absence fait présumer un temps plein.
   const complementaryLimitMinutes = Math.round(params.weeklyEffectiveHours * 0.1 * 60);
   const complementaryLimit = `${Math.floor(complementaryLimitMinutes / 60)} h ${String(complementaryLimitMinutes % 60).padStart(2, "0")}`;
   const partTimeBlocks: Block[] = [
@@ -177,7 +177,7 @@ export function contratBureau(
     para("Il est convenu ce qui suit :"),
     { type: "spacer" },
 
-    article("ENGAGEMENT – EMPLOI"),
+    article("ENGAGEMENT - EMPLOI"),
     para(
       `${name} est ${agr(sex, "engagé")} à compter du ${formatDateFr(params.startDate)} en qualité de ${
         employee.jobTitle ?? "____________"
@@ -309,7 +309,7 @@ export function contratBureau(
       `${name} bénéficiera d'une visite d'information et de prévention, qui devra intervenir dans un délai maximal de trois mois à compter de sa prise effective de fonctions, conformément aux articles R.4624-10 et suivants du Code du travail, sauf régime particulier de suivi renforcé applicable le cas échéant.`
     ),
 
-    article("GARANTIES SOCIALES – MUTUELLE, PRÉVOYANCE ET RETRAITE"),
+    article("GARANTIES SOCIALES - MUTUELLE, PRÉVOYANCE ET RETRAITE"),
     para(
       `La Société a souscrit, au bénéfice de l'ensemble de ses salariés, un régime collectif et obligatoire de complémentaire santé et de prévoyance auprès de ${company.mutuelleProvider}.`
     ),
@@ -411,5 +411,5 @@ export function contratBureau(
     ),
   ];
 
-  return { title: `Contrat de travail — ${fullNameUpper}`, blocks };
+  return { title: `Contrat de travail - ${fullNameUpper}`, blocks };
 }

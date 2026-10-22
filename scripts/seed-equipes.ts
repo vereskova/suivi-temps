@@ -4,7 +4,7 @@
  * Usage:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/seed-equipes.ts
  *
- * Requires the service-role key (bypasses RLS) — never expose this key client-side.
+ * Requires the service-role key (bypasses RLS) - never expose this key client-side.
  * Safe to re-run: it upserts teams by name and employees by (first_name, last_name, team_id).
  */
 import { createClient } from "@supabase/supabase-js";
@@ -35,7 +35,7 @@ function parseName(fullName: string): { firstName: string; lastName: string } {
     i++;
   }
   if (lastNameParts.length === 0) {
-    // No all-caps token found (e.g. a single lowercase-ish name) — fall back to
+    // No all-caps token found (e.g. a single lowercase-ish name) - fall back to
     // "first token = first name, rest = last name".
     return {
       firstName: parts[0],
@@ -80,7 +80,7 @@ async function upsertEmployee(fullName: string, teamId: string) {
 async function main() {
   for (const [teamName, equipe] of Object.entries(equipes)) {
     if (equipe.workers.length === 0) {
-      console.log(`Skipping "${teamName}" — no workers listed.`);
+      console.log(`Skipping "${teamName}" - no workers listed.`);
       continue;
     }
 
@@ -110,7 +110,7 @@ async function main() {
     const chefId = workerIds[equipe.chef];
     if (!chefId) {
       console.warn(
-        `Warning: chef "${equipe.chef}" for "${teamName}" not found among its workers — team left without a chef.`
+        `Warning: chef "${equipe.chef}" for "${teamName}" not found among its workers - team left without a chef.`
       );
     } else {
       const { error: updateTeamError } = await supabase

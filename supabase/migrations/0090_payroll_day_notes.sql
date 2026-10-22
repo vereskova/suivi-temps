@@ -1,4 +1,4 @@
--- Annotation par jour dans la grille de "Primes & Bonus" — indépendante du
+-- Annotation par jour dans la grille de "Primes & Bonus" - indépendante du
 -- statut de présence (pointage_entries) : un commentaire libre sur
 -- N'IMPORTE QUEL jour (pourquoi une absence, ce qui s'est passé...), et en
 -- plus un montant optionnel sur les jours de week-end, qui alimente

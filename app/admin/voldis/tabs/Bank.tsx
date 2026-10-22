@@ -7,7 +7,7 @@ import { categoryFor } from "@/lib/voldis/bank-import";
 import { analyzeTxs, cleanLabel, proposeMatches, type Proposal } from "@/lib/voldis/matching";
 import { num, remaining, round2, statusFor, type VBankTx } from "@/lib/voldis/rental";
 import type { Supabase, VoldisData } from "../data";
-import { Bi, Field, Menu, Modal, eur, frDate, todayIso } from "../ui";
+import { Field, Menu, Modal, eur, frDate, todayIso } from "../ui";
 
 // ───────────────────────── Banque (Crédit Agricole) ─────────────────────────
 
@@ -72,8 +72,8 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
       .catch(() => setPw({ configured: false, connected: false }));
     const q = new URLSearchParams(window.location.search).get("voldis_bank");
     if (q) {
-      if (q === "ok") toast.success("Crédit Agricole connecté / Crédit Agricole подключён");
-      else toast.error("Connexion bancaire échouée / Не удалось подключить банк");
+      if (q === "ok") toast.success("Crédit Agricole подключён");
+      else toast.error("Не удалось подключить банк");
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, []);
@@ -86,7 +86,7 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
       window.location.href = j.url;
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erreur Powens");
+      toast.error(e instanceof Error ? e.message : "Ошибка Powens");
       setPwBusy(false);
     }
   }
@@ -97,11 +97,11 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
       const res = await fetch("/api/voldis/powens/sync", { method: "POST" });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
-      toast.success(`Banque : ${j.added} nouvelle(s) opération(s) / новых операций: ${j.added}`);
+      toast.success(`Банк: новых операций ${j.added}`);
       await onChanged();
       setPw((p) => (p ? { ...p, lastSync: new Date().toISOString() } : p));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erreur Powens");
+      toast.error(e instanceof Error ? e.message : "Ошибка Powens");
     } finally {
       setPwBusy(false);
     }
@@ -132,7 +132,7 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
     setImporting(true);
     try {
       const parsed = parseBankFile(file.name, await readText(file));
-      if (parsed.length === 0) throw new Error("Aucune opération reconnue dans ce fichier / В файле нет операций");
+      if (parsed.length === 0) throw new Error("В файле нет операций");
       const known = new Set(txs.map((t) => t.external_id));
       const rows = toRows(parsed, "import").map((r) => ({ ...r, bank_account: account?.bank_account ?? null, iban: account?.iban ?? null }));
       const fresh = rows.filter((r) => !known.has(r.external_id));
@@ -140,10 +140,10 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         const { error } = await supabase.from("voldis_bank_transactions").upsert(fresh, { onConflict: "external_id", ignoreDuplicates: true });
         if (error) throw new Error(error.message);
       }
-      toast.success(`${fresh.length} nouvelle(s) opération(s), ${rows.length - fresh.length} déjà connue(s) / новых: ${fresh.length}, уже были: ${rows.length - fresh.length}`);
+      toast.success(`Новых операций: ${fresh.length}, уже были: ${rows.length - fresh.length}`);
       await onChanged();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erreur d'import");
+      toast.error(e instanceof Error ? e.message : "Ошибка импорта");
     } finally {
       setImporting(false);
     }
@@ -159,14 +159,14 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         .update({ amount_paid: paid, paid_on: paidOn, status: statusFor({ ...p.charge, amount_paid: paid }) })
         .eq("id", p.charge.id);
       if (error) {
-        toast.error("Erreur : " + error.message);
+        toast.error("Ошибка: " + error.message);
         return false;
       }
     }
     const patch = p.kind === "assign" ? { tenant_id: p.tenant.id } : { tenant_id: p.tenant.id, charge_id: p.charge.id };
     const { error } = await supabase.from("voldis_bank_transactions").update(patch).eq("id", p.tx.id);
     if (error) {
-      toast.error("Erreur : " + error.message);
+      toast.error("Ошибка: " + error.message);
       return false;
     }
     return true;
@@ -174,25 +174,25 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
 
   async function applyOne(p: Proposal) {
     setApplying(true);
-    if (await apply(p)) toast.success("Rapproché / Сопоставлено");
+    if (await apply(p)) toast.success("Сопоставлено");
     setApplying(false);
     await onChanged();
   }
 
   async function applySure() {
     const nPay = sure.filter((p) => p.kind === "pay").length;
-    if (!window.confirm(`Valider ${sure.length} proposition(s) sûre(s) ?${nPay ? ` Dont ${nPay} enregistrement(s) de paiement.` : ""}\nПодтвердить ${sure.length} надёжных сопоставлений?`)) return;
+    if (!window.confirm(`Подтвердить ${sure.length} надёжных сопоставлений?${nPay ? ` Из них записей оплаты: ${nPay}.` : ""}`)) return;
     setApplying(true);
     let ok = 0;
     for (const p of sure) if (await apply(p)) ok++;
     setApplying(false);
-    toast.success(`${ok}/${sure.length} rapprochement(s) / сопоставлений`);
+    toast.success(`Сопоставлено: ${ok} из ${sure.length}`);
     await onChanged();
   }
 
   async function assign(tx: VBankTx, tenantId: string | null, category: string | null) {
     const { error } = await supabase.from("voldis_bank_transactions").update({ tenant_id: tenantId, category: category ?? tx.category }).eq("id", tx.id);
-    if (error) return toast.error("Erreur : " + error.message);
+    if (error) return toast.error("Ошибка: " + error.message);
     setAssigning(null);
     await onChanged();
   }
@@ -200,7 +200,7 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
   async function unlink(tx: VBankTx) {
     // on retire seulement le rattachement : les montants de l'échéance ne sont pas modifiés
     const { error } = await supabase.from("voldis_bank_transactions").update({ tenant_id: null, charge_id: null }).eq("id", tx.id);
-    if (error) return toast.error("Erreur : " + error.message);
+    if (error) return toast.error("Ошибка: " + error.message);
     await onChanged();
   }
 
@@ -215,11 +215,11 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
           <div className="min-w-0">
             <p className="font-bold text-stone-800">{account?.bank_account ?? "Crédit Agricole"}</p>
             <p className="text-xs text-stone-500">
-              {account?.iban ?? "Importez un relevé pour commencer"} · {txs.length} opérations
+              {account?.iban ?? "Загрузите выписку, чтобы начать"} · операций: {txs.length}
             </p>
           </div>
           <label className={`btn btn-primary ml-auto cursor-pointer ${importing ? "opacity-60" : ""}`}>
-            <Bi fr={importing ? "Import…" : "Importer un relevé"} ru={importing ? "Импорт…" : "Загрузить выписку"} />
+            {importing ? "Импорт..." : "Загрузить выписку"}
             <input
               type="file"
               accept=".ofx,.qif,.csv,.txt"
@@ -236,46 +236,45 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-stone-50 px-3 py-2 text-sm">
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-stone-800">
-              <Bi fr="Synchronisation automatique" ru="Автоматическая синхронизация" />
+              Автоматическая синхронизация
             </p>
             <p className="text-xs text-stone-500">
               {pw === null
-                ? "Vérification…"
+                ? "Проверка..."
                 : !pw.configured
-                ? "Powens n'est pas encore configuré sur le serveur / Powens ещё не настроен на сервере"
+                ? "Powens ещё не настроен на сервере"
                 : !pw.connected
-                ? "Aucune banque liée / Банк не подключён"
+                ? "Банк не подключён"
                 : needsReconnect
-                ? "Reconnexion à la banque nécessaire / Нужно заново подтвердить доступ к банку"
-                : `Connecté · chaque jour à 7 h · dernière synchro : ${pw.lastSync ? frDate(pw.lastSync) : "—"}`}
+                ? "Нужно заново подтвердить доступ к банку"
+                : `Подключено · каждый день в 7:00 · последняя синхронизация: ${pw.lastSync ? frDate(pw.lastSync) : "-"}`}
               {pw?.error && <span className="ml-1 text-error-600">· {pw.error}</span>}
             </p>
           </div>
           {pw?.configured && (!pw.connected || needsReconnect) && (
             <button className="btn btn-dark" disabled={pwBusy} onClick={() => void powensConnect()}>
-              <Bi fr={pw.connected ? "Reconnecter" : "Connecter Crédit Agricole"} ru={pw.connected ? "Переподключить" : "Подключить Crédit Agricole"} />
+              {pw.connected ? "Переподключить" : "Подключить Crédit Agricole"}
             </button>
           )}
           {pw?.configured && pw.connected && (
             <button className="btn btn-secondary" disabled={pwBusy} onClick={() => void powensSync()}>
-              <Bi fr="Synchroniser maintenant" ru="Синхронизировать сейчас" />
+              Синхронизировать сейчас
             </button>
           )}
         </div>
         <p className="mt-2 text-xs text-stone-500">
-          Crédit Agricole → Ma Banque en ligne → Télécharger les opérations (OFX, QIF ou CSV). Les opérations déjà importées sont ignorées. /
-          Скачайте выписку в онлайн-банке (OFX, QIF или CSV) — уже загруженные операции пропускаются.
+          Crédit Agricole → онлайн-банк → скачать операции (OFX, QIF или CSV). Уже загруженные операции пропускаются.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-emerald-50 px-3 py-2">
             <div className="text-[11px] font-bold uppercase text-emerald-800">
-              <Bi fr="Encaissements" ru="Поступления" />
+              Поступления
             </div>
             <div className="text-lg font-extrabold tabular-nums text-emerald-800">{eur(income)}</div>
           </div>
           <div className="rounded-xl bg-stone-100 px-3 py-2">
             <div className="text-[11px] font-bold uppercase text-stone-600">
-              <Bi fr="Dépenses" ru="Расходы" />
+              Расходы
             </div>
             <div className="text-lg font-extrabold tabular-nums text-stone-700">{eur(spent)}</div>
           </div>
@@ -296,34 +295,34 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         <div className="rounded-2xl border border-stone-200 bg-white p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <p className="font-bold text-stone-800">
-              <Bi fr={`Propositions de rapprochement (${proposals.length})`} ru="Предложения по сопоставлению" />
+              {`Предложения по сопоставлению (${proposals.length})`}
             </p>
             {sure.length > 0 && (
               <button className="btn btn-dark" disabled={applying} onClick={() => void applySure()}>
-                <Bi fr={`Valider les ${sure.length} sûres`} ru="Подтвердить надёжные" />
+                {`Подтвердить надёжные (${sure.length})`}
               </button>
             )}
           </div>
           <ul className="divide-y divide-stone-100">
             {proposals.slice(0, 40).map((p) => (
               <li key={p.tx.id} className="flex flex-wrap items-center gap-3 py-2.5 text-sm">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${p.confidence === "sure" ? "bg-emerald-500" : "bg-amber-500"}`} title={p.confidence === "sure" ? "Sûr" : "À vérifier"} />
+                <span className={`h-2 w-2 shrink-0 rounded-full ${p.confidence === "sure" ? "bg-emerald-500" : "bg-amber-500"}`} title={p.confidence === "sure" ? "Надёжно" : "Проверить"} />
                 <span className="w-24 shrink-0 tabular-nums font-bold text-stone-800">{eur(num(p.tx.amount))}</span>
                 <span className="w-20 shrink-0 text-stone-400">{frDate(p.tx.settled_at)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="font-semibold text-stone-800">{p.tenant.name}</span>
                   <span className="text-stone-500">
-                    {p.kind === "assign" ? " · sans échéance (attribué au locataire)" : p.kind === "link" ? ` · échéance du ${frDate(p.charge.due_date)} déjà encaissée` : ` · loyer du ${frDate(p.charge.due_date)} (reste ${eur(remaining(p.charge))})`}
+                    {p.kind === "assign" ? " · без платежа (закрепить за арендатором)" : p.kind === "link" ? ` · платёж за ${frDate(p.charge.due_date)} уже оплачен` : ` · аренда за ${frDate(p.charge.due_date)} (осталось ${eur(remaining(p.charge))})`}
                   </span>
                   <span className="block truncate text-xs text-stone-400">{p.reason}</span>
                 </span>
                 <button className="btn btn-secondary px-3 py-1 text-xs" disabled={applying} onClick={() => void applyOne(p)}>
-                  <Bi fr={p.kind === "pay" ? "Enregistrer" : p.kind === "link" ? "Rattacher" : "Attribuer"} ru={p.kind === "pay" ? "Записать оплату" : p.kind === "link" ? "Привязать" : "Закрепить"} />
+                  {p.kind === "pay" ? "Записать оплату" : p.kind === "link" ? "Привязать" : "Закрепить"}
                 </button>
               </li>
             ))}
           </ul>
-          {proposals.length > 40 && <p className="pt-3 text-xs text-stone-400">… et {proposals.length - 40} autres : validez d&apos;abord celles-ci.</p>}
+          {proposals.length > 40 && <p className="pt-3 text-xs text-stone-400">... и ещё {proposals.length - 40}: сначала подтвердите эти.</p>}
         </div>
       )}
 
@@ -331,24 +330,24 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         <div className="mb-3 flex flex-wrap gap-1.5">
           {(
             [
-              ["all", "Toutes", "Все"],
-              ["check", `À vérifier (${flags.size})`, "Проверить"],
-              ["credit", "Encaissements", "Поступления"],
-              ["debit", "Dépenses", "Расходы"],
+              ["all", "Все"],
+              ["check", `Проверить (${flags.size})`],
+              ["credit", "Поступления"],
+              ["debit", "Расходы"],
             ] as const
-          ).map(([k, fr, ru]) => (
+          ).map(([k, label]) => (
             <button
               key={k}
               onClick={() => setFilter(k)}
               className={`rounded-full px-3 py-1 text-xs font-semibold ${filter === k ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}
             >
-              <Bi fr={fr} ru={ru} />
+              {label}
             </button>
           ))}
         </div>
         <p className="mb-3 text-xs text-stone-400">
-          <span className="mr-4">Gris : reconnu automatiquement</span>
-          <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">Surligné : à vérifier</span>
+          <span className="mr-4">Серым: распознано автоматически</span>
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 font-semibold text-amber-800">Подсвечено: нужно проверить</span>
         </p>
         <table className="w-full table-fixed text-sm">
           <colgroup>
@@ -361,17 +360,17 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
           <thead>
             <tr className="border-b border-stone-100 text-left text-xs font-semibold uppercase tracking-wide text-stone-400">
               <th className="relative px-2 py-2">
-                Date
+                Дата
                 <ResizeHandle onPointerDown={(e) => startResize("date", e)} />
               </th>
-              <th className="px-2 py-2">Opération</th>
+              <th className="px-2 py-2">Операция</th>
               <th className="relative px-2 py-2 text-right">
-                Montant
+                Сумма
                 <ResizeHandle onPointerDown={(e) => startResize("amount", e)} />
               </th>
               <th className="relative px-2 py-2">
                 <ResizeHandle left onPointerDown={(e) => startResize("who", e)} />
-                Locataire / catégorie
+                Арендатор / категория
               </th>
               <th />
             </tr>
@@ -405,8 +404,8 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
                     {t.side === "credit" && (
                       <Menu
                         items={[
-                          { label: "Attribuer à un locataire…", onClick: () => setAssigning(t) },
-                          ...(t.tenant_id || t.charge_id ? [{ label: "Retirer le rattachement", onClick: () => void unlink(t) }] : []),
+                          { label: "Закрепить за арендатором...", onClick: () => setAssigning(t) },
+                          ...(t.tenant_id || t.charge_id ? [{ label: "Снять привязку", onClick: () => void unlink(t) }] : []),
                         ]}
                       />
                     )}
@@ -417,7 +416,7 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
             {shown.length === 0 && (
               <tr>
                 <td colSpan={5} className="py-8 text-center text-stone-400">
-                  {filter === "check" ? "Rien à vérifier — tout est reconnu ✓" : "Aucune opération / Нет операций"}
+                  {filter === "check" ? "Проверять нечего: всё распознано" : "Операций нет"}
                 </td>
               </tr>
             )}
@@ -426,7 +425,7 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
         {shown.length > limit && (
           <div className="pt-4 text-center">
             <button className="btn btn-secondary" onClick={() => setLimit(limit + 80)}>
-              <Bi fr={`Afficher plus (${shown.length - limit})`} ru="Показать ещё" />
+              {`Показать ещё (${shown.length - limit})`}
             </button>
           </div>
         )}
@@ -436,21 +435,21 @@ export default function Bank({ supabase, data }: { supabase: Supabase; data: Vol
   );
 }
 
-const CATEGORIES = ["Loyer", "Dépôt de garantie", "Remboursement", "Autre"];
+const CATEGORIES = ["Аренда", "Депозит", "Возврат", "Другое"];
 
 function AssignModal({ tx, tenants, onClose, onSave }: { tx: VBankTx; tenants: VoldisData["tenants"]; onClose: () => void; onSave: (tenantId: string | null, category: string | null) => void }) {
   const [tenantId, setTenantId] = useState(tx.tenant_id ?? "");
-  const [category, setCategory] = useState(tx.category ?? "Loyer");
+  const [category, setCategory] = useState(tx.category ?? "Аренда");
   return (
-    <Modal open onClose={onClose} title="Attribuer ce virement · Закрепить поступление">
+    <Modal open onClose={onClose} title="Закрепить поступление">
       <p className="mb-4 rounded-xl bg-stone-50 px-4 py-3 text-sm text-stone-600">
         <strong className="tabular-nums text-stone-900">{eur(num(tx.amount))}</strong> · {frDate(tx.settled_at)}
         <span className="mt-1 block truncate text-xs text-stone-400">{tx.label}</span>
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Locataire" ru="Арендатор">
+        <Field label="" ru="Арендатор">
           <select className="input" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
-            <option value="">— Aucun (hors loyers) —</option>
+            <option value="">- Никто (не аренда) -</option>
             {tenants.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
@@ -458,7 +457,7 @@ function AssignModal({ tx, tenants, onClose, onSave }: { tx: VBankTx; tenants: V
             ))}
           </select>
         </Field>
-        <Field label="Catégorie" ru="Категория">
+        <Field label="" ru="Категория">
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value)}>
             {CATEGORIES.map((c) => (
               <option key={c}>{c}</option>
@@ -466,13 +465,13 @@ function AssignModal({ tx, tenants, onClose, onSave }: { tx: VBankTx; tenants: V
           </select>
         </Field>
       </div>
-      <p className="mt-3 text-xs text-stone-400">Les virements suivants du même payeur seront proposés automatiquement pour ce locataire. / Следующие платежи этого плательщика будут предлагаться для этого арендатора.</p>
+      <p className="mt-3 text-xs text-stone-400">Следующие платежи этого плательщика будут предлагаться для этого арендатора автоматически.</p>
       <div className="mt-6 flex justify-end gap-2">
         <button className="btn btn-secondary" onClick={onClose}>
-          <Bi fr="Annuler" ru="Отмена" />
+          Отмена
         </button>
         <button className="btn btn-primary" onClick={() => onSave(tenantId || null, category)}>
-          <Bi fr="Enregistrer" ru="Сохранить" />
+          Сохранить
         </button>
       </div>
     </Modal>
@@ -485,7 +484,7 @@ function ResizeHandle({ onPointerDown, left }: { onPointerDown: (e: React.Pointe
     <span
       onPointerDown={onPointerDown}
       style={{ touchAction: "none" }}
-      title="Glisser pour ajuster la largeur / Потяните, чтобы изменить ширину"
+      title="Потяните, чтобы изменить ширину"
       className={`absolute top-0 h-full w-2 cursor-col-resize select-none hover:bg-stone-300 ${left ? "left-0" : "right-0"}`}
     />
   );

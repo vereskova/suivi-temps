@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/auth/requireRole";
 
 // rh_admin-only: powers the "who can see this page" badge (PageAccessBadge)
 // with the actual account emails behind each role, not just the role name.
-// Needs the service-role key to call auth.admin.listUsers() — user_roles
+// Needs the service-role key to call auth.admin.listUsers() - user_roles
 // only stores auth_user_id, and emails live in auth.users, which RLS-bound
 // clients can't read.
 export async function GET() {

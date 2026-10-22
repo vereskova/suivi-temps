@@ -1,5 +1,5 @@
 /**
- * VOLDIS — envoi d'e-mails (factures, quittances, relances) par SMTP.
+ * VOLDIS - envoi d'e-mails (factures, quittances, relances) par SMTP.
  *
  * Par défaut, on réutilise la boîte OVH déjà connectée au projet (OVH_EMAIL_ADDRESS /
  * OVH_EMAIL_PASSWORD / OVH_IMAP_HOST : même serveur et mêmes identifiants pour l'envoi,

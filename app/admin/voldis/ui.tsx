@@ -5,17 +5,13 @@ import { num } from "@/lib/voldis/rental";
 
 export const eur = (n: number) => `${num(n).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;
 export const eur0 = (n: number) => `${Math.round(num(n)).toLocaleString("fr-FR")} €`;
-export const frDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
+export const frDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "-");
 export const todayIso = () => new Date().toISOString().slice(0, 10);
 
-/** Libellé français avec la traduction russe en petit dessous (même convention que le reste de l'admin). */
-export function Bi({ fr, ru, className = "" }: { fr: string; ru: string; className?: string }) {
-  return (
-    <span className={`inline-block leading-tight align-middle ${className}`}>
-      <span className="block">{fr}</span>
-      <span className="block text-[0.62rem] font-medium opacity-55">{ru}</span>
-    </span>
-  );
+/** Подпись интерфейса: раздел VOLDIS целиком на русском (французский остаётся только в счетах и письмах). */
+export function Bi({ fr, ru, className = "" }: { fr?: string; ru: string; className?: string }) {
+  void fr;
+  return <span className={className}>{ru}</span>;
 }
 
 export function Modal({
@@ -44,7 +40,7 @@ export function Modal({
       <div className={`relative z-10 w-full ${width} rounded-2xl bg-white p-5 shadow-xl sm:p-7`}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <h2 className="text-lg font-extrabold tracking-tight text-stone-900">{title}</h2>
-          <button onClick={onClose} className="-mr-1 rounded-lg px-2 py-1 text-xl leading-none text-stone-400 hover:bg-stone-100 hover:text-stone-700" aria-label="Fermer">
+          <button onClick={onClose} className="-mr-1 rounded-lg px-2 py-1 text-xl leading-none text-stone-400 hover:bg-stone-100 hover:text-stone-700" aria-label="Закрыть">
             ×
           </button>
         </div>
@@ -57,10 +53,7 @@ export function Modal({
 export function Field({ label, ru, hint, children, className = "" }: { label: string; ru?: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={`flex flex-col gap-1 ${className}`}>
-      <span className="text-xs font-semibold text-stone-600">
-        {label}
-        {ru && <span className="ml-1.5 font-medium text-stone-400">{ru}</span>}
-      </span>
+      <span className="text-xs font-semibold text-stone-600">{ru ?? label}</span>
       {children}
       {hint && <span className="text-[11px] text-stone-400">{hint}</span>}
     </label>
@@ -93,7 +86,7 @@ export function Menu({ items }: { items: { label: string; onClick: () => void; d
   if (shown.length === 0) return null;
   return (
     <div className="relative inline-block" ref={ref}>
-      <button onClick={() => setOpen((v) => !v)} className="rounded-lg px-2 py-1 text-lg leading-none text-stone-400 hover:bg-stone-100 hover:text-stone-700" aria-label="Plus d'actions">
+      <button onClick={() => setOpen((v) => !v)} className="rounded-lg px-2 py-1 text-lg leading-none text-stone-400 hover:bg-stone-100 hover:text-stone-700" aria-label="Действия">
         ⋯
       </button>
       {open && (

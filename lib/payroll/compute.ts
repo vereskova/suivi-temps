@@ -1,21 +1,21 @@
 /**
  * Ports the net→brut reverse payroll calculation from VLADIS_с_итогом.xlsx
  * ("Расчёт ЗП" sheet). `netSouhaite` is a fixed target the accountant will
- * not adjust — every other line item is derived from it, in a waterfall:
+ * not adjust - every other line item is derived from it, in a waterfall:
  * base pay (days actually worked this month × the employee's own daily
  * rate) is subtracted first, then jours repas fills whatever gap is left
- * (capped by both the plan's max and by days worked — can't claim more meal
+ * (capped by both the plan's max and by days worked - can't claim more meal
  * days than days present), then overtime at +25%, then +50%, then whatever
  * still isn't covered becomes prime exceptionnelle.
  *
  * Base pay falls back to the old fixed full-month calculation
  * (heuresNormalesMois × tauxHoraireBase) when either `joursTravailles` or
- * `salaireBaseNet` isn't provided for a line — this keeps rows computing
+ * `salaireBaseNet` isn't provided for a line - this keeps rows computing
  * exactly as before until both new fields are actually filled in for them,
  * instead of silently collapsing to zero on rollout.
  *
  * Jours fériés worked are tracked in the Paie view (count only) but don't
- * feed this calculation — the accountant handles their pay separately.
+ * feed this calculation - the accountant handles their pay separately.
  *
  * This produces the INPUT table handed to the accountant; it does not
  * generate an actual bulletin de paie.
@@ -25,7 +25,7 @@ export type PayrollParams = {
   tauxHoraireBase: number;
   heuresNormalesMois: number;
   joursOuvresMoisStandard: number;
-  /** Current net monthly SMIC, per the accountant — not derived from anything else, since no formula produces this correctly; update it directly whenever it changes. */
+  /** Current net monthly SMIC, per the accountant - not derived from anything else, since no formula produces this correctly; update it directly whenever it changes. */
   smicNetMensuel: number;
   majorationHs25: number;
   majorationHs50: number;
@@ -40,14 +40,14 @@ export type PayrollParams = {
 export type PayrollInput = {
   netSouhaite: number;
   joursTravailles: number;
-  /** The employee's own reference monthly net salary — null/0 until set on their profile. */
+  /** The employee's own reference monthly net salary - null/0 until set on their profile. */
   salaireBaseNet: number | null;
-  /** Meal days typed by hand (e.g. for office staff) — replaces the computed value and the cap; the rest of the waterfall (HS, prime) then uses what is left. null/undefined = automatic. */
+  /** Meal days typed by hand (e.g. for office staff) - replaces the computed value and the cap; the rest of the waterfall (HS, prime) then uses what is left. null/undefined = automatic. */
   joursRepasManuel?: number | null;
 };
 
 export type PayrollResult = {
-  /** The base pay portion actually used this run — day-based (joursTravailles × salaireBaseNet ÷ joursOuvresMoisStandard) once both inputs are filled, otherwise the old fixed full-month fallback. */
+  /** The base pay portion actually used this run - day-based (joursTravailles × salaireBaseNet ÷ joursOuvresMoisStandard) once both inputs are filled, otherwise the old fixed full-month fallback. */
   baseNet: number;
   joursRepas: number;
   hs25Heures: number;
@@ -130,9 +130,9 @@ export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
 };
 
 /**
- * Nuit — Convention Collective Nationale de la Métallurgie (IDCC 3248),
+ * Nuit - Convention Collective Nationale de la Métallurgie (IDCC 3248),
  * avenant SMH au 1er janvier 2026. Travail de nuit (21h-6h) : +15% du SMH
- * (salaire minimum hiérarchique du groupe), pas du salaire personnel — payé
+ * (salaire minimum hiérarchique du groupe), pas du salaire personnel - payé
  * en plus des heures normales, cumulable avec les HS.
  *
  * Chaque lettre de groupe couvre en réalité 2 classes (SMH annuel/mensuel/
@@ -146,12 +146,12 @@ export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
  *   G13: 40 350 €/an → 22,17 €/h · H15: 47 380 €/an → 26,04 €/h
  *   I17: 59 720 €/an → 32,81 €/h
  * Seul le groupe A a été confirmé avec l'utilisatrice pour l'usage réel
- * actuel (postes chantier) — les autres sont là pour ne pas planter si le
+ * actuel (postes chantier) - les autres sont là pour ne pas planter si le
  * champ contient une autre lettre, à re-vérifier avant tout usage réel.
  *
  * Sources : ressources.convention.fr/ressources-juridiques/
  * temps-de-travail-convention-metallurgie ; skello.io/blog/
- * convention-collective-metallurgie — à reconfirmer avec le comptable
+ * convention-collective-metallurgie - à reconfirmer avec le comptable
  * avant tout usage contentieux, ce ne sont pas des sources officielles
  * (Légifrance/Bulletin officiel de la convention).
  */
@@ -177,7 +177,7 @@ export type NightPremiumResult = {
   amount: number;
 };
 
-/** heuresNuit × 15% du SMH horaire du groupe conventionnel de l'employé — voir la note ci-dessus. */
+/** heuresNuit × 15% du SMH horaire du groupe conventionnel de l'employé - voir la note ci-dessus. */
 export function computeNightPremium(heuresNuit: number, classification: string | null): NightPremiumResult {
   const group = (classification ?? "A").trim().toUpperCase().charAt(0) || "A";
   const hourlyRateSmh = SMH_HOURLY_BY_GROUP[group] ?? SMH_HOURLY_BY_GROUP.A;
@@ -187,27 +187,27 @@ export function computeNightPremium(heuresNuit: number, classification: string |
 }
 
 /**
- * Port de "часы работы.numbers" — logique reconfirmée sur septembre 2026
+ * Port de "часы работы.numbers" - logique reconfirmée sur septembre 2026
  * (août avait masqué deux points : vacance_taux_journalier et le dépôt en
  * banque ci-dessous, tous deux invisibles quand ils valent 0/vide), puis
  * simplifiée le 29/09/2026 : Congés payés et Vacance jours sont redescendus
  * en simples compteurs de jours saisis à la main depuis le bulletin de paie
- * (la RH ne calcule ni ne verse ces montants — le comptable s'en charge à
+ * (la RH ne calcule ni ne verse ces montants - le comptable s'en charge à
  * part) ; Km/Péage ont été retirés (pas utilisés) ; Contrôle 1/2/3 ont été
  * fusionnés dans le seul champ Штраф ; Bonus qualité (БАНК 3000 × 80 %,
  * versé chaque mois sans jamais réduire le БАНК) a été retiré le 29/09/2026
- * — c'était un reliquat de la feuille d'origine que l'utilisatrice n'avait
+ * - c'était un reliquat de la feuille d'origine que l'utilisatrice n'avait
  * jamais confirmé explicitement, et qu'elle a fini par juger faux en le
  * voyant appliqué en vrai : "Bonus qualité убрать вовсе". Le БАНК 3000
- * s'accumule maintenant SANS aucune sortie automatique — seul un ajustement
+ * s'accumule maintenant SANS aucune sortie automatique - seul un ajustement
  * manuel (banqueAjustementManuel, voir plus bas) peut le faire baisser,
  * pour une vraie remise en main propre décidée par l'utilisatrice.
  *
  * DEUX banques distinctes, à ne pas confondre :
- *   1. Le БАНК (plafond 3000) ci-dessous — propre à CHAQUE salarié d'équipe,
+ *   1. Le БАНК (plafond 3000) ci-dessous - propre à CHAQUE salarié d'équipe,
  *      alimenté par SON PROPRE BONUS équipe (30 % déposé, voir plus bas).
  *   2. Le "Банк качества" de l'ENTREPRISE (company_quality_bank,
- *      computeControllerSplit plus bas, répartition dans quality-bank.ts) —
+ *      computeControllerSplit plus bas, répartition dans quality-bank.ts) -
  *      alimenté par 75 % de chaque pénalité déduite du БАНК #1 d'un salarié
  *      d'équipe ; les 25 % restants vont directement dans la paie du mois du
  *      contrôleur désigné (CIOBANU Valeriu pour l'instant, un seul pour toute
@@ -217,12 +217,12 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *      pool par rang (décision du 21/10/2026, voir quality-bank.ts), puis le
  *      pool repart de zéro. Un seul pool pour toute l'entreprise.
  *
- * Штраф контроль — UN SEUL champ, dont le sens dépend de faitPartieEquipe
+ * Штраф контроль - UN SEUL champ, dont le sens dépend de faitPartieEquipe
  * (confirmé avec l'utilisatrice, 29/09/2026 : "для команд это будет так, а
  * для не команд вообще нет системы этой, бонусы это просто бонусы в зп") :
  *   - équipe chantier (faitPartieEquipe = true) : Штраф контроль est la
  *     pénalité du contrôleur qualité. Une valeur NÉGATIVE est déduite du
- *     БАНК 3000 (jamais de la paie directement — le salarié ne "paie" qu'une
+ *     БАНК 3000 (jamais de la paie directement - le salarié ne "paie" qu'une
  *     fois, via le БАНК) ; une valeur POSITIVE (rare, ajustement) s'ajoute
  *     directement à la paie, comme avant, sans jamais alimenter le БАНК
  *     (jamais de pénalité "positive" implicite).
@@ -231,18 +231,18 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *     paie, ajouté tel quel (positif ou négatif), sans aucun lien avec le
  *     БАНК ni avec le contrôleur/Банк качества.
  *
- * Штраф direct (nouveau, 29/09/2026, confirmé avec l'utilisatrice — distinct
+ * Штраф direct (nouveau, 29/09/2026, confirmé avec l'utilisatrice - distinct
  * du Штраф контроль ci-dessus : "штрафы от контролера и штрафы просто за
  * превышение скорости или допустим за поломку инструментов это разное")
- * — pour les pénalités SANS rapport avec le contrôle qualité chantier
+ * - pour les pénalités SANS rapport avec le contrôle qualité chantier
  * (excès de vitesse, casse de matériel, etc.). Toujours un ajustement signé
- * direct sur la paie, pour TOUT employé (équipe ou non) — ne touche JAMAIS
+ * direct sur la paie, pour TOUT employé (équipe ou non) - ne touche JAMAIS
  * le БАНК 3000 ni le contrôleur/Банк качества.
  *
  * Bonus direct (nouveau, 29/09/2026, même logique symétrique que Штраф
- * direct — confirmé avec l'utilisatrice : "BONUS équipe мб сделать
+ * direct - confirmé avec l'utilisatrice : "BONUS équipe мб сделать
  * аналогично бонус прочее чтоб он был доступен для именно сотрудников не
- * команд") — un bonus ponctuel indépendant du BONUS d'équipe/БАНК 3000,
+ * команд") - un bonus ponctuel indépendant du BONUS d'équipe/БАНК 3000,
  * pour TOUT employé (équipe ou non), notamment utile à Bureau / Contrôle &
  * Formation qui n'ont pas de BONUS équipe. Toujours ajouté tel quel à
  * l'À payer, jamais de dépôt en БАНК.
@@ -251,18 +251,18 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *   Dépôt banque = équipe chantier uniquement (Bureau / Contrôle & Formation
  *     / sans équipe : toujours 0, tout le BONUS est payé directement) :
  *     MIN(MAX(0, BONUS équipe × 30 %), MAX(0, 3000 − БАНК début))
- *     — une partie du BONUS d'équipe (jusqu'à 30 %, plafonnée pour que le
+ *     - une partie du BONUS d'équipe (jusqu'à 30 %, plafonnée pour que le
  *     БАНК ne dépasse jamais 3000) part dans le БАНК qualité au lieu d'être
  *     payée directement ce mois-ci.
  *   Bonus équipe payé = BONUS équipe − Dépôt banque
  *   БАНК 3000 (fin de mois) = MAX(0, MIN(3000, БАНК début + Dépôt banque) − pénalité contrôleur)
- *     — le "début" reprend automatiquement la fin du mois précédent pour ce
+ *     - le "début" reprend automatiquement la fin du mois précédent pour ce
  *     même employé (jamais retapé à la main), sauf ajustement manuel exprès.
- *     Pure accumulation, aucune sortie automatique — voir la note en tête de
+ *     Pure accumulation, aucune sortie automatique - voir la note en tête de
  *     fichier.
- * Heures route (nouveau, 30/09/2026) — heures de trajet saisies à la main,
+ * Heures route (nouveau, 30/09/2026) - heures de trajet saisies à la main,
  * payées à un taux horaire différent selon que le salarié est chauffeur ou
- * non (voir isChauffeur sur l'employé, pas sur cette table — c'est un
+ * non (voir isChauffeur sur l'employé, pas sur cette table - c'est un
  * attribut durable, pas mensuel) : 90/8 = 11,25 €/h pour un chauffeur (90 =
  * le tarif journalier standard, voir NEW_HIRE_RATE_CUTOFF côté page.tsx,
  * ÷ 8h) ; sinon 9,61 €/h, le SMIC net horaire (12,31 €/h brut ×
@@ -270,12 +270,12 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  *
  *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus direct
  *     + Coût route + part contrôleur + prime Банк качества
- *     — Congés payés et Vacance jours sont de simples compteurs de jours,
+ *     - Congés payés et Vacance jours sont de simples compteurs de jours,
  *     affichés à titre indicatif, jamais inclus dans ce total (le montant
  *     réel est calculé et versé par la comptabilité, pas ici).
  *
  * Le BONUS d'équipe lui-même (avant dépôt banque) est calculé ailleurs
- * (plusieurs facteurs, pas une formule de cette feuille) — saisi ici tel
+ * (plusieurs facteurs, pas une formule de cette feuille) - saisi ici tel
  * quel, jamais recalculé.
  */
 export const BANQUE_QUALITE_PLAFOND = 3000;
@@ -289,23 +289,23 @@ export type PayrollExtrasInput = {
   bonusEquipe: number;
   /** Montant signé. Équipe chantier : négatif = pénalité contrôleur (déduite du БАНК, jamais de la paie) ; positif = ajustement direct de paie. Hors équipe : ajustement direct de paie, signé, sans aucun lien БАНК. Voir la note en tête de fichier. */
   penaliteMontant: number;
-  /** Montant signé, ajusté directement sur la paie pour TOUT employé — excès de vitesse, casse de matériel, etc. Jamais lié au БАНК 3000 ni au contrôleur/Банк качества, contrairement à penaliteMontant. Voir la note en tête de fichier. */
+  /** Montant signé, ajusté directement sur la paie pour TOUT employé - excès de vitesse, casse de matériel, etc. Jamais lié au БАНК 3000 ni au contrôleur/Банк качества, contrairement à penaliteMontant. Voir la note en tête de fichier. */
   penaliteDirecte: number;
-  /** Bonus ponctuel ajouté tel quel à l'À payer pour TOUT employé — indépendant du BONUS équipe/БАНК 3000, notamment pour Bureau/Contrôle & Formation qui n'ont pas de BONUS équipe. Voir la note en tête de fichier. */
+  /** Bonus ponctuel ajouté tel quel à l'À payer pour TOUT employé - indépendant du BONUS équipe/БАНК 3000, notamment pour Bureau/Contrôle & Formation qui n'ont pas de BONUS équipe. Voir la note en tête de fichier. */
   bonusDirect: number;
   /** Fin de БАНК qualité du mois précédent pour ce même employé, ou null s'il n'y en a pas (premier mois). */
   banqueQualitePrecedente: number | null;
-  /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ — sinon laisser null. */
+  /** Renseigné seulement pour corriger/amorcer manuellement le solde de départ - sinon laisser null. */
   banqueAjustementManuel: number | null;
-  /** Le dépôt en БАНК et la pénalité contrôleur ne concernent que les équipes chantier — Bureau, Contrôle & Formation et "sans équipe" n'ont pas de БАНК du tout, tout passe directement dans la paie du mois. */
+  /** Le dépôt en БАНК et la pénalité contrôleur ne concernent que les équipes chantier - Bureau, Contrôle & Formation et "sans équipe" n'ont pas de БАНК du tout, tout passe directement dans la paie du mois. */
   faitPartieEquipe: boolean;
-  /** Part du contrôleur ce mois-ci (25 % du total des pénalités de tous les autres salariés d'équipe) — 0 pour tout le monde sauf le contrôleur désigné. Calculé ailleurs (nécessite le total tous salariés confondus), jamais recalculé ici. */
+  /** Part du contrôleur ce mois-ci (25 % du total des pénalités de tous les autres salariés d'équipe) - 0 pour tout le monde sauf le contrôleur désigné. Calculé ailleurs (nécessite le total tous salariés confondus), jamais recalculé ici. */
   controleBonusRecu: number;
-  /** Prime reçue lors d'une distribution du БАНК qualité (compagnie) à 10000 — 0 la plupart des mois. Calculée ailleurs, jamais recalculée ici. */
+  /** Prime reçue lors d'une distribution du БАНК qualité (compagnie) à 10000 - 0 la plupart des mois. Calculée ailleurs, jamais recalculée ici. */
   banqueQualitePrime: number;
-  /** Heures de trajet saisies à la main ce mois-ci — toujours positives, jamais liées au БАНК 3000. */
+  /** Heures de trajet saisies à la main ce mois-ci - toujours positives, jamais liées au БАНК 3000. */
   heuresRoute: number;
-  /** Attribut durable du salarié (pas mensuel) — détermine le taux horaire appliqué à heuresRoute. Voir la note en tête de fichier. */
+  /** Attribut durable du salarié (pas mensuel) - détermine le taux horaire appliqué à heuresRoute. Voir la note en tête de fichier. */
   estChauffeur: boolean;
 };
 
@@ -317,7 +317,7 @@ export type PayrollExtrasResult = {
   bonusEquipePaye: number;
   bonusDirect: number;
   banqueQualiteFin: number;
-  /** Part d'une pénalité contrôleur qui dépasse le БАНК disponible — retenue sur la paie du mois. */
+  /** Part d'une pénalité contrôleur qui dépasse le БАНК disponible - retenue sur la paie du mois. */
   penaliteSurPaie: number;
   controleBonusRecu: number;
   banqueQualitePrime: number;
@@ -337,7 +337,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     : 0;
   const bonusEquipePaye = input.bonusEquipe - banqueDepot;
   // Le БАНК ne devient jamais négatif : la part d'une pénalité qui dépasse le
-  // solde disponible est retenue sur la paie du mois (penaliteSurPaie) —
+  // solde disponible est retenue sur la paie du mois (penaliteSurPaie) -
   // demandé par l'utilisatrice, 05/10/2026 (pénalité 320 € pour 300 € en banque
   // → 300 € du БАНК + 20 € de la paie, avec un message dans le tableau).
   const banqueDisponible = Math.max(0, Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot));
@@ -373,7 +373,7 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
 
 /**
  * 25/75 sur le total des pénalités contrôleur (Штраф négatif, équipe chantier
- * uniquement) de TOUS les salariés d'un mois donné, tous ensemble — pas ligne
+ * uniquement) de TOUS les salariés d'un mois donné, tous ensemble - pas ligne
  * par ligne. 25 % file directement dans la paie du contrôleur ce même mois
  * (controleBonusRecu), 75 % rejoint le Банк качества commun à toute
  * l'entreprise.

@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   const list = open.map((c) => `- loyer ${monthLabelFr(c.period_start ?? c.due_date)} : ${fmt(remaining(c))} (échéance ${c.due_date.split("-").reverse().join("/")})`).join("\n");
   const text = `Bonjour,\n\nSauf erreur de notre part, les sommes suivantes restent dues :\n\n${list}\n\nTotal : ${fmt(total)}\n\nMerci de bien vouloir procéder au règlement dans les meilleurs délais${cfg.iban ? ` (IBAN : ${cfg.iban})` : ""}. Si le paiement vient d'être effectué, merci de ne pas tenir compte de ce message.\n\nCordialement,\n${cfg.company_name}`;
   try {
-    await sendMail({ fromName: cfg.company_name, fromEmail: cfg.email, to, subject: `Rappel de paiement — ${cfg.company_name}`, text });
+    await sendMail({ fromName: cfg.company_name, fromEmail: cfg.email, to, subject: `Rappel de paiement - ${cfg.company_name}`, text });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Échec de l'envoi" }, { status: 502 });
   }

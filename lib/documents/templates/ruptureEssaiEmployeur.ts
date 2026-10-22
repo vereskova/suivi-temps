@@ -4,13 +4,13 @@ import { letterDateForTrialEnd } from "../preavis";
 import { civility, salarieLabel } from "../gender";
 
 export type RuptureEssaiEmployeurParams = {
-  lastDay: string; // ISO — last day of presence; the letter date is computed backwards from it
+  lastDay: string; // ISO - last day of presence; the letter date is computed backwards from it
   deliveryMethod: "recommande" | "main_propre" | "email";
   recommandeNumber?: string;
   signingCity: string;
 };
 
-/** Employer-initiated end of the période d'essai — the délai de prévenance
+/** Employer-initiated end of the période d'essai - the délai de prévenance
  *  (24h / 48h / 2 semaines / 1 mois) is computed automatically from the
  *  employee's tenure, per Code du travail art. L1221-25. */
 export function ruptureEssaiEmployeur(
@@ -87,5 +87,5 @@ export function ruptureEssaiEmployeur(
     blocks.push(rightAligned("Signature"), para(company.representativeName), para(company.representativeTitle));
   }
 
-  return { title: `Rupture de la période d'essai — ${fullName}`, blocks };
+  return { title: `Rupture de la période d'essai - ${fullName}`, blocks };
 }

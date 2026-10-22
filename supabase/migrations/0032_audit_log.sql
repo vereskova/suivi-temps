@@ -2,10 +2,10 @@
 -- when" matters most for legal/financial exposure: employee records, the
 -- legal hiring register, and payroll lines. Deliberately trigger-based
 -- (same pattern as document_action_log in 0024) rather than a client-side
--- logging call at each write site — a trigger can't be forgotten by a
+-- logging call at each write site - a trigger can't be forgotten by a
 -- future code change the way a manual logAudit() call at N call sites can.
 -- Scoped to these three tables only (not employee_confidential, not every
--- table in the app) per product decision — the goal is covering the
+-- table in the app) per product decision - the goal is covering the
 -- modules with real audit exposure, not a blanket change-log for everything.
 create table audit_log (
   id            uuid primary key default gen_random_uuid(),
@@ -21,7 +21,7 @@ create table audit_log (
 
 alter table audit_log enable row level security;
 
--- Read access is rh_admin-only — this is an oversight/compliance tool, not
+-- Read access is rh_admin-only - this is an oversight/compliance tool, not
 -- a feature for the roles being audited to browse.
 create policy audit_log_admin_read on audit_log for select using (
   current_role_name() = 'rh_admin'

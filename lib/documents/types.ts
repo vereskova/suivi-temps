@@ -55,7 +55,7 @@ export function rule(): Block {
 }
 
 /** The closing "Fait à ... le ..." line plus the signature block, as ONE
- *  unbreakable unit — a page break must never separate the closing line
+ *  unbreakable unit - a page break must never separate the closing line
  *  from the signatures that follow it (or, worse, strand the signatures
  *  alone on an otherwise-empty page). */
 export function closing(text: string, left: SignatureParty, right: SignatureParty): Block {
@@ -78,7 +78,7 @@ export type EmployeeDoc = {
   category: "chantier" | "bureau";
   hireDate: string | null;
   weeklyHours: number | null;
-  classification: string | null; // groupe d'emploi A-I — drives préavis, see preavis.ts
+  classification: string | null; // groupe d'emploi A-I - drives préavis, see preavis.ts
   classe: string | null; // classification coefficient/classe, display-only
   monthlyGrossSalary: number | null;
 };

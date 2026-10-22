@@ -1,11 +1,11 @@
 -- Phase 2 (partial): extend the employee profile with data ported from the
--- "! LISTE SALARIES.numbers" master file — identity/contract fields on
+-- "! LISTE SALARIES.numbers" master file - identity/contract fields on
 -- `employees`, and separate tables for genuinely sensitive data (RIB,
 -- Sécurité sociale, residence permit) and specialized registers (medical
 -- visits, training/certification matrix, PPE sizing).
 --
 -- Security note: employee_confidential, medical_visits, employee_trainings
--- and employee_equipment_sizes are rh_admin-only — deliberately NOT visible
+-- and employee_equipment_sizes are rh_admin-only - deliberately NOT visible
 -- to chefs even for their own team, unlike the base `employees` row. RLS in
 -- Postgres is row-level, not column-level, so sensitive fields (RIB, SSN,
 -- permit number) must live in a separate table rather than as extra columns
@@ -20,7 +20,7 @@ alter table employees add column if not exists contract_type text;
 alter table employees add column if not exists job_title text;
 alter table employees add column if not exists device_label text;
 
--- ── Sensitive 1:1 extension — RIB, Sécurité sociale, residence permit, etc. ──
+-- ── Sensitive 1:1 extension - RIB, Sécurité sociale, residence permit, etc. ──
 create table employee_confidential (
   employee_id              uuid primary key references employees(id) on delete cascade,
   nationality              text,
@@ -133,7 +133,7 @@ create policy employee_equipment_sizes_admin_only on employee_equipment_sizes fo
   current_role_name() = 'rh_admin'
 );
 
--- ── Grants (mirrors 0002_grants.sql — "Automatically expose new tables" stays off) ──
+-- ── Grants (mirrors 0002_grants.sql - "Automatically expose new tables" stays off) ──
 grant select, insert, update, delete on
   employee_confidential,
   medical_visits,

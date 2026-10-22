@@ -1,5 +1,5 @@
 -- Corrects legal_form to match the real signed contracts ("VLADIS, Société par actions
--- simplifiée" — SAS, not SASU) and adds fields needed by the improved contrat bureau
+-- simplifiée" - SAS, not SASU) and adds fields needed by the improved contrat bureau
 -- template: the representative's sex (for "Monsieur"/"Madame" agreement) and the company's
 -- mutuelle/prévoyance provider (same for all employees, referenced in every contract).
 alter table company_settings add column if not exists representative_sex text not null default 'M';

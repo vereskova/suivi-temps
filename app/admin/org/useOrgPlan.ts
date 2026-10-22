@@ -45,7 +45,7 @@ function usePersisted<T extends string>(key: string, defaultValue: T): [T, (v: T
       try {
         window.localStorage.setItem(key, v);
       } catch {
-        /* localStorage недоступен — не критично */
+        /* localStorage недоступен - не критично */
       }
     },
     [key]
@@ -68,7 +68,7 @@ export type StartFrom = { type: "flat" } | { type: "visotsky" } | { type: "copy"
 /**
  * Общее ядро двух вкладок («Оргструктура» и «Схема компании»): реальные данные,
  * список сценариев, выбранный сценарий (узлы + размещения) и все правки.
- * В режиме «План» ничего не пишется в employees/teams — только в org_*.
+ * В режиме «План» ничего не пишется в employees/teams - только в org_*.
  */
 export function useOrgPlan(supabase: Supabase, canPlan: boolean, tabName: "organigramme" | "schema" = "organigramme") {
   const [people, setPeople] = useState<OrgPerson[]>([]);
@@ -191,7 +191,7 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean, tabName: "organ
       const pl = (p as OrgPlacement[]) ?? [];
       setNodes((n as OrgNode[]) ?? []);
       setPlacements(pl);
-      // Сотрудники из размещений, которых нет среди активных (уволены) — подгрузим для предупреждения.
+      // Сотрудники из размещений, которых нет среди активных (уволены) - подгрузим для предупреждения.
       const have = new Set(people.map((x) => x.id));
       const missing = pl.map((x) => x.employee_id).filter((id): id is string => !!id && !have.has(id));
       if (missing.length) {
@@ -203,14 +203,14 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean, tabName: "organ
     load();
     return () => {
       cancelled = true;
-      // Если эффект перезапущен до завершения — разрешаем повторную загрузку.
+      // Если эффект перезапущен до завершения - разрешаем повторную загрузку.
       if (contentKey.current === key) contentKey.current = "";
     };
     // people намеренно не в зависимостях: он нужен только для разовой догрузки уволенных.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseLoading, isLocal, activeId, teams, bureauSaved, supabase, contentTick]);
 
-  // ── Правки других пользователей — в реальном времени ──
+  // ── Правки других пользователей - в реальном времени ──
   useEffect(() => {
     if (!activeId || isLocal || schemaReady !== true) return;
     type Payload = { eventType: "INSERT" | "UPDATE" | "DELETE"; new: Record<string, unknown>; old: Record<string, unknown> };
@@ -449,7 +449,7 @@ export function useOrgPlan(supabase: Supabase, canPlan: boolean, tabName: "organ
   // ── Размещения (вся расстановка «что если») ──
   const scenarioIdForRows = isLocal ? "local" : activeId;
 
-  /** Запоминает текущее состояние перед правкой (внутри batch — только один раз). */
+  /** Запоминает текущее состояние перед правкой (внутри batch - только один раз). */
   function recordHistory() {
     if (batching.current) return;
     const snap: Snapshot = { nodes, placements };

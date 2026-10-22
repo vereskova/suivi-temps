@@ -1,6 +1,6 @@
 /**
  * One-time provisioning: create a Supabase Auth user and give them the
- * 'rh_admin' role — full access to every section of the app.
+ * 'rh_admin' role - full access to every section of the app.
  *
  * Usage:
  *   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npx tsx scripts/seed-rh-admin-login.ts admin@example.com
@@ -45,7 +45,7 @@ async function ensureAuthUser(target: string) {
 async function main() {
   const authUserId = await ensureAuthUser(email);
 
-  // employee_id stays null — matches the app's other rh_admin accounts.
+  // employee_id stays null - matches the app's other rh_admin accounts.
   const { error } = await supabase
     .from("user_roles")
     .upsert({ auth_user_id: authUserId, role: "rh_admin", employee_id: null }, { onConflict: "auth_user_id" });

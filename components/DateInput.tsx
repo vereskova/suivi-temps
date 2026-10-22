@@ -32,7 +32,7 @@ function maskDmy(raw: string): string {
 type DateEvent = { target: { value: string } };
 
 /** Drop-in replacement for <input type="date"> that always shows and accepts
- *  jj/mm/aaaa, whatever the browser's locale — a native date input follows the
+ *  jj/mm/aaaa, whatever the browser's locale - a native date input follows the
  *  OS/browser language and cannot be forced. `value`/`defaultValue` and every
  *  value passed to onChange/onBlur stay ISO (YYYY-MM-DD, or "" when empty), so
  *  call sites keep working with the same data as before. A small calendar
