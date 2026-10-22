@@ -213,19 +213,19 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
   const below = mine ? total - mine.rank : 0;
 
   return (
-    <section className="rounded-2xl border border-stone-200 bg-white shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-amber-300/70 bg-gradient-to-br from-amber-100 via-amber-50 to-yellow-100 shadow-sm">
       <button type="button" onClick={toggle} aria-expanded={open} className="flex w-full items-center gap-3 px-4 py-3 text-left">
         <div className="min-w-0 flex-1">
-          <div className="text-[15px] font-bold text-stone-900">Банк качества</div>
-          <div className="truncate text-[13px] text-stone-500">{summary}</div>
+          <div className="text-[15px] font-bold text-amber-950">Банк качества</div>
+          <div className="truncate text-[13px] text-amber-900/70">{summary}</div>
         </div>
         <div className="shrink-0 text-right">
-          <div className="whitespace-nowrap text-[17px] font-extrabold tabular-nums text-stone-900">{eur(Math.round(bank.pool))}</div>
-          <div className="text-[11px] text-stone-400">до {frDate(bank.payoutDate)}</div>
+          <div className="whitespace-nowrap text-[18px] font-extrabold tabular-nums text-amber-800">{eur(Math.round(bank.pool))}</div>
+          <div className="text-[11px] text-amber-900/60">до {frDate(bank.payoutDate)}</div>
         </div>
         <svg
           viewBox="0 0 20 20"
-          className={`h-5 w-5 shrink-0 text-stone-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-5 w-5 shrink-0 text-amber-700 transition-transform ${open ? "rotate-180" : ""}`}
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
@@ -238,17 +238,17 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
       </button>
 
       {open && (
-        <div className="border-t border-stone-100 px-4 pb-4 pt-3">
-          <p className="text-[12px] leading-snug text-stone-400">
+        <div className="border-t border-amber-200/80 px-4 pb-4 pt-3">
+          <p className="text-[12px] leading-snug text-amber-900/65">
             Меньше штрафов — выше место. Три худшие бригады без доли. Если человек перешёл в другую бригаду, штрафы и доля считаются по дням в каждой.
           </p>
           {mine && (
             <div className="mt-2 flex gap-2 text-[12px] font-semibold">
-              <span className="rounded-lg bg-stone-100 px-2 py-1 text-stone-600">▲ лучше вас: {above}</span>
-              <span className="rounded-lg bg-stone-100 px-2 py-1 text-stone-600">▼ хуже вас: {below}</span>
+              <span className="rounded-lg bg-amber-100 px-2 py-1 text-amber-900">▲ лучше вас: {above}</span>
+              <span className="rounded-lg bg-amber-100 px-2 py-1 text-amber-900">▼ хуже вас: {below}</span>
             </div>
           )}
-          <ul className="mt-2 divide-y divide-stone-100">
+          <ul className="mt-2 divide-y divide-amber-200/60">
             {bank.teams.map((t) => (
               <li key={t.rank} className={`flex items-center gap-3 py-2 ${t.mine ? "font-bold text-stone-900" : t.eligible ? "text-stone-700" : "text-stone-400"}`}>
                 <span className="w-5 shrink-0 text-center text-[14px] tabular-nums">{t.rank}</span>
@@ -258,7 +258,7 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px]">
                     {ruTeam(t.name)}
-                    {t.mine && <span className="ml-1.5 text-[11px] font-semibold text-primary-600">вы</span>}
+                    {t.mine && <span className="ml-1.5 text-[11px] font-semibold text-amber-700">вы</span>}
                   </span>
                   <span className="block text-[11px] font-normal text-stone-400">{t.penalties > 0 ? `штрафы ${eur(t.penalties)}` : "без штрафов"}</span>
                 </span>
@@ -267,14 +267,14 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
             ))}
           </ul>
           {mine && bank.members.length > 0 && (
-            <div className="mt-3 rounded-xl bg-stone-50 px-3 py-3">
+            <div className="mt-3 rounded-xl bg-white/70 px-3 py-3">
               <div className="text-[13px] font-bold text-stone-800">Премия из Банка качества · ваша бригада</div>
               <p className="mt-0.5 text-[12px] leading-snug text-stone-500">
                 {mine.eligible
                   ? `Бригаде ${eur(mine.amount)}. Делится между людьми по отработанным дням в бригаде: чем больше дней, тем больше премия. Выплата в конце ${frDate(bank.payoutDate).slice(3, 5) === "01" ? "января" : "сентября"}, если человек остаётся в компании.`
                   : "Сейчас бригада в трёх худших: премии из Банка нет. Чтобы подняться в рейтинг, нужно меньше штрафов."}
               </p>
-              <ul className="mt-2 divide-y divide-stone-200">
+              <ul className="mt-2 divide-y divide-amber-200/70">
                 {bank.members.map((m) => (
                   <li key={m.id} className="flex items-center gap-2 py-1.5 text-[13px]">
                     <span className="min-w-0 flex-1">
@@ -318,7 +318,7 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
             БАНК 3000: <b className="tabular-nums text-stone-700">{eur(r.banqueQualiteFin)}</b> из {eur(BANK_CAP)}
           </div>
           <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-stone-100 pt-2">
-            <span className="text-[12px] text-stone-400">К выплате · À payer</span>
+            <span className="text-[12px] text-stone-400">К выплате</span>
             <span className="text-[22px] font-extrabold tabular-nums text-stone-900">{eur(r.aPayer)}</span>
           </div>
         </div>
@@ -469,7 +469,7 @@ export default function TeamPrimesPage() {
             </button>
             <div className="min-w-0 text-center">
               <div className="truncate text-[17px] font-bold text-stone-900">
-                {data?.team ?? "…"} · {MONTHS_RU[month - 1]} {year}
+                {data?.team ? ruTeam(data.team) : "…"} · {MONTHS_RU[month - 1]} {year}
               </div>
               <div className="text-[12px] text-stone-400">Премии и бонусы</div>
             </div>
