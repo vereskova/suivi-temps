@@ -45,7 +45,6 @@ type QualityBank = { periodStart: string; payoutDate: string; pool: number; excl
 type Payload = { team: string; year: number; month: number; hasRun: boolean; employees: Person[]; qualityBank?: QualityBank | null };
 
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const MONTHS_FR = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const REFRESH_MS = 20000;
 const BANK_CAP = 3000;
 
@@ -96,21 +95,21 @@ function BankJar({ amount, size = 44 }: { amount: number; size?: number }) {
 }
 
 function eur(n: number) {
-  return `${n.toLocaleString("fr-FR", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} €`;
+  return `${n.toLocaleString("ru-RU", { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} €`;
 }
 function num(n: number) {
-  return n.toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  return n.toLocaleString("ru-RU", { maximumFractionDigits: 2 });
 }
 
 function Line({
   ru,
-  fr,
   value,
   tone,
   note,
 }: {
   ru: string;
-  fr: string;
+  /** французская подпись больше не показывается (страница бригад только на русском) */
+  fr?: string;
   value: string;
   tone?: "plus" | "minus" | "bank";
   note?: string;
@@ -119,7 +118,6 @@ function Line({
     <div className="flex items-start justify-between gap-3 border-t border-stone-100 py-2">
       <div className="min-w-0">
         <div className="text-[15px] font-medium text-stone-800">{ru}</div>
-        <div className="text-[12px] text-stone-400">{fr}</div>
         {note && <div className="mt-0.5 whitespace-pre-line text-[13px] italic text-stone-600">«{note}»</div>}
       </div>
       <div
@@ -262,21 +260,31 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
                     {ruTeam(t.name)}
                     {t.mine && <span className="ml-1.5 text-[11px] font-semibold text-primary-600">вы</span>}
                   </span>
-                  <span className="block text-[11px] font-normal text-stone-400">штрафы {eur(t.penalties)}</span>
+                  <span className="block text-[11px] font-normal text-stone-400">{t.penalties > 0 ? `штрафы ${eur(t.penalties)}` : "без штрафов"}</span>
                 </span>
                 <span className="shrink-0 whitespace-nowrap text-[14px] tabular-nums">{t.eligible ? eur(t.amount) : "—"}</span>
               </li>
             ))}
           </ul>
           {mine && bank.members.length > 0 && (
-            <div className="mt-3 rounded-xl bg-stone-50 px-3 py-2">
-              <div className="text-[12px] font-semibold text-stone-500">Ваша бригада · по отработанным дням</div>
-              <ul className="mt-1 space-y-0.5">
+            <div className="mt-3 rounded-xl bg-stone-50 px-3 py-3">
+              <div className="text-[13px] font-bold text-stone-800">Премия из Банка качества · ваша бригада</div>
+              <p className="mt-0.5 text-[12px] leading-snug text-stone-500">
+                {mine.eligible
+                  ? `Бригаде ${eur(mine.amount)}. Делится между людьми по отработанным дням в бригаде: чем больше дней, тем больше премия. Выплата в конце ${frDate(bank.payoutDate).slice(3, 5) === "01" ? "января" : "сентября"}, если человек остаётся в компании.`
+                  : "Сейчас бригада в трёх худших: премии из Банка нет. Чтобы подняться в рейтинг, нужно меньше штрафов."}
+              </p>
+              <ul className="mt-2 divide-y divide-stone-200">
                 {bank.members.map((m) => (
-                  <li key={m.id} className="flex items-center gap-2 text-[13px]">
-                    <span className="min-w-0 flex-1 truncate text-stone-700">{m.name}</span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-stone-400">{num(m.days)} дн.</span>
-                    <span className="w-16 shrink-0 text-right font-semibold tabular-nums text-stone-800">{eur(m.amount)}</span>
+                  <li key={m.id} className="flex items-center gap-2 py-1.5 text-[13px]">
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-stone-800">{m.name}</span>
+                      <span className="block text-[11px] text-stone-400">{num(m.days)} дн. в бригаде</span>
+                    </span>
+                    <span className="shrink-0 text-right">
+                      <span className="block whitespace-nowrap font-bold tabular-nums text-stone-900">{mine.eligible ? eur(m.amount) : "—"}</span>
+                      <span className="block text-[10px] text-stone-400">премия</span>
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -445,7 +453,7 @@ export default function TeamPrimesPage() {
       <main className="flex min-h-screen items-center justify-center bg-stone-50 p-6">
         <div className="max-w-sm rounded-2xl border border-stone-200 bg-white p-6 text-center">
           <p className="text-lg font-bold text-stone-900">Ссылка не действует</p>
-          <p className="mt-1 text-sm text-stone-500">Lien invalide ou remplacé. Попроси у RH новую ссылку.</p>
+          <p className="mt-1 text-sm text-stone-500">Ссылка недействительна или заменена. Попроси у HR новую.</p>
         </div>
       </main>
     );
@@ -463,7 +471,7 @@ export default function TeamPrimesPage() {
               <div className="truncate text-[17px] font-bold text-stone-900">
                 {data?.team ?? "…"} · {MONTHS_RU[month - 1]} {year}
               </div>
-              <div className="text-[12px] text-stone-400">Primes &amp; Bonus · {MONTHS_FR[month - 1]}</div>
+              <div className="text-[12px] text-stone-400">Премии и бонусы</div>
             </div>
             <button
               type="button"
@@ -480,7 +488,7 @@ export default function TeamPrimesPage() {
 
       <div className="mx-auto mt-4 max-w-xl space-y-3 px-4">
         {error === "network" && (
-          <div className="rounded-xl bg-warning-50 p-3 text-sm text-warning-800">Нет связи — показаны последние загруженные данные. Pas de connexion.</div>
+          <div className="rounded-xl bg-warning-50 p-3 text-sm text-warning-800">Нет связи — показаны последние загруженные данные.</div>
         )}
         {data === null && !error && (
           <div className="space-y-3">
@@ -492,13 +500,11 @@ export default function TeamPrimesPage() {
         {data && !data.hasRun && (
           <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center text-stone-500">
             За этот месяц данных пока нет.
-            <div className="text-[12px] text-stone-400">Pas encore de données ce mois-ci.</div>
           </div>
         )}
         {data?.hasRun && data.employees.length === 0 && (
           <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center text-stone-500">
             В этой команде сейчас нет сотрудников.
-            <div className="text-[12px] text-stone-400">Aucun salarié dans cette équipe ce mois-ci.</div>
           </div>
         )}
         {data?.qualityBank && <QualityBankCard bank={data.qualityBank} />}
@@ -506,7 +512,7 @@ export default function TeamPrimesPage() {
           data.employees.map((p) => <PersonCard key={p.id} p={p} open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} />)}
         {lastOk && (
           <p className="pt-2 text-center text-[12px] text-stone-400">
-            Обновляется автоматически · обновлено {lastOk.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            Обновляется автоматически · обновлено {lastOk.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
           </p>
         )}
       </div>
