@@ -198,13 +198,21 @@ export default function AjaxView({ supabase }: { supabase: Supabase }) {
       <p className="px-4 py-3 text-sm text-stone-400">Нет доступов</p>
     ) : (
       <div className="overflow-x-auto md:overflow-visible">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[44rem] table-fixed text-sm">
+          <colgroup>
+            <col style={{ width: "30%" }} />
+            <col style={{ width: "19%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "17%" }} />
+            <col style={{ width: "13%" }} />
+            <col style={{ width: "6%" }} />
+          </colgroup>
           <tbody>
             {list.map((r) => (
               <tr key={r.id} className={`border-t border-stone-50 ${r.status === "removed" ? "text-stone-400 line-through" : ""}`}>
-                <td className="px-4 py-2 font-medium">{r.email ?? "-"}</td>
-                <td className="px-2 py-2">{r.name ?? ""}</td>
-                <td className="whitespace-nowrap px-2 py-2 text-stone-500">{r.phone ?? ""}</td>
+                <td className="truncate px-4 py-2 font-medium" title={r.email ?? ""}>{r.email ?? "-"}</td>
+                <td className="truncate px-2 py-2" title={r.name ?? ""}>{r.name ?? ""}</td>
+                <td className="truncate whitespace-nowrap px-2 py-2 text-stone-500">{r.phone ?? ""}</td>
                 <td className="px-2 py-2">
                   {r.rights ? (
                     <span className="rounded bg-stone-100 px-2 py-0.5 text-xs font-semibold text-stone-600">{r.rights}</span>
@@ -212,8 +220,8 @@ export default function AjaxView({ supabase }: { supabase: Supabase }) {
                     <span className="text-xs text-stone-300">права не указаны</span>
                   )}
                 </td>
-                <td className="px-2 py-2 text-xs text-stone-400">{r.notes ?? ""}</td>
-                <td className="w-10 px-2 py-2 text-right">
+                <td className="truncate px-2 py-2 text-xs text-stone-400" title={r.notes ?? ""}>{r.notes ?? ""}</td>
+                <td className="px-2 py-2 text-right">
                   <Menu
                     items={[
                       { label: "Изменить", onClick: () => openEdit(r) },
