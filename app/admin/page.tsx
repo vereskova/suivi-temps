@@ -81,6 +81,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import AjaxView from "./voldis/AjaxView";
+import { AjaxIcon } from "./voldis/AjaxIcon";
 import LocationView from "./voldis/LocationView";
 import {
   HR_GROUPS,
@@ -479,7 +481,8 @@ type ViewKey =
   | "commercial"
   | "autoparc"
   | "audit"
-  | "voldis_location";
+  | "voldis_location"
+  | "voldis_ajax";
 
 type NavItem = { key: ViewKey; label: string; labelRu: string; icon: LucideIcon };
 
@@ -549,6 +552,10 @@ const VOLDIS_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "Location",
     items: [{ key: "voldis_location", label: "Location de locaux", labelRu: "Аренда локалей", icon: Building2 }],
   },
+  {
+    title: "Sécurité",
+    items: [{ key: "voldis_ajax", label: "Ajax", labelRu: "Ajax - доступы", icon: AjaxIcon as unknown as LucideIcon }],
+  },
 ];
 
 /** Keeps a piece of UI navigation state (which section/tab is open) across a
@@ -612,6 +619,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
   voldis_location: ["rh_admin"],
+  voldis_ajax: ["rh_admin"],
 };
 
 /** rh_admin-only indicator of which roles can see the currently open page -
@@ -744,6 +752,7 @@ export default function AdminPage() {
   const [role, setRole] = useState<string | null>(null);
   const [view, setView] = usePersistedView<ViewKey>("admin_view", "jour", VALID_VIEW_KEYS);
   const [company, setCompany] = usePersistedView<"vladis" | "voldis">("admin_company", "vladis", new Set(["vladis", "voldis"]));
+  const [voldisView, setVoldisView] = usePersistedView<"voldis_location" | "voldis_ajax">("admin_voldis_view", "voldis_location", new Set(["voldis_location", "voldis_ajax"]));
   const [dossierTargetEmployeeId, setDossierTargetEmployeeId] = useState<string | null>(null);
   function openDossier(employeeId: string) {
     setDossierTargetEmployeeId(employeeId);
@@ -1520,7 +1529,7 @@ export default function AdminPage() {
   // VOLDIS : réservé à rh_admin ; les autres rôles restent sur VLADIS.
   const activeCompany = role === "rh_admin" ? company : "vladis";
   const shownNavGroups = activeCompany === "voldis" ? VOLDIS_NAV_GROUPS : visibleNavGroups;
-  const shownView: ViewKey = activeCompany === "voldis" ? "voldis_location" : view;
+  const shownView: ViewKey = activeCompany === "voldis" ? voldisView : view;
 
   return (
     <main className="min-h-screen p-4 md:p-8">
@@ -1568,7 +1577,7 @@ export default function AdminPage() {
                 <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
               )}
               <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">
-                {activeCompany === "voldis" ? "Location de locaux / Аренда локалей" : "Tableau de bord RH"}
+                {activeCompany === "voldis" ? (voldisView === "voldis_ajax" ? "Ajax / Доступы" : "Location de locaux / Аренда локалей") : "Tableau de bord RH"}
               </p>
             </div>
           </div>
@@ -1609,7 +1618,8 @@ export default function AdminPage() {
                       active={shownView === item.key}
                       onClick={() => {
                         if (item.key === "echeances") markAllNotificationsUnread();
-                        setView(item.key);
+                        if (activeCompany === "voldis") setVoldisView(item.key as "voldis_location" | "voldis_ajax");
+                        else setView(item.key);
                         setMobileNavOpen(false);
                       }}
                       label={item.label}
@@ -1636,7 +1646,8 @@ export default function AdminPage() {
                         active={shownView === item.key}
                         onClick={() => {
                           if (item.key === "echeances") markAllNotificationsUnread();
-                          setView(item.key);
+                          if (activeCompany === "voldis") setVoldisView(item.key as "voldis_location" | "voldis_ajax");
+                          else setView(item.key);
                         }}
                         label={item.label}
                         labelRu={item.labelRu}
@@ -1650,7 +1661,7 @@ export default function AdminPage() {
           )}
 
           <div className="flex-1 min-w-0">
-          {activeCompany === "voldis" && <LocationView supabase={supabase} />}
+          {activeCompany === "voldis" && (voldisView === "voldis_ajax" ? <AjaxView supabase={supabase} /> : <LocationView supabase={supabase} />)}
           {activeCompany === "vladis" && (
           <DossierNavContext.Provider value={openDossier}>
             {view === "jour" && (
