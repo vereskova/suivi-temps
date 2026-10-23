@@ -197,7 +197,7 @@ export default function AjaxView({ supabase }: { supabase: Supabase }) {
     list.length === 0 ? (
       <p className="px-4 py-3 text-sm text-stone-400">Нет доступов</p>
     ) : (
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto md:overflow-visible">
         <table className="w-full text-sm">
           <tbody>
             {list.map((r) => (
