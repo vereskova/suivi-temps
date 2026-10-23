@@ -4344,7 +4344,10 @@ const JOB_TITLE_SUGGESTIONS = [
 ];
 
 const SHOE_SIZE_SUGGESTIONS = Array.from({ length: 11 }, (_, i) => String(38 + i));
-const PANTALON_SIZE_SUGGESTIONS = ["38", "40", "42", "44", "46", "48", "50", "52", "S", "M", "L", "XL", "XXL"];
+// Размер брюк - всегда число (французская размерная сетка), буквы S/M/L не принимаются.
+const PANTALON_SIZE_SUGGESTIONS = Array.from({ length: 13 }, (_, i) => String(36 + i * 2));
+const isPantalonNumeric = (v: string | null | undefined) => !!v && /^\d{2}$/.test(v);
+const sanitizePantalon = (v: string) => v.replace(/\D/g, "").slice(0, 2);
 
 type EmployeeProfileFields = {
   sex: string | null;
@@ -7633,7 +7636,142 @@ type EquipmentSize = {
   pantalon: string | null;
   tshirt: string | null;
   notes: string | null;
+  /** Размер брюк предварительный (например, «L» → 46): нужно подтвердить у сотрудника (миграция 0122). */
+  pantalon_a_confirmer?: boolean | null;
 };
+
+/** Размер брюк в таблице: жёлтым - предварительный (подтвердить), красным - буквы вместо числа. */
+function PantalonValue({ size }: { size: EquipmentSize | undefined }) {
+  const v = size?.pantalon;
+  if (!v) return <>-</>;
+  if (!isPantalonNumeric(v))
+    return (
+      <span className="font-bold text-red-600" title="Нужен размер числом, например 44">
+        {v} - укажите число
+      </span>
+    );
+  if (size?.pantalon_a_confirmer)
+    return (
+      <span
+        className="rounded bg-yellow-200 px-1.5 py-0.5 font-semibold text-yellow-900"
+        title="Размер предварительный (из буквенного) - подтвердить у сотрудника"
+      >
+        {v} - подтвердить
+      </span>
+    );
+  return <>{v}</>;
+}
+
+const SIZE_CATEGORIES = [
+  { key: "chaussures", fr: "Chaussures", ru: "Обувь" },
+  { key: "pantalon", fr: "Pantalon", ru: "Брюки" },
+  { key: "tshirt", fr: "T-shirt", ru: "Футболка" },
+] as const;
+const LETTER_SIZE_ORDER = ["XS", "S", "M", "L", "XL", "XXL", "3XL"];
+
+function sizeSort(a: string, b: string): number {
+  const na = Number(a), nb = Number(b);
+  const aNum = !Number.isNaN(na), bNum = !Number.isNaN(nb);
+  if (aNum && bNum) return na - nb;
+  if (aNum) return -1;
+  if (bNum) return 1;
+  const ia = LETTER_SIZE_ORDER.indexOf(a.toUpperCase()), ib = LETTER_SIZE_ORDER.indexOf(b.toUpperCase());
+  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+}
+
+/** Сводка для заказа: сколько штук какого размера (обувь, брюки, футболка) - с выгрузкой в CSV. */
+function SizeSummary({ rows }: { rows: { name: string; size: EquipmentSize | undefined }[] }) {
+  const groups = SIZE_CATEGORIES.map((c) => {
+    const map = new Map<string, { n: number; unconfirmed: number }>();
+    const missing: string[] = [];
+    rows.forEach((r) => {
+      const v = r.size?.[c.key];
+      if (!v) {
+        missing.push(r.name);
+        return;
+      }
+      const cur = map.get(v) ?? { n: 0, unconfirmed: 0 };
+      cur.n += 1;
+      if (c.key === "pantalon" && r.size?.pantalon_a_confirmer) cur.unconfirmed += 1;
+      map.set(v, cur);
+    });
+    const list = Array.from(map.entries()).sort((a, b) => sizeSort(a[0], b[0]));
+    return { ...c, list, missing };
+  });
+
+  function downloadCsv() {
+    const lines = ["Catégorie;Taille;Quantité;Dont à confirmer"];
+    groups.forEach((g) => {
+      g.list.forEach(([size, v]) => lines.push(`${g.fr};${size};${v.n};${v.unconfirmed || ""}`));
+      if (g.missing.length) lines.push(`${g.fr};Non renseigné;${g.missing.length};`);
+    });
+    const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `tailles-equipement-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function copyText() {
+    const text = groups
+      .map((g) => `${g.ru}:\n` + g.list.map(([size, v]) => `${size} - ${v.n} шт.${v.unconfirmed ? ` (не подтв.: ${v.unconfirmed})` : ""}`).join("\n") + (g.missing.length ? `\nбез размера - ${g.missing.length} чел.` : ""))
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Сводка скопирована");
+    } catch {
+      toast.error("Не удалось скопировать");
+    }
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="font-bold">
+          <Bi fr="Quantités par taille" ru="Сколько штук какого размера" />
+        </p>
+        <div className="flex gap-2">
+          <button type="button" className="btn btn-secondary text-xs" onClick={copyText}>
+            Копировать
+          </button>
+          <button type="button" className="btn btn-secondary text-xs" onClick={downloadCsv}>
+            Скачать CSV
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        {groups.map((g) => (
+          <div key={g.key}>
+            <p className="mb-1 text-xs font-bold uppercase tracking-wide text-stone-400">
+              {g.fr} <span className="normal-case opacity-70">{g.ru}</span>
+            </p>
+            {g.list.length === 0 ? (
+              <p className="text-sm text-stone-400">-</p>
+            ) : (
+              <ul className="space-y-0.5 text-sm">
+                {g.list.map(([size, v]) => (
+                  <li key={size} className="flex items-baseline gap-2">
+                    <span className="w-10 font-semibold">{size}</span>
+                    <span>{v.n} шт.</span>
+                    {v.unconfirmed > 0 && (
+                      <span className="rounded bg-yellow-200 px-1.5 text-xs text-yellow-900">не подтв.: {v.unconfirmed}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {g.missing.length > 0 && (
+              <p className="mt-1 text-xs text-stone-500" title={g.missing.join(", ")}>
+                без размера: {g.missing.length} чел.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -7643,6 +7781,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
   const [editForm, setEditForm] = useState<{
     chaussures: string;
     pantalon: string;
+    pantalonConfirmed: boolean;
     tshirt: string;
     notes: string;
   } | null>(null);
@@ -7699,7 +7838,8 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
     setEditingId(id);
     setEditForm({
       chaussures: s?.chaussures ?? "",
-      pantalon: s?.pantalon ?? "",
+      pantalon: isPantalonNumeric(s?.pantalon) ? (s?.pantalon ?? "") : "",
+      pantalonConfirmed: !s?.pantalon_a_confirmer,
       tshirt: s?.tshirt ?? "",
       notes: s?.notes ?? "",
     });
@@ -7707,12 +7847,20 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
 
   async function saveEdit(id: string) {
     if (!editForm) return;
+    if (editForm.pantalon && !isPantalonNumeric(editForm.pantalon)) {
+      toast.error("Размер брюк - число из двух цифр (например 44)");
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from("employee_equipment_sizes").upsert(
       {
         employee_id: id,
         chaussures: editForm.chaussures || null,
         pantalon: editForm.pantalon || null,
+        // Колонка есть только после миграции 0122: без неё запись идёт как раньше.
+        ...(sizes.some((r) => "pantalon_a_confirmer" in r)
+          ? { pantalon_a_confirmer: !!editForm.pantalon && !editForm.pantalonConfirmed }
+          : {}),
         tshirt: editForm.tshirt || null,
         notes: editForm.notes || null,
       },
@@ -7774,6 +7922,10 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
         </div>
       </div>
 
+      {!loading && filteredEmployees.length > 0 && (
+        <SizeSummary rows={filteredEmployees.map((e) => ({ name: employeeName(e), size: sizeByEmployee.get(e.id) }))} />
+      )}
+
       {loading ? (
         <div className="card">
           <SkeletonRows rows={5} cols={5} />
@@ -7814,8 +7966,21 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                         className="input text-sm mt-1"
                         value={editForm.pantalon}
                         list="dl-pantalon"
-                        onChange={(ev) => setEditForm({ ...editForm, pantalon: ev.target.value })}
+                        inputMode="numeric"
+                        maxLength={2}
+                        placeholder="44"
+                        onChange={(ev) => setEditForm({ ...editForm, pantalon: sanitizePantalon(ev.target.value) })}
                       />
+                      {sizeByEmployee.get(e.id)?.pantalon_a_confirmer && (
+                        <span className="mt-1 flex items-center gap-1 font-normal text-stone-500">
+                          <input
+                            type="checkbox"
+                            checked={editForm.pantalonConfirmed}
+                            onChange={(ev) => setEditForm({ ...editForm, pantalonConfirmed: ev.target.checked })}
+                          />
+                          подтверждён сотрудником
+                        </span>
+                      )}
                     </label>
                     <label className="block text-xs font-bold text-stone-400">
                       <Bi fr="T-shirt" ru="Футболка" />
@@ -7860,7 +8025,10 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                 ) : (
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-stone-500">
                     <p><span className="text-stone-400">Chaussures: </span>{s?.chaussures ?? "-"}</p>
-                    <p><span className="text-stone-400">Pantalon: </span>{s?.pantalon ?? "-"}</p>
+                    <p>
+                      <span className="text-stone-400">Pantalon: </span>
+                      <PantalonValue size={s} />
+                    </p>
                     <p><span className="text-stone-400">T-shirt: </span>{s?.tshirt ?? "-"}</p>
                     <p className="col-span-2"><span className="text-stone-400">Notes: </span>{s?.notes ?? "-"}</p>
                   </div>
@@ -7908,10 +8076,23 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                             style={{ width: "5rem" }}
                             value={editForm.pantalon}
                             list="dl-pantalon"
+                            inputMode="numeric"
+                            maxLength={2}
+                            placeholder="44"
                             onChange={(ev) =>
-                              setEditForm({ ...editForm, pantalon: ev.target.value })
+                              setEditForm({ ...editForm, pantalon: sanitizePantalon(ev.target.value) })
                             }
                           />
+                          {sizeByEmployee.get(e.id)?.pantalon_a_confirmer && (
+                            <label className="mt-1 flex items-center gap-1 text-[0.65rem] text-stone-500">
+                              <input
+                                type="checkbox"
+                                checked={editForm.pantalonConfirmed}
+                                onChange={(ev) => setEditForm({ ...editForm, pantalonConfirmed: ev.target.checked })}
+                              />
+                              подтверждён
+                            </label>
+                          )}
                         </td>
                         <td className="py-2 pr-4">
                           <select
@@ -7965,7 +8146,7 @@ function TaillesView({ supabase }: { supabase: ReturnType<typeof createClient> }
                           {s?.chaussures ?? "-"}
                         </td>
                         <td className="py-2 pr-4 text-stone-500">
-                          {s?.pantalon ?? "-"}
+                          <PantalonValue size={s} />
                         </td>
                         <td className="py-2 pr-4 text-stone-500">
                           {s?.tshirt ?? "-"}
