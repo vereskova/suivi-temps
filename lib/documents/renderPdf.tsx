@@ -155,10 +155,17 @@ function renderBlock(block: Block, index: number) {
   }
 }
 
-function DocPdf({ content }: { content: DocContent }) {
+function DocPdf({ content, watermark }: { content: DocContent; watermark?: string }) {
   return (
     <Document title={content.title}>
       <Page size="A4" style={styles.page}>
+        {watermark && (
+          <View fixed style={{ position: "absolute", top: 0, left: 0, width: 595, height: 842, justifyContent: "center", alignItems: "center" }}>
+            <Text style={{ fontSize: 44, lineHeight: 1.5, fontWeight: 700, color: "#c62828", opacity: 0.28, transform: "rotate(-35deg)", textAlign: "center" }}>
+              {watermark}
+            </Text>
+          </View>
+        )}
         {content.blocks.map((block, i) => renderBlock(block, i))}
       </Page>
     </Document>
@@ -174,7 +181,8 @@ function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
   });
 }
 
-export async function renderPdf(content: DocContent): Promise<Buffer> {
-  const stream = await pdf(<DocPdf content={content} />).toBuffer();
+/** `watermark`: крупная диагональная надпись на каждой странице (для образцов, не имеющих силы). */
+export async function renderPdf(content: DocContent, opts?: { watermark?: string }): Promise<Buffer> {
+  const stream = await pdf(<DocPdf content={content} watermark={opts?.watermark} />).toBuffer();
   return streamToBuffer(stream);
 }
