@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { ErrorsSection, NormsSection, SECTION_TITLES, type TeamSection } from "./sections";
 
 type Result = {
   salaireJours: number;
@@ -394,6 +395,57 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
   );
 }
 
+/** Вымышленная бригада для демо-страницы /equipe/demo - ничего не читается из базы. */
+function buildDemoPayload(year: number, month: number): Payload {
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const mkDays = (skip: number[], half: number[]): Day[] =>
+    Array.from({ length: daysInMonth }, (_, i) => {
+      const d = i + 1;
+      const date = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const dow = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
+      if (dow === 0 || dow === 6) return { date, state: null, absence: null };
+      if (skip.includes(d)) return { date, state: "absent", absence: "отсутствие" };
+      if (half.includes(d)) return { date, state: "half", absence: null };
+      return { date, state: "full", absence: null };
+    });
+  const result = (o: Partial<Result>): Result => ({
+    salaireJours: 0, penalitesControle: 0, banqueQualiteDebut: 0, banqueDepot: 0, bonusEquipePaye: 0, bonusDirect: 0,
+    banqueQualiteFin: 0, penaliteSurPaie: 0, controleBonusRecu: 0, banqueQualitePrime: 0, coutRoute: 0, aPayer: 0, ...o,
+  });
+  const base = { bonusRaison: "", bonusDirectRaison: "", penaliteRaison: "", penaliteDirecteRaison: "", bonusDirect: 0, penaliteDirecte: 0, avance: 0, heuresRoute: 0 };
+  const employees: Person[] = [
+    { ...base, id: "demo-1", name: "DEMO Pierre", isChef: true, isDriver: false, hireDate: "2023-05-15", jours: 20, taux: 90, bonusEquipe: 300, penalite: 0,
+      result: result({ salaireJours: 1800, banqueQualiteDebut: 2200, banqueDepot: 90, banqueQualiteFin: 2290, bonusEquipePaye: 210, aPayer: 2010 }), days: mkDays([], []) },
+    { ...base, id: "demo-2", name: "DEMO Marc", isChef: false, isDriver: true, hireDate: "2025-02-03", jours: 19.5, taux: 90, bonusEquipe: 300, penalite: 0, heuresRoute: 10,
+      result: result({ salaireJours: 1755, banqueQualiteDebut: 900, banqueDepot: 90, banqueQualiteFin: 990, bonusEquipePaye: 210, coutRoute: 112.5, aPayer: 2077.5 }), days: mkDays([], [10]) },
+    { ...base, id: "demo-3", name: "DEMO Luc", isChef: false, isDriver: false, hireDate: "2026-06-01", jours: 18, taux: 90, bonusEquipe: 300, penalite: 150, penaliteRaison: "3.6 Nettoyage - мусор на объекте",
+      result: result({ salaireJours: 1620, penalitesControle: 50, banqueQualiteDebut: 400, banqueDepot: 90, banqueQualiteFin: 440, bonusEquipePaye: 210, aPayer: 1830 }), days: mkDays([6, 7], []) },
+  ];
+  const teams: BankTeam[] = [
+    { rank: 1, name: "Бригада 1", mine: false, penalties: 0, eligible: true, sharePct: 33, amount: 1320.91 },
+    { rank: 2, name: "Бригада 2", mine: true, penalties: 0, eligible: true, sharePct: 26, amount: 1056.73 },
+    { rank: 3, name: "Бригада 3", mine: false, penalties: 0, eligible: true, sharePct: 20, amount: 792.54 },
+    { rank: 4, name: "Бригада 4", mine: false, penalties: 800, eligible: true, sharePct: 13, amount: 528.36 },
+    { rank: 5, name: "Бригада 5", mine: false, penalties: 832, eligible: true, sharePct: 7, amount: 264.18 },
+    { rank: 6, name: "Бригада 6", mine: false, penalties: 876, eligible: false, sharePct: 0, amount: 0 },
+    { rank: 7, name: "Бригада 7", mine: false, penalties: 1147, eligible: false, sharePct: 0, amount: 0 },
+    { rank: 8, name: "Бригада 8", mine: false, penalties: 1629, eligible: false, sharePct: 0, amount: 0 },
+  ];
+  const members: BankMember[] = [
+    { id: "demo-1", name: "DEMO Pierre", days: 20, amount: 380 },
+    { id: "demo-2", name: "DEMO Marc", days: 19.5, amount: 370 },
+    { id: "demo-3", name: "DEMO Luc", days: 18, amount: 306.73 },
+  ];
+  return {
+    team: "Equipe 2",
+    year,
+    month,
+    hasRun: true,
+    employees,
+    qualityBank: { periodStart: `${year}-${String(month).padStart(2, "0")}-01`, payoutDate: `${year + 1}-01-31`, pool: 3963, excludedWorst: 3, teams, members },
+  };
+}
+
 export default function TeamPrimesPage() {
   const { token } = useParams<{ token: string }>();
   const now = new Date();
@@ -403,10 +455,33 @@ export default function TeamPrimesPage() {
   const [error, setError] = useState<"invalid" | "network" | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [lastOk, setLastOk] = useState<Date | null>(null);
+  // Раздел хранится в адресе (#errors / #norms), чтобы обновление страницы не возвращало на «Премии».
+  // Новое меню («Список ошибок», «Нормы работ») пока включено только на демо-странице /equipe/demo.
+  // Реальные бригады видят прежнюю страницу без меню.
+  const isDemo = token === "demo";
+  const [sectionState, setSectionState] = useState<TeamSection>(() => {
+    if (typeof window === "undefined") return "primes";
+    const h = window.location.hash.replace("#", "");
+    return h === "errors" || h === "norms" ? h : "primes";
+  });
+  const section: TeamSection = isDemo ? sectionState : "primes";
+  const [menuOpen, setMenuOpen] = useState(false);
+  function setSection(s: TeamSection) {
+    setSectionState(s);
+    setMenuOpen(false);
+    window.history.replaceState(null, "", s === "primes" ? window.location.pathname + window.location.search : `#${s}`);
+    window.scrollTo({ top: 0 });
+  }
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (isDemo) {
+        setData(buildDemoPayload(year, month));
+        setLastOk(new Date());
+        setError(null);
+        return;
+      }
       try {
         const res = await fetch(`/api/team-primes?token=${encodeURIComponent(token)}&year=${year}&month=${month}`, { cache: "no-store" });
         if (cancelled) return;
@@ -437,7 +512,7 @@ export default function TeamPrimesPage() {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [token, year, month]);
+  }, [token, year, month, isDemo]);
 
   const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
   function shift(delta: number) {
@@ -464,28 +539,103 @@ export default function TeamPrimesPage() {
       <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="mx-auto max-w-xl">
           <div className="flex items-center justify-between gap-2">
-            <button type="button" onClick={() => shift(-1)} className="h-11 w-11 rounded-xl bg-stone-100 text-xl font-bold text-stone-700 active:bg-stone-200" aria-label="Предыдущий месяц">
-              ‹
-            </button>
-            <div className="min-w-0 text-center">
-              <div className="truncate text-[17px] font-bold text-stone-900">
-                {data?.team ? ruTeam(data.team) : "…"} · {MONTHS_RU[month - 1]} {year}
-              </div>
-              <div className="text-[12px] text-stone-400">Премии и бонусы</div>
+            {isDemo ? (
+              <button type="button" onClick={() => setMenuOpen(true)} className="flex h-11 w-11 flex-col items-center justify-center gap-[5px] rounded-xl bg-stone-100 active:bg-stone-200" aria-label="Меню">
+                <span className="h-[2px] w-5 rounded bg-stone-700" />
+                <span className="h-[2px] w-5 rounded bg-stone-700" />
+                <span className="h-[2px] w-5 rounded bg-stone-700" />
+              </button>
+            ) : (
+              <button type="button" onClick={() => shift(-1)} className="h-11 w-11 rounded-xl bg-stone-100 text-xl font-bold text-stone-700 active:bg-stone-200" aria-label="Предыдущий месяц">
+                ‹
+              </button>
+            )}
+            <div className="min-w-0 flex-1 text-center">
+              {isDemo ? (
+                <>
+                  <div className="truncate text-[17px] font-bold text-stone-900">
+                    {section === "primes" ? (data?.team ? ruTeam(data.team) : "…") : SECTION_TITLES[section].title}
+                  </div>
+                  <div className="text-[12px] text-stone-400">
+                    {section === "primes" ? `${MONTHS_RU[month - 1]} ${year} · Премии и бонусы` : data?.team ? ruTeam(data.team) : SECTION_TITLES[section].sub}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="truncate text-[17px] font-bold text-stone-900">
+                    {data?.team ? ruTeam(data.team) : "…"} · {MONTHS_RU[month - 1]} {year}
+                  </div>
+                  <div className="text-[12px] text-stone-400">Премии и бонусы</div>
+                </>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => shift(1)}
-              disabled={isCurrent}
-              className="h-11 w-11 rounded-xl bg-stone-100 text-xl font-bold text-stone-700 active:bg-stone-200 disabled:opacity-30"
-              aria-label="Следующий месяц"
-            >
-              ›
-            </button>
+            {isDemo && section !== "primes" ? (
+              <span className="h-11 w-11" />
+            ) : isDemo ? (
+              <div className="flex gap-1.5">
+                <button type="button" onClick={() => shift(-1)} className="h-11 w-11 rounded-xl bg-stone-100 text-xl font-bold text-stone-700 active:bg-stone-200" aria-label="Предыдущий месяц">
+                  ‹
+                </button>
+                <button type="button" onClick={() => shift(1)} disabled={isCurrent} className="h-11 w-11 rounded-xl bg-stone-100 text-xl font-bold text-stone-700 active:bg-stone-200 disabled:opacity-30" aria-label="Следующий месяц">
+                  ›
+                </button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => shift(1)} disabled={isCurrent} className="h-11 w-11 rounded-xl bg-stone-100 text-xl font-bold text-stone-700 active:bg-stone-200 disabled:opacity-30" aria-label="Следующий месяц">
+                ›
+              </button>
+            )}
           </div>
         </div>
       </header>
 
+      {isDemo && (
+        <div className="mx-auto mt-3 max-w-xl px-4">
+          <div className="rounded-xl bg-primary-50 px-3.5 py-2.5 text-[13px] text-primary-800">
+            Демо-страница: вымышленная бригада, настоящие данные не используются.
+          </div>
+        </div>
+      )}
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-30">
+          <div className="absolute inset-0 bg-stone-900/40" onClick={() => setMenuOpen(false)} />
+          <nav className="absolute left-0 top-0 flex h-full w-72 max-w-[82%] flex-col bg-white p-4 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-[17px] font-bold text-stone-900">{data?.team ? ruTeam(data.team) : "Бригада"}</p>
+                <p className="text-[12px] text-stone-400">Разделы</p>
+              </div>
+              <button type="button" onClick={() => setMenuOpen(false)} className="h-10 w-10 rounded-xl text-2xl text-stone-400 active:bg-stone-100" aria-label="Закрыть меню">
+                ×
+              </button>
+            </div>
+            {(Object.keys(SECTION_TITLES) as TeamSection[]).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setSection(k)}
+                className={`mb-1.5 rounded-xl px-3.5 py-3 text-left ${section === k ? "bg-stone-900 text-white" : "text-stone-800 active:bg-stone-100"}`}
+              >
+                <span className="block text-[16px] font-semibold">{SECTION_TITLES[k].title}</span>
+                <span className={`block text-[12px] ${section === k ? "text-stone-300" : "text-stone-400"}`}>{SECTION_TITLES[k].sub}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      )}
+
+      {section === "errors" && (
+        <div className="mx-auto mt-4 max-w-xl px-4">
+          <ErrorsSection />
+        </div>
+      )}
+      {section === "norms" && (
+        <div className="mx-auto mt-4 max-w-xl px-4">
+          <NormsSection />
+        </div>
+      )}
+      {section === "primes" && (
       <div className="mx-auto mt-4 max-w-xl space-y-3 px-4">
         {error === "network" && (
           <div className="rounded-xl bg-warning-50 p-3 text-sm text-warning-800">Нет связи - показаны последние загруженные данные.</div>
@@ -516,6 +666,7 @@ export default function TeamPrimesPage() {
           </p>
         )}
       </div>
+      )}
     </main>
   );
 }
