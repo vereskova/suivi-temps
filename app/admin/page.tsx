@@ -146,6 +146,7 @@ import {
   type TeamStanding,
 } from "@/lib/payroll/quality-bank";
 import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
+import { bankShareOfMonth, controllerMonthDelta, controllerShareWithCarry, fetchControllerCarryDeltas } from "@/lib/payroll/penalty-dispute";
 import {
   countWeekdaysBetween,
   countWorkingDaysInMonth,
@@ -12520,6 +12521,7 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   bonus_direct_raison: "Raison Bonus прочее",
   penalite_montant: "Штраф контроль",
   penalite_raison: "Raison Штраф",
+  penalite_contestee: "Оспорено (возврат штрафа)",
   penalite_directe: "Штраф прочее",
   penalite_directe_raison: "Raison Штраф прочее",
   vacance_jours: "Vacance (j)",
@@ -17633,6 +17635,7 @@ type ExtrasLineInput = {
   bonusDirectRaison: string;
   penaliteMontant: string;
   penaliteRaison: string;
+  penaliteContestee: string;
   penaliteDirecteMontant: string;
   penaliteDirecteRaison: string;
   vacanceJours: string;
@@ -17650,6 +17653,7 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   bonusDirectRaison: "",
   penaliteMontant: "",
   penaliteRaison: "",
+  penaliteContestee: "",
   penaliteDirecteMontant: "",
   penaliteDirecteRaison: "",
   vacanceJours: "",
@@ -17691,6 +17695,7 @@ const EXTRAS_COL_DEFS: ExtrasColDef[] = [
   { key: "bonus", lines: ["BONUS", "équipe €"], title: "BONUS équipe € / Бонус команды €", defaultStyle: { width: 84, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "bonusDirect", lines: ["Bonus", "прочее €"], title: "Bonus ponctuel - indépendant du BONUS équipe/БАНК 3000, disponible pour tout employé (notamment Bureau/Contrôle & Formation) / Разовый бонус - не связан с BONUS équipe/БАНК 3000, доступен любому сотруднику (в т.ч. Bureau/Contrôle & Formation)", defaultStyle: { width: 90, fontSize: 11, color: "#b45309", bg: "" } },
   { key: "penalite", lines: ["Штраф", "контроль €"], title: "Штраф (équipe : БАНК • hors équipe : paie directe) / Штраф (в команде - БАНК, вне команды - сразу в зп)", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_HEADER } },
+  { key: "penaliteContestee", lines: ["Оспорено", "возврат €"], title: "Pénalité contrôle contestée avec succès : montant rendu à la personne (positif). Réduit le Штраф контроль dans tous les calculs / Штраф контроля, оспоренный успешно: сумма, которая возвращается человеку (положительная). Уменьшает Штраф контроль во всех расчётах", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: "#16A34A" } },
   { key: "penaliteDirecte", lines: ["Штраф", "прочее €"], title: "Amende directe (excès de vitesse, casse de matériel…) - toujours directe, jamais liée au БАНК 3000 / Штраф прочее (превышение скорости, поломка инструментов…) - всегда сразу из зп, БАНК 3000 не участвует", defaultStyle: { width: 100, fontSize: 11, color: "#ffffff", bg: EXTRAS_COLOR_PENALTY_DIRECTE_HEADER } },
   { key: "banqueDebut", lines: ["БАНК 3000", "(пред.) €"], title: "БАНК 3000 - solde du mois précédent (report automatique, ou forcé via le crayon) / БАНК 3000 - баланс за предыдущий месяц (переносится автоматически, либо задан вручную через карандашик)", defaultStyle: { width: 90, fontSize: 11, color: "#78716c", bg: "" } },
   { key: "banque", lines: ["БАНК", "3000 €"], title: "БАНК 3000 € - banque personnelle du salarié, à ne pas confondre avec le Банк качества commun (10000€) / БАНК 3000 € - личный банк сотрудника, не путать с общим Банком качества (10000€)", defaultStyle: { width: 90, fontSize: 11, color: "#1c1917", bg: EXTRAS_COLOR_BANK_HEADER } },
@@ -17714,6 +17719,7 @@ const EXTRAS_COLLAPSIBLE_KEYS = new Set([
   "bonus",
   "bonusDirect",
   "penalite",
+  "penaliteContestee",
   "penaliteDirecte",
   "banqueDebut",
   "banque",
@@ -17844,8 +17850,8 @@ async function loadBankOtherMonths(
   const runMonth = new Map((runs ?? []).filter((r) => r.id !== excludeRunId).map((r) => [r.id as string, String(r.month).slice(0, 7)]));
   const runIds = Array.from(runMonth.keys());
   const rawLines = runIds.length
-    ? await fetchAllPages<{ run_id: string; employee_id: string; penalite_montant: number | null; bonus_equipe: number | null }>((from, to) =>
-        supabase.from("payroll_extras").select("run_id, employee_id, penalite_montant, bonus_equipe").in("run_id", runIds).range(from, to)
+    ? await fetchAllPages<{ run_id: string; employee_id: string; penalite_montant: number | null; penalite_contestee: number | null; bonus_equipe: number | null }>((from, to) =>
+        supabase.from("payroll_extras").select("run_id, employee_id, penalite_montant, penalite_contestee, bonus_equipe").in("run_id", runIds).range(from, to)
       )
     : [];
   const lines: PeriodLine[] = rawLines
@@ -17853,7 +17859,7 @@ async function loadBankOtherMonths(
     .map((l) => ({
       employeeId: l.employee_id,
       month: runMonth.get(l.run_id) ?? "",
-      penalty: Math.max(0, -(Number(l.penalite_montant) || 0)),
+      penalty: Math.max(0, -(Number(l.penalite_montant) || 0)) - Math.max(0, Number(l.penalite_contestee) || 0),
       bonus: Number(l.bonus_equipe) || 0,
     }));
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -17903,6 +17909,8 @@ function extrasFieldColumns(
       return { penalite_montant: num(line.penaliteMontant) };
     case "penaliteRaison":
       return { penalite_raison: line.penaliteRaison || null, penalite_raison_by: meta.by, penalite_raison_at: meta.at };
+    case "penaliteContestee":
+      return { penalite_contestee: num(line.penaliteContestee) };
     case "penaliteDirecteMontant":
       return { penalite_directe: num(line.penaliteDirecteMontant) };
     case "penaliteDirecteRaison":
@@ -17934,6 +17942,7 @@ function extrasLineFromRow(l: any): ExtrasLineInput {
     bonusDirectRaison: l.bonus_direct_raison ?? "",
     penaliteMontant: l.penalite_montant ? String(l.penalite_montant) : "",
     penaliteRaison: l.penalite_raison ?? "",
+    penaliteContestee: l.penalite_contestee ? String(l.penalite_contestee) : "",
     penaliteDirecteMontant: l.penalite_directe ? String(l.penalite_directe) : "",
     penaliteDirecteRaison: l.penalite_directe_raison ?? "",
     vacanceJours: l.vacance_jours ? String(l.vacance_jours) : "",
@@ -18001,6 +18010,8 @@ async function exportExtrasExcel(data: {
   dayNotes: Record<string, Record<string, { comment: string; amount: number | null; by: string | null; at: string | null }>>;
   bank: { total: number; controllerName: string; controllerShare: number } | null;
   employmentOf: Record<string, { hire: string | null; end: string | null }>;
+  /** Только таблица «сотрудник × дни» (график отработанных дней), без сумм, бонусов и комментариев. */
+  presenceOnly?: boolean;
 }) {
   const mod = await import("exceljs");
   const ExcelJS = (mod as unknown as { default?: typeof import("exceljs") }).default ?? mod;
@@ -18302,12 +18313,17 @@ async function exportExtrasExcel(data: {
     wc.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: head.length } };
   }
 
+  if (data.presenceOnly) {
+    wb.worksheets.filter((w) => w.name !== "Présence").forEach((w) => wb.removeWorksheet(w.id));
+    wp.name = "График";
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `Primes_Bonus_${data.fileSuffix}.xlsx`;
+  a.download = `${data.presenceOnly ? "Grafik_dney" : "Primes_Bonus"}_${data.fileSuffix}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -18775,6 +18791,7 @@ function PayrollExtrasView({
             bonusDirectRaison: l?.bonus_direct_raison ?? "",
             penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
             penaliteRaison: l?.penalite_raison ?? "",
+            penaliteContestee: l?.penalite_contestee ? String(l.penalite_contestee) : "",
             penaliteDirecteMontant: l?.penalite_directe ? String(l.penalite_directe) : "",
             penaliteDirecteRaison: l?.penalite_directe_raison ?? "",
             vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
@@ -18849,17 +18866,42 @@ function PayrollExtrasView({
   // mois - recalculé en direct à chaque frappe, comme le reste de ce
   // tableau. Штраф négatif = pénalité, uniquement pour les équipes chantier
   // (hors équipe : pas de système БАНК du tout, voir compute.ts).
-  const totalPenalitesThisMonth = useMemo(
+  const penaltyTotalsThisMonth = useMemo(
     () =>
-      employees.reduce((sum, e) => {
-        const faitPartieEquipe = e.category === "chantier" && !!e.team_id && !!e.teams?.name;
-        if (!faitPartieEquipe) return sum;
-        const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
-        return sum + Math.max(0, -(Number(line.penaliteMontant) || 0));
-      }, 0),
+      employees.reduce(
+        (acc, e) => {
+          const faitPartieEquipe = e.category === "chantier" && !!e.team_id && !!e.teams?.name;
+          if (!faitPartieEquipe) return acc;
+          const line = inputs[e.id] ?? EMPTY_EXTRAS_LINE;
+          return {
+            p: acc.p + Math.max(0, -(Number(line.penaliteMontant) || 0)),
+            r: acc.r + Math.max(0, Number(line.penaliteContestee) || 0),
+          };
+        },
+        { p: 0, r: 0 }
+      ),
     [employees, inputs]
   );
-  const controllerSplit = useMemo(() => computeControllerSplit(totalPenalitesThisMonth), [totalPenalitesThisMonth]);
+  // Штрафы месяца минус возвраты месяца (для Банка качества); долю контролёра считаем с переносом остатка прошлых месяцев.
+  const totalPenalitesThisMonth = penaltyTotalsThisMonth.p - penaltyTotalsThisMonth.r;
+  const [controllerCarry, setControllerCarry] = useState<number[]>([]);
+  useEffect(() => {
+    if (demo) return;
+    let alive = true;
+    void fetchControllerCarryDeltas(supabase, `${year}-${String(month).padStart(2, "0")}`).then((d) => {
+      if (alive) setControllerCarry(d);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [supabase, demo, year, month]);
+  const controllerSplit = useMemo(
+    () => ({
+      controllerShare: controllerShareWithCarry(controllerCarry, controllerMonthDelta(penaltyTotalsThisMonth.p, penaltyTotalsThisMonth.r)),
+      bankShare: bankShareOfMonth(penaltyTotalsThisMonth.p, penaltyTotalsThisMonth.r),
+    }),
+    [controllerCarry, penaltyTotalsThisMonth]
+  );
 
   const computed = useMemo(() => {
     const map: Record<string, ReturnType<typeof computePayrollExtras>> = {};
@@ -18874,6 +18916,7 @@ function PayrollExtrasView({
         bonusEquipe: Number(line.bonusEquipe) || 0,
         bonusDirect: Number(line.bonusDirectMontant) || 0,
         penaliteMontant: Number(line.penaliteMontant) || 0,
+        penaliteContestee: Number(line.penaliteContestee) || 0,
         penaliteDirecte: Number(line.penaliteDirecteMontant) || 0,
         banqueQualitePrecedente: banquePrecedenteByEmployee[e.id] ?? null,
         banqueAjustementManuel: line.banqueAjustementManuel === "" ? null : Number(line.banqueAjustementManuel),
@@ -19241,7 +19284,7 @@ function PayrollExtrasView({
           return {
             employeeId: e.id,
             month: monthNow,
-            penalty: Math.max(0, -(Number(line.penaliteMontant) || 0)),
+            penalty: Math.max(0, -(Number(line.penaliteMontant) || 0)) - Math.max(0, Number(line.penaliteContestee) || 0),
             bonus: Number(line.bonusEquipe) || 0,
           };
         })
@@ -19252,7 +19295,7 @@ function PayrollExtrasView({
     employees.forEach((e) => {
       if (!inTeam(e) || e.status === "terminated" || byTeam.has(e.team_id!)) return;
       const a = allocated.get(e.team_id!);
-      byTeam.set(e.team_id!, { teamId: e.team_id!, name: e.teams!.name, penalties: a?.penalties ?? 0, bonus: a?.bonus ?? 0 });
+      byTeam.set(e.team_id!, { teamId: e.team_id!, name: e.teams!.name, penalties: Math.max(0, a?.penalties ?? 0), bonus: a?.bonus ?? 0 });
     });
     return rankTeamsForQualityBank(Array.from(byTeam.values()), bankTotalLive);
   }, [employees, inputs, bankOther, bankMonthInPeriod, bankTotalLive, year, month]);
@@ -19664,7 +19707,7 @@ function PayrollExtrasView({
     );
   }
 
-  async function exportExcel() {
+  async function exportExcel(presenceOnly = false) {
     setExporting(true);
     try {
       const num = (v: string) => Number(v) || 0;
@@ -19722,6 +19765,7 @@ function PayrollExtrasView({
             }
           : null,
         employmentOf: Object.fromEntries(employees.map((e) => [e.id, { hire: e.hire_date, end: e.end_date }])),
+        presenceOnly,
       });
       toast.success("Export Excel prêt / Экспорт в Excel готов");
     } catch (err) {
@@ -19774,11 +19818,11 @@ function PayrollExtrasView({
               type="button"
               className="btn btn-secondary text-sm px-2.5 py-1.5 flex items-center gap-1.5"
               disabled={loading || exporting}
-              onClick={exportExcel}
-              title="Exporte le tableau du mois en Excel (tableau, présence, commentaires) / Экспорт таблицы за месяц в Excel (таблица, присутствие, комментарии)"
+              onClick={() => void exportExcel(true)}
+              title="Exporte seulement le tableau des jours travaillés (sans primes ni montants) / Экспорт только графика отработанных дней (без премий и сумм)"
             >
               <FileSpreadsheet size={14} />
-              <Bi fr={exporting ? "Export…" : "Exporter Excel"} ru={exporting ? "Экспорт…" : "Экспорт в Excel"} />
+              <Bi fr={exporting ? "Export…" : "Exporter les jours"} ru={exporting ? "Экспорт…" : "Экспорт графика"} />
             </button>
             {!readOnly && (
               <>
@@ -19970,7 +20014,10 @@ function PayrollExtrasView({
                   </span>
                   <span className="font-bold tabular-nums">{controllerSplit.controllerShare.toFixed(2)} €</span>
                   <span className="text-amber-700">
-                    <Bi fr={`25 % de ${totalPenalitesThisMonth.toFixed(2)} € ce mois`} ru={`25 % от ${totalPenalitesThisMonth.toFixed(2)} € за месяц`} />
+                    <Bi
+                      fr={`25 % de ${penaltyTotalsThisMonth.p.toFixed(2)} € de pénalités${penaltyTotalsThisMonth.r > 0 ? ` − ${penaltyTotalsThisMonth.r.toFixed(2)} € contestés` : ""}`}
+                      ru={`25 % от ${penaltyTotalsThisMonth.p.toFixed(2)} € штрафов${penaltyTotalsThisMonth.r > 0 ? ` − ${penaltyTotalsThisMonth.r.toFixed(2)} € оспорено` : ""}${controllerCarry.some((d) => d < 0) ? " (с учётом переноса)" : ""}`}
+                    />
                   </span>
                 </div>
                 {bankStandings.length > 0 && (
@@ -20462,6 +20509,21 @@ function PayrollExtrasView({
                                 />
                               )}
                             </div>
+                          </td>
+                          <td className="py-2 pr-2">
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder={bureauOrControl || !faitPartieEquipe ? "-" : "0"}
+                              disabled={bureauOrControl || !faitPartieEquipe}
+                              className={`input w-full px-1.5 py-1.5 text-xs ${
+                                bureauOrControl || !faitPartieEquipe ? "bg-stone-100 text-stone-400" : "bg-success-50 text-success-800"
+                              }`}
+                              value={line.penaliteContestee}
+                              onChange={(ev) => updateInput(e.id, "penaliteContestee", ev.target.value)}
+                              data-cell={`${e.id}:penaliteContestee`}
+                              title="Оспоренный штраф контроля, решение этого месяца (даже если сам штраф был раньше). Сумма сразу возвращается в БАНК 3000 человека. У контролёра в этом месяце 25% считаются от (штрафы − возвраты); если выйдет меньше нуля, его доля 0, а остаток вычитается из следующих месяцев. В Банке качества уменьшает штрафы его бригады. / Pénalité contrôle contestée, décision de CE mois (même si la pénalité date d'avant). Rendue au БАНК 3000 de la personne ; réduit la part du contrôleur (report si négatif) et les pénalités de son équipe au Банк качества."
+                            />
                           </td>
                           <td className="py-2 pr-2">
                             <div className="relative">

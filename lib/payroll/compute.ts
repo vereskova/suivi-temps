@@ -289,6 +289,8 @@ export type PayrollExtrasInput = {
   bonusEquipe: number;
   /** Montant signé. Équipe chantier : négatif = pénalité contrôleur (déduite du БАНК, jamais de la paie) ; positif = ajustement direct de paie. Hors équipe : ajustement direct de paie, signé, sans aucun lien БАНК. Voir la note en tête de fichier. */
   penaliteMontant: number;
+  /** Pénalité contrôle contestée avec succès, décidée CE mois (positif, quel que soit le mois d'origine de la pénalité) : rendue au БАНК 3000 de la personne, avant la déduction des pénalités du mois (plafond 3000 inchangé). Équipe chantier uniquement. */
+  penaliteContestee?: number;
   /** Montant signé, ajusté directement sur la paie pour TOUT employé - excès de vitesse, casse de matériel, etc. Jamais lié au БАНК 3000 ni au contrôleur/Банк качества, contrairement à penaliteMontant. Voir la note en tête de fichier. */
   penaliteDirecte: number;
   /** Bonus ponctuel ajouté tel quel à l'À payer pour TOUT employé - indépendant du BONUS équipe/БАНК 3000, notamment pour Bureau/Contrôle & Formation qui n'ont pas de BONUS équipe. Voir la note en tête de fichier. */
@@ -340,7 +342,11 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
   // solde disponible est retenue sur la paie du mois (penaliteSurPaie) -
   // demandé par l'utilisatrice, 05/10/2026 (pénalité 320 € pour 300 € en banque
   // → 300 € du БАНК + 20 € de la paie, avec un message dans le tableau).
-  const banqueDisponible = Math.max(0, Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot));
+  const remboursementContestation = input.faitPartieEquipe ? Math.max(0, input.penaliteContestee || 0) : 0;
+  const banqueDisponible = Math.max(
+    0,
+    Math.min(BANQUE_QUALITE_PLAFOND, banqueQualiteDebut + banqueDepot + remboursementContestation)
+  );
   const banqueQualiteFin = Math.max(0, banqueDisponible - penalitesControle);
   const penaliteSurPaie = Math.max(0, penalitesControle - banqueDisponible);
   const bonusDirect = Math.round((input.bonusDirect || 0) * 100) / 100;

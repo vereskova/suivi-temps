@@ -32,6 +32,8 @@ type Person = {
   bonusDirect: number;
   bonusDirectRaison: string;
   penalite: number;
+  /** Сумма штрафа контроля, оспоренного успешно (уже учтена в расчёте). */
+  penaliteContestee?: number;
   penaliteRaison: string;
   penaliteDirecte: number;
   penaliteDirecteRaison: string;
@@ -354,6 +356,15 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
               value={`−${eur(r.penalitesControle)}`}
               tone="minus"
               note={p.penaliteRaison || undefined}
+            />
+          )}
+          {(p.penaliteContestee ?? 0) > 0 && (
+            <Line
+              ru="Штраф оспорен - возврат в БАНК"
+              fr="Pénalité contestée"
+              value={`+${eur(p.penaliteContestee ?? 0)}`}
+              tone="plus"
+              note="Возвращено в ваш БАНК 3000 (учтено в сумме БАНК выше)"
             />
           )}
           {p.penalite > 0 && (

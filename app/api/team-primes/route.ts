@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { computeControllerSplit, computePayrollExtras } from "@/lib/payroll/compute";
+import { controllerMonthDelta, controllerShareWithCarry, fetchControllerCarryDeltas } from "@/lib/payroll/penalty-dispute";
 import {
   aggregateTeamDays,
   allocatePenaltiesToTeams,
@@ -134,11 +135,19 @@ export async function GET(request: NextRequest) {
   });
 
   // 25 % du total des pénalités chantier de toute l'entreprise → contrôleur désigné.
-  const totalPenalites = employees.reduce((sum, e) => {
-    if (e.contract_type === "FOP" || !faitPartieEquipe(e)) return sum;
-    return sum + Math.max(0, -(Number(lineByEmployee.get(e.id)?.penalite_montant) || 0));
-  }, 0);
-  const controllerShare = computeControllerSplit(totalPenalites).controllerShare;
+  const monthTotals = employees.reduce(
+    (acc, e) => {
+      if (e.contract_type === "FOP" || !faitPartieEquipe(e)) return acc;
+      const ln = lineByEmployee.get(e.id);
+      return {
+        p: acc.p + Math.max(0, -(Number(ln?.penalite_montant) || 0)),
+        r: acc.r + Math.max(0, Number(ln?.penalite_contestee) || 0),
+      };
+    },
+    { p: 0, r: 0 }
+  );
+  const carryDeltas = await fetchControllerCarryDeltas(sb, `${year}-${String(month).padStart(2, "0")}`);
+  const controllerShare = controllerShareWithCarry(carryDeltas, controllerMonthDelta(monthTotals.p, monthTotals.r));
 
   const rows = teamEmployees
     .map((e) => {
@@ -157,6 +166,7 @@ export async function GET(request: NextRequest) {
         bonusEquipe: num(l?.bonus_equipe),
         bonusDirect: num(l?.bonus_direct),
         penaliteMontant: num(l?.penalite_montant),
+        penaliteContestee: num(l?.penalite_contestee),
         penaliteDirecte: num(l?.penalite_directe),
         banqueQualitePrecedente: p ? p.fin : null,
         banqueAjustementManuel: manual === null || manual === undefined ? null : Number(manual),
@@ -182,6 +192,7 @@ export async function GET(request: NextRequest) {
         bonusDirect: num(l?.bonus_direct),
         bonusDirectRaison: (l?.bonus_direct_raison as string) || "",
         penalite: num(l?.penalite_montant),
+        penaliteContestee: num(l?.penalite_contestee),
         penaliteRaison: (l?.penalite_raison as string) || "",
         penaliteDirecte: num(l?.penalite_directe),
         penaliteDirecteRaison: (l?.penalite_directe_raison as string) || "",
@@ -205,10 +216,10 @@ export async function GET(request: NextRequest) {
     const { data: pRuns } = await sb.from("payroll_runs").select("id, month").gte("month", periodMonth);
     const runMonth = new Map((pRuns ?? []).map((r) => [r.id as string, String(r.month).slice(0, 7)]));
     const pRunIds = Array.from(runMonth.keys());
-    type BankLine = { run_id: string; employee_id: string; penalite_montant: number | null; bonus_equipe: number | null };
+    type BankLine = { run_id: string; employee_id: string; penalite_montant: number | null; penalite_contestee: number | null; bonus_equipe: number | null };
     const pLines = pRunIds.length
       ? await fetchAllPages<BankLine>((from, to) =>
-          sb.from("payroll_extras").select("run_id, employee_id, penalite_montant, bonus_equipe").in("run_id", pRunIds).range(from, to)
+          sb.from("payroll_extras").select("run_id, employee_id, penalite_montant, penalite_contestee, bonus_equipe").in("run_id", pRunIds).range(from, to)
         )
       : [];
     const { data: bankEmps } = await sb
@@ -234,7 +245,7 @@ export async function GET(request: NextRequest) {
       .map((l) => ({
         employeeId: l.employee_id,
         month: runMonth.get(l.run_id) ?? "",
-        penalty: Math.max(0, -(Number(l.penalite_montant) || 0)),
+        penalty: Math.max(0, -(Number(l.penalite_montant) || 0)) - Math.max(0, Number(l.penalite_contestee) || 0),
         bonus: Number(l.bonus_equipe) || 0,
       }));
     const periodPenalties = periodLines.reduce((sum, l) => sum + l.penalty, 0);
@@ -260,7 +271,7 @@ export async function GET(request: NextRequest) {
       .forEach((e) => {
         if (totals.has(e.team_id as string)) return;
         const a = allocated.get(e.team_id as string);
-        totals.set(e.team_id as string, { teamId: e.team_id as string, name: e.teams!.name, penalties: a?.penalties ?? 0, bonus: a?.bonus ?? 0 });
+        totals.set(e.team_id as string, { teamId: e.team_id as string, name: e.teams!.name, penalties: Math.max(0, a?.penalties ?? 0), bonus: a?.bonus ?? 0 });
       });
     const pool = computeControllerSplit(periodPenalties).bankShare;
     const ranked = rankTeamsForQualityBank(Array.from(totals.values()), pool);
