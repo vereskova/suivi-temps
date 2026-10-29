@@ -155,6 +155,7 @@ const FR_MONTHS: Record<string, number> = {
 export type ConvocationEvent = {
   type: "convocation" | "annulation";
   nameLine: string;
+  /** convocation: the appointment date; annulation: the date of the appointment that was cancelled */
   dateIso: string | null;
   time: string | null;
 };
@@ -179,7 +180,19 @@ export function parseConvocationEmail(subject: string, text: string): Convocatio
 
   const isAnnulation = /annulation/i.test(subject);
   if (isAnnulation) {
-    return { type: "annulation", nameLine, dateIso: null, time: null };
+    // An ANNULATION names the appointment that was cancelled ("Du vendredi 13
+    // novembre 2026 à 08:30"). That is often the OLD slot of a reschedule: the
+    // new convocation arrives first and the cancellation of the old date
+    // follows seconds later, so the date is needed to avoid cancelling the new one.
+    const cancelled = text.match(/Du\s+\S+\s+(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})\s+à\s+(\d{1,2})[:h](\d{2})/i);
+    const cancelledMonth = cancelled ? FR_MONTHS[cancelled[2].toLowerCase()] : undefined;
+    if (!cancelled || !cancelledMonth) return { type: "annulation", nameLine, dateIso: null, time: null };
+    return {
+      type: "annulation",
+      nameLine,
+      dateIso: `${cancelled[3]}-${String(cancelledMonth).padStart(2, "0")}-${cancelled[1].padStart(2, "0")}`,
+      time: `${cancelled[4].padStart(2, "0")}:${cancelled[5]}`,
+    };
   }
 
   // A reply/forward ("RE:", "TR:", "Fwd:") in a convocation thread often just
@@ -203,6 +216,41 @@ export function parseConvocationEmail(subject: string, text: string): Convocatio
     dateIso: `${yearStr}-${String(month).padStart(2, "0")}-${dayStr.padStart(2, "0")}`,
     time: `${hourStr.padStart(2, "0")}:${minuteStr}`,
   };
+}
+
+/**
+ * Replays one employee's convocation/annulation e-mails in the order they were
+ * sent and returns the appointment that is still standing. An annulation only
+ * removes the appointment it names: Prevaly's reschedules send the NEW
+ * convocation first and the cancellation of the OLD slot seconds later, which
+ * must not cancel the new one.
+ */
+export function resolveNextVisit<E extends { date: string | null }>(
+  list: { email: E; event: ConvocationEvent }[]
+): { dateIso: string | null; time: string | null; email: E; unparsed: boolean } {
+  const sorted = [...list].sort((a, b) => (a.email.date ?? "").localeCompare(b.email.date ?? ""));
+  let current: { dateIso: string; time: string | null; email: E } | null = null;
+  let cleared: E = sorted[sorted.length - 1].email;
+  let unparsed = false;
+  for (const { email, event } of sorted) {
+    if (event.type === "convocation") {
+      unparsed = !event.dateIso;
+      if (event.dateIso) current = { dateIso: event.dateIso, time: event.time, email };
+    } else {
+      unparsed = false;
+      const namesCurrent =
+        !current ||
+        !event.dateIso ||
+        (event.dateIso === current.dateIso && (!event.time || !current.time || event.time === current.time));
+      if (namesCurrent) {
+        current = null;
+        cleared = email;
+      }
+    }
+  }
+  return current
+    ? { dateIso: current.dateIso, time: current.time, email: current.email, unparsed }
+    : { dateIso: null, time: null, email: cleared, unparsed };
 }
 
 export type AptitudeEvent = {

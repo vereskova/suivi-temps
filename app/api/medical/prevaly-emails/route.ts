@@ -7,6 +7,7 @@ import {
   matchEmployeeByName,
   parseAptitudeEmail,
   parseConvocationEmail,
+  resolveNextVisit,
 } from "@/lib/email/prevalyMail";
 
 export async function GET() {
@@ -89,12 +90,12 @@ export async function GET() {
     }
 
     for (const [employeeId, list] of byEmployee) {
-      list.sort((a, b) => (a.email.date ?? "").localeCompare(b.email.date ?? ""));
-      const { email, event } = list[list.length - 1];
+      const resolved = resolveNextVisit(list);
+      const { email } = resolved;
       const emp = employeeById.get(employeeId);
-      const employeeName = emp ? `${emp.last_name} ${emp.first_name}` : event.nameLine;
+      const employeeName = emp ? `${emp.last_name} ${emp.first_name}` : list[0].event.nameLine;
 
-      if (event.type === "convocation" && !event.dateIso) {
+      if (resolved.unparsed) {
         unparsedDates.push(`${employeeName} (${email.subject})`);
         continue;
       }
@@ -108,8 +109,13 @@ export async function GET() {
       // replaced-manual memory untouched (it isn't "replacing a manual entry"
       // again, just updating from a newer e-mail).
       const wasManual = !!(existing && existing.next_visit_source === "manual" && existing.next_visit_date);
-      const emailIsNewer = !existing?.next_visit_source_at || (email.date ?? "") > existing.next_visit_source_at;
-      if (existing && !wasManual && !emailIsNewer) continue; // already applied this (or a more recent) event
+      // The stored state is re-derived from the whole e-mail history each time,
+      // so an e-mail-sourced row is only rewritten when the standing
+      // appointment actually differs from what is stored.
+      const sameTime = (existing?.next_visit_time ?? null)?.slice(0, 5) === (resolved.time ?? null);
+      const sameState = !!existing && existing.next_visit_date === resolved.dateIso && sameTime;
+      if (existing && !wasManual && sameState) continue;
+      const event = { type: resolved.dateIso ? ("convocation" as const) : ("annulation" as const), dateIso: resolved.dateIso, time: resolved.time };
 
       const payload = {
         next_visit_date: event.type === "annulation" ? null : event.dateIso,
