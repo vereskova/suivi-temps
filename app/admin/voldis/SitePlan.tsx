@@ -3,37 +3,53 @@
 import { num, type VLease, type VProperty, type VTenant } from "@/lib/voldis/rental";
 
 /**
- * Plan du site (590 chemin d'Engoudes), redessiné d'après le croquis de la gestionnaire :
- *  - bâtiment A (en haut à gauche) : lots 1 à 5 en rangée, du 1 (côté nord-est) au 5 (côté sud-ouest) ;
- *  - bâtiment B (au centre-droit) : lot 6 au nord, lot 7 au milieu (la croix), lots 8 et 9 sur le côté sud-ouest ;
- *  - conteneur K, isolé en bas à droite.
- * Les formes sont posées avec la même inclinaison que sur la photo ; les textes restent droits.
+ * Plan du site (590 chemin d'Engoudes), redessiné d'après la photo aérienne découpée à la main :
+ *  - bâtiment A (en haut à gauche) : A1 à A5, du côté nord-est (A1) au côté sud-ouest (A5, A4 = deux carrés au bout) ;
+ *  - bâtiment B (au centre) : B1 (bande nord-est), B2 (grande partie centrale),
+ *    puis la bande sud-ouest découpée en quatre cellules B3 à B6 (de l'extrémité ouest vers l'extrémité sud-est) ;
+ *  - conteneur K, à droite du bâtiment B.
+ * Les coordonnées sont celles de la photo ; les textes restent droits.
  */
 
 type Pt = [number, number];
-// vecteurs unitaires des deux bâtiments (inclinaison relevée sur le croquis)
-const U: Pt = [-0.629, 0.778]; // vers le sud-ouest
-const V: Pt = [0.778, 0.629]; // vers le sud-est
+const lerp = (a: Pt, b: Pt, t: number): Pt => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
 
-const rect = (c: Pt, aV: number, bU: number): Pt[] =>
-  ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sv, su]) => [c[0] + sv * aV * V[0] + su * bU * U[0], c[1] + sv * aV * V[1] + su * bU * U[1]] as Pt);
+// Bâtiment A : arêtes nord-ouest (N*) et sud-est (E*), coupées à 40 % et 70 % de la longueur, puis deux carrés au bout
+const N0: Pt = [578, 66], N1: Pt = [338, 368], N2: Pt = [268, 490];
+const E0: Pt = [710, 160], E1: Pt = [497, 478], E2: Pt = [418, 588];
+const nwA = (t: number) => lerp(N0, N1, t);
+const seA = (t: number) => lerp(E0, E1, t);
+const SQ_TOP = lerp(N1, E1, 0.47);
+const SQ_BOT = lerp(N2, E2, 0.5);
+
+// Bâtiment B : quatre coins, bande nord-est (jusqu'à 38 %), grande partie (jusqu'à 80 %), bande sud-ouest en 4 cellules
+const BN: Pt = [775, 358], BE: Pt = [985, 525], BS: Pt = [780, 780], BW: Pt = [580, 605];
+const nwB = (t: number) => lerp(BN, BW, t);
+const seB = (t: number) => lerp(BE, BS, t);
+const stripIn = (s: number) => lerp(nwB(0.8), seB(0.8), s);
+const stripOut = (s: number) => lerp(BW, BS, s);
+const STRIP_CUTS = [0, 0.34, 0.61, 0.79, 1];
+const stripCell = (k: number): Pt[] => [stripIn(STRIP_CUTS[k]), stripIn(STRIP_CUTS[k + 1]), stripOut(STRIP_CUTS[k + 1]), stripOut(STRIP_CUTS[k])];
+
+type Shape = { lot: string; pts: Pt[]; small?: boolean; narrow?: boolean };
+
+const SHAPES: Shape[] = [
+  { lot: "A1", pts: [N0, E0, seA(0.4), nwA(0.4)] },
+  { lot: "A2", pts: [nwA(0.4), seA(0.4), seA(0.7), nwA(0.7)] },
+  { lot: "A3", pts: [nwA(0.7), seA(0.7), E1, N1] },
+  { lot: "A4", pts: [N1, SQ_TOP, SQ_BOT, N2], narrow: true },
+  { lot: "A5", pts: [SQ_TOP, E1, E2, SQ_BOT], narrow: true },
+  { lot: "B1", pts: [BN, BE, seB(0.38), nwB(0.38)] },
+  { lot: "B2", pts: [nwB(0.38), seB(0.38), seB(0.8), nwB(0.8)] },
+  { lot: "B3", pts: stripCell(0), small: true },
+  { lot: "B4", pts: stripCell(1), small: true },
+  { lot: "B5", pts: stripCell(2), small: true },
+  { lot: "B6", pts: stripCell(3), small: true },
+  { lot: "K", pts: [[1163, 545], [1198, 526], [1229, 568], [1192, 598]], small: true },
+];
 
 const poly = (pts: Pt[]) => pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-const mid = (c: Pt, dV = 0, dU = 0): Pt => [c[0] + dV * V[0] + dU * U[0], c[1] + dV * V[1] + dU * U[1]];
-
-type Shape = { lot: string; center: Pt; aV: number; bU: number };
-
-// Bâtiment A : cinq cellules en file (pas de 75,5 le long de U)
-const A_START: Pt = [330, 282];
-const A_STEP: Pt = [-47.5, 58.75];
-const SHAPES: Shape[] = [
-  ...[1, 2, 3, 4, 5].map((n) => ({ lot: String(n), center: [A_START[0] + (n - 1) * A_STEP[0], A_START[1] + (n - 1) * A_STEP[1]] as Pt, aV: 56, bU: 38 })),
-  { lot: "6", center: [470, 525], aV: 98, bU: 50 },
-  { lot: "7", center: [402, 592], aV: 86, bU: 45 },
-  { lot: "8", center: [322, 620], aV: 44, bU: 28 },
-  { lot: "9", center: [392, 676], aV: 44, bU: 28 },
-  { lot: "K", center: [505, 795], aV: 34, bU: 24 },
-];
+const centroid = (pts: Pt[]): Pt => [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
 
 const eur0 = (n: number) => `${Math.round(n).toLocaleString("fr-FR")} €`;
 
@@ -73,45 +89,47 @@ export default function SitePlan({
   const byLot = new Map(props.map((p) => [p.lot_number, p]));
 
   return (
-    <svg viewBox="55 215 565 640" className="mx-auto h-auto w-full max-w-xl" role="img" aria-label="Plan du site">
+    <svg viewBox="245 45 1010 760" className="mx-auto h-auto w-full max-w-3xl" role="img" aria-label="Plan du site">
       {SHAPES.map((s) => {
         const p = byLot.get(s.lot);
         const lease = p ? leaseBy.get(p.id) : undefined;
         const who = lease ? tenantName.get(lease.tenant_id) : p?.occupant ?? null;
         const occupied = !!lease || !!p?.occupant;
-        const label = s.lot;
         const state: LotState = states?.get(s.lot) ?? (occupied ? "other" : "free");
-        const pts = rect(s.center, s.aV, s.bU);
-        const small = s.aV < 60;
+        const [cx, cy] = centroid(s.pts);
+        const small = !!s.small;
+        const name = who ?? "свободно";
         return (
           <g
             key={s.lot}
             className={p && onSelect ? "cursor-pointer" : ""}
             onClick={() => p && onSelect?.(p)}
             role={p && onSelect ? "button" : undefined}
-            aria-label={`Помещение ${label}${who ? `, ${who}` : ", свободно"}`}
+            aria-label={`Помещение ${s.lot}${who ? `, ${who}` : ", свободно"}`}
           >
             <polygon
-              points={poly(pts)}
+              points={poly(s.pts)}
               className={STATE_CLASS[state]}
-              strokeWidth={state === "free" ? 1.5 : 2}
-              strokeDasharray={state === "free" ? "5 4" : undefined}
+              strokeWidth={state === "free" ? 2 : 3}
+              strokeDasharray={state === "free" ? "7 5" : undefined}
               strokeLinejoin="round"
             />
-            <text x={s.center[0]} y={s.center[1] - (small ? 4 : 10)} textAnchor="middle" className="fill-stone-900" style={{ fontSize: small ? 24 : 32, fontWeight: 800 }}>
-              {label}
+            <text x={cx} y={cy + (small ? 7 : -6)} textAnchor="middle" className="fill-stone-900" style={{ fontSize: small ? 22 : 34, fontWeight: 800 }}>
+              {s.lot}
             </text>
-            <text x={s.center[0]} y={s.center[1] + (small ? 14 : 12)} textAnchor="middle" className={occupied ? "fill-stone-600" : "fill-stone-400"} style={{ fontSize: small ? 12 : 14, fontWeight: 600 }}>
-              {(who ?? "свободно").length > 13 ? `${(who ?? "свободно").slice(0, 12)}…` : who ?? "свободно"}
-            </text>
-            {p && occupied && !small && (
-              <text x={s.center[0]} y={s.center[1] + 30} textAnchor="middle" className="fill-stone-400" style={{ fontSize: 13 }}>
-                {lease ? eur0(num(lease.monthly_total)) : ""}
+            {!small && (
+              <text x={cx} y={cy + 16} textAnchor="middle" className={occupied ? "fill-stone-600" : "fill-stone-400"} style={{ fontSize: 15, fontWeight: 600 }}>
+                {name.length > (s.narrow ? 10 : 15) ? `${name.slice(0, s.narrow ? 9 : 14)}…` : name}
+              </text>
+            )}
+            {p && occupied && !small && lease && (
+              <text x={cx} y={cy + 36} textAnchor="middle" className="fill-stone-400" style={{ fontSize: 14 }}>
+                {eur0(num(lease.monthly_total))}
                 {p.pays_cash ? " · нал." : ""}
               </text>
             )}
             {p && small && p.pays_cash && (
-              <text x={s.center[0]} y={s.center[1] + 28} textAnchor="middle" className="fill-amber-600" style={{ fontSize: 11, fontWeight: 700 }}>
+              <text x={cx} y={cy + 26} textAnchor="middle" className="fill-amber-600" style={{ fontSize: 12, fontWeight: 700 }}>
                 нал.
               </text>
             )}
@@ -119,13 +137,13 @@ export default function SitePlan({
         );
       })}
       {/* repères */}
-      <text x={mid(SHAPES[0].center, 70, -70)[0]} y={mid(SHAPES[0].center, 70, -70)[1]} className="fill-stone-300" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
+      <text x={470} y={100} className="fill-stone-300" style={{ fontSize: 14, fontWeight: 700, letterSpacing: 3 }} textAnchor="middle">
         ЗДАНИЕ A
       </text>
-      <text x={560} y={470} className="fill-stone-300" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
+      <text x={955} y={395} className="fill-stone-300" style={{ fontSize: 14, fontWeight: 700, letterSpacing: 3 }} textAnchor="middle">
         ЗДАНИЕ B
       </text>
-      <text x={505} y={842} className="fill-stone-300" style={{ fontSize: 10, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
+      <text x={1186} y={632} className="fill-stone-300" style={{ fontSize: 12, fontWeight: 700, letterSpacing: 2 }} textAnchor="middle">
         КОНТЕЙНЕР
       </text>
     </svg>
