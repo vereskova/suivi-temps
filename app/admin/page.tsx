@@ -1808,6 +1808,10 @@ function SidebarLink({
 }
 
 // ── Vue "Par jour" - remplace les onglets DATA/APP_DATA, éditable ───────────
+// "Par jour" : le pointage + l'identité de la personne (pour les anciens salariés qui ne sont plus dans la liste active).
+const JOUR_SELECT = `${POINTAGE_SELECT}, employees!pointage_entries_employee_id_fkey(first_name, last_name)`;
+type JourRow = PointageRow & { employees: { first_name: string; last_name: string } | null };
+
 type EditForm = {
   start: string;
   end: string;
@@ -1827,7 +1831,7 @@ function JourView({
   absenceTypes: AbsenceType[];
 }) {
   const [date, setDate] = useState(today());
-  const [rows, setRows] = useState<PointageRow[]>([]);
+  const [rows, setRows] = useState<JourRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
@@ -1837,6 +1841,11 @@ function JourView({
   const [search, setSearch] = useState("");
   const [substitutes, setSubstitutes] = useState<Employee[]>([]);
   const [addSubDraft, setAddSubDraft] = useState<Record<string, string>>({});
+  // Composition des équipes À LA DATE choisie (pas l'équipe actuelle de la fiche) :
+  // noms d'équipes, dates d'entrée/sortie et historique des transferts (employee_team_moves).
+  const [teamNames, setTeamNames] = useState<Record<string, string>>({});
+  const [empDates, setEmpDates] = useState<Record<string, { hire: string | null; end: string | null }>>({});
+  const [teamMoves, setTeamMoves] = useState<Record<string, { from_date: string; team_id: string }[]>>({});
 
   useEffect(() => {
     async function load() {
@@ -1844,14 +1853,39 @@ function JourView({
       setLoading(true);
       const { data } = await supabase
         .from("pointage_entries")
-        .select(POINTAGE_SELECT)
+        .select(JOUR_SELECT)
         .eq("work_date", date);
-      setRows((data as unknown as PointageRow[]) ?? []);
+      setRows((data as unknown as JourRow[]) ?? []);
       setLoading(false);
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date, refreshKey]);
+
+  useEffect(() => {
+    async function loadHistory() {
+      const [teamsRes, empRes, movesRes] = await Promise.all([
+        supabase.from("teams").select("id, name"),
+        supabase.from("employees").select("id, hire_date, end_date"),
+        supabase.from("employee_team_moves").select("employee_id, team_id, from_date"),
+      ]);
+      const names: Record<string, string> = {};
+      ((teamsRes.data ?? []) as { id: string; name: string }[]).forEach((t) => (names[t.id] = t.name));
+      setTeamNames(names);
+      const dates: Record<string, { hire: string | null; end: string | null }> = {};
+      ((empRes.data ?? []) as { id: string; hire_date: string | null; end_date: string | null }[]).forEach(
+        (e) => (dates[e.id] = { hire: e.hire_date, end: e.end_date })
+      );
+      setEmpDates(dates);
+      // Table absente (migration 0114 pas faite) : on retombe sur l'équipe actuelle.
+      const moves: Record<string, { from_date: string; team_id: string }[]> = {};
+      ((movesRes.error ? [] : movesRes.data ?? []) as { employee_id: string; team_id: string; from_date: string }[]).forEach(
+        (m) => (moves[m.employee_id] ??= []).push({ from_date: m.from_date, team_id: m.team_id })
+      );
+      setTeamMoves(moves);
+    }
+    loadHistory();
+  }, [supabase]);
 
   useEffect(() => {
     async function loadSubstitutes() {
@@ -1871,31 +1905,68 @@ function JourView({
     return map;
   }, [rows]);
 
-  const permanentIds = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
+  // Remplaçants = seulement ceux marqués "can_substitute" : les anciens salariés
+  // (sortis depuis) qui ont un pointage ce jour-là sont des membres normaux de leur équipe.
+  const permanentIds = useMemo(() => {
+    const ids = new Set(employees.map((e) => e.id));
+    const subIds = new Set(substitutes.map((s) => s.id));
+    rows.forEach((r) => {
+      if (!subIds.has(r.employee_id)) ids.add(r.employee_id);
+    });
+    return ids;
+  }, [employees, rows, substitutes]);
 
   const grouped = useMemo(() => {
     const teams = new Map<string, { teamId: string | null; members: Employee[] }>();
+    const empTeamNames = new Map<string, string>();
     employees.forEach((e) => {
-      const teamName = e.teams?.name ?? "Sans équipe";
-      if (!teams.has(teamName)) teams.set(teamName, { teamId: e.team_id, members: [] });
-      teams.get(teamName)!.members.push(e);
+      if (e.team_id && e.teams?.name) empTeamNames.set(e.team_id, e.teams.name);
     });
-    // Substitutes already logged for this day (pointage_entries.team_id) -
-    // shown even though they're not permanent members, so the card survives
-    // a reload/date-switch-and-back.
-    teams.forEach(({ teamId, members }) => {
-      if (!teamId) return;
-      rows
-        .filter((r) => r.team_id === teamId && !members.some((m) => m.id === r.employee_id))
-        .forEach((r) => {
-          const sub = substitutes.find((s) => s.id === r.employee_id);
-          if (sub) members.push({ ...sub, team_id: teamId });
+    const nameOf = (teamId: string | null) =>
+      (teamId && (teamNames[teamId] ?? empTeamNames.get(teamId))) || "Sans équipe";
+    const add = (teamId: string | null, member: Employee) => {
+      const teamName = nameOf(teamId);
+      if (!teams.has(teamName)) teams.set(teamName, { teamId, members: [] });
+      teams.get(teamName)!.members.push({ ...member, team_id: teamId });
+    };
+    // Équipe d'un salarié à la date choisie : dernier transfert ≤ date, sinon l'équipe actuelle.
+    const teamOnDate = (e: Employee): string | null => {
+      const past = (teamMoves[e.id] ?? [])
+        .filter((m) => m.from_date <= date)
+        .sort((a, b) => b.from_date.localeCompare(a.from_date));
+      return past.length > 0 ? past[0].team_id : e.team_id;
+    };
+    const rowByEmployee = new Map(rows.map((r) => [r.employee_id, r]));
+    const isPastDay = date < today();
+    employees.forEach((e) => {
+      const r = rowByEmployee.get(e.id);
+      const d = empDates[e.id];
+      // Jour passé sans pointage : pas encore embauché / déjà parti ce jour-là → pas dans la liste.
+      if (!r && isPastDay && d && ((d.hire && d.hire > date) || (d.end && d.end < date))) return;
+      // L'équipe du pointage (celle de CE jour) prime sur l'équipe actuelle de la fiche.
+      add(r?.team_id ?? teamOnDate(e), e);
+    });
+    // Personnes avec un pointage ce jour-là qui ne sont pas dans la liste actuelle :
+    // remplaçants et anciens salariés, placés dans l'équipe du pointage.
+    const rosterIds = new Set(employees.map((e) => e.id));
+    rows.forEach((r) => {
+      if (rosterIds.has(r.employee_id)) return;
+      const sub = substitutes.find((s) => s.id === r.employee_id);
+      if (sub) add(r.team_id, sub);
+      else if (r.employees)
+        add(r.team_id, {
+          id: r.employee_id,
+          first_name: r.employees.first_name,
+          last_name: r.employees.last_name,
+          team_id: r.team_id,
+          teams: null,
         });
     });
+    teams.forEach((t) => t.members.sort((a, b) => employeeName(a).localeCompare(employeeName(b))));
     return Array.from(teams.entries())
       .map(([teamName, { teamId, members }]) => ({ teamName, teamId, members }))
       .sort((a, b) => a.teamName.localeCompare(b.teamName));
-  }, [employees, rows, substitutes]);
+  }, [employees, rows, substitutes, teamNames, empDates, teamMoves, date]);
 
   const teamOptions = useMemo(
     () => grouped.map(({ teamName }) => teamName),
