@@ -1951,6 +1951,8 @@ function JourView({
     const rosterIds = new Set(employees.map((e) => e.id));
     rows.forEach((r) => {
       if (rosterIds.has(r.employee_id)) return;
+      // Pointage sans équipe = présence du bureau (grille Primes & Bonus), pas une journée de chantier.
+      if (!r.team_id) return;
       const sub = substitutes.find((s) => s.id === r.employee_id);
       if (sub) add(r.team_id, sub);
       else if (r.employees)
