@@ -8,6 +8,19 @@ export const PLANNING_SHEET_ID = "1PcyKlR5UlLwEV88MWKCKqwom2FGrihba";
 const PLANNING_EXPORT_URL = `https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/export?format=xlsx`;
 const SKIPPED_SHEETS = new Set(["TS", "PAS FINI"]);
 
+/** Google Sheets tab id (#gid) of each 2026 month tab, Janvier..Décembre, so
+ *  the embedded planning can open straight on the current month. A new year
+ *  needs new tabs (and ids) added here. */
+const PLANNING_GIDS_2026 = [
+  "1489182196", "834690608", "1889082032", "885488197", "85665520", "1530919759",
+  "1491179403", "1410475105", "1035093123", "1493405020", "110153674", "372921064",
+] as const;
+
+/** Tab id for the month of `date`, or null when the planning has no tab for it. */
+export function planningGidFor(date: Date): string | null {
+  return date.getFullYear() === 2026 ? PLANNING_GIDS_2026[date.getMonth()] : null;
+}
+
 const TAG_VOCAB = new Set([
   "ENGIN", "ELEC", "SI", "PPSPS", "AC", "BENNE", "DEVIS", "CONSUEL+DOE", "ÉTIQUETTES", "ETIQUETTES",
   "SHELTER", "DEMONTAGE PPV", "INSTALATION FILLE SUR FACE", "PPV", "ELEC+SI",

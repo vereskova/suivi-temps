@@ -155,7 +155,7 @@ import {
   weekdayLabelFr,
 } from "@/lib/payroll/frenchHolidays";
 import { isForeignNationality } from "@/lib/nationality";
-import { PLANNING_SHEET_ID } from "@/lib/planning/parsePlanning";
+import { PLANNING_SHEET_ID, planningGidFor } from "@/lib/planning/parsePlanning";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton, SkeletonRows } from "@/components/Skeleton";
 import { toast } from "@/components/Toast";
@@ -5098,6 +5098,9 @@ type MedicalVisit = {
  *  Sheet (équipe × semaine, one site per team per week) - directly, with
  *  full edit access, instead of mirroring it into a read-only table. */
 function PlanningView() {
+  // Opens on the current month's tab (computed once, so the sheet doesn't
+  // jump back if the user switches tabs and this re-renders).
+  const [gid] = useState(() => planningGidFor(new Date()));
   return (
     <div>
       <div className="card mb-4">
@@ -5115,7 +5118,7 @@ function PlanningView() {
 
       <div className="card overflow-hidden p-0" style={{ overscrollBehavior: "contain" }}>
         <iframe
-          src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit`}
+          src={`https://docs.google.com/spreadsheets/d/${PLANNING_SHEET_ID}/edit${gid ? `#gid=${gid}` : ""}`}
           className="w-full border-0"
           style={{ height: "80vh", overscrollBehavior: "contain" }}
           title="Planning chantiers - Google Sheets"
