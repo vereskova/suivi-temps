@@ -46,17 +46,26 @@ export async function GET() {
   const visitsConfirmed: { employeeName: string; visitDate: string; documentUrl: string }[] = [];
 
   if (events.length > 0 || aptitudeEvents.length > 0) {
-    const [{ data: employees }, { data: existingVisits }] = await Promise.all([
+    const [{ data: employees }, { data: existingVisits }, { data: avisDocs }] = await Promise.all([
       supabase.from("employees").select("id, first_name, last_name"),
       supabase
         .from("medical_visits")
         .select(
           "id, employee_id, last_visit_date, next_visit_date, next_visit_time, next_visit_source, next_visit_source_at"
         ),
+      supabase.from("employee_documents").select("employee_id, created_at").eq("category_code", "medical_prevaly"),
     ]);
 
     const employeeById = new Map((employees ?? []).map((e) => [e.id, e]));
     const visitByEmployeeId = new Map((existingVisits ?? []).map((v) => [v.employee_id, v]));
+    // Latest "avis d'aptitude" already filed in the dossier, per employee - the
+    // Prevaly e-mails stay in the 60-day window, so without this the same
+    // certificates would be listed as "to fetch" on every check.
+    const lastAvisAt = new Map<string, string>();
+    for (const d of avisDocs ?? []) {
+      const day = (d.created_at as string).slice(0, 10);
+      if (day > (lastAvisAt.get(d.employee_id) ?? "")) lastAvisAt.set(d.employee_id, day);
+    }
 
     for (const { event } of aptitudeEvents) {
       const employeeId = matchEmployeeByName(event.nameLine, employees ?? []);
@@ -73,6 +82,8 @@ export async function GET() {
           : await supabase.from("medical_visits").insert({ employee_id: employeeId, last_visit_date: event.visitDateIso });
         if (!error && existing) existing.last_visit_date = event.visitDateIso;
       }
+      // Filed on/after the visit date = already fetched; nothing left for RH to do.
+      if ((lastAvisAt.get(employeeId) ?? "") >= event.visitDateIso) continue;
       visitsConfirmed.push({ employeeName, visitDate: event.visitDateIso, documentUrl: event.documentUrl });
     }
 
