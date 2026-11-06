@@ -3255,6 +3255,8 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
   const [error, setError] = useState<string | null>(null);
   const [simOn, setSimOn] = useState(false);
   const [simOpen, setSimOpen] = useState<string | null>(null);
+  const [openEmp, setOpenEmp] = useState<string | null>(null);
+  const [onlyFlagged, setOnlyFlagged] = useState(false);
 
   const weeks = useMemo(() => weeksOfMonth(year, month), [year, month]);
 
@@ -3320,6 +3322,52 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
     );
   }, [rows, year, month, identity]);
 
+  const monthBounds = useMemo(() => monthRange(year, month), [year, month]);
+  const rowsByEmp = useMemo(() => {
+    const m = new Map<string, HebdoRow[]>();
+    rows.forEach((r) => {
+      const l = m.get(r.employee_id) ?? [];
+      l.push(r);
+      m.set(r.employee_id, l);
+    });
+    return m;
+  }, [rows]);
+  // Alertes de durée du travail (maxima légaux : 10 h/jour, 48 h/semaine) + repères par salarié.
+  const enriched = useMemo(
+    () =>
+      results.map((r) => {
+        const er = rowsByEmp.get(r.employeeId) ?? [];
+        const over48 = r.weeks.filter((w) => w.hours > 48).length;
+        const over10 = er.filter((x) => !x.is_absent && (x.total_minutes ?? 0) > 600).length;
+        const daysInMonth = er.filter(
+          (x) => !x.is_absent && (x.total_minutes ?? 0) > 0 && x.work_date >= monthBounds.start && x.work_date <= monthBounds.end
+        ).length;
+        return { ...r, over48, over10, daysInMonth };
+      }),
+    [results, rowsByEmp, monthBounds]
+  );
+  const shown = useMemo(
+    () => (onlyFlagged ? enriched.filter((r) => r.hs25Month + r.hs50Month + r.hsCarried > 0 || r.over48 > 0 || r.over10 > 0) : enriched),
+    [enriched, onlyFlagged]
+  );
+  const totals = useMemo(
+    () =>
+      shown.reduce(
+        (t, r) => ({
+          hs25: t.hs25 + r.hs25Month,
+          hs50: t.hs50 + r.hs50Month,
+          carried: t.carried + r.hsCarried,
+          recorded: t.recorded + r.recordedHoursMonth,
+          theo: t.theo + r.theoreticalHours,
+          over48: t.over48 + r.over48,
+          over10: t.over10 + r.over10,
+        }),
+        { hs25: 0, hs50: 0, carried: 0, recorded: 0, theo: 0, over48: 0, over10: 0 }
+      ),
+    [shown]
+  );
+  const julyBulletin = year === 2026 && month === 7;
+
   // SIMULATION interne (juillet 2026) : HS par semaine (règle FITECO) calées sur les HS des bulletins. Lecture seule, sans export.
   const simulation = useMemo(() => {
     if (!simOn || year !== 2026 || month !== 7) return [];
@@ -3341,9 +3389,9 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
   }, [simOn, rows, year, month, identity, weeks]);
 
   function exportXlsx() {
-    const data = results.map((r) => {
+    const data = shown.map((r) => {
       const idn = identity.get(r.employeeId);
-      const line: Record<string, string | number> = { Salarié: idn?.name ?? "", Équipe: idn?.team ?? "" };
+      const line: Record<string, string | number> = { Salarié: idn?.name ?? "", Équipe: idn?.team ?? "", "Jours saisis (mois)": r.daysInMonth };
       weeks.forEach((w, i) => {
         line[`Semaine ${fmtDM(w.start)}-${fmtDM(w.end)}${w.paidThisMonth ? "" : " (payée le mois suivant)"}`] = Number(r.weeks[i].hours.toFixed(2));
       });
@@ -3352,6 +3400,8 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
       line["HS reportées sur le mois suivant (h)"] = Number(r.hsCarried.toFixed(2));
       line["Heures théoriques à payer ce mois (h)"] = Number(r.theoreticalHours.toFixed(2));
       line["Heures saisies dans le mois (h)"] = Number(r.recordedHoursMonth.toFixed(2));
+      line["Semaines > 48 h"] = r.over48;
+      line["Jours > 10 h"] = r.over10;
       return line;
     });
     const sheet = XLSX.utils.json_to_sheet(data);
@@ -3408,6 +3458,10 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
           <Download size={16} className="inline mr-1" />
           <Bi fr="Exporter en Excel" ru="Выгрузить в Excel" />
         </button>
+        <label className="flex items-center gap-2 text-sm font-bold">
+          <input type="checkbox" checked={onlyFlagged} onChange={(e) => setOnlyFlagged(e.target.checked)} />
+          <Bi fr="Seulement HS ou alertes" ru="Только со сверхурочными или предупреждениями" />
+        </label>
         {year === 2026 && month === 7 && (
           <button type="button" className={simOn ? "btn-secondary border-red-500 text-red-700" : "btn-secondary"} onClick={() => setSimOn((v) => !v)}>
             <Bi fr="Simulation : jours calés sur les bulletins" ru="Симуляция: дни под бюллетени" />
@@ -3569,54 +3623,183 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
           <Bi fr="Aucune donnée de pointage ce mois-ci." ru="За этот месяц нет данных по часам." />
         </div>
       ) : (
-        <div className="card overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-stone-400">
-                <th className="pb-2 pr-4"><Bi fr="Salarié" ru="Сотрудник" /></th>
-                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
-                {weeks.map((w) => (
-                  <th key={w.start} className={`pb-2 pr-3 text-right whitespace-nowrap ${w.paidThisMonth ? "" : "opacity-60"}`}>
-                    {fmtDM(w.start)}-{fmtDM(w.end)}
-                    {!w.paidThisMonth && <span className="block text-[0.7em] font-normal">→ <Bi fr="mois suiv." ru="след. месяц" /></span>}
-                  </th>
-                ))}
-                <th className="pb-2 pr-3 text-right">HS 25 %</th>
-                <th className="pb-2 pr-3 text-right">HS 50 %</th>
-                <th className="pb-2 pr-3 text-right"><Bi fr="Reportées" ru="Перенос" /></th>
-                <th className="pb-2 pr-3 text-right"><Bi fr="À payer (h)" ru="К оплате (ч)" /></th>
-                <th className="pb-2 text-right"><Bi fr="Saisi (h)" ru="Внесено (ч)" /></th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r) => {
-                const idn = identity.get(r.employeeId);
-                return (
-                  <tr key={r.employeeId} className="border-t border-stone-100">
-                    <td className="py-2 pr-4 font-semibold whitespace-nowrap">{idn?.name}</td>
-                    <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">{idn?.team}</td>
-                    {r.weeks.map((wk, i) => (
-                      <td key={i} className={`py-2 pr-3 text-right tabular-nums ${weeks[i].paidThisMonth ? "" : "opacity-60"}`}>
-                        {wk.days > 0 ? fmtH(wk.hours) : "-"}
-                      </td>
-                    ))}
-                    <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.hs25Month)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.hs50Month)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums opacity-70">{fmtH(r.hsCarried)}</td>
-                    <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.theoreticalHours)}</td>
-                    <td className="py-2 text-right tabular-nums text-stone-500">{fmtH(r.recordedHoursMonth)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <p className="mt-3 text-xs text-stone-400">
-            <Bi
-              fr={`Base ${baseMonthlyHours} h + HS 25 % (de la ${threshold25 + 1}e à la ${threshold50}e heure de la semaine) + HS 50 % (à partir de la ${threshold50 + 1}e). Semaines affichées en gris : payées le mois suivant. Les 1res/dernières semaines incluent les jours du mois voisin.`}
-              ru={`База ${baseMonthlyHours} ч + 25 % (с ${threshold25 + 1}-го по ${threshold50}-й час недели) + 50 % (с ${threshold50 + 1}-го). Серые недели оплачиваются в следующем месяце. Первая и последняя недели включают дни соседнего месяца.`}
-            />
-          </p>
-        </div>
+        <>
+          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
+            {[
+              { fr: "Salariés", ru: "Сотрудников", v: String(shown.length), tone: "" },
+              { fr: "HS 25 % à payer", ru: "Сверхур. 25 % к оплате", v: `${fmtH(totals.hs25)} h`, tone: "" },
+              { fr: "HS 50 % à payer", ru: "Сверхур. 50 % к оплате", v: `${fmtH(totals.hs50)} h`, tone: "" },
+              { fr: "Reportées (mois suivant)", ru: "Перенос на след. месяц", v: `${fmtH(totals.carried)} h`, tone: "text-stone-500" },
+              { fr: "Semaines > 48 h", ru: "Недель > 48 ч", v: String(totals.over48), tone: totals.over48 > 0 ? "text-red-600" : "" },
+              { fr: "Jours > 10 h", ru: "Дней > 10 ч", v: String(totals.over10), tone: totals.over10 > 0 ? "text-red-600" : "" },
+            ].map((k) => (
+              <div key={k.fr} className="card">
+                <p className="text-xs font-bold text-stone-400">
+                  <Bi fr={k.fr} ru={k.ru} />
+                </p>
+                <p className={`mt-1 text-2xl font-extrabold tabular-nums ${k.tone}`}>{k.v}</p>
+              </div>
+            ))}
+          </div>
+          <div className="card overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-stone-400">
+                  <th className="pb-2 pr-4"><Bi fr="Salarié" ru="Сотрудник" /></th>
+                  <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                  <th className="pb-2 pr-3 text-right"><Bi fr="Jours" ru="Дни" /></th>
+                  {weeks.map((w) => (
+                    <th key={w.start} className={`pb-2 pr-3 text-right whitespace-nowrap ${w.paidThisMonth ? "" : "opacity-60"}`}>
+                      {fmtDM(w.start)}-{fmtDM(w.end)}
+                      {!w.paidThisMonth && <span className="block text-[0.7em] font-normal">→ <Bi fr="mois suiv." ru="след. месяц" /></span>}
+                    </th>
+                  ))}
+                  <th className="pb-2 pr-3 text-right">HS 25 %</th>
+                  <th className="pb-2 pr-3 text-right">HS 50 %</th>
+                  <th className="pb-2 pr-3 text-right"><Bi fr="Reportées" ru="Перенос" /></th>
+                  <th className="pb-2 pr-3 text-right"><Bi fr="À payer (h)" ru="К оплате (ч)" /></th>
+                  <th className="pb-2 pr-3 text-right"><Bi fr="Saisi (h)" ru="Внесено (ч)" /></th>
+                  {julyBulletin && (
+                    <>
+                      <th className="pb-2 pr-3 text-right"><Bi fr="Bulletin (h)" ru="Бюллетень (ч)" /></th>
+                      <th className="pb-2 pr-3 text-right"><Bi fr="Écart" ru="Разница" /></th>
+                    </>
+                  )}
+                  <th className="pb-2"><Bi fr="Alertes" ru="Предупреждения" /></th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((r) => {
+                  const idn = identity.get(r.employeeId);
+                  const open = openEmp === r.employeeId;
+                  const bul = julyBulletin && idn ? JULY_2026_BULLETIN_HS[idn.name.toLowerCase()] : undefined;
+                  const bulTotal = bul ? baseMonthlyHours + bul.hs25 + bul.hs50 : null;
+                  const er = rowsByEmp.get(r.employeeId) ?? [];
+                  return (
+                    <Fragment key={r.employeeId}>
+                      <tr className="cursor-pointer border-t border-stone-100 hover:bg-stone-50" onClick={() => setOpenEmp(open ? null : r.employeeId)}>
+                        <td className="py-2 pr-4 font-semibold whitespace-nowrap">{open ? "▾ " : "▸ "}{idn?.name}</td>
+                        <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">{idn?.team}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-stone-500">{r.daysInMonth}</td>
+                        {r.weeks.map((wk, i) => (
+                          <td
+                            key={i}
+                            className={`py-2 pr-3 text-right tabular-nums ${weeks[i].paidThisMonth ? "" : "opacity-60"} ${wk.hours > 48 ? "font-bold text-red-600" : ""}`}
+                          >
+                            {wk.days > 0 ? fmtH(wk.hours) : "-"}
+                          </td>
+                        ))}
+                        <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.hs25Month)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.hs50Month)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums opacity-70">{fmtH(r.hsCarried)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.theoreticalHours)}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-stone-500">{fmtH(r.recordedHoursMonth)}</td>
+                        {julyBulletin && (
+                          <>
+                            <td className="py-2 pr-3 text-right tabular-nums">{bulTotal === null ? "-" : fmtH(bulTotal)}</td>
+                            <td
+                              className={`py-2 pr-3 text-right tabular-nums font-bold ${
+                                bulTotal === null ? "" : Math.abs(r.theoreticalHours - bulTotal) < 0.01 ? "text-emerald-700" : "text-red-600"
+                              }`}
+                            >
+                              {bulTotal === null ? "-" : Math.abs(r.theoreticalHours - bulTotal) < 0.01 ? "OK" : fmtH(r.theoreticalHours - bulTotal)}
+                            </td>
+                          </>
+                        )}
+                        <td className="py-2 text-xs font-bold whitespace-nowrap">
+                          {r.over48 > 0 && <span className="mr-1 rounded bg-red-50 px-1.5 py-0.5 text-red-600">{r.over48} × &gt;48 h</span>}
+                          {r.over10 > 0 && <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-600">{r.over10} × &gt;10 h/j</span>}
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr>
+                          <td colSpan={20} className="bg-stone-50 px-4 py-3">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-stone-400">
+                                  <th className="pb-1 pr-3">Semaine / Неделя</th>
+                                  <th className="pb-1 pr-3">Statut / Статус</th>
+                                  <th className="pb-1 pr-3 text-right">Jours</th>
+                                  <th className="pb-1 pr-3 text-right">Heures</th>
+                                  <th className="pb-1 pr-3 text-right">HS 25 %</th>
+                                  <th className="pb-1 pr-3 text-right">HS 50 %</th>
+                                  <th className="pb-1 text-right">Jour max</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {r.weeks.map((wk, i) => {
+                                  const w = weeks[i];
+                                  const wDays = er
+                                    .filter((x) => x.work_date >= w.start && x.work_date <= w.end)
+                                    .sort((a, b) => a.work_date.localeCompare(b.work_date));
+                                  const maxDay = Math.max(0, ...wDays.filter((x) => !x.is_absent).map((x) => x.total_minutes ?? 0));
+                                  const straddlePrev = w.start < monthBounds.start;
+                                  return (
+                                    <Fragment key={w.start}>
+                                      <tr className={`border-t border-stone-200 font-bold ${w.paidThisMonth ? "" : "text-stone-400"}`}>
+                                        <td className="pt-2 pb-1 pr-3 whitespace-nowrap">{fmtDM(w.start)} - {fmtDM(w.end)}</td>
+                                        <td className="pt-2 pb-1 pr-3 font-normal">
+                                          {w.paidThisMonth ? (
+                                            straddlePrev ? (
+                                              <Bi fr="À cheval avec le mois précédent : payée ce mois-ci" ru="На стыке с прошлым месяцем: оплачивается в этом" />
+                                            ) : (
+                                              <Bi fr="Payée ce mois-ci" ru="Оплачивается в этом месяце" />
+                                            )
+                                          ) : (
+                                            <Bi fr="À cheval sur le mois suivant : HS reportées" ru="На стыке со следующим месяцем: сверхурочные переносятся" />
+                                          )}
+                                        </td>
+                                        <td className="pt-2 pb-1 pr-3 text-right tabular-nums">{wk.days}</td>
+                                        <td className={`pt-2 pb-1 pr-3 text-right tabular-nums ${wk.hours > 48 ? "text-red-600" : ""}`}>{fmtH(wk.hours)}</td>
+                                        <td className="pt-2 pb-1 pr-3 text-right tabular-nums">{fmtH(wk.hs25)}</td>
+                                        <td className="pt-2 pb-1 pr-3 text-right tabular-nums">{fmtH(wk.hs50)}</td>
+                                        <td className={`pt-2 pb-1 text-right tabular-nums ${maxDay > 600 ? "text-red-600" : ""}`}>{fmtH(maxDay / 60)}</td>
+                                      </tr>
+                                      {wDays.map((x) => (
+                                        <tr key={x.work_date} className={`text-stone-500 ${(x.total_minutes ?? 0) > 600 ? "bg-red-50" : ""}`}>
+                                          <td className="py-0.5 pr-3 pl-3 tabular-nums">{fmtDM(x.work_date)}</td>
+                                          <td className="py-0.5 pr-3 tabular-nums">
+                                            {x.is_absent ? "absent / отсутствие" : x.start_time && x.end_time ? `${x.start_time.slice(0, 5)} → ${x.end_time.slice(0, 5)}, pause ${x.pause_minutes ?? 0} min` : "total saisi sans horaires / только итог"}
+                                          </td>
+                                          <td />
+                                          <td className="py-0.5 pr-3 text-right tabular-nums">{x.is_absent ? "-" : fmtH((x.total_minutes ?? 0) / 60)}</td>
+                                          <td colSpan={3} />
+                                        </tr>
+                                      ))}
+                                    </Fragment>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-stone-300 font-extrabold">
+                  <td className="pt-2" colSpan={3 + weeks.length}>
+                    <Bi fr="Total" ru="Итого" />
+                  </td>
+                  <td className="pt-2 pr-3 text-right tabular-nums">{fmtH(totals.hs25)}</td>
+                  <td className="pt-2 pr-3 text-right tabular-nums">{fmtH(totals.hs50)}</td>
+                  <td className="pt-2 pr-3 text-right tabular-nums opacity-70">{fmtH(totals.carried)}</td>
+                  <td className="pt-2 pr-3 text-right tabular-nums">{fmtH(totals.theo)}</td>
+                  <td className="pt-2 pr-3 text-right tabular-nums text-stone-500">{fmtH(totals.recorded)}</td>
+                  <td colSpan={julyBulletin ? 3 : 1} />
+                </tr>
+              </tfoot>
+            </table>
+            <p className="mt-3 text-xs text-stone-400">
+              <Bi
+                fr={`Méthode de M. Amaral (FITECO, 04/11/2026) : base mensualisée ${baseMonthlyHours} h + HS 25 % (de la ${threshold25 + 1}e à la ${threshold50}e heure de la semaine) + HS 50 % (à partir de la ${threshold50 + 1}e). Semaines lundi-dimanche ; une semaine à cheval sur deux mois est payée le mois où elle se termine (en gris : reportée). Maxima : 10 h/jour, 48 h/semaine. Cliquer sur un salarié pour voir semaine par semaine et jour par jour.`}
+                ru={`Метод Микаэля (FITECO, 04.11.2026): база ${baseMonthlyHours} ч + 25 % (с ${threshold25 + 1}-го по ${threshold50}-й час недели) + 50 % (с ${threshold50 + 1}-го). Недели с понедельника по воскресенье; неделя на стыке месяцев оплачивается в месяце окончания (серым: перенос). Максимум: 10 ч в день, 48 ч в неделю. Нажмите на сотрудника, чтобы увидеть по неделям и по дням.`}
+              />
+            </p>
+          </div>
+        </>
       )}
     </div>
   );
