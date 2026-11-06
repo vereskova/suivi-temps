@@ -112,7 +112,7 @@ import {
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import { computeCongesPayes } from "@/lib/conges-payes/compute";
 import { JULY_2026_BULLETIN_HS, simulateWeeklyToBulletin, type SimDayInput } from "@/lib/payroll/bulletinSimulation";
-import { fetchRangeForMonth, weeklyOvertimeFor, weeksOfMonth, WEEKLY_OVERTIME_DEFAULTS, type PointageMinutesRow } from "@/lib/payroll/weeklyOvertime";
+import { fetchRangeForMonth, weeklyOvertimeFor, weeksOfMonth, WEEKLY_OVERTIME_DEFAULTS, type EmployeeWeeklyResult, type PointageMinutesRow, type WeekRange } from "@/lib/payroll/weeklyOvertime";
 import { addWorkingDays, evalNorm, type NormDef, type NormMode } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
 import {
@@ -2556,24 +2556,58 @@ function EmployeView({
   const [employeeId, setEmployeeId] = useState("");
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
-  const [rows, setRows] = useState<EmployeViewRow[]>([]);
+  const [allRows, setAllRows] = useState<EmployeViewRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       setLoading(true);
-      const { start, end } = monthRange(year, month);
-      const { data } = await supabase
-        .from("pointage_entries")
-        .select(EMPLOYE_VIEW_SELECT)
-        .gte("work_date", start)
-        .lte("work_date", end)
-        .order("work_date");
-      setRows((data as unknown as EmployeViewRow[]) ?? []);
-      setLoading(false);
+      // Semaines entières (lundi-dimanche) qui touchent le mois, pour le calcul des HS à la semaine.
+      const { start, end } = fetchRangeForMonth(year, month);
+      const all: EmployeViewRow[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from("pointage_entries")
+          .select(EMPLOYE_VIEW_SELECT)
+          .gte("work_date", start)
+          .lte("work_date", end)
+          .order("work_date")
+          .order("employee_id")
+          .range(from, from + 999);
+        if (error) break;
+        const page = (data as unknown as EmployeViewRow[]) ?? [];
+        all.push(...page);
+        if (page.length < 1000) break;
+      }
+      if (!cancelled) {
+        setAllRows(all);
+        setLoading(false);
+      }
     }
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [year, month, supabase]);
+
+  // Lignes du mois civil uniquement (affichage et totaux inchangés).
+  const rows = useMemo(() => {
+    const { start, end } = monthRange(year, month);
+    return allRows.filter((r) => r.work_date >= start && r.work_date <= end);
+  }, [allRows, year, month]);
+
+  // HS à la semaine (méthode de M. Amaral, FITECO) : une entrée par salarié.
+  const weeklyByEmployee = useMemo(() => {
+    const map = new Map<string, EmployeeWeeklyResult>();
+    weeklyOvertimeFor(
+      allRows.map((r) => ({ employee_id: r.employee_id, work_date: r.work_date, total_minutes: r.total_minutes, is_absent: r.is_absent })),
+      year,
+      month
+    ).forEach((r) => map.set(r.employeeId, r));
+    return map;
+  }, [allRows, year, month]);
+  const monthWeeks = useMemo(() => weeksOfMonth(year, month), [year, month]);
 
   const rowsByEmployee = useMemo(() => {
     const map = new Map<string, EmployeViewRow[]>();
@@ -2728,7 +2762,13 @@ function EmployeView({
                     </span>
                   </p>
                 )}
-                <EmployeeMonthGrid days={days} byDate={byDate} totalMinutes={totalMinutes} />
+                <EmployeeMonthGrid
+                  days={days}
+                  byDate={byDate}
+                  totalMinutes={totalMinutes}
+                  weeks={monthWeeks}
+                  weekly={weeklyByEmployee.get(emp.id)}
+                />
               </div>
             );
           })}
@@ -2742,11 +2782,36 @@ function EmployeeMonthGrid({
   days,
   byDate,
   totalMinutes,
+  weeks,
+  weekly,
 }: {
   days: Date[];
   byDate: Map<string, PointageRow>;
   totalMinutes: number;
+  weeks?: WeekRange[];
+  weekly?: EmployeeWeeklyResult;
 }) {
+  const lastIso = days.length > 0 ? days[days.length - 1].toISOString().split("T")[0] : "";
+  const monthFirstIso = days.length > 0 ? days[0].toISOString().split("T")[0] : "";
+  /** Ligne de bilan de la semaine (méthode Amaral), affichée après chaque dimanche et en fin de mois. */
+  function weekSummary(iso: string, dow: number): { label: string; hours: string; hs: string; status: string; mixed: boolean } | null {
+    if (!weeks || !weekly) return null;
+    if (dow !== 0 && iso !== lastIso) return null;
+    const idx = weeks.findIndex((w) => iso >= w.start && iso <= w.end);
+    if (idx < 0) return null;
+    const w = weeks[idx];
+    const wk = weekly.weeks[idx];
+    if (!wk || wk.days === 0) return null;
+    return {
+      label: `${fmtDM(w.start)} - ${fmtDM(w.end)}`,
+      hours: fmtH(wk.hours),
+      hs: `HS 25 % ${fmtH(wk.hs25)} · HS 50 % ${fmtH(wk.hs50)}`,
+      status: w.paidThisMonth ? "paid" : "carried",
+      mixed: w.start < monthFirstIso || w.end > lastIso,
+    };
+  }
+  const weekSummaryFr = (st: string) => (st === "paid" ? "payée ce mois-ci" : "reportée sur le mois suivant");
+  const weekSummaryRu = (st: string) => (st === "paid" ? "оплачивается в этом месяце" : "переносится на следующий месяц");
   return (
     <>
       {/* Mobile: one card per day instead of a 7-column table. */}
@@ -2756,9 +2821,10 @@ function EmployeeMonthGrid({
           const r = byDate.get(iso);
           const weekday = WEEKDAYS_FR[d.getUTCDay()];
           const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+          const wsum = weekSummary(iso, d.getUTCDay());
           return (
+            <Fragment key={iso}>
             <div
-              key={iso}
               className={`rounded-xl border border-stone-100 px-3 py-2 flex items-center justify-between gap-2 ${
                 isWeekend ? "bg-stone-50" : ""
               }`}
@@ -2788,6 +2854,17 @@ function EmployeeMonthGrid({
                 </p>
               )}
             </div>
+            {wsum && (
+              <div className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
+                <p>
+                  Semaine {wsum.label} / Неделя : {wsum.hours} h{wsum.mixed ? " *" : ""}
+                </p>
+                <p className="font-normal">
+                  {wsum.hs} · {weekSummaryFr(wsum.status)} / {weekSummaryRu(wsum.status)}
+                </p>
+              </div>
+            )}
+            </Fragment>
           );
         })}
         <div className="flex items-center justify-between px-3 pt-2 font-bold text-sm">
@@ -2796,6 +2873,16 @@ function EmployeeMonthGrid({
           </p>
           <p className="font-black">{fmtMinutes(totalMinutes)}</p>
         </div>
+        {weekly && (
+          <div className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
+            <p>
+              HS (méthode Amaral) / Сверхур.: 25 % {fmtH(weekly.hs25Month)} · 50 % {fmtH(weekly.hs50Month)} · reportées / перенос {fmtH(weekly.hsCarried)}
+            </p>
+            <p>
+              À payer / К оплате = {fmtH(WEEKLY_OVERTIME_DEFAULTS.baseMonthlyHours)} + HS = {fmtH(weekly.theoreticalHours)} h
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="hidden md:block card overflow-x-auto">
@@ -2817,9 +2904,10 @@ function EmployeeMonthGrid({
               const r = byDate.get(iso);
               const weekday = WEEKDAYS_FR[d.getUTCDay()];
               const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+              const wsum = weekSummary(iso, d.getUTCDay());
               return (
+                <Fragment key={iso}>
                 <tr
-                  key={iso}
                   className={`border-t border-stone-100 ${
                     isWeekend ? "bg-stone-50" : ""
                   }`}
@@ -2854,6 +2942,20 @@ function EmployeeMonthGrid({
                     </>
                   )}
                 </tr>
+                {wsum && (
+                  <tr className="bg-indigo-50 text-indigo-900">
+                    <td colSpan={5} className="py-1.5 pr-4 pl-2 text-xs font-bold">
+                      Semaine {wsum.label} / Неделя{wsum.mixed ? " *" : ""}
+                      <span className="ml-3 font-normal">
+                        {wsum.hs} · {weekSummaryFr(wsum.status)} / {weekSummaryRu(wsum.status)}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pr-4 text-right text-xs font-bold" colSpan={2}>
+                      {wsum.hours} h
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -2865,6 +2967,29 @@ function EmployeeMonthGrid({
               </td>
               <td className="pt-3 font-black">{fmtMinutes(totalMinutes)}</td>
             </tr>
+            {weekly && (
+              <>
+                <tr className="text-indigo-900">
+                  <td colSpan={6} className="pt-2 text-right text-xs font-bold">
+                    Heures supp. à la semaine (méthode Amaral) / Сверхурочные по неделям (метод Микаэля) : HS 25 % · HS 50 % · reportées / перенос
+                  </td>
+                  <td className="pt-2 text-xs font-bold tabular-nums">
+                    {fmtH(weekly.hs25Month)} · {fmtH(weekly.hs50Month)} · {fmtH(weekly.hsCarried)}
+                  </td>
+                </tr>
+                <tr className="text-indigo-900">
+                  <td colSpan={6} className="text-right text-xs font-bold">
+                    À payer = base {fmtH(WEEKLY_OVERTIME_DEFAULTS.baseMonthlyHours)} h (temps plein) + HS / К оплате = база + сверхурочные
+                  </td>
+                  <td className="text-xs font-black tabular-nums">{fmtH(weekly.theoreticalHours)} h</td>
+                </tr>
+                <tr>
+                  <td colSpan={7} className="pt-1 text-right text-[10px] text-stone-400">
+                    * semaine à cheval sur deux mois : incluant les jours du mois voisin / неделя на стыке месяцев: включает дни соседнего месяца
+                  </td>
+                </tr>
+              </>
+            )}
           </tfoot>
         </table>
       </div>
