@@ -4,7 +4,7 @@ import { computeControllerSplit, computePayrollExtras } from "@/lib/payroll/comp
 import { controllerMonthDelta, controllerShareWithCarry, fetchControllerCarryDeltas } from "@/lib/payroll/penalty-dispute";
 import {
   aggregateTeamDays,
-  allocatePenaltiesToTeams,
+  allocatePenaltiesForRanking,
   daysInTeam,
   fetchAllPages,
   nextQualityBankPayoutDate,
@@ -263,14 +263,8 @@ export async function GET(request: NextRequest) {
         )
       : [];
     const dayRows = aggregateTeamDays(pointageRows);
-    // Les pénalités d'un salarié déjà parti restent dans le pool (periodPenalties) mais ne pèsent plus
-    // sur le classement de l'équipe : une nouvelle composition n'hérite pas des pénalités de l'ancienne.
     const gone = new Set(teamEmps.filter((e) => e.status === "terminated").map((e) => e.id));
-    const allocated = allocatePenaltiesToTeams(
-      periodLines.filter((l) => !gone.has(l.employeeId)),
-      dayRows,
-      (id) => empById.get(id)?.team_id ?? null
-    );
+    const allocated = allocatePenaltiesForRanking(periodLines, dayRows, (id) => empById.get(id)?.team_id ?? null, gone);
 
     const totals = new Map<string, TeamStanding>();
     teamEmps

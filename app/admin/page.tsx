@@ -137,7 +137,7 @@ import {
   nextQualityBankPayoutDate,
   periodStartAfterPayout,
   aggregateTeamDays,
-  allocatePenaltiesToTeams,
+  allocatePenaltiesForRanking,
   daysInTeam,
   fetchAllPages,
   QUALITY_BANK_EXCLUDED_WORST,
@@ -19602,13 +19602,12 @@ function PayrollExtrasView({
         })
       : [];
     const teamNow = new Map(employees.filter(inTeam).map((e) => [e.id, e.team_id as string]));
-    // Les pénalités d'un salarié déjà parti ne pèsent plus sur l'équipe : sinon une nouvelle composition
-    // hérite des pénalités de l'ancienne (elles restent dans le pool, seul le classement change).
     const gone = new Set<string>([...bankOther.terminatedIds, ...employees.filter((e) => e.status === "terminated").map((e) => e.id)]);
-    const allocated = allocatePenaltiesToTeams(
-      [...bankOther.lines, ...liveLines].filter((l) => !gone.has(l.employeeId)),
+    const allocated = allocatePenaltiesForRanking(
+      [...bankOther.lines, ...liveLines],
       bankOther.dayRows,
-      (id) => bankOther.teamOf[id] ?? teamNow.get(id) ?? null
+      (id) => bankOther.teamOf[id] ?? teamNow.get(id) ?? null,
+      gone
     );
     const byTeam = new Map<string, TeamStanding>();
     employees.forEach((e) => {

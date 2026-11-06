@@ -164,6 +164,27 @@ export function allocatePenaltiesToTeams(
   return out;
 }
 
+/**
+ * Pénalités/BONUS par équipe POUR LE CLASSEMENT du Банк качества - la seule fonction à utiliser
+ * pour classer les équipes (écran admin ET page de l'équipe), afin que les deux restent identiques.
+ *
+ * Les lignes des salariés déjà partis (`departedIds`) sont écartées : leurs pénalités ne pèsent plus
+ * sur l'équipe, sinon une nouvelle composition hérite de celles de l'ancienne. Elles restent dans le
+ * pool (à calculer séparément avec TOUTES les lignes) : seul le classement change.
+ */
+export function allocatePenaltiesForRanking(
+  lines: PeriodLine[],
+  dayRows: TeamDayRow[],
+  currentTeamOf: (employeeId: string) => string | null,
+  departedIds: ReadonlySet<string>
+): Map<string, { penalties: number; bonus: number }> {
+  return allocatePenaltiesToTeams(
+    lines.filter((l) => !departedIds.has(l.employeeId)),
+    dayRows,
+    currentTeamOf
+  );
+}
+
 /** Jours d'un salarié dans une équipe sur toute la période. */
 export function daysInTeam(dayRows: TeamDayRow[], teamId: string): Map<string, number> {
   const out = new Map<string, number>();
