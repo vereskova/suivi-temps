@@ -2874,6 +2874,8 @@ function EmployeeMonthGrid({
 
 type MoisPointageRow = {
   employee_id: string;
+  work_date: string;
+  is_absent: boolean | null;
   team_id: string | null;
   total_minutes: number | null;
   employees: { first_name: string; last_name: string; status: EmployeeStatus; end_date: string | null } | null;
@@ -2894,33 +2896,69 @@ function MoisView({
   const [rows, setRows] = useState<MoisPointageRow[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Heures sup. "méthode Amaral" (par semaine) affichées à partir d'octobre 2026.
+  const showHs = year * 12 + month >= 2026 * 12 + 10;
+  const monthStart = useMemo(() => monthRange(year, month).start, [year, month]);
+  const monthEnd = useMemo(() => monthRange(year, month).end, [year, month]);
+
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       setLoading(true);
-      const { start, end } = monthRange(year, month);
-      const { data } = await supabase
-        .from("pointage_entries")
-        .select(
-          "employee_id, team_id, total_minutes, employees!pointage_entries_employee_id_fkey(first_name, last_name, status, end_date), teams!pointage_entries_team_id_fkey(name)"
-        )
-        .gte("work_date", start)
-        .lte("work_date", end);
-      setRows((data as unknown as MoisPointageRow[]) ?? []);
-      setLoading(false);
+      // On charge les semaines entières qui touchent le mois (pour le calcul hebdo) ;
+      // les totaux mensuels ci-dessous restent calculés sur le mois civil uniquement.
+      const { start, end } = fetchRangeForMonth(year, month);
+      const all: MoisPointageRow[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await supabase
+          .from("pointage_entries")
+          .select(
+            "employee_id, work_date, is_absent, team_id, total_minutes, employees!pointage_entries_employee_id_fkey(first_name, last_name, status, end_date), teams!pointage_entries_team_id_fkey(name)"
+          )
+          .gte("work_date", start)
+          .lte("work_date", end)
+          .order("work_date", { ascending: true })
+          .order("employee_id", { ascending: true })
+          .range(from, from + 999);
+        if (error) break;
+        const page = (data as unknown as MoisPointageRow[]) ?? [];
+        all.push(...page);
+        if (page.length < 1000) break;
+      }
+      if (!cancelled) {
+        setRows(all);
+        setLoading(false);
+      }
     }
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [year, month, supabase]);
+
+  const monthRows = useMemo(() => rows.filter((r) => r.work_date >= monthStart && r.work_date <= monthEnd), [rows, monthStart, monthEnd]);
+
+  const hsByEmployee = useMemo(() => {
+    const map = new Map<string, { hs25: number; hs50: number; carried: number }>();
+    if (!showHs) return map;
+    weeklyOvertimeFor(
+      rows.map((r) => ({ employee_id: r.employee_id, work_date: r.work_date, total_minutes: r.total_minutes, is_absent: r.is_absent })),
+      year,
+      month
+    ).forEach((r) => map.set(r.employeeId, { hs25: r.hs25Month, hs50: r.hs50Month, carried: r.hsCarried }));
+    return map;
+  }, [rows, year, month, showHs]);
 
   const totalsByEmployee = useMemo(() => {
     const map = new Map<string, number>();
-    rows.forEach((r) => {
+    monthRows.forEach((r) => {
       map.set(
         r.employee_id,
         (map.get(r.employee_id) ?? 0) + (r.total_minutes ?? 0)
       );
     });
     return map;
-  }, [rows]);
+  }, [monthRows]);
 
   const sorted = useMemo(
     () =>
@@ -2940,13 +2978,14 @@ function MoisView({
   const terminatedRows = useMemo(() => {
     const map = new Map<
       string,
-      { first_name: string; last_name: string; teamName: string; minutes: number; endDate: string | null }
+      { employeeId: string; first_name: string; last_name: string; teamName: string; minutes: number; endDate: string | null }
     >();
-    rows.forEach((r) => {
+    monthRows.forEach((r) => {
       if (r.employees?.status !== "terminated") return;
       const key = `${r.employee_id}|${r.team_id ?? ""}`;
       const existing = map.get(key);
       map.set(key, {
+        employeeId: r.employee_id,
         first_name: r.employees.first_name,
         last_name: r.employees.last_name,
         teamName: r.teams?.name ?? "-",
@@ -2957,7 +2996,7 @@ function MoisView({
     return [...map.values()].sort(
       (a, b) => a.teamName.localeCompare(b.teamName) || a.last_name.localeCompare(b.last_name)
     );
-  }, [rows]);
+  }, [monthRows]);
 
   // Une couleur par équipe (même palette que Paie/Primes & Bonus), pour
   // repérer les brigades d'un coup d'œil dans une liste triée par nom
@@ -2985,7 +3024,8 @@ function MoisView({
               title="Totaux du mois"
               text={
                 "Свод отработанных часов за месяц сразу по всем сотрудникам, сгруппированным по бригадам.\n\n" +
-                "Помогает быстро увидеть общую картину и заметить, у кого мало часов или совсем нет данных за месяц, прежде чем считать зарплату."
+                "Помогает быстро увидеть общую картину и заметить, у кого мало часов или совсем нет данных за месяц, прежде чем считать зарплату.\n\n" +
+                "С октября 2026 рядом показаны сверхурочные «по Микаэлю» (контрольный расчёт FITECO): по неделям, 25 % с 36-го часа, 50 % с 44-го; неделя на стыке месяцев оплачивается в месяце окончания, её сверхурочные видны в колонке «Перенос». Ничего не меняет и не пишет в базу."
               }
             />
           }
@@ -3040,6 +3080,11 @@ function MoisView({
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-bold">{total ? fmtMinutes(total) : "-"}</p>
+                  {showHs && hsByEmployee.get(e.id) && (
+                    <p className="text-[11px] text-stone-500 tabular-nums">
+                      HS {fmtH(hsByEmployee.get(e.id)!.hs25)} / {fmtH(hsByEmployee.get(e.id)!.hs50)}
+                    </p>
+                  )}
                   <p className={`text-xs font-semibold ${total ? "text-success-600" : "text-stone-300"}`}>
                     {total ? "OK" : "Aucune donnée / Нет данных"}
                   </p>
@@ -3056,6 +3101,13 @@ function MoisView({
                 <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Heures totales" ru="Часы всего" /></th>
+                {showHs && (
+                  <>
+                    <th className="pb-2 pr-3 text-right"><Bi fr="HS 25 % (Amaral)" ru="Сверхур. 25 % (Микаэль)" /></th>
+                    <th className="pb-2 pr-3 text-right"><Bi fr="HS 50 % (Amaral)" ru="Сверхур. 50 % (Микаэль)" /></th>
+                    <th className="pb-2 pr-4 text-right"><Bi fr="Reportées" ru="Перенос" /></th>
+                  </>
+                )}
                 <th className="pb-2"><Bi fr="Statut" ru="Статус" /></th>
               </tr>
             </thead>
@@ -3074,6 +3126,13 @@ function MoisView({
                     <td className="py-2 pr-4 font-bold">
                       {total ? fmtMinutes(total) : "-"}
                     </td>
+                    {showHs && (
+                      <>
+                        <td className="py-2 pr-3 text-right tabular-nums">{hsByEmployee.get(e.id) ? fmtH(hsByEmployee.get(e.id)!.hs25) : "-"}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums">{hsByEmployee.get(e.id) ? fmtH(hsByEmployee.get(e.id)!.hs50) : "-"}</td>
+                        <td className="py-2 pr-4 text-right tabular-nums opacity-70">{hsByEmployee.get(e.id) ? fmtH(hsByEmployee.get(e.id)!.carried) : "-"}</td>
+                      </>
+                    )}
                     <td
                       className={`py-2 font-semibold ${
                         total ? "text-success-600" : "text-stone-300"
@@ -3132,7 +3191,13 @@ function MoisView({
                     <th className="pb-2 pr-4"><Bi fr="Nom" ru="Фамилия" /></th>
                     <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
                     <th className="pb-2 pr-4"><Bi fr="Date de sortie" ru="Дата увольнения" /></th>
-                    <th className="pb-2"><Bi fr="Heures totales" ru="Часы всего" /></th>
+                    <th className="pb-2 pr-4"><Bi fr="Heures totales" ru="Часы всего" /></th>
+                    {showHs && (
+                      <>
+                        <th className="pb-2 pr-3 text-right">HS 25 %</th>
+                        <th className="pb-2 text-right">HS 50 %</th>
+                      </>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -3144,6 +3209,12 @@ function MoisView({
                         {r.endDate ? formatDateShortDMY(r.endDate) : "-"}
                       </td>
                       <td className="py-2 pr-4 font-bold">{fmtMinutes(r.minutes)}</td>
+                      {showHs && (
+                        <>
+                          <td className="py-2 pr-3 text-right tabular-nums">{hsByEmployee.get(r.employeeId) ? fmtH(hsByEmployee.get(r.employeeId)!.hs25) : "-"}</td>
+                          <td className="py-2 text-right tabular-nums">{hsByEmployee.get(r.employeeId) ? fmtH(hsByEmployee.get(r.employeeId)!.hs50) : "-"}</td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
