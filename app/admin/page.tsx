@@ -111,7 +111,7 @@ import {
 } from "@/lib/documents/registry";
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import { computeCongesPayes } from "@/lib/conges-payes/compute";
-import { JULY_2026_BULLETIN_HOURS, simulateToBulletin, type SimDayInput } from "@/lib/payroll/bulletinSimulation";
+import { JULY_2026_BULLETIN_HS, simulateWeeklyToBulletin, type SimDayInput } from "@/lib/payroll/bulletinSimulation";
 import { fetchRangeForMonth, weeklyOvertimeFor, weeksOfMonth, WEEKLY_OVERTIME_DEFAULTS, type PointageMinutesRow } from "@/lib/payroll/weeklyOvertime";
 import { addWorkingDays, evalNorm, type NormDef, type NormMode } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
@@ -3249,26 +3249,25 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
     );
   }, [rows, year, month, identity]);
 
-  // SIMULATION interne (juillet 2026) : jours saisis recalés sur les totaux des bulletins. Lecture seule, sans export.
+  // SIMULATION interne (juillet 2026) : HS par semaine (règle FITECO) calées sur les HS des bulletins. Lecture seule, sans export.
   const simulation = useMemo(() => {
     if (!simOn || year !== 2026 || month !== 7) return [];
     const byEmp = new Map<string, SimDayInput[]>();
     rows.forEach((r) => {
       if (r.is_absent || !r.start_time || !r.end_time || !(r.total_minutes ?? 0)) return;
-      if (!r.work_date.startsWith("2026-07")) return;
       const list = byEmp.get(r.employee_id) ?? [];
       list.push({ date: r.work_date, start: r.start_time.slice(0, 5), end: r.end_time.slice(0, 5), pauseMinutes: r.pause_minutes ?? 0, totalMinutes: r.total_minutes ?? 0 });
       byEmp.set(r.employee_id, list);
     });
-    const out: { id: string; name: string; team: string; result: ReturnType<typeof simulateToBulletin> }[] = [];
+    const out: { id: string; name: string; team: string; result: ReturnType<typeof simulateWeeklyToBulletin> }[] = [];
     byEmp.forEach((days, id) => {
       const idn = identity.get(id);
-      const hours = idn ? JULY_2026_BULLETIN_HOURS[idn.name.toLowerCase()] : undefined;
-      if (hours === undefined) return;
-      out.push({ id, name: idn?.name ?? id, team: idn?.team ?? "-", result: simulateToBulletin(days, hours) });
+      const bul = idn ? JULY_2026_BULLETIN_HS[idn.name.toLowerCase()] : undefined;
+      if (!bul) return;
+      out.push({ id, name: idn?.name ?? id, team: idn?.team ?? "-", result: simulateWeeklyToBulletin(days, weeks, bul) });
     });
-    return out.sort((a, b) => a.team.localeCompare(b.team, undefined, { numeric: true }) || a.name.localeCompare(b.name));
-  }, [simOn, rows, year, month, identity]);
+    return out.sort((x, y) => x.team.localeCompare(y.team, undefined, { numeric: true }) || x.name.localeCompare(y.name));
+  }, [simOn, rows, year, month, identity, weeks]);
 
   function exportXlsx() {
     const data = results.map((r) => {
@@ -3361,8 +3360,8 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
           </div>
           <p className="mb-3 text-xs text-stone-500">
             <Bi
-              fr="Les jours réellement saisis sont conservés ; l'écart avec le total du bulletin est réparti à parts égales en décalant l'heure de fin (pas de 5 min, 10 h max par jour). Aucun jour n'est inventé : ce qui ne peut pas être couvert est indiqué en « reste »."
-              ru="Реально внесённые дни сохраняются; разница с итогом бюллетеня распределяется поровну сдвигом времени конца (шаг 5 мин, не больше 10 ч в день). Новые дни не придумываются: что не удаётся покрыть, показано в «остатке»."
+              fr="Méthode de M. Amaral : base mensualisée 151,67 h + HS 25 % (36e à 43e heure de la semaine) + HS 50 % (dès la 44e), semaines qui se terminent en juillet (29/06 au 26/07) ; la semaine du 27/07 est payée en août. Les jours réellement saisis sont conservés ; on décale l'heure de fin (pas de 5 min, 10 h max par jour, 48 h max par semaine) pour que les HS par semaine donnent les HS 25 % et 50 % du bulletin. Aucun jour n'est inventé : ce qui ne peut pas être couvert est indiqué en « reste »."
+              ru="Метод Микаэля: база 151,67 ч + 25 % (с 36-го по 43-й час недели) + 50 % (с 44-го), недели, заканчивающиеся в июле (29.06-26.07); неделя с 27.07 оплачивается в августе. Реально внесённые дни сохраняются; сдвигается время конца (шаг 5 мин, не больше 10 ч в день и 48 ч в неделю), чтобы понедельные сверхурочные дали 25 % и 50 % из бюллетеня. Новые дни не придумываются: что не удаётся покрыть, показано в «остатке»."
             />
           </p>
           <table className="w-full text-sm">
@@ -3370,9 +3369,10 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
               <tr className="text-left text-stone-400">
                 <th className="pb-2 pr-4"><Bi fr="Salarié" ru="Сотрудник" /></th>
                 <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
-                <th className="pb-2 pr-3 text-right"><Bi fr="Bulletin (h)" ru="Бюллетень (ч)" /></th>
-                <th className="pb-2 pr-3 text-right"><Bi fr="Saisi (h)" ru="Внесено (ч)" /></th>
-                <th className="pb-2 pr-3 text-right"><Bi fr="Simulé (h)" ru="Симуляция (ч)" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Bulletin HS 25 %" ru="Бюллетень 25 %" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Bulletin HS 50 %" ru="Бюллетень 50 %" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Simulé HS 25 %" ru="Симуляция 25 %" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Simulé HS 50 %" ru="Симуляция 50 %" /></th>
                 <th className="pb-2 text-right"><Bi fr="Reste (h)" ru="Остаток (ч)" /></th>
               </tr>
             </thead>
@@ -3385,21 +3385,22 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
                     <tr className="cursor-pointer border-t border-stone-100 hover:bg-stone-50" onClick={() => setSimOpen(open ? null : s.id)}>
                       <td className="py-2 pr-4 font-semibold whitespace-nowrap">{open ? "▾ " : "▸ "}{s.name}</td>
                       <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">{s.team}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.bulletinMinutes / 60)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums text-stone-500">{fmtH(r.recordedMinutes / 60)}</td>
-                      <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.simMinutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.bulletinHs25Minutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.bulletinHs50Minutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.simHs25Minutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.simHs50Minutes / 60)}</td>
                       <td className={`py-2 text-right tabular-nums font-bold ${r.leftoverMinutes === 0 ? "text-emerald-700" : "text-red-600"}`}>
                         {r.leftoverMinutes === 0 ? "OK" : fmtH(r.leftoverMinutes / 60)}
                       </td>
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={6} className="bg-stone-50 px-4 py-3">
+                        <td colSpan={7} className="bg-stone-50 px-4 py-3">
                           {r.leftoverMinutes > 0 && (
                             <p className="mb-2 text-xs font-bold text-red-600">
                               <Bi
-                                fr={`Il manque ${fmtH(r.leftoverMinutes / 60)} h, soit environ ${(r.leftoverMinutes / 480).toFixed(1)} jour(s) de 8 h sans saisie dans le logiciel : à justifier par des sources réelles (badge, feuille, congé), pas par un horaire.`}
-                                ru={`Не хватает ${fmtH(r.leftoverMinutes / 60)} ч, примерно ${(r.leftoverMinutes / 480).toFixed(1)} дн. по 8 ч без записи в программе: подтверждать реальными источниками (бейдж, лист, отпуск), а не временем.`}
+                                fr={`Il manque ${fmtH(r.leftoverMinutes / 60)} h de HS : les jours saisis ne permettent pas de les atteindre (jours absents du logiciel) ; à justifier par des sources réelles (badge, feuille, congé), pas par un horaire.`}
+                                ru={`Не хватает ${fmtH(r.leftoverMinutes / 60)} ч сверхурочных: внесённых дней недостаточно (дней нет в программе). Подтверждать реальными источниками (бейдж, лист, отпуск), а не временем.`}
                               />
                             </p>
                           )}
@@ -3416,16 +3417,33 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
                               </tr>
                             </thead>
                             <tbody>
-                              {r.days.map((d) => (
-                                <tr key={d.date} className={d.changeMinutes !== 0 ? "bg-red-50" : ""}>
-                                  <td className="py-1 pr-3 tabular-nums">{fmtDM(d.date)}</td>
-                                  <td className="py-1 pr-3 tabular-nums">{d.start}</td>
-                                  <td className="py-1 pr-3 tabular-nums text-stone-500">{d.end}</td>
-                                  <td className="py-1 pr-3 tabular-nums font-bold">{d.simEnd}</td>
-                                  <td className="py-1 pr-3 text-right tabular-nums">{d.pauseMinutes} min</td>
-                                  <td className="py-1 pr-3 text-right tabular-nums text-stone-500">{fmtH(d.totalMinutes / 60)}</td>
-                                  <td className="py-1 text-right tabular-nums font-bold">{fmtH(d.simTotalMinutes / 60)}</td>
-                                </tr>
+                              {r.weeks.map((w) => (
+                                <Fragment key={w.start}>
+                                  <tr className={`border-t border-stone-200 font-bold ${w.paidThisMonth ? "text-stone-700" : "text-stone-400"}`}>
+                                    <td colSpan={5} className="pt-2 pb-1">
+                                      {fmtDM(w.start)} - {fmtDM(w.end)}
+                                      {w.paidThisMonth ? "" : "  → payée en août (non simulée)"}
+                                      {w.paidThisMonth && (
+                                        <span className="ml-3 font-normal">
+                                          HS 25 % {fmtH(w.hs25Minutes / 60)} · HS 50 % {fmtH(w.hs50Minutes / 60)}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="pt-2 pb-1 pr-3 text-right tabular-nums">{fmtH(w.recordedMinutes / 60)}</td>
+                                    <td className="pt-2 pb-1 text-right tabular-nums">{fmtH(w.simMinutes / 60)}</td>
+                                  </tr>
+                                  {w.days.map((d) => (
+                                    <tr key={d.date} className={`${d.changeMinutes !== 0 ? "bg-red-50" : ""} ${w.paidThisMonth ? "" : "opacity-50"}`}>
+                                      <td className="py-1 pr-3 tabular-nums">{fmtDM(d.date)}</td>
+                                      <td className="py-1 pr-3 tabular-nums">{d.start}</td>
+                                      <td className="py-1 pr-3 tabular-nums text-stone-500">{d.end}</td>
+                                      <td className="py-1 pr-3 tabular-nums font-bold">{d.simEnd}</td>
+                                      <td className="py-1 pr-3 text-right tabular-nums">{d.pauseMinutes} min</td>
+                                      <td className="py-1 pr-3 text-right tabular-nums text-stone-500">{fmtH(d.totalMinutes / 60)}</td>
+                                      <td className="py-1 text-right tabular-nums font-bold">{fmtH(d.simTotalMinutes / 60)}</td>
+                                    </tr>
+                                  ))}
+                                </Fragment>
                               ))}
                             </tbody>
                           </table>
