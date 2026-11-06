@@ -111,6 +111,7 @@ import {
 } from "@/lib/documents/registry";
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import { computeCongesPayes } from "@/lib/conges-payes/compute";
+import { JULY_2026_BULLETIN_HOURS, simulateToBulletin, type SimDayInput } from "@/lib/payroll/bulletinSimulation";
 import { fetchRangeForMonth, weeklyOvertimeFor, weeksOfMonth, WEEKLY_OVERTIME_DEFAULTS, type PointageMinutesRow } from "@/lib/payroll/weeklyOvertime";
 import { addWorkingDays, evalNorm, type NormDef, type NormMode } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
@@ -3160,6 +3161,9 @@ function MoisView({
 // Lecture seule : ne modifie ni les pointages ni aucun document déjà transmis.
 type HebdoRow = PointageMinutesRow & {
   team_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  pause_minutes: number | null;
   employees: { first_name: string; last_name: string; status: EmployeeStatus } | null;
   teams: { name: string } | null;
 };
@@ -3178,6 +3182,8 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
   const [rows, setRows] = useState<HebdoRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [simOn, setSimOn] = useState(false);
+  const [simOpen, setSimOpen] = useState<string | null>(null);
 
   const weeks = useMemo(() => weeksOfMonth(year, month), [year, month]);
 
@@ -3193,7 +3199,7 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
         const { data, error: err } = await supabase
           .from("pointage_entries")
           .select(
-            "employee_id, work_date, team_id, total_minutes, is_absent, employees!pointage_entries_employee_id_fkey(first_name, last_name, status), teams!pointage_entries_team_id_fkey(name)"
+            "employee_id, work_date, team_id, start_time, end_time, pause_minutes, total_minutes, is_absent, employees!pointage_entries_employee_id_fkey(first_name, last_name, status), teams!pointage_entries_team_id_fkey(name)"
           )
           .gte("work_date", start)
           .lte("work_date", end)
@@ -3242,6 +3248,27 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
         (identity.get(a.employeeId)?.name ?? "").localeCompare(identity.get(b.employeeId)?.name ?? "")
     );
   }, [rows, year, month, identity]);
+
+  // SIMULATION interne (juillet 2026) : jours saisis recalés sur les totaux des bulletins. Lecture seule, sans export.
+  const simulation = useMemo(() => {
+    if (!simOn || year !== 2026 || month !== 7) return [];
+    const byEmp = new Map<string, SimDayInput[]>();
+    rows.forEach((r) => {
+      if (r.is_absent || !r.start_time || !r.end_time || !(r.total_minutes ?? 0)) return;
+      if (!r.work_date.startsWith("2026-07")) return;
+      const list = byEmp.get(r.employee_id) ?? [];
+      list.push({ date: r.work_date, start: r.start_time.slice(0, 5), end: r.end_time.slice(0, 5), pauseMinutes: r.pause_minutes ?? 0, totalMinutes: r.total_minutes ?? 0 });
+      byEmp.set(r.employee_id, list);
+    });
+    const out: { id: string; name: string; team: string; result: ReturnType<typeof simulateToBulletin> }[] = [];
+    byEmp.forEach((days, id) => {
+      const idn = identity.get(id);
+      const hours = idn ? JULY_2026_BULLETIN_HOURS[idn.name.toLowerCase()] : undefined;
+      if (hours === undefined) return;
+      out.push({ id, name: idn?.name ?? id, team: idn?.team ?? "-", result: simulateToBulletin(days, hours) });
+    });
+    return out.sort((a, b) => a.team.localeCompare(b.team, undefined, { numeric: true }) || a.name.localeCompare(b.name));
+  }, [simOn, rows, year, month, identity]);
 
   function exportXlsx() {
     const data = results.map((r) => {
@@ -3311,11 +3338,105 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
           <Download size={16} className="inline mr-1" />
           <Bi fr="Exporter en Excel" ru="Выгрузить в Excel" />
         </button>
+        {year === 2026 && month === 7 && (
+          <button type="button" className={simOn ? "btn-secondary border-red-500 text-red-700" : "btn-secondary"} onClick={() => setSimOn((v) => !v)}>
+            <Bi fr="Simulation : jours calés sur les bulletins" ru="Симуляция: дни под бюллетени" />
+          </button>
+        )}
       </div>
 
       {error && (
         <div className="card mb-4 text-red-600 text-sm">
           <Bi fr="Erreur de chargement : " ru="Ошибка загрузки: " /> {error}
+        </div>
+      )}
+
+      {simOn && year === 2026 && month === 7 && !loading && (
+        <div className="card mb-4 overflow-x-auto border-2 border-red-400">
+          <div className="mb-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-700">
+            <Bi
+              fr="SIMULATION INTERNE – ce n'est PAS un relevé d'heures. Les horaires ci-dessous n'ont jamais été effectués ni enregistrés ; rien n'est écrit dans la base. Ne pas transmettre."
+              ru="ВНУТРЕННЯЯ СИМУЛЯЦИЯ, не документ. Времена ниже реально не отработаны и нигде не записаны, в базу ничего не пишется. Не передавать."
+            />
+          </div>
+          <p className="mb-3 text-xs text-stone-500">
+            <Bi
+              fr="Les jours réellement saisis sont conservés ; l'écart avec le total du bulletin est réparti à parts égales en décalant l'heure de fin (pas de 5 min, 10 h max par jour). Aucun jour n'est inventé : ce qui ne peut pas être couvert est indiqué en « reste »."
+              ru="Реально внесённые дни сохраняются; разница с итогом бюллетеня распределяется поровну сдвигом времени конца (шаг 5 мин, не больше 10 ч в день). Новые дни не придумываются: что не удаётся покрыть, показано в «остатке»."
+            />
+          </p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-stone-400">
+                <th className="pb-2 pr-4"><Bi fr="Salarié" ru="Сотрудник" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Bulletin (h)" ru="Бюллетень (ч)" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Saisi (h)" ru="Внесено (ч)" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Simulé (h)" ru="Симуляция (ч)" /></th>
+                <th className="pb-2 text-right"><Bi fr="Reste (h)" ru="Остаток (ч)" /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {simulation.map((s) => {
+                const r = s.result;
+                const open = simOpen === s.id;
+                return (
+                  <Fragment key={s.id}>
+                    <tr className="cursor-pointer border-t border-stone-100 hover:bg-stone-50" onClick={() => setSimOpen(open ? null : s.id)}>
+                      <td className="py-2 pr-4 font-semibold whitespace-nowrap">{open ? "▾ " : "▸ "}{s.name}</td>
+                      <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">{s.team}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.bulletinMinutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums text-stone-500">{fmtH(r.recordedMinutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.simMinutes / 60)}</td>
+                      <td className={`py-2 text-right tabular-nums font-bold ${r.leftoverMinutes === 0 ? "text-emerald-700" : "text-red-600"}`}>
+                        {r.leftoverMinutes === 0 ? "OK" : fmtH(r.leftoverMinutes / 60)}
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr>
+                        <td colSpan={6} className="bg-stone-50 px-4 py-3">
+                          {r.leftoverMinutes > 0 && (
+                            <p className="mb-2 text-xs font-bold text-red-600">
+                              <Bi
+                                fr={`Il manque ${fmtH(r.leftoverMinutes / 60)} h, soit environ ${(r.leftoverMinutes / 480).toFixed(1)} jour(s) de 8 h sans saisie dans le logiciel : à justifier par des sources réelles (badge, feuille, congé), pas par un horaire.`}
+                                ru={`Не хватает ${fmtH(r.leftoverMinutes / 60)} ч, примерно ${(r.leftoverMinutes / 480).toFixed(1)} дн. по 8 ч без записи в программе: подтверждать реальными источниками (бейдж, лист, отпуск), а не временем.`}
+                              />
+                            </p>
+                          )}
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-stone-400">
+                                <th className="pb-1 pr-3">Date</th>
+                                <th className="pb-1 pr-3">Début</th>
+                                <th className="pb-1 pr-3">Fin saisie</th>
+                                <th className="pb-1 pr-3">Fin simulée</th>
+                                <th className="pb-1 pr-3 text-right">Pause</th>
+                                <th className="pb-1 pr-3 text-right">Total saisi</th>
+                                <th className="pb-1 text-right">Total simulé</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {r.days.map((d) => (
+                                <tr key={d.date} className={d.changeMinutes !== 0 ? "bg-red-50" : ""}>
+                                  <td className="py-1 pr-3 tabular-nums">{fmtDM(d.date)}</td>
+                                  <td className="py-1 pr-3 tabular-nums">{d.start}</td>
+                                  <td className="py-1 pr-3 tabular-nums text-stone-500">{d.end}</td>
+                                  <td className="py-1 pr-3 tabular-nums font-bold">{d.simEnd}</td>
+                                  <td className="py-1 pr-3 text-right tabular-nums">{d.pauseMinutes} min</td>
+                                  <td className="py-1 pr-3 text-right tabular-nums text-stone-500">{fmtH(d.totalMinutes / 60)}</td>
+                                  <td className="py-1 text-right tabular-nums font-bold">{fmtH(d.simTotalMinutes / 60)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
