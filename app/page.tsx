@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { formatLive, normalizeTime, timeToMinutes } from "@/lib/time";
+import { formatLive, minutesToHHMM, normalizeTime, overtimeMinutesFromEnd, timeToMinutes } from "@/lib/time";
 import { LogoMark } from "@/components/Logo";
 import { Skeleton } from "@/components/Skeleton";
 import { EmptyState } from "@/components/StateMessage";
@@ -200,7 +200,9 @@ export default function Home() {
       start_time: w.absent || !w.start ? null : w.start,
       end_time: w.absent || !w.end ? null : w.end,
       pause_minutes: w.absent ? null : timeToMinutes(w.pause),
-      overtime_minutes: w.absent ? null : timeToMinutes(w.extra),
+      // H. supp = temps après 17:00, calculé depuis l'heure de fin (le trigger SQL le recalcule aussi)
+      overtime_minutes: w.absent ? null : overtimeMinutesFromEnd(w.end),
+      end_includes_overtime: true,
       is_absent: w.absent,
       absence_type_id: w.absent && w.absenceTypeId ? w.absenceTypeId : null,
     }));
@@ -370,12 +372,19 @@ export default function Home() {
                     value={w.pause}
                     onChange={(v) => updateWorker(i, "pause", v)}
                   />
-                  <Time
-                    label="H. supp"
-                    ru="Перераб."
-                    value={w.extra}
-                    onChange={(v) => updateWorker(i, "extra", v)}
-                  />
+                  <div>
+                    <label className="text-xs font-bold text-stone-500">
+                      H. supp
+                      <span className="block text-[10px] font-medium text-stone-400">Перераб. (авто, после 17:00)</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input bg-stone-50 text-stone-500"
+                      readOnly
+                      tabIndex={-1}
+                      value={minutesToHHMM(overtimeMinutesFromEnd(w.end))}
+                    />
+                  </div>
                 </div>
               )}
 

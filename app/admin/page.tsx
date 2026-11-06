@@ -102,7 +102,7 @@ import {
   type HrGroupKey,
   type DateRange,
 } from "@/lib/hr/dashboardMetrics";
-import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM } from "@/lib/time";
+import { formatLive, normalizeTime, timeToMinutes, minutesToHHMM, overtimeMinutesFromEnd } from "@/lib/time";
 import {
   DOCUMENT_TYPES,
   getDocumentType,
@@ -216,6 +216,7 @@ type PointageRow = {
   is_absent: boolean;
   total_minutes: number | null;
   absence_type_id?: string | null;
+  end_includes_overtime?: boolean | null;
   absence_types: { label: string } | null;
 };
 
@@ -455,7 +456,7 @@ function monthRange(year: number, month: number) {
 }
 
 const POINTAGE_SELECT =
-  "employee_id, work_date, team_id, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, absence_types(label)";
+  "employee_id, work_date, team_id, start_time, end_time, pause_minutes, overtime_minutes, is_absent, absence_type_id, total_minutes, end_includes_overtime, absence_types(label)";
 
 type ViewKey =
   | "jour"
@@ -2022,9 +2023,20 @@ function JourView({
     setEditingId(e.id);
     setEditForm({
       start: minutesToHHMM(r && !r.is_absent ? timeStrToMinutes(r.start_time) : null),
-      end: minutesToHHMM(r && !r.is_absent ? timeStrToMinutes(r.end_time) : null),
+      // Ancienne saisie (fin 17:00 + H. supp à part) : on affiche la vraie fin = fin + H. supp
+      end: minutesToHHMM(
+        r && !r.is_absent
+          ? (() => {
+              const e0 = timeStrToMinutes(r.end_time);
+              if (e0 === null || e0 === undefined) return null;
+              const legacy = !r.end_includes_overtime;
+              const shifted = legacy ? e0 + (r.overtime_minutes ?? 0) : e0;
+              return shifted < 24 * 60 ? shifted : e0;
+            })()
+          : null
+      ),
       pause: minutesToHHMM(r?.pause_minutes ?? null),
-      extra: minutesToHHMM(r?.overtime_minutes ?? null),
+      extra: "",
       absent: r?.is_absent ?? false,
       absenceTypeId: r?.absence_type_id ?? "",
     });
@@ -2041,7 +2053,8 @@ function JourView({
       start_time: editForm.absent || !editForm.start ? null : editForm.start,
       end_time: editForm.absent || !editForm.end ? null : editForm.end,
       pause_minutes: editForm.absent ? null : timeToMinutes(editForm.pause),
-      overtime_minutes: editForm.absent ? null : timeToMinutes(editForm.extra),
+      overtime_minutes: editForm.absent ? null : overtimeMinutesFromEnd(editForm.end),
+      end_includes_overtime: true,
       is_absent: editForm.absent,
       absence_type_id: editForm.absent && editForm.absenceTypeId ? editForm.absenceTypeId : null,
     };
@@ -2217,9 +2230,9 @@ function JourView({
                             />
                             <EditTime
                               label="H. Supp"
-                              labelRu="Сверхур."
-                              value={editForm.extra}
-                              onChange={(v) => setEditForm({ ...editForm, extra: v })}
+                              labelRu="Авто, после 17:00"
+                              value={minutesToHHMM(overtimeMinutesFromEnd(editForm.end))}
+                              readOnly
                             />
                           </>
                         )}
@@ -2382,9 +2395,9 @@ function JourView({
                                 />
                                 <EditTime
                                   label="H. Supp"
-                                  labelRu="Сверхур."
-                                  value={editForm.extra}
-                                  onChange={(v) => setEditForm({ ...editForm, extra: v })}
+                                  labelRu="Авто, после 17:00"
+                                  value={minutesToHHMM(overtimeMinutesFromEnd(editForm.end))}
+                                  readOnly
                                 />
                               </>
                             )}
@@ -2495,11 +2508,13 @@ function EditTime({
   labelRu,
   value,
   onChange,
+  readOnly,
 }: {
   label: string;
   labelRu?: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange?: (v: string) => void;
+  readOnly?: boolean;
 }) {
   return (
     <div>
@@ -2509,11 +2524,13 @@ function EditTime({
       <input
         type="text"
         inputMode="numeric"
-        className="input"
+        className={readOnly ? "input bg-stone-50 text-stone-500" : "input"}
         style={{ width: "5.5rem" }}
         value={value}
-        onChange={(ev) => onChange(formatLive(ev.target.value))}
-        onBlur={(ev) => onChange(normalizeTime(ev.target.value))}
+        readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
+        onChange={(ev) => onChange?.(formatLive(ev.target.value))}
+        onBlur={(ev) => onChange?.(normalizeTime(ev.target.value))}
       />
     </div>
   );
@@ -3553,6 +3570,7 @@ function ExportImportView({
           end_time: isAbsent ? null : parseTimeCell(row["Fin"]),
           pause_minutes: isAbsent ? null : Number(row["Pause (min)"]) || 0,
           overtime_minutes: isAbsent ? null : Number(row["Heures Supp (min)"]) || 0,
+          end_includes_overtime: false, // l'export Excel garde l'ancien format : fin + H. supp à part
           is_absent: isAbsent,
           absence_type_id: absenceTypeId,
         });
@@ -17176,6 +17194,7 @@ function PaieView({
         .select("id")
         .eq("employee_id", e.id)
         .eq("is_absent", false)
+        .eq("end_includes_overtime", false) // nouvelle saisie : H. supp déduites de l'heure de fin, pas modifiables ici
         .gte("work_date", start)
         .lte("work_date", end)
         .order("work_date");

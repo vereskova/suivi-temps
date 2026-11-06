@@ -30,3 +30,13 @@ export function minutesToHHMM(min: number | null | undefined) {
   const m = min % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
+
+/** Fin de journée standard : les heures supplémentaires sont le temps travaillé
+ *  APRÈS cette heure (fin 17:40 -> 40 min de H. supp). */
+export const STANDARD_END = "17:00";
+
+/** H. supp (en minutes) déduites de l'heure de fin saisie. */
+export function overtimeMinutesFromEnd(end: string | null | undefined) {
+  if (!end) return 0;
+  return Math.max(0, timeToMinutes(end) - timeToMinutes(STANDARD_END));
+}
