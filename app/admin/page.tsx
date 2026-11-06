@@ -18131,8 +18131,10 @@ type BankOtherMonths = {
   dayRows: TeamDayRow[];
   /** Équipe actuelle de chaque salarié d'équipe chantier (sert quand il n'y a aucun pointage). */
   teamOf: Record<string, string>;
+  /** Salariés sortis : leurs pénalités alimentent le pool (total) mais ne comptent plus dans le classement de l'équipe. */
+  terminatedIds: string[];
 };
-const EMPTY_BANK_OTHER: BankOtherMonths = { total: 0, lines: [], dayRows: [], teamOf: {} };
+const EMPTY_BANK_OTHER: BankOtherMonths = { total: 0, lines: [], dayRows: [], teamOf: {}, terminatedIds: [] };
 async function loadBankOtherMonths(
   supabase: ReturnType<typeof createClient>,
   periodStart: string,
@@ -18141,12 +18143,16 @@ async function loadBankOtherMonths(
   const periodMonth = `${periodStart.slice(0, 7)}-01`;
   const { data: emps } = await supabase
     .from("employees")
-    .select("id, team_id, contract_type, teams!employees_team_id_fkey(name)")
+    .select("id, team_id, contract_type, status, teams!employees_team_id_fkey(name)")
     .eq("category", "chantier")
     .not("team_id", "is", null);
   const teamOf: Record<string, string> = {};
-  ((emps ?? []) as unknown as { id: string; team_id: string; contract_type: string | null; teams: { name: string } | null }[]).forEach((e) => {
-    if (e.teams?.name && e.contract_type !== "FOP") teamOf[e.id] = e.team_id;
+  const terminatedIds: string[] = [];
+  ((emps ?? []) as unknown as { id: string; team_id: string; contract_type: string | null; status: string | null; teams: { name: string } | null }[]).forEach((e) => {
+    if (e.teams?.name && e.contract_type !== "FOP") {
+      teamOf[e.id] = e.team_id;
+      if (e.status === "terminated") terminatedIds.push(e.id);
+    }
   });
   const empIds = Object.keys(teamOf);
   if (empIds.length === 0) return EMPTY_BANK_OTHER;
@@ -18184,6 +18190,7 @@ async function loadBankOtherMonths(
     lines,
     dayRows: aggregateTeamDays(pointage),
     teamOf,
+    terminatedIds,
   };
 }
 
@@ -19595,7 +19602,14 @@ function PayrollExtrasView({
         })
       : [];
     const teamNow = new Map(employees.filter(inTeam).map((e) => [e.id, e.team_id as string]));
-    const allocated = allocatePenaltiesToTeams([...bankOther.lines, ...liveLines], bankOther.dayRows, (id) => bankOther.teamOf[id] ?? teamNow.get(id) ?? null);
+    // Les pénalités d'un salarié déjà parti ne pèsent plus sur l'équipe : sinon une nouvelle composition
+    // hérite des pénalités de l'ancienne (elles restent dans le pool, seul le classement change).
+    const gone = new Set<string>([...bankOther.terminatedIds, ...employees.filter((e) => e.status === "terminated").map((e) => e.id)]);
+    const allocated = allocatePenaltiesToTeams(
+      [...bankOther.lines, ...liveLines].filter((l) => !gone.has(l.employeeId)),
+      bankOther.dayRows,
+      (id) => bankOther.teamOf[id] ?? teamNow.get(id) ?? null
+    );
     const byTeam = new Map<string, TeamStanding>();
     employees.forEach((e) => {
       if (!inTeam(e) || e.status === "terminated" || byTeam.has(e.team_id!)) return;
