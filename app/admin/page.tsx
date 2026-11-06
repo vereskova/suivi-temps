@@ -111,6 +111,7 @@ import {
 } from "@/lib/documents/registry";
 import { computeRupture, RuptureType } from "@/lib/rupture/compute";
 import { computeCongesPayes } from "@/lib/conges-payes/compute";
+import { fetchRangeForMonth, weeklyOvertimeFor, weeksOfMonth, WEEKLY_OVERTIME_DEFAULTS, type PointageMinutesRow } from "@/lib/payroll/weeklyOvertime";
 import { addWorkingDays, evalNorm, type NormDef, type NormMode } from "@/lib/commercial-durations/compute";
 import { formatEuros } from "@/lib/documents/helpers";
 import {
@@ -460,6 +461,7 @@ type ViewKey =
   | "jour"
   | "employe"
   | "mois"
+  | "hebdo"
   | "export"
   | "planning"
   | "effectif"
@@ -498,6 +500,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "jour", label: "Par jour", labelRu: "По дням", icon: CalendarDays },
       { key: "employe", label: "Par employé", labelRu: "По сотруднику", icon: User },
       { key: "mois", label: "Totaux du mois", labelRu: "Итоги за месяц", icon: BarChart3 },
+      { key: "hebdo", label: "Recalcul hebdo", labelRu: "Пересчёт по неделям", icon: ListChecks },
       { key: "export", label: "Export / Import", labelRu: "Экспорт / Импорт", icon: FileSpreadsheet },
     ],
   },
@@ -1678,6 +1681,7 @@ export default function AdminPage() {
             {view === "mois" && (
               <MoisView supabase={supabase} employees={employees} />
             )}
+            {view === "hebdo" && <HebdoView supabase={supabase} />}
             {view === "export" && (
               <ExportImportView
                 supabase={supabase}
@@ -3130,6 +3134,231 @@ function MoisView({
           </div>
         )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Vue "Recalcul hebdo" - contrôle des heures sup. comptées par semaine ────
+// Lecture seule : ne modifie ni les pointages ni aucun document déjà transmis.
+type HebdoRow = PointageMinutesRow & {
+  team_id: string | null;
+  employees: { first_name: string; last_name: string; status: EmployeeStatus } | null;
+  teams: { name: string } | null;
+};
+
+function fmtH(n: number): string {
+  return n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtDM(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+}
+
+function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [rows, setRows] = useState<HebdoRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const weeks = useMemo(() => weeksOfMonth(year, month), [year, month]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      const { start, end } = fetchRangeForMonth(year, month);
+      const all: HebdoRow[] = [];
+      // PostgREST plafonne à 1000 lignes par requête : on pagine.
+      for (let from = 0; ; from += 1000) {
+        const { data, error: err } = await supabase
+          .from("pointage_entries")
+          .select(
+            "employee_id, work_date, team_id, total_minutes, is_absent, employees!pointage_entries_employee_id_fkey(first_name, last_name, status), teams!pointage_entries_team_id_fkey(name)"
+          )
+          .gte("work_date", start)
+          .lte("work_date", end)
+          .order("work_date", { ascending: true })
+          .order("employee_id", { ascending: true })
+          .range(from, from + 999);
+        if (err) {
+          if (!cancelled) setError(err.message);
+          break;
+        }
+        const page = (data as unknown as HebdoRow[]) ?? [];
+        all.push(...page);
+        if (page.length < 1000) break;
+      }
+      if (!cancelled) {
+        setRows(all);
+        setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [year, month, supabase]);
+
+  const identity = useMemo(() => {
+    const map = new Map<string, { name: string; team: string; lastDate: string }>();
+    rows.forEach((r) => {
+      const prev = map.get(r.employee_id);
+      if (!prev || r.work_date >= prev.lastDate) {
+        map.set(r.employee_id, {
+          name: r.employees ? `${r.employees.last_name.toUpperCase()} ${r.employees.first_name}` : r.employee_id,
+          team: r.teams?.name ?? prev?.team ?? "-",
+          lastDate: r.work_date,
+        });
+      }
+    });
+    return map;
+  }, [rows]);
+
+  const results = useMemo(() => {
+    const list = weeklyOvertimeFor(rows, year, month);
+    return list.sort(
+      (a, b) =>
+        (identity.get(a.employeeId)?.team ?? "").localeCompare(identity.get(b.employeeId)?.team ?? "", undefined, { numeric: true }) ||
+        (identity.get(a.employeeId)?.name ?? "").localeCompare(identity.get(b.employeeId)?.name ?? "")
+    );
+  }, [rows, year, month, identity]);
+
+  function exportXlsx() {
+    const data = results.map((r) => {
+      const idn = identity.get(r.employeeId);
+      const line: Record<string, string | number> = { Salarié: idn?.name ?? "", Équipe: idn?.team ?? "" };
+      weeks.forEach((w, i) => {
+        line[`Semaine ${fmtDM(w.start)}-${fmtDM(w.end)}${w.paidThisMonth ? "" : " (payée le mois suivant)"}`] = Number(r.weeks[i].hours.toFixed(2));
+      });
+      line["HS 25 % à payer ce mois (h)"] = Number(r.hs25Month.toFixed(2));
+      line["HS 50 % à payer ce mois (h)"] = Number(r.hs50Month.toFixed(2));
+      line["HS reportées sur le mois suivant (h)"] = Number(r.hsCarried.toFixed(2));
+      line["Heures théoriques à payer ce mois (h)"] = Number(r.theoreticalHours.toFixed(2));
+      line["Heures saisies dans le mois (h)"] = Number(r.recordedHoursMonth.toFixed(2));
+      return line;
+    });
+    const sheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, "Recalcul hebdo");
+    const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `recalcul_hebdo_${year}-${String(month).padStart(2, "0")}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const { baseMonthlyHours, threshold25, threshold50 } = WEEKLY_OVERTIME_DEFAULTS;
+
+  return (
+    <div>
+      <div className="mb-3 font-bold">
+        <Bi
+          fr="Recalcul hebdomadaire"
+          ru="Пересчёт часов по неделям"
+          after={
+            <InfoNote
+              title="Recalcul hebdomadaire"
+              text={
+                "Контрольная таблица: показывает, сколько получилось бы сверхурочных, если считать их по неделям (понедельник-воскресенье), как объяснил бухгалтер FITECO.\n\n" +
+                `Правило: с ${threshold25 + 1}-го часа недели +25 %, с ${threshold50 + 1}-го часа +50 %. База месяца - ${baseMonthlyHours} ч (mensualisation), независимо от числа рабочих дней.\n\n` +
+                "Неделя на стыке двух месяцев оплачивается в том месяце, где она заканчивается: её сверхурочные показаны отдельно как «перенос» и в этом месяце не считаются.\n\n" +
+                "Таблица ничего не меняет: часы берутся из «Par jour» как есть, правок и записи в базу нет. Если часов за день нет в «Par jour», в расчёте их тоже нет, а не подставлены."
+              }
+            />
+          }
+        />
+      </div>
+
+      <div className="card mb-4 flex flex-wrap gap-4 items-end">
+        <label className="font-bold text-sm">
+          <Bi fr="Mois" ru="Месяц" />
+          <select className="input mt-2" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+            {MONTHS_FR.map((m, i) => (
+              <option key={m} value={i + 1}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="font-bold text-sm">
+          <Bi fr="Année" ru="Год" />
+          <input type="number" className="input mt-2" value={year} onChange={(e) => setYear(Number(e.target.value))} />
+        </label>
+        <button type="button" className="btn-secondary" onClick={exportXlsx} disabled={loading || results.length === 0}>
+          <Download size={16} className="inline mr-1" />
+          <Bi fr="Exporter en Excel" ru="Выгрузить в Excel" />
+        </button>
+      </div>
+
+      {error && (
+        <div className="card mb-4 text-red-600 text-sm">
+          <Bi fr="Erreur de chargement : " ru="Ошибка загрузки: " /> {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="card">
+          <SkeletonRows rows={6} cols={8} />
+        </div>
+      ) : results.length === 0 ? (
+        <div className="card text-stone-400 text-sm">
+          <Bi fr="Aucune donnée de pointage ce mois-ci." ru="За этот месяц нет данных по часам." />
+        </div>
+      ) : (
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-stone-400">
+                <th className="pb-2 pr-4"><Bi fr="Salarié" ru="Сотрудник" /></th>
+                <th className="pb-2 pr-4"><Bi fr="Équipe" ru="Бригада" /></th>
+                {weeks.map((w) => (
+                  <th key={w.start} className={`pb-2 pr-3 text-right whitespace-nowrap ${w.paidThisMonth ? "" : "opacity-60"}`}>
+                    {fmtDM(w.start)}-{fmtDM(w.end)}
+                    {!w.paidThisMonth && <span className="block text-[0.7em] font-normal">→ <Bi fr="mois suiv." ru="след. месяц" /></span>}
+                  </th>
+                ))}
+                <th className="pb-2 pr-3 text-right">HS 25 %</th>
+                <th className="pb-2 pr-3 text-right">HS 50 %</th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Reportées" ru="Перенос" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="À payer (h)" ru="К оплате (ч)" /></th>
+                <th className="pb-2 text-right"><Bi fr="Saisi (h)" ru="Внесено (ч)" /></th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r) => {
+                const idn = identity.get(r.employeeId);
+                return (
+                  <tr key={r.employeeId} className="border-t border-stone-100">
+                    <td className="py-2 pr-4 font-semibold whitespace-nowrap">{idn?.name}</td>
+                    <td className="py-2 pr-4 text-stone-500 whitespace-nowrap">{idn?.team}</td>
+                    {r.weeks.map((wk, i) => (
+                      <td key={i} className={`py-2 pr-3 text-right tabular-nums ${weeks[i].paidThisMonth ? "" : "opacity-60"}`}>
+                        {wk.days > 0 ? fmtH(wk.hours) : "-"}
+                      </td>
+                    ))}
+                    <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.hs25Month)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.hs50Month)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums opacity-70">{fmtH(r.hsCarried)}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.theoreticalHours)}</td>
+                    <td className="py-2 text-right tabular-nums text-stone-500">{fmtH(r.recordedHoursMonth)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-stone-400">
+            <Bi
+              fr={`Base ${baseMonthlyHours} h + HS 25 % (de la ${threshold25 + 1}e à la ${threshold50}e heure de la semaine) + HS 50 % (à partir de la ${threshold50 + 1}e). Semaines affichées en gris : payées le mois suivant. Les 1res/dernières semaines incluent les jours du mois voisin.`}
+              ru={`База ${baseMonthlyHours} ч + 25 % (с ${threshold25 + 1}-го по ${threshold50}-й час недели) + 50 % (с ${threshold50 + 1}-го). Серые недели оплачиваются в следующем месяце. Первая и последняя недели включают дни соседнего месяца.`}
+            />
+          </p>
+        </div>
       )}
     </div>
   );
