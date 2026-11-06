@@ -3373,6 +3373,8 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
                 <th className="pb-2 pr-3 text-right"><Bi fr="Bulletin HS 50 %" ru="Бюллетень 50 %" /></th>
                 <th className="pb-2 pr-3 text-right"><Bi fr="Simulé HS 25 %" ru="Симуляция 25 %" /></th>
                 <th className="pb-2 pr-3 text-right"><Bi fr="Simulé HS 50 %" ru="Симуляция 50 %" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Total bulletin (h)" ru="Итого бюллетень (ч)" /></th>
+                <th className="pb-2 pr-3 text-right"><Bi fr="Total simulé (h)" ru="Итого симуляция (ч)" /></th>
                 <th className="pb-2 text-right"><Bi fr="Reste (h)" ru="Остаток (ч)" /></th>
               </tr>
             </thead>
@@ -3389,13 +3391,15 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
                       <td className="py-2 pr-3 text-right tabular-nums">{fmtH(r.bulletinHs50Minutes / 60)}</td>
                       <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.simHs25Minutes / 60)}</td>
                       <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(r.simHs50Minutes / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmtH(baseMonthlyHours + (r.bulletinHs25Minutes + r.bulletinHs50Minutes) / 60)}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums font-bold">{fmtH(baseMonthlyHours + (r.simHs25Minutes + r.simHs50Minutes) / 60)}</td>
                       <td className={`py-2 text-right tabular-nums font-bold ${r.leftoverMinutes === 0 ? "text-emerald-700" : "text-red-600"}`}>
                         {r.leftoverMinutes === 0 ? "OK" : fmtH(r.leftoverMinutes / 60)}
                       </td>
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={7} className="bg-stone-50 px-4 py-3">
+                        <td colSpan={9} className="bg-stone-50 px-4 py-3">
                           {r.leftoverMinutes > 0 && (
                             <p className="mb-2 text-xs font-bold text-red-600">
                               <Bi
@@ -3445,6 +3449,33 @@ function HebdoView({ supabase }: { supabase: ReturnType<typeof createClient> }) 
                                   ))}
                                 </Fragment>
                               ))}
+                              <tr className="border-t-2 border-stone-300 font-bold">
+                                <td colSpan={5} className="pt-2">
+                                  <Bi fr="Total (semaines payées en juillet)" ru="Итого (недели, оплачиваемые в июле)" />
+                                </td>
+                                <td className="pt-2 pr-3 text-right tabular-nums text-stone-500">
+                                  {fmtH(r.weeks.filter((w) => w.paidThisMonth).reduce((t, w) => t + w.recordedMinutes, 0) / 60)}
+                                </td>
+                                <td className="pt-2 text-right tabular-nums">
+                                  {fmtH(r.weeks.filter((w) => w.paidThisMonth).reduce((t, w) => t + w.simMinutes, 0) / 60)}
+                                </td>
+                              </tr>
+                              <tr className="font-bold">
+                                <td colSpan={5} className="pt-1">
+                                  <Bi
+                                    fr={`À payer = base ${fmtH(baseMonthlyHours)} h + HS 25 % + HS 50 %`}
+                                    ru={`К оплате = база ${fmtH(baseMonthlyHours)} ч + 25 % + 50 %`}
+                                  />
+                                </td>
+                                <td className="pt-1 pr-3 text-right tabular-nums text-stone-500">
+                                  {fmtH(baseMonthlyHours + (r.bulletinHs25Minutes + r.bulletinHs50Minutes) / 60)}
+                                  <span className="block text-[10px] font-normal">bulletin / бюллетень</span>
+                                </td>
+                                <td className="pt-1 text-right tabular-nums">
+                                  {fmtH(baseMonthlyHours + (r.simHs25Minutes + r.simHs50Minutes) / 60)}
+                                  <span className="block text-[10px] font-normal">simulé / симуляция</span>
+                                </td>
+                              </tr>
                             </tbody>
                           </table>
                         </td>
