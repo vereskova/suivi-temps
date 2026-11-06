@@ -2873,7 +2873,7 @@ function EmployeeMonthGrid({
           </p>
           <p className="font-black">{fmtMinutes(totalMinutes)}</p>
         </div>
-        {weekly && (
+        {weekly && weekly.weeks.some((w) => w.days > 0) && (
           <div className="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-900">
             <p>
               HS (méthode Amaral) / Сверхур.: 25 % {fmtH(weekly.hs25Month)} · 50 % {fmtH(weekly.hs50Month)} · reportées / перенос {fmtH(weekly.hsCarried)}
@@ -2967,18 +2967,18 @@ function EmployeeMonthGrid({
               </td>
               <td className="pt-3 font-black">{fmtMinutes(totalMinutes)}</td>
             </tr>
-            {weekly && (
+            {weekly && weekly.weeks.some((w) => w.days > 0) && (
               <>
                 <tr className="text-indigo-900">
-                  <td colSpan={6} className="pt-2 text-right text-xs font-bold">
+                  <td colSpan={6} className="pt-2 pr-4 text-right text-xs font-bold">
                     Heures supp. à la semaine (méthode Amaral) / Сверхурочные по неделям (метод Микаэля) : HS 25 % · HS 50 % · reportées / перенос
                   </td>
-                  <td className="pt-2 text-xs font-bold tabular-nums">
+                  <td className="pt-2 whitespace-nowrap text-xs font-bold tabular-nums">
                     {fmtH(weekly.hs25Month)} · {fmtH(weekly.hs50Month)} · {fmtH(weekly.hsCarried)}
                   </td>
                 </tr>
                 <tr className="text-indigo-900">
-                  <td colSpan={6} className="text-right text-xs font-bold">
+                  <td colSpan={6} className="pr-4 text-right text-xs font-bold">
                     À payer = base {fmtH(WEEKLY_OVERTIME_DEFAULTS.baseMonthlyHours)} h (temps plein) + HS / К оплате = база + сверхурочные
                   </td>
                   <td className="text-xs font-black tabular-nums">{fmtH(weekly.theoreticalHours)} h</td>
