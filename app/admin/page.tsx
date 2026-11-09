@@ -2608,6 +2608,8 @@ function EmployeView({
     return map;
   }, [allRows, year, month]);
   const monthWeeks = useMemo(() => weeksOfMonth(year, month), [year, month]);
+  // Bilan HS "méthode Amaral" uniquement à partir d'octobre 2026 (les mois antérieurs restent tels quels).
+  const showWeekly = year * 12 + month >= 2026 * 12 + 10;
 
   const rowsByEmployee = useMemo(() => {
     const map = new Map<string, EmployeViewRow[]>();
@@ -2767,7 +2769,7 @@ function EmployeView({
                   byDate={byDate}
                   totalMinutes={totalMinutes}
                   weeks={monthWeeks}
-                  weekly={weeklyByEmployee.get(emp.id)}
+                  weekly={showWeekly ? weeklyByEmployee.get(emp.id) : undefined}
                 />
               </div>
             );
