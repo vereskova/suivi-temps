@@ -13396,6 +13396,7 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   penalite_montant: "Штраф контроль",
   penalite_raison: "Raison Штраф",
   penalite_contestee: "Оспорено (возврат штрафа)",
+  penalite_contestee_raison: "Raison Оспорено",
   penalite_directe: "Штраф прочее",
   penalite_directe_raison: "Raison Штраф прочее",
   vacance_jours: "Vacance (j)",
@@ -18511,6 +18512,7 @@ type ExtrasLineInput = {
   penaliteMontant: string;
   penaliteRaison: string;
   penaliteContestee: string;
+  penaliteContesteeRaison: string;
   penaliteDirecteMontant: string;
   penaliteDirecteRaison: string;
   vacanceJours: string;
@@ -18529,6 +18531,7 @@ const EMPTY_EXTRAS_LINE: ExtrasLineInput = {
   penaliteMontant: "",
   penaliteRaison: "",
   penaliteContestee: "",
+  penaliteContesteeRaison: "",
   penaliteDirecteMontant: "",
   penaliteDirecteRaison: "",
   vacanceJours: "",
@@ -18793,6 +18796,8 @@ function extrasFieldColumns(
       return { penalite_raison: line.penaliteRaison || null, penalite_raison_by: meta.by, penalite_raison_at: meta.at };
     case "penaliteContestee":
       return { penalite_contestee: num(line.penaliteContestee) };
+    case "penaliteContesteeRaison":
+      return { penalite_contestee_raison: line.penaliteContesteeRaison || null, penalite_contestee_raison_by: meta.by, penalite_contestee_raison_at: meta.at };
     case "penaliteDirecteMontant":
       return { penalite_directe: num(line.penaliteDirecteMontant) };
     case "penaliteDirecteRaison":
@@ -18825,6 +18830,7 @@ function extrasLineFromRow(l: any): ExtrasLineInput {
     penaliteMontant: l.penalite_montant ? String(l.penalite_montant) : "",
     penaliteRaison: l.penalite_raison ?? "",
     penaliteContestee: l.penalite_contestee ? String(l.penalite_contestee) : "",
+    penaliteContesteeRaison: l.penalite_contestee_raison ?? "",
     penaliteDirecteMontant: l.penalite_directe ? String(l.penalite_directe) : "",
     penaliteDirecteRaison: l.penalite_directe_raison ?? "",
     vacanceJours: l.vacance_jours ? String(l.vacance_jours) : "",
@@ -19473,6 +19479,9 @@ function PayrollExtrasView({
         penaliteDirecteRaison: string;
         penaliteDirecteRaisonBy: string | null;
         penaliteDirecteRaisonAt: string | null;
+        penaliteContesteeRaison: string;
+        penaliteContesteeRaisonBy: string | null;
+        penaliteContesteeRaisonAt: string | null;
         bonusDirectRaison: string;
         bonusDirectRaisonBy: string | null;
         bonusDirectRaisonAt: string | null;
@@ -19674,6 +19683,7 @@ function PayrollExtrasView({
             penaliteMontant: l?.penalite_montant ? String(l.penalite_montant) : "",
             penaliteRaison: l?.penalite_raison ?? "",
             penaliteContestee: l?.penalite_contestee ? String(l.penalite_contestee) : "",
+            penaliteContesteeRaison: l?.penalite_contestee_raison ?? "",
             penaliteDirecteMontant: l?.penalite_directe ? String(l.penalite_directe) : "",
             penaliteDirecteRaison: l?.penalite_directe_raison ?? "",
             vacanceJours: l?.vacance_jours ? String(l.vacance_jours) : "",
@@ -19697,6 +19707,9 @@ function PayrollExtrasView({
             penaliteDirecteRaison: l?.penalite_directe_raison ?? "",
             penaliteDirecteRaisonBy: l?.penalite_directe_raison_by ?? null,
             penaliteDirecteRaisonAt: l?.penalite_directe_raison_at ?? null,
+            penaliteContesteeRaison: l?.penalite_contestee_raison ?? "",
+            penaliteContesteeRaisonBy: l?.penalite_contestee_raison_by ?? null,
+            penaliteContesteeRaisonAt: l?.penalite_contestee_raison_at ?? null,
             bonusDirectRaison: l?.bonus_direct_raison ?? "",
             bonusDirectRaisonBy: l?.bonus_direct_raison_by ?? null,
             bonusDirectRaisonAt: l?.bonus_direct_raison_at ?? null,
@@ -19720,7 +19733,7 @@ function PayrollExtrasView({
    *  positionné qui déborde verticalement de la carte. */
   function raisonButton(
     employeeId: string,
-    field: "bonusRaison" | "bonusDirectRaison" | "penaliteRaison" | "penaliteDirecteRaison",
+    field: "bonusRaison" | "bonusDirectRaison" | "penaliteRaison" | "penaliteDirecteRaison" | "penaliteContesteeRaison",
     value: string,
     labelFr: string,
     labelRu: string,
@@ -19891,7 +19904,7 @@ function PayrollExtrasView({
       return;
     }
     const line = inputsRef.current[employeeId] ?? EMPTY_EXTRAS_LINE;
-    const raisonFields = ["bonusRaison", "bonusDirectRaison", "penaliteRaison", "penaliteDirecteRaison"];
+    const raisonFields = ["bonusRaison", "bonusDirectRaison", "penaliteRaison", "penaliteDirecteRaison", "penaliteContesteeRaison"];
     const stamp = {
       by: line[field] ? currentUserEmail : null,
       at: line[field] ? new Date().toISOString() : null,
@@ -20016,6 +20029,9 @@ function PayrollExtrasView({
               penaliteDirecteRaison: row.penalite_directe_raison ?? "",
               penaliteDirecteRaisonBy: row.penalite_directe_raison_by ?? null,
               penaliteDirecteRaisonAt: row.penalite_directe_raison_at ?? null,
+              penaliteContesteeRaison: row.penalite_contestee_raison ?? "",
+              penaliteContesteeRaisonBy: row.penalite_contestee_raison_by ?? null,
+              penaliteContesteeRaisonAt: row.penalite_contestee_raison_at ?? null,
               bonusDirectRaison: row.bonus_direct_raison ?? "",
               bonusDirectRaisonBy: row.bonus_direct_raison_by ?? null,
               bonusDirectRaisonAt: row.bonus_direct_raison_at ?? null,
@@ -20611,6 +20627,7 @@ function PayrollExtrasView({
             { label: "Bonus прочее - raison", text: m?.bonusDirectRaison ?? line.bonusDirectRaison, by: m?.bonusDirectRaisonBy ?? null, at: m?.bonusDirectRaisonAt ?? null },
             { label: "Штраф контроль - raison", text: m?.penaliteRaison ?? line.penaliteRaison, by: m?.penaliteRaisonBy ?? null, at: m?.penaliteRaisonAt ?? null },
             { label: "Штраф прочее - raison", text: m?.penaliteDirecteRaison ?? line.penaliteDirecteRaison, by: m?.penaliteDirecteRaisonBy ?? null, at: m?.penaliteDirecteRaisonAt ?? null },
+            { label: "Оспорено возврат - raison", text: m?.penaliteContesteeRaison ?? line.penaliteContesteeRaison, by: m?.penaliteContesteeRaisonBy ?? null, at: m?.penaliteContesteeRaisonAt ?? null },
           ].filter((x) => x.text);
           return {
             groupLabel: row.groupLabel,
@@ -21399,6 +21416,7 @@ function PayrollExtrasView({
                             </div>
                           </td>
                           <td className="py-2 pr-2">
+                            <div className="relative">
                             <input
                               type="number"
                               min={0}
@@ -21412,6 +21430,8 @@ function PayrollExtrasView({
                               data-cell={`${e.id}:penaliteContestee`}
                               title="Оспоренный штраф контроля, решение этого месяца (даже если сам штраф был раньше). Сумма сразу возвращается в БАНК 3000 человека. У контролёра в этом месяце 25% считаются от (штрафы − возвраты); если выйдет меньше нуля, его доля 0, а остаток вычитается из следующих месяцев. В Банке качества уменьшает штрафы его бригады. / Pénalité contrôle contestée, décision de CE mois (même si la pénalité date d'avant). Rendue au БАНК 3000 de la personne ; réduit la part du contrôleur (report si négatif) et les pénalités de son équipe au Банк качества."
                             />
+                            {raisonButton(e.id, "penaliteContesteeRaison", line.penaliteContesteeRaison, "Raison de l'Оспорено (возврат штрафа)", "Причина / комментарий к оспоренному штрафу", "bg-success-600 text-white")}
+                            </div>
                           </td>
                           <td className="py-2 pr-2">
                             <div className="relative">
