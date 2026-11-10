@@ -6,6 +6,7 @@ import { ErrorsSection, NormsSection, SECTION_TITLES, type TeamSection } from ".
 
 type Result = {
   salaireJours: number;
+  ajustementsPaie?: number;
   penalitesControle: number;
   banqueQualiteDebut: number;
   banqueDepot: number;
@@ -332,6 +333,9 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
           <Line ru="Отработано дней" fr="Jours travaillés" value={num(p.jours)} />
           <Line ru="Заработано в день" fr="Gagné par jour" value={eur(p.taux)} />
           <Line ru="Зарплата за дни" fr="Salaire des jours" value={eur(r.salaireJours)} />
+          {!!r.ajustementsPaie && (
+            <Line ru="Корректировка зарплаты" fr="Ajustement de paie" value={`${r.ajustementsPaie > 0 ? "+" : "−"}${eur(Math.abs(r.ajustementsPaie))}`} tone={r.ajustementsPaie > 0 ? "plus" : undefined} />
+          )}
           {p.bonusEquipe !== 0 && (
             <>
               <Line ru="BONUS команды (начислено)" fr="Bonus équipe" value={`${eur(p.bonusEquipe)}`} note={p.bonusRaison || undefined} />

@@ -268,7 +268,7 @@ export function computeNightPremium(heuresNuit: number, classification: string |
  * ÷ 8h) ; sinon 9,61 €/h, le SMIC net horaire (12,31 €/h brut ×
  * (1 − 21,97 %), déjà utilisé dans Paie). Toujours ajouté à l'À payer.
  *
- *   À payer (cette table) = Ставка_за_дни + Bonus équipe payé + Bonus direct
+ *   À payer (cette table) = Ставка_за_дни + Штраф positif/прочее (ajustementsPaie) + Bonus équipe payé + Bonus direct
  *     + Coût route + part contrôleur + prime Банк качества
  *     - Congés payés et Vacance jours sont de simples compteurs de jours,
  *     affichés à titre indicatif, jamais inclus dans ce total (le montant
@@ -313,6 +313,8 @@ export type PayrollExtrasInput = {
 
 export type PayrollExtrasResult = {
   salaireJours: number;
+  /** Штраф positif + Штраф прочее (signé) : ajoutés à l'À payer, hors « Salaire jours € ». */
+  ajustementsPaie: number;
   penalitesControle: number;
   banqueQualiteDebut: number;
   banqueDepot: number;
@@ -332,7 +334,10 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
   // Hors équipe : pas de БАНК du tout, le montant signé va tel quel dans la paie.
   const penalitesControle = input.faitPartieEquipe ? Math.max(0, -input.penaliteMontant) : 0;
   const ajustementDirect = input.faitPartieEquipe ? Math.max(0, input.penaliteMontant) : input.penaliteMontant;
-  const salaireJours = input.jours * input.tauxJournalier + ajustementDirect + input.penaliteDirecte;
+  // « Salaire jours € » = uniquement jours × ставка (demandé 10/11/2026). Les ajustements directs
+  // (Штраф positif / Штраф прочее) restent dans l'À payer mais en ligne séparée (ajustementsPaie).
+  const salaireJours = input.jours * input.tauxJournalier;
+  const ajustementsPaie = ajustementDirect + input.penaliteDirecte;
   const banqueQualiteDebut = input.banqueAjustementManuel ?? input.banqueQualitePrecedente ?? 0;
   const banqueDepot = input.faitPartieEquipe
     ? Math.min(Math.max(0, input.bonusEquipe * BANQUE_DEPOT_TAUX), Math.max(0, BANQUE_QUALITE_PLAFOND - banqueQualiteDebut))
@@ -358,11 +363,12 @@ export function computePayrollExtras(input: PayrollExtrasInput): PayrollExtrasRe
     ) / 100;
   const aPayer =
     Math.round(
-      (salaireJours + bonusEquipePaye + bonusDirect + coutRoute + controleBonusRecu + banqueQualitePrime - penaliteSurPaie) * 100
+      (salaireJours + ajustementsPaie + bonusEquipePaye + bonusDirect + coutRoute + controleBonusRecu + banqueQualitePrime - penaliteSurPaie) * 100
     ) / 100;
 
   return {
     salaireJours: Math.round(salaireJours * 100) / 100,
+    ajustementsPaie: Math.round(ajustementsPaie * 100) / 100,
     penalitesControle,
     banqueQualiteDebut,
     banqueDepot: Math.round(banqueDepot * 100) / 100,
