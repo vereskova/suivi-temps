@@ -47,9 +47,35 @@ export async function ensureRun(sb: SupabaseClient, monthIso: string): Promise<s
  */
 export async function applyToExtras(
   sb: SupabaseClient,
-  args: { runId: string; prevRunId: string | null; employeeId: string; delta: number; lines: string; email: string }
+  args: {
+    runId: string;
+    prevRunId: string | null;
+    employeeId: string;
+    delta: number;
+    lines: string;
+    email: string;
+    /** Отмена : вместо добавления строк УБРАТЬ из причины строки, начинающиеся с этих префиксов (по одной на префикс). */
+    removePrefixes?: string[];
+    /** Отмена : убрать ровно эти строки (например « (комментарий) »), по одной. */
+    removeExact?: string[];
+    /** Отмена : итог штрафа не может стать положительным (если RH уже обнулил штраф вручную - не создаём « плюс »). */
+    clampMaxZero?: boolean;
+  }
 ): Promise<void> {
-  const { runId, prevRunId, employeeId, delta, lines, email } = args;
+  const { runId, prevRunId, employeeId, delta, lines, email, removePrefixes, removeExact, clampMaxZero } = args;
+  const cancelling = !!(removePrefixes || removeExact);
+  const rebuildReason = (current: string | null): string => {
+    const arr = (current ?? "").split("\n");
+    for (const pre of removePrefixes ?? []) {
+      const i = arr.findIndex((l) => l.startsWith(pre));
+      if (i >= 0) arr.splice(i, 1);
+    }
+    for (const ex of removeExact ?? []) {
+      const i = arr.findIndex((l) => l.trim() === ex.trim());
+      if (i >= 0) arr.splice(i, 1);
+    }
+    return arr.filter((l) => l.trim() !== "").join("\n");
+  };
   const at = new Date().toISOString();
   for (let attempt = 0; attempt < 4; attempt++) {
     const { data: row, error: readErr } = await sb
@@ -85,11 +111,12 @@ export async function applyToExtras(
     }
 
     const current = Number(row.penalite_montant) || 0;
+    const nextMontant = clampMaxZero ? Math.min(0, r2(current + delta)) : r2(current + delta);
     const { data: updated, error } = await sb
       .from("payroll_extras")
       .update({
-        penalite_montant: r2(current + delta),
-        penalite_raison: [row.penalite_raison, lines].filter(Boolean).join("\n"),
+        penalite_montant: nextMontant,
+        penalite_raison: cancelling ? rebuildReason(row.penalite_raison as string | null) : [row.penalite_raison, lines].filter(Boolean).join("\n"),
         penalite_raison_by: email,
         penalite_raison_at: at,
       })

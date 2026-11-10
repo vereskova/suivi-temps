@@ -23,7 +23,6 @@ export const PENALTY_DEFAULT_DIVISOR = 3;
 
 export const PENALTY_CATALOG: PenaltyCatalogItem[] = [
   { code: "1.1", stage: "Pose securite", description: "Отсутствуют средства защиты, нет ограждения", severity: "Критическая", amount: 0, unit: "manual", note: "Увольнение, минус 100 % БАНК - сумму на команду ввести вручную" },
-  { code: "1.2", stage: "Contrôle materielle", description: "Повреждённые панели или отсутствуют материалы", severity: "Серьёзная", amount: 150, unit: "fixed" },
   { code: "1.3", stage: "Marquage raille", description: "Неправильные расстояния между рельсами", severity: "Средняя", amount: 150, unit: "fixed" },
   { code: "1.4", stage: "Fixation raille", description: "Рельсы закреплены слабо", severity: "Серьёзная", amount: 300, unit: "fixed" },
   { code: "1.5", stage: "Fixation string", description: "Кабели string плохо закреплены", severity: "Малая", amount: 90, unit: "fixed" },

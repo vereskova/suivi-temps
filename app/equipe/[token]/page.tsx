@@ -40,6 +40,8 @@ type Person = {
   penaliteDirecteRaison: string;
   heuresRoute: number;
   avance: number;
+  /** Штрафы контролёра за месяц (после публикации) с фото. */
+  controlPenalties?: { id: string; date: string; site: string; code: string | null; stage: string; description: string; amount: number; photos: string[] }[];
   result: Result;
   days: Day[];
 };
@@ -361,6 +363,32 @@ function PersonCard({ p, open, onToggle }: { p: Person; open: boolean; onToggle:
               tone="minus"
               note={p.penaliteRaison || undefined}
             />
+          )}
+          {(p.controlPenalties ?? []).length > 0 && (
+            <div className="mt-2 space-y-2 rounded-xl bg-stone-50 p-3">
+              <p className="text-[12px] font-bold text-stone-500">Штрафы контролёра</p>
+              {(p.controlPenalties ?? []).map((c) => (
+                <div key={c.id} className="border-t border-stone-200 pt-2 first:border-t-0 first:pt-0">
+                  <div className="flex items-start justify-between gap-2 text-[13px]">
+                    <span className="min-w-0 text-stone-700">
+                      <b>{c.date.slice(8, 10)}/{c.date.slice(5, 7)}</b> · {c.site}
+                      <span className="block text-stone-500">{c.code} {c.stage} - {c.description}</span>
+                    </span>
+                    <span className="shrink-0 font-extrabold tabular-nums text-error-600">−{eur(c.amount)}</span>
+                  </div>
+                  {c.photos.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {c.photos.map((u, i) => (
+                        <a key={i} href={u} target="_blank" rel="noreferrer">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={u} alt="Фото ошибки" className="h-16 w-16 rounded-lg border border-stone-200 object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
           {(p.penaliteContestee ?? 0) > 0 && (
             <Line

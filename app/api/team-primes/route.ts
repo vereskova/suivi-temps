@@ -145,6 +145,49 @@ export async function GET(request: NextRequest) {
     daysByEmployee.set(p.employee_id, m);
   });
 
+  // Журнал контролёра : штрафы человека за месяц с фото (только если месяц опубликован). Фото - в приватном
+  // хранилище, отдаём временные ссылки (24 часа, при каждом обновлении страницы выдаются заново).
+  type CtlRow = {
+    share: number;
+    employee_id: string;
+    control_penalties: { id: string; inspection_date: string; site: string; catalog_code: string | null; stage: string; description: string; photo_paths: string[] | null; status: string } | null;
+  };
+  const controlByEmployee = new Map<string, { id: string; date: string; site: string; code: string | null; stage: string; description: string; amount: number; photos: string[] }[]>();
+  if (published && teamIds.length) {
+    const { data: ctl } = await sb
+      .from("control_penalty_targets")
+      .select("share, employee_id, control_penalties!inner(id, inspection_date, site, catalog_code, stage, description, photo_paths, status)")
+      .in("employee_id", teamIds)
+      .eq("control_penalties.status", "active")
+      .gte("control_penalties.inspection_date", monthStart)
+      .lte("control_penalties.inspection_date", monthEnd);
+    const ctlRows = ((ctl ?? []) as unknown as CtlRow[]).filter((r) => r.control_penalties && r.control_penalties.catalog_code);
+    const allPaths = Array.from(new Set(ctlRows.flatMap((r) => r.control_penalties?.photo_paths ?? [])));
+    const urlByPath = new Map<string, string>();
+    if (allPaths.length) {
+      const { data: signed } = await sb.storage.from("control-photos").createSignedUrls(allPaths, 86400);
+      (signed ?? []).forEach((x) => {
+        if (x.path && x.signedUrl) urlByPath.set(x.path, x.signedUrl);
+      });
+    }
+    ctlRows.forEach((r) => {
+      const c = r.control_penalties!;
+      const list = controlByEmployee.get(r.employee_id) ?? [];
+      list.push({
+        id: c.id,
+        date: c.inspection_date,
+        site: c.site,
+        code: c.catalog_code,
+        stage: c.stage,
+        description: c.description,
+        amount: Number(r.share) || 0,
+        photos: (c.photo_paths ?? []).map((ph) => urlByPath.get(ph)).filter((u): u is string => !!u),
+      });
+      controlByEmployee.set(r.employee_id, list);
+    });
+    controlByEmployee.forEach((list) => list.sort((a, b) => a.date.localeCompare(b.date)));
+  }
+
   // 25 % du total des pénalités chantier de toute l'entreprise → contrôleur désigné.
   const monthTotals = employees.reduce(
     (acc, e) => {
@@ -211,6 +254,7 @@ export async function GET(request: NextRequest) {
         penaliteDirecteRaison: published ? (l?.penalite_directe_raison as string) || "" : "",
         heuresRoute: num(l?.heures_route),
         avance: num(l?.avance),
+        controlPenalties: controlByEmployee.get(e.id) ?? [],
         result: r,
         days,
       };

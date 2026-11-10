@@ -4,6 +4,7 @@ import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useSta
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import ControlPenaltiesView from "@/components/admin/ControlPenaltiesView";
+import SettingsView from "@/components/admin/SettingsView";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
@@ -65,6 +66,7 @@ import {
   RefreshCw,
   Repeat,
   Send,
+  Settings,
   ShieldCheck,
   Shirt,
   Square,
@@ -490,6 +492,7 @@ type ViewKey =
   | "autoparc"
   | "audit"
   | "controle_journal"
+  | "settings"
   | "voldis_location"
   | "voldis_ajax";
 
@@ -586,7 +589,13 @@ function usePersistedView<T extends string>(key: string, defaultValue: T, validV
   return [value, setValue];
 }
 
-const VALID_VIEW_KEYS = new Set<string>(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key)));
+/** Раздел « Настройки » (внизу меню) - только rh_admin: роли, почты, вкладки доступа. */
+const SETTINGS_NAV_GROUP: { title: string; items: NavItem[] } = {
+  title: "Настройки",
+  items: [{ key: "settings", label: "Paramètres", labelRu: "Настройки доступа", icon: Settings }],
+};
+
+const VALID_VIEW_KEYS = new Set<string>([...NAV_GROUPS.flatMap((g) => g.items.map((i) => i.key)), "settings"]);
 
 const ROLE_LABELS: Record<string, { fr: string; ru: string }> = {
   rh_admin: { fr: "RH Admin", ru: "HR-админ" },
@@ -756,6 +765,16 @@ function OpenDossierButton({
 }
 
 export default function AdminPage() {
+  const [accessTabs, setAccessTabs] = useState<Record<string, string> | null>(null);
+  return (
+    <AccessContext.Provider value={accessTabs}>
+      <AdminPageInner setAccessTabs={setAccessTabs} />
+    </AccessContext.Provider>
+  );
+}
+
+function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, string> | null) => void }) {
+  const accessTabs = useContext(AccessContext);
   const [supabase] = useState(() => createClient());
   const router = useRouter();
 
@@ -962,6 +981,13 @@ export default function AdminPage() {
 
       setRole(roleRow?.role ?? null);
 
+      // Настройки доступа (вкладки/режим) : сужают меню; у rh_admin игнорируются.
+      if (roleRow?.role && roleRow.role !== "rh_admin") {
+        const { data: acc } = await supabase.from("user_access").select("tabs").eq("auth_user_id", user.id).maybeSingle();
+        const tabs = (acc?.tabs as Record<string, string> | null) ?? null;
+        setAccessTabs(tabs && Object.keys(tabs).length > 0 ? tabs : null);
+      }
+
       // Контролёр видит только свой экран штрафов.
       if (roleRow?.role === "controleur") {
         router.replace("/controle");
@@ -1052,6 +1078,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Wallet}
           active={comptableView === "paie"}
+          tab="paie"
           label="Paie"
           labelRu="Зарплата"
           onClick={() => {
@@ -1062,6 +1089,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Banknote}
           active={comptableView === "paie_extras"}
+          tab="paie_extras"
           label="Primes & Bonus"
           labelRu="Премии и бонусы"
           onClick={() => {
@@ -1072,6 +1100,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Users}
           active={comptableView === "employees"}
+          tab="effectif"
           label="Employés"
           labelRu="Сотрудники"
           onClick={() => {
@@ -1082,6 +1111,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Phone}
           active={comptableView === "phones"}
+          tab="phones"
           label="Téléphones pro"
           labelRu="Рабочие телефоны"
           onClick={() => {
@@ -1150,6 +1180,7 @@ export default function AdminPage() {
               <nav className="card p-3 space-y-4 sticky top-4">{comptableNavItems}</nav>
             </aside>
             <div className="flex-1 min-w-0">
+              <AccessGate tab={comptableView === "employees" ? "effectif" : comptableView}>
               {comptableView === "paie" ? (
                 <PaieView supabase={supabase} />
               ) : comptableView === "paie_extras" ? (
@@ -1166,6 +1197,7 @@ export default function AdminPage() {
                   confidentialMode="rib_only"
                 />
               )}
+              </AccessGate>
             </div>
           </div>
         </div>
@@ -1186,6 +1218,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Users}
           active={rhReadonlyView === "employees"}
+          tab="effectif"
           label="Employés"
           labelRu="Сотрудники"
           onClick={() => {
@@ -1196,6 +1229,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Banknote}
           active={rhReadonlyView === "paie_extras"}
+          tab="paie_extras"
           label="Primes & Bonus"
           labelRu="Премии и бонусы"
           onClick={() => {
@@ -1206,6 +1240,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Network}
           active={rhReadonlyView === "organigramme"}
+          tab="organigramme"
           label="Organigramme"
           labelRu="Структура"
           onClick={() => {
@@ -1216,6 +1251,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Workflow}
           active={rhReadonlyView === "schema"}
+          tab="schema"
           label="Schéma de l'entreprise"
           labelRu="Схема компании"
           onClick={() => {
@@ -1226,6 +1262,7 @@ export default function AdminPage() {
         <SidebarLink
           icon={Phone}
           active={rhReadonlyView === "phones"}
+          tab="phones"
           label="Téléphones pro"
           labelRu="Рабочие телефоны"
           onClick={() => {
@@ -1294,6 +1331,7 @@ export default function AdminPage() {
               <nav className="card p-3 space-y-4 sticky top-4">{rhReadonlyNavItems}</nav>
             </aside>
             <div className="flex-1 min-w-0">
+              <AccessGate tab={rhReadonlyView === "employees" ? "effectif" : rhReadonlyView}>
               {rhReadonlyView === "employees" ? (
                 <EmployeesView
                   supabase={supabase}
@@ -1311,6 +1349,7 @@ export default function AdminPage() {
               ) : (
                 <OrganigrammeView supabase={supabase} canPlan />
               )}
+              </AccessGate>
             </div>
           </div>
         </div>
@@ -1528,7 +1567,7 @@ export default function AdminPage() {
   // (14/10/2026, migration 0110). Paie, Commercial, and the audit log
   // stay rh_admin-only (the audit log's whole point is oversight of what
   // rh/comptable/etc. changed).
-  const visibleNavGroups =
+  const baseNavGroups =
     role === "rh"
       ? NAV_GROUPS.filter((g) => g.title !== "Pointage")
           .map((g) => ({
@@ -1543,6 +1582,15 @@ export default function AdminPage() {
           }))
           .filter((g) => g.items.length > 0)
       : NAV_GROUPS;
+  // Настройки доступа человека сужают меню; раздел « Настройки » - только rh_admin и в самом низу.
+  const visibleNavGroups =
+    role === "rh_admin"
+      ? [...baseNavGroups, SETTINGS_NAV_GROUP]
+      : accessTabs
+        ? baseNavGroups
+            .map((g) => ({ ...g, items: g.items.filter((item) => !!accessTabs[item.key]) }))
+            .filter((g) => g.items.length > 0)
+        : baseNavGroups;
   // VOLDIS : réservé à rh_admin ; les autres rôles restent sur VLADIS.
   const activeCompany = role === "rh_admin" ? company : "vladis";
   const shownNavGroups = activeCompany === "voldis" ? VOLDIS_NAV_GROUPS : visibleNavGroups;
@@ -1681,6 +1729,7 @@ export default function AdminPage() {
           {activeCompany === "voldis" && (voldisView === "voldis_ajax" ? <AjaxView supabase={supabase} /> : <LocationView supabase={supabase} />)}
           {activeCompany === "vladis" && (
           <DossierNavContext.Provider value={openDossier}>
+          <AccessGate tab={view}>
             {view === "jour" && (
               <JourView
                 supabase={supabase}
@@ -1746,7 +1795,9 @@ export default function AdminPage() {
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
+            {view === "settings" && role === "rh_admin" && <SettingsView />}
             {view === "controle_journal" && <ControlPenaltiesView supabase={supabase} canCancel={role === "rh_admin"} />}
+          </AccessGate>
           </DossierNavContext.Provider>
           )}
           </div>
@@ -1775,6 +1826,36 @@ function SidebarSection({
   );
 }
 
+/** Настройки доступа текущего человека (user_access.tabs) : null = всё по роли. Значение вкладки : "view" | "edit". */
+const AccessContext = createContext<Record<string, string> | null>(null);
+
+/** Контент вкладки : нет в списке - заглушка, "view" - поля и кнопки заблокированы (fieldset disabled). */
+function AccessGate({ tab, children }: { tab: string; children: React.ReactNode }) {
+  const tabs = useContext(AccessContext);
+  if (!tabs) return <>{children}</>;
+  const mode = tabs[tab];
+  if (!mode) {
+    return (
+      <div className="card text-center text-stone-500">
+        Нет доступа к этой вкладке. <span className="opacity-70">/ Accès non autorisé.</span>
+      </div>
+    );
+  }
+  if (mode === "view") {
+    return (
+      <>
+        <div className="mb-3 rounded-lg bg-warning-50 px-3 py-1.5 text-xs font-bold text-warning-700">
+          Режим просмотра · Lecture seule
+        </div>
+        <fieldset disabled className="contents">
+          {children}
+        </fieldset>
+      </>
+    );
+  }
+  return <>{children}</>;
+}
+
 function SidebarLink({
   active,
   disabled,
@@ -1783,6 +1864,7 @@ function SidebarLink({
   label,
   labelRu,
   dot,
+  tab,
 }: {
   active?: boolean;
   disabled?: boolean;
@@ -1791,7 +1873,11 @@ function SidebarLink({
   label: string;
   labelRu?: string;
   dot?: boolean;
+  /** Ключ вкладки для проверки по настройкам доступа (скрыть, если её нет в списке). */
+  tab?: string;
 }) {
+  const access = useContext(AccessContext);
+  if (tab && access && !access[tab]) return null;
   return (
     <button
       onClick={onClick}

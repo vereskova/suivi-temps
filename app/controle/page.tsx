@@ -84,6 +84,8 @@ export default function ControlePage() {
   const [note, setNote] = useState("");
   const [search, setSearch] = useState("");
   const [photos, setPhotos] = useState<{ path: string; preview: string }[]>([]);
+  // Фото каждого пункта отдельно (ключ = код пункта справочника).
+  const [itemPhotos, setItemPhotos] = useState<Record<string, { path: string; preview: string }[]>>({});
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -126,8 +128,14 @@ export default function ControlePage() {
   function togglePick(item: PenaltyCatalogItem) {
     setPicks((prev) => {
       const next = { ...prev };
-      if (next[item.code]) delete next[item.code];
-      else next[item.code] = { qty: "1", amount: item.unit === "range" ? String(item.amount) : "" };
+      if (next[item.code]) {
+        delete next[item.code];
+        setItemPhotos((ph) => {
+          const rest = { ...ph };
+          delete rest[item.code];
+          return rest;
+        });
+      } else next[item.code] = { qty: "1", amount: item.unit === "range" ? String(item.amount) : "" };
       return next;
     });
   }
@@ -163,18 +171,22 @@ export default function ControlePage() {
     ].filter((g) => g.items.length > 0);
   }, [search]);
 
-  async function addPhotos(files: FileList | null) {
+  /** Загрузка фото на сервер (с уменьшением на телефоне). code = код пункта, без кода - общие фото проверки. */
+  async function addPhotos(files: FileList | null, code?: string) {
     if (!files) return;
     setUploading(true);
     try {
-      for (const f of Array.from(files).slice(0, 8 - photos.length)) {
+      const have = code ? (itemPhotos[code]?.length ?? 0) : photos.length;
+      for (const f of Array.from(files).slice(0, Math.max(0, (code ? 6 : 8) - have))) {
         const blob = await shrink(f);
         const fd = new FormData();
         fd.append("file", new File([blob], "photo.jpg", { type: "image/jpeg" }));
         const res = await fetch("/api/controle/photo", { method: "POST", body: fd });
         const data = (await res.json()) as { path?: string; error?: string };
         if (!res.ok || !data.path) throw new Error(data.error ?? "Не удалось загрузить фото");
-        setPhotos((p) => [...p, { path: data.path as string, preview: URL.createObjectURL(blob) }]);
+        const added = { path: data.path as string, preview: URL.createObjectURL(blob) };
+        if (code) setItemPhotos((ph) => ({ ...ph, [code]: [...(ph[code] ?? []), added] }));
+        else setPhotos((p) => [...p, added]);
       }
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "Ошибка фото" });
@@ -202,7 +214,7 @@ export default function ControlePage() {
         note,
         employee_ids: chosenMembers.map((m) => m.id),
         photo_paths: photos.map((p) => p.path),
-        items: clean ? [] : computed.map((c) => ({ code: c.item.code, qty: c.qty, amount: c.amount })),
+        items: clean ? [] : computed.map((c) => ({ code: c.item.code, qty: c.qty, amount: c.amount, photo_paths: (itemPhotos[c.item.code] ?? []).map((x) => x.path) })),
       }),
     });
     const data = (await res.json()) as { error?: string; penalties?: number; team_total?: number; share_each?: number };
@@ -218,6 +230,7 @@ export default function ControlePage() {
         : `Записано: ${data.penalties} пункт(ов), на команду ${eur(data.team_total ?? 0)}, на человека ${eur(data.share_each ?? 0)}.`,
     });
     setPicks({});
+    setItemPhotos({});
     setNote("");
     setPhotos([]);
     setSearch("");
@@ -456,6 +469,28 @@ export default function ControlePage() {
                         )}
                       </div>
                     )}
+                    {p && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 pl-8">
+                        {(itemPhotos[item.code] ?? []).map((ph) => (
+                          <div key={ph.path} className="relative h-14 w-14 overflow-hidden rounded-lg border border-stone-200">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={ph.preview} alt="" className="h-full w-full object-cover" />
+                            <button
+                              onClick={() => setItemPhotos((all) => ({ ...all, [item.code]: (all[item.code] ?? []).filter((x) => x.path !== ph.path) }))}
+                              className="absolute right-0 top-0 rounded-bl bg-black/60 p-0.5 text-white"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                        {(itemPhotos[item.code]?.length ?? 0) < 6 && (
+                          <label className="flex h-14 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 text-xs font-bold text-stone-500">
+                            <Camera size={16} /> Фото ошибки
+                            <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => { addPhotos(e.target.files, item.code); e.target.value = ""; }} />
+                          </label>
+                        )}
+                      </div>
+                    )}
                     {p && item.note && <p className="mt-2 pl-8 text-[11px] text-stone-400">{item.note}</p>}
                   </div>
                 );
@@ -490,8 +525,9 @@ export default function ControlePage() {
             Комментарий (необязательно)
             <textarea className="input mt-1 min-h-[64px]" value={note} onChange={(e) => setNote(e.target.value)} maxLength={600} placeholder="Например: линия 3, ряд 2" />
           </label>
+          {computed.length === 0 && (
           <div>
-            <p className="text-xs font-bold text-stone-500">Фото (необязательно)</p>
+            <p className="text-xs font-bold text-stone-500">Фото проверки (для «Без замечаний», необязательно)</p>
             <div className="mt-1 flex flex-wrap gap-2">
               {photos.map((p) => (
                 <div key={p.path} className="relative h-16 w-16 overflow-hidden rounded-lg border border-stone-200">
@@ -511,6 +547,8 @@ export default function ControlePage() {
             </div>
             {uploading && <p className="mt-1 text-xs text-stone-400">Загрузка фото…</p>}
           </div>
+          )}
+          {uploading && computed.length > 0 && <p className="text-xs text-stone-400">Загрузка фото…</p>}
         </section>
       )}
 
@@ -541,6 +579,11 @@ export default function ControlePage() {
                     {r.catalog_code ? `${r.catalog_code} ${r.stage}` : r.stage}
                     {r.unit === "per_piece" || r.unit === "per_day" ? ` ×${r.qty}` : ""}
                     {r.catalog_code ? ` - ${eur(Number(r.team_amount))} (÷${r.divisor} = ${eur(Number(r.share_each))})` : ""}
+                    {(r.photo_paths ?? []).map((ph, i) => (
+                      <a key={ph} href={`/api/controle/photo?path=${encodeURIComponent(ph)}`} target="_blank" rel="noreferrer" className="ml-2 font-bold text-primary-700 underline">
+                        фото {i + 1}
+                      </a>
+                    ))}
                   </li>
                 ))}
               </ul>

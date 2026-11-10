@@ -11,7 +11,7 @@ import { applyToExtras, ddmm, ensureRun, monthStartIso, prevMonthStartIso, r2, s
 const NO_STORE = { "Cache-Control": "no-store" };
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-type ItemInput = { code?: string; qty?: number; amount?: number };
+type ItemInput = { code?: string; qty?: number; amount?: number; photo_paths?: string[] };
 type Body = {
   inspection_date?: string;
   site?: string;
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
   if (!clean && (members ?? []).length !== employeeIds.length) return bad("Есть люди, которых нет в этой бригаде");
 
   // Пересчёт каждого пункта по справочнику.
-  const computed: { item: (typeof PENALTY_CATALOG)[number]; qty: number; base: number; teamAmount: number; share: number; line: string }[] = [];
+  const computed: { item: (typeof PENALTY_CATALOG)[number]; qty: number; base: number; teamAmount: number; share: number; line: string; photos: string[] }[] = [];
   for (const it of items) {
     const catalogItem = PENALTY_CATALOG.find((c) => c.code === it.code);
     if (!catalogItem) return bad(`Неизвестный пункт справочника: ${String(it.code)}`);
@@ -93,7 +93,11 @@ export async function POST(request: NextRequest) {
     });
     const base =
       catalogItem.unit === "range" || catalogItem.unit === "manual" ? amount : catalogItem.amount;
-    computed.push({ item: catalogItem, qty: catalogItem.unit === "per_piece" || catalogItem.unit === "per_day" ? qty : 1, base, teamAmount: pick.teamAmount, share: pick.share, line: pick.line });
+    // Фото именно этого пункта (загружены через /api/controle/photo в папку пользователя).
+    const photos = (Array.isArray(it.photo_paths) ? it.photo_paths : [])
+      .filter((x) => typeof x === "string" && x.startsWith(`${check.ctx.userId}/`) && x.length < 300)
+      .slice(0, 6);
+    computed.push({ item: catalogItem, qty: catalogItem.unit === "per_piece" || catalogItem.unit === "per_day" ? qty : 1, base, teamAmount: pick.teamAmount, share: pick.share, line: pick.line, photos });
   }
 
   const batchId = randomUUID();
@@ -108,7 +112,7 @@ export async function POST(request: NextRequest) {
     : computed.map((c) => ({
         batch_id: batchId, inspection_date: date, site, team_id: teamId, catalog_code: c.item.code, stage: c.item.stage,
         description: c.item.description, severity: c.item.severity, unit: c.item.unit, qty: c.qty, unit_amount: r2(c.base),
-        team_amount: c.teamAmount, divisor, share_each: c.share, note, photo_paths: photoPaths,
+        team_amount: c.teamAmount, divisor, share_each: c.share, note, photo_paths: c.photos,
         created_by_email: check.ctx.email, created_by_user: check.ctx.userId,
       }));
 

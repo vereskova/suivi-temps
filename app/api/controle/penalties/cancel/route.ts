@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   const reason = String(body?.reason ?? "").trim().slice(0, 300) || null;
   if (!body?.batch_id && !body?.penalty_id) return NextResponse.json({ error: "Не указана запись" }, { status: 400, headers: NO_STORE });
 
-  let q = sb.from("control_penalties").select("id, created_at, created_by_email, inspection_date, catalog_code, stage, status, control_penalty_targets(employee_id, share)").eq("status", "active");
+  let q = sb.from("control_penalties").select("id, created_at, created_by_email, inspection_date, site, note, catalog_code, stage, status, control_penalty_targets(employee_id, share)").eq("status", "active");
   q = body.batch_id ? q.eq("batch_id", body.batch_id) : q.eq("id", body.penalty_id as string);
   const { data: rows, error } = await q;
   if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: NO_STORE });
@@ -31,26 +31,32 @@ export async function POST(request: NextRequest) {
   }
 
   // Сумма возврата по каждому человеку (все строки одной даты/месяца).
-  const byMonth = new Map<string, Map<string, { sum: number; lines: string[] }>>();
+  const byMonth = new Map<string, Map<string, { sum: number; prefixes: string[]; exact: string[] }>>();
   for (const r of rows) {
     const month = monthStartIso(r.inspection_date as string);
     const m = byMonth.get(month) ?? new Map();
+    // Та же строка, которую записывал POST : « [dd/mm] объект · код этап - ... » (см. penalties/route.ts)
+    const prefix = `[${ddmm(r.inspection_date as string)}] ${String(r.site).trim()} · ${r.catalog_code ?? ""} ${r.stage} -`;
     for (const t of (r.control_penalty_targets ?? []) as { employee_id: string; share: number }[]) {
-      const cur = m.get(t.employee_id) ?? { sum: 0, lines: [] as string[] };
+      const cur = m.get(t.employee_id) ?? { sum: 0, prefixes: [] as string[], exact: [] as string[] };
       cur.sum = r2(cur.sum + Number(t.share));
-      cur.lines.push(`${r.catalog_code ?? ""} ${r.stage}`.trim());
+      if (r.catalog_code) cur.prefixes.push(prefix);
       m.set(t.employee_id, cur);
     }
     byMonth.set(month, m);
   }
+  // Комментарий проверки писался одной строкой « (текст) » после всех пунктов : убираем её один раз на человека.
+  const noteLine = rows.find((r) => r.note)?.note;
+  if (noteLine) for (const m of byMonth.values()) for (const v of m.values()) v.exact.push(`(${noteLine})`);
 
   try {
     for (const [month, perEmp] of byMonth) {
       const runId = await ensureRun(sb, month);
       for (const [eid, v] of perEmp) {
-        const first = rows[0].inspection_date as string;
-        const text = `[${ddmm(first)}] ОТМЕНЕНО (${v.lines.join(", ")}): +${String(v.sum).replace(".", ",")} €${reason ? ` - ${reason}` : ""}`;
-        await applyToExtras(sb, { runId, prevRunId: null, employeeId: eid, delta: v.sum, lines: text, email: check.ctx.email });
+        await applyToExtras(sb, {
+          runId, prevRunId: null, employeeId: eid, delta: v.sum, lines: "", email: check.ctx.email,
+          removePrefixes: v.prefixes, removeExact: v.exact, clampMaxZero: true,
+        });
       }
     }
   } catch (err) {
