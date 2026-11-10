@@ -46,7 +46,7 @@ type Person = {
 type BankTeam = { rank: number; name: string; mine: boolean; penalties: number; eligible: boolean; sharePct: number; amount: number };
 type BankMember = { id: string; name: string; days: number; amount: number };
 type QualityBank = { periodStart: string; payoutDate: string; pool: number; excludedWorst: number; teams: BankTeam[]; members: BankMember[] };
-type Payload = { team: string; year: number; month: number; hasRun: boolean; employees: Person[]; qualityBank?: QualityBank | null };
+type Payload = { team: string; year: number; month: number; hasRun: boolean; published?: boolean; employees: Person[]; qualityBank?: QualityBank | null };
 
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const REFRESH_MS = 20000;
@@ -670,6 +670,11 @@ export default function TeamPrimesPage() {
         {data?.hasRun && data.employees.length === 0 && (
           <div className="rounded-2xl border border-stone-200 bg-white p-6 text-center text-stone-500">
             В этой команде сейчас нет сотрудников.
+          </div>
+        )}
+        {data?.hasRun && data.published === false && (
+          <div className="rounded-xl border border-warning-300 bg-warning-50 p-3 text-sm text-warning-800">
+            Бонусы и штрафы за этот месяц появятся после окончательных данных. Сейчас показаны только дни и ставка.
           </div>
         )}
         {data?.qualityBank && <QualityBankCard bank={data.qualityBank} />}

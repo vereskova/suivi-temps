@@ -87,7 +87,18 @@ export async function GET(request: NextRequest) {
   const faitPartieEquipe = (e: Emp) => e.category === "chantier" && !!e.team_id && !!e.teams?.name;
   const teamEmployees = employees.filter((e) => e.team_id === teamId && e.contract_type !== "FOP");
 
-  const { data: run } = await sb.from("payroll_runs").select("id").eq("month", monthIso).maybeSingle();
+  // Публикация (migration 0131) : бонусы и штрафы месяца видны бригаде только после « Опубликовать ».
+  // Если миграция ещё не выполнена (колонки нет) - ведём себя как раньше: всё опубликовано.
+  let publishSupported = true;
+  let { data: run } = (await sb.from("payroll_runs").select("id, extras_published_at").eq("month", monthIso).maybeSingle()) as {
+    data: { id: string; extras_published_at?: string | null } | null;
+  };
+  if (!run) {
+    const retry = await sb.from("payroll_runs").select("id").eq("month", monthIso).maybeSingle();
+    run = retry.data as { id: string } | null;
+    if (run && !("extras_published_at" in run)) publishSupported = false;
+  }
+  const published = !publishSupported || !run?.id || !!run.extras_published_at;
   const lines: ExtrasRow[] = run?.id
     ? (((await sb.from("payroll_extras").select("*").eq("run_id", run.id)).data ?? []) as ExtrasRow[])
     : [];
@@ -158,21 +169,23 @@ export async function GET(request: NextRequest) {
       const taux = l ? Number(l.taux_journalier) || 0 : p?.taux || 0;
       const num = (v: unknown) => Number(v) || 0;
       const manual = l?.banque_ajustement_manuel;
+      // Не опубликовано : бонусы, штрафы, доля контролёра и премия банка скрыты (нули), видны только дни и ставка.
+      const pub = (v: unknown) => (published ? num(v) : 0);
       const r = computePayrollExtras({
         jours,
         tauxJournalier: taux,
         heuresRoute: num(l?.heures_route),
         estChauffeur: e.is_driver ?? false,
-        bonusEquipe: num(l?.bonus_equipe),
-        bonusDirect: num(l?.bonus_direct),
-        penaliteMontant: num(l?.penalite_montant),
-        penaliteContestee: num(l?.penalite_contestee),
-        penaliteDirecte: num(l?.penalite_directe),
+        bonusEquipe: pub(l?.bonus_equipe),
+        bonusDirect: pub(l?.bonus_direct),
+        penaliteMontant: pub(l?.penalite_montant),
+        penaliteContestee: pub(l?.penalite_contestee),
+        penaliteDirecte: pub(l?.penalite_directe),
         banqueQualitePrecedente: p ? p.fin : null,
         banqueAjustementManuel: manual === null || manual === undefined ? null : Number(manual),
         faitPartieEquipe: faitPartieEquipe(e),
-        controleBonusRecu: e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerShare : 0,
-        banqueQualitePrime: num(l?.banque_qualite_prime),
+        controleBonusRecu: published && e.id === QUALITY_BANK_CONTROLLER_EMPLOYEE_ID ? controllerShare : 0,
+        banqueQualitePrime: pub(l?.banque_qualite_prime),
       });
       const days = Array.from({ length: daysInMonth }, (_, i) => {
         const date = `${monthStart.slice(0, 8)}${String(i + 1).padStart(2, "0")}`;
@@ -187,15 +200,15 @@ export async function GET(request: NextRequest) {
         hireDate: firstEntry.get(e.id) ?? e.hire_date ?? null,
         jours,
         taux,
-        bonusEquipe: num(l?.bonus_equipe),
-        bonusRaison: (l?.bonus_raison as string) || "",
-        bonusDirect: num(l?.bonus_direct),
-        bonusDirectRaison: (l?.bonus_direct_raison as string) || "",
-        penalite: num(l?.penalite_montant),
-        penaliteContestee: num(l?.penalite_contestee),
-        penaliteRaison: (l?.penalite_raison as string) || "",
-        penaliteDirecte: num(l?.penalite_directe),
-        penaliteDirecteRaison: (l?.penalite_directe_raison as string) || "",
+        bonusEquipe: pub(l?.bonus_equipe),
+        bonusRaison: published ? (l?.bonus_raison as string) || "" : "",
+        bonusDirect: pub(l?.bonus_direct),
+        bonusDirectRaison: published ? (l?.bonus_direct_raison as string) || "" : "",
+        penalite: pub(l?.penalite_montant),
+        penaliteContestee: pub(l?.penalite_contestee),
+        penaliteRaison: published ? (l?.penalite_raison as string) || "" : "",
+        penaliteDirecte: pub(l?.penalite_directe),
+        penaliteDirecteRaison: published ? (l?.penalite_directe_raison as string) || "" : "",
         heuresRoute: num(l?.heures_route),
         avance: num(l?.avance),
         result: r,
@@ -213,7 +226,10 @@ export async function GET(request: NextRequest) {
   if (bankRow?.period_start) {
     const periodMonth = `${String(bankRow.period_start).slice(0, 7)}-01`;
     const todayIso = new Date().toISOString().slice(0, 10);
-    const { data: pRuns } = await sb.from("payroll_runs").select("id, month").gte("month", periodMonth);
+    // В классификации банка участвуют только ОПУБЛИКОВАННЫЕ месяцы (иначе штрафы текущего месяца просочатся раньше времени).
+    let pRunsQuery = sb.from("payroll_runs").select("id, month").gte("month", periodMonth);
+    if (publishSupported) pRunsQuery = pRunsQuery.not("extras_published_at", "is", null);
+    const { data: pRuns } = await pRunsQuery;
     const runMonth = new Map((pRuns ?? []).map((r) => [r.id as string, String(r.month).slice(0, 7)]));
     const pRunIds = Array.from(runMonth.keys());
     type BankLine = { run_id: string; employee_id: string; penalite_montant: number | null; penalite_contestee: number | null; bonus_equipe: number | null };
@@ -313,6 +329,7 @@ export async function GET(request: NextRequest) {
       year,
       month,
       hasRun: !!run?.id,
+      published,
       updatedAt: new Date().toISOString(),
       employees: rows,
       qualityBank,

@@ -1741,7 +1741,7 @@ export default function AdminPage() {
             )}
             {view === "checklists" && <ChecklistsView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} canOpenDossier />}
-            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} readOnly={role === "rh"} />}
+            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} readOnly={role === "rh"} canPublish={role === "rh_admin"} />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
@@ -19551,8 +19551,11 @@ function buildDemoPayrollData(year: number, month: number) {
 function PayrollExtrasView({
   supabase,
   readOnly = false,
+  canPublish = false,
 }: {
   supabase: ReturnType<typeof createClient>;
+  /** rh_admin seulement : publier les bonus/pénalités du mois aux équipes (page /equipe/…). */
+  canPublish?: boolean;
   /** comptable a un accès complet (comme prévu dès la création de payroll_extras,
    *  voir 0074) ; rh_readonly n'a que du SELECT en RLS - l'UI doit donc être
    *  purement consultative pour ce rôle, sans quoi "Enregistrer" échouerait
@@ -19570,6 +19573,9 @@ function PayrollExtrasView({
   const [demo, setDemo] = useState(false);
   const [employees, setEmployees] = useState<PaieEmployee[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
+  // Publication aux équipes : null = pas encore publié ; « supported » false = migration 0131 pas encore faite.
+  const [publishInfo, setPublishInfo] = useState<{ at: string | null; supported: boolean }>({ at: null, supported: true });
+  const [publishing, setPublishing] = useState(false);
   const [inputs, setInputs] = useState<Record<string, ExtrasLineInput>>({});
   const [banquePrecedenteByEmployee, setBanquePrecedenteByEmployee] = useState<Record<string, number>>({});
   // Банк качества commun à l'entreprise (pas par équipe) - confirmé avec
@@ -19822,6 +19828,10 @@ function PayrollExtrasView({
         run = created;
       }
       setRunId(run?.id ?? null);
+      if (run?.id) {
+        const { data: pub, error: pubErr } = await supabase.from("payroll_runs").select("extras_published_at").eq("id", run.id).maybeSingle();
+        setPublishInfo(pubErr ? { at: null, supported: false } : { at: (pub?.extras_published_at as string | null) ?? null, supported: true });
+      }
 
       // Mois précédent - reprend automatiquement le БАНК qualité de fin, et
       // propose le même taux journalier par défaut (rarement changé).
@@ -20803,6 +20813,30 @@ function PayrollExtrasView({
     );
   }
 
+  async function togglePublish() {
+    if (!runId || !canPublish) return;
+    const publishing_ = !publishInfo.at;
+    const monthName = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    const ok = window.confirm(
+      publishing_
+        ? `Опубликовать бонусы и штрафы за ${monthName}?\nБригады увидят их на своей странице.\n\nPublier les bonus et pénalités de ${monthName} aux équipes ?`
+        : `Снять публикацию за ${monthName}? Бригады перестанут видеть бонусы и штрафы.\n\nRetirer la publication de ${monthName} ?`
+    );
+    if (!ok) return;
+    setPublishing(true);
+    const { error } = await supabase
+      .from("payroll_runs")
+      .update(publishing_ ? { extras_published_at: new Date().toISOString(), extras_published_by: currentUserEmail } : { extras_published_at: null, extras_published_by: null })
+      .eq("id", runId);
+    setPublishing(false);
+    if (error) {
+      toast.error("Erreur : " + error.message);
+      return;
+    }
+    setPublishInfo({ at: publishing_ ? new Date().toISOString() : null, supported: true });
+    toast.success(publishing_ ? "Бонусы и штрафы опубликованы бригадам" : "Публикация снята");
+  }
+
   async function exportExcel(presenceOnly = false) {
     setExporting(true);
     try {
@@ -20921,6 +20955,22 @@ function PayrollExtrasView({
               <FileSpreadsheet size={14} />
               <Bi fr={exporting ? "Export…" : "Exporter les jours"} ru={exporting ? "Экспорт…" : "Экспорт графика"} />
             </button>
+            {canPublish && !demo && publishInfo.supported && (
+              <button
+                type="button"
+                className={`btn text-sm px-2.5 py-1.5 flex items-center gap-1.5 ${publishInfo.at ? "btn-secondary" : "btn-primary"}`}
+                disabled={loading || publishing}
+                onClick={togglePublish}
+                title="Les équipes ne voient les bonus et pénalités de ce mois qu'après publication / Бригады видят бонусы и штрафы месяца только после публикации"
+              >
+                <Send size={14} />
+                {publishInfo.at ? (
+                  <Bi fr={`Publié le ${new Date(publishInfo.at).toLocaleDateString("fr-FR")} - retirer`} ru="Опубликовано - снять" />
+                ) : (
+                  <Bi fr="Publier bonus et pénalités" ru="Опубликовать бонусы и штрафы" />
+                )}
+              </button>
+            )}
             {!readOnly && (
               <>
                 <button
