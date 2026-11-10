@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
 import { serviceClient } from "@/lib/controle/server";
 import { fetchPlanningJobs, type PlanningJob } from "@/lib/planning/parsePlanning";
-import { siteSuggestionsByTeam } from "@/lib/planning/siteSuggestions";
+import { siteJobsInWindow, siteSuggestionsByTeam } from "@/lib/planning/siteSuggestions";
 
 // Данные для экрана контролёра /controle : бригады с составом, подсказки объектов из планинга
 // и последние записи этого контролёра. Только роли controleur / rh_admin.
@@ -35,14 +35,37 @@ export async function GET() {
 
   // Объекты команд из планинга : окно = предыдущий + текущий месяц. Подсказки, не обязательные.
   let sitesByTeam: Record<string, string[]> = {};
+  let siteJobs: ReturnType<typeof siteJobsInWindow> = [];
   try {
     if (!planningCache || Date.now() - planningCache.at > 5 * 60 * 1000) planningCache = { at: Date.now(), jobs: await fetchPlanningJobs() };
     const now = new Date();
     const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 10);
     const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
     sitesByTeam = siteSuggestionsByTeam(planningCache.jobs, from, to);
+    siteJobs = siteJobsInWindow(planningCache.jobs, from, to);
   } catch {
     sitesByTeam = {};
+    siteJobs = [];
+  }
+
+  // Последняя проверка по каждому объекту (все контролёры, за 120 дней) : для списка « проверен / нет ».
+  const since120 = new Date(Date.now() - 120 * 86400000).toISOString().slice(0, 10);
+  const { data: checkRows } = await sb
+    .from("control_penalties")
+    .select("site, inspection_date, team_id, team_amount, catalog_code, created_by_email")
+    .eq("status", "active")
+    .gte("inspection_date", since120)
+    .order("inspection_date", { ascending: false })
+    .limit(3000);
+  const lastChecks: Record<string, { site: string; date: string; team_id: string; total: number; issues: number; by: string }> = {};
+  for (const r of checkRows ?? []) {
+    const key = String(r.site).toLowerCase().trim();
+    const cur = lastChecks[key];
+    if (!cur) lastChecks[key] = { site: r.site as string, date: r.inspection_date as string, team_id: r.team_id as string, total: Number(r.team_amount), issues: r.catalog_code ? 1 : 0, by: r.created_by_email as string };
+    else if (cur.date === r.inspection_date) {
+      cur.total += Number(r.team_amount);
+      if (r.catalog_code) cur.issues += 1;
+    }
   }
 
   // Последние записи (30 дней) : свои у контролёра, все у rh_admin.
@@ -59,7 +82,7 @@ export async function GET() {
   const { data: recent } = await q;
 
   return NextResponse.json(
-    { email: check.ctx.email, role: check.ctx.role, teams: teamList, sitesByTeam, recent: recent ?? [] },
+    { email: check.ctx.email, role: check.ctx.role, teams: teamList, sitesByTeam, siteJobs, lastChecks, recent: recent ?? [] },
     { headers: NO_STORE }
   );
 }

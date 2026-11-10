@@ -42,3 +42,25 @@ export function siteSuggestionsByTeam(jobs: PlanningJob[], from: string, to: str
   }
   return out;
 }
+
+export type SiteJob = { name: string; team: string; from: string; to: string };
+
+/** Все объекты из планинга за окно [from, to] : одна строка на (объект, команда), с датами работ. */
+export function siteJobsInWindow(jobs: PlanningJob[], from: string, to: string): SiteJob[] {
+  const map = new Map<string, SiteJob>();
+  for (const j of jobs) {
+    if (!/^\d+$/.test(j.team) || !j.dateFromIso || !j.dateToIso || j.dateToIso < from || j.dateFromIso > to) continue;
+    for (const raw of [j.worker, j.site, ...j.notes]) {
+      const s = raw ? cleanSite(raw) : null;
+      if (!s) continue;
+      const key = `${s.toLowerCase()}|${j.team}`;
+      const cur = map.get(key);
+      if (!cur) map.set(key, { name: s, team: j.team, from: j.dateFromIso, to: j.dateToIso });
+      else {
+        if (j.dateFromIso < cur.from) cur.from = j.dateFromIso;
+        if (j.dateToIso > cur.to) cur.to = j.dateToIso;
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => b.from.localeCompare(a.from));
+}

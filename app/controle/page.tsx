@@ -31,7 +31,17 @@ type Recent = {
   status: "active" | "cancelled";
   control_penalty_targets: Target[];
 };
-type Ctx = { email: string; role: string; teams: Team[]; sitesByTeam: Record<string, string[]>; recent: Recent[] };
+type SiteJob = { name: string; team: string; from: string; to: string };
+type LastCheck = { site: string; date: string; team_id: string; total: number; issues: number; by: string };
+type Ctx = {
+  email: string;
+  role: string;
+  teams: Team[];
+  sitesByTeam: Record<string, string[]>;
+  siteJobs: SiteJob[];
+  lastChecks: Record<string, LastCheck>;
+  recent: Recent[];
+};
 type Pick = { qty: string; amount: string };
 
 const eur = (n: number) => `${(Math.round(n * 100) / 100).toFixed(2).replace(".", ",")} €`;
@@ -77,6 +87,9 @@ export default function ControlePage() {
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [tab, setTab] = useState<"check" | "sites" | "history">("check");
+  const [siteFilter, setSiteFilter] = useState<"all" | "todo" | "done">("todo");
+  const [siteSearch, setSiteSearch] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/controle/context", { cache: "no-store" });
@@ -237,6 +250,31 @@ export default function ControlePage() {
     return Array.from(map.values());
   }, [ctx?.recent]);
 
+  // Список объектов: из планинга + проверенные вручную. « Проверен » = последняя проверка не раньше начала работ.
+  const siteList = useMemo(() => {
+    if (!ctx) return [];
+    const rows = ctx.siteJobs.map((j) => {
+      const last = ctx.lastChecks[j.name.toLowerCase().trim()];
+      return { name: j.name, team: j.team, from: j.from, to: j.to, last, checked: !!last && last.date >= j.from };
+    });
+    const known = new Set(rows.map((r) => r.name.toLowerCase().trim()));
+    for (const [key, last] of Object.entries(ctx.lastChecks)) {
+      if (known.has(key)) continue;
+      const t = ctx.teams.find((x) => x.id === last.team_id);
+      rows.push({ name: last.site, team: t?.number ?? "", from: "", to: "", last, checked: true });
+    }
+    return rows;
+  }, [ctx]);
+  const todoCount = siteList.filter((r) => !r.checked).length;
+
+  function openCheck(name: string, teamNumber: string) {
+    const t = ctx?.teams.find((x) => x.number === teamNumber);
+    if (t) chooseTeam(t.id);
+    setSite(name);
+    setTab("check");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   if (loadError) return <main className="p-6 text-center font-bold text-error-600">{loadError}</main>;
   if (!ctx) return <main className="p-6 text-center font-semibold text-stone-500">Загрузка…</main>;
 
@@ -265,8 +303,63 @@ export default function ControlePage() {
         <p className={`rounded-xl px-3 py-2 text-sm font-bold ${msg.ok ? "bg-success-50 text-success-600" : "bg-error-50 text-error-600"}`}>{msg.text}</p>
       )}
 
+      <nav className="grid grid-cols-3 gap-1 rounded-2xl bg-stone-100 p-1">
+        {([
+          ["check", "Проверка"],
+          ["sites", `Объекты${todoCount > 0 ? ` · ${todoCount}` : ""}`],
+          ["history", "История"],
+        ] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} className={`rounded-xl px-2 py-2 text-sm font-extrabold ${tab === k ? "bg-white text-primary-700 shadow-sm" : "text-stone-500"}`}>
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "sites" && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {([["todo", `Не проверены (${todoCount})`], ["done", `Проверены (${siteList.length - todoCount})`], ["all", `Все (${siteList.length})`]] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setSiteFilter(k)} className={`rounded-full border px-3 py-1.5 text-xs font-bold ${siteFilter === k ? "border-primary-600 bg-primary-50 text-primary-700" : "border-stone-200 text-stone-600"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input className="input pl-9" placeholder="Поиск объекта или бригады" value={siteSearch} onChange={(e) => setSiteSearch(e.target.value)} />
+          </div>
+          {siteList
+            .filter((r) => (siteFilter === "all" || (siteFilter === "todo") === !r.checked) && `${r.name} ${r.team}`.toLowerCase().includes(siteSearch.trim().toLowerCase()))
+            .map((r) => (
+              <div key={`${r.name}|${r.team}`} className="rounded-2xl border border-stone-100 bg-white p-3 shadow-sm">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-extrabold text-stone-800">{r.name}</p>
+                    <p className="text-xs text-stone-400">
+                      {r.team ? `бригада ${r.team}` : ""}
+                      {r.from ? ` · работы ${fr(r.from).slice(0, 5)}–${fr(r.to).slice(0, 5)}` : ""}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${r.checked ? "bg-success-50 text-success-600" : "bg-warning-50 text-warning-600"}`}>
+                    {r.checked ? "проверен" : "не проверен"}
+                  </span>
+                </div>
+                {r.last && (
+                  <p className="mt-1 text-xs text-stone-500">
+                    Последняя проверка {fr(r.last.date)}: {r.last.issues === 0 ? "без замечаний" : `${r.last.issues} замеч., ${eur(r.last.total)} на команду`}
+                  </p>
+                )}
+                <button onClick={() => openCheck(r.name, r.team)} className="mt-2 text-xs font-extrabold text-primary-700">
+                  {r.checked ? "Проверить ещё раз →" : "Проверить →"}
+                </button>
+              </div>
+            ))}
+          {siteList.length === 0 && <p className="text-sm text-stone-400">Объекты из планинга не загрузились.</p>}
+        </section>
+      )}
+
       {/* 1. Дата, бригада, объект */}
-      <section className="space-y-3 rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
+      {tab === "check" && <section className="space-y-3 rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-3">
           <label className="text-xs font-bold text-stone-500">
             Дата проверки
@@ -300,10 +393,10 @@ export default function ControlePage() {
             ))}
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* 2. Ошибки */}
-      {team && (
+      {tab === "check" && team && (
         <section className="space-y-3 rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-extrabold text-stone-800">Что нашли</h2>
@@ -373,7 +466,7 @@ export default function ControlePage() {
       )}
 
       {/* 3. Кто платит */}
-      {team && (
+      {tab === "check" && team && (
         <section className="space-y-3 rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-extrabold text-stone-800">Кто в бригаде {team.number}</h2>
@@ -422,7 +515,7 @@ export default function ControlePage() {
       )}
 
       {/* История */}
-      <section className="space-y-2">
+      {tab === "history" && <section className="space-y-2">
         <h2 className="text-sm font-extrabold text-stone-800">{ctx.role === "rh_admin" ? "Последние проверки (30 дней)" : "Мои записи (30 дней)"}</h2>
         {history.length === 0 && <p className="text-sm text-stone-400">Пока ничего нет.</p>}
         {history.map((rows) => {
@@ -464,10 +557,10 @@ export default function ControlePage() {
             </div>
           );
         })}
-      </section>
+      </section>}
 
       {/* Нижняя панель */}
-      <div className="fixed inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white/95 p-3 backdrop-blur">
+      {tab === "check" && <div className="fixed inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white/95 p-3 backdrop-blur">
         <div className="mx-auto flex max-w-2xl flex-col gap-2">
           {computed.length > 0 && (
             <p className="text-center text-xs font-bold text-stone-600">
@@ -489,7 +582,7 @@ export default function ControlePage() {
           </div>
           {!baseReady && <p className="text-center text-[11px] text-stone-400">Укажите дату, объект и бригаду</p>}
         </div>
-      </div>
+      </div>}
     </main>
   );
 }
