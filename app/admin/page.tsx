@@ -16501,6 +16501,7 @@ function PenaltyPickerButton({
   }, [search]);
 
   function unitText(c: PenaltyCatalogItem) {
+    if (c.unit === "manual") return "вручную";
     if (c.unit === "range") return `${c.amount}-${c.amountMax} €`;
     if (c.unit === "per_piece") return `${c.amount} €/шт`;
     if (c.unit === "per_day") return `${c.amount} €/день`;
@@ -16511,7 +16512,13 @@ function PenaltyPickerButton({
     const div = Number(divisor.replace(",", ".")) || PENALTY_DEFAULT_DIVISOR;
     const q = Number((qty[c.code] ?? "1").replace(",", ".")) || 0;
     if ((c.unit === "per_piece" || c.unit === "per_day") && q <= 0) return;
-    const r = c.unit === "range" ? Number((range[c.code] ?? String(c.amount)).replace(",", ".")) || c.amount : undefined;
+    const r =
+      c.unit === "range"
+        ? Number((range[c.code] ?? String(c.amount)).replace(",", ".")) || c.amount
+        : c.unit === "manual"
+          ? Number((range[c.code] ?? "").replace(",", ".")) || 0
+          : undefined;
+    if (c.unit === "manual" && !(r && r > 0)) return; // сумма на команду вводится вручную
     const { share, line } = describePenaltyPick({ item: c, qty: q, rangeAmount: r, site, divisor: div });
     onPick(share, line);
     setAdded((prev) => [`${c.code} −${share.toFixed(2)} €`, ...prev].slice(0, 6));
@@ -16611,6 +16618,16 @@ function PenaltyPickerButton({
                         style={{ width: "3.6rem" }}
                         value={range[c.code] ?? String(c.amount)}
                         title={c.note ?? "Сумма в диапазоне"}
+                        onChange={(ev) => setRange((prev) => ({ ...prev, [c.code]: ev.target.value }))}
+                      />
+                    )}
+                    {c.unit === "manual" && (
+                      <input
+                        className="input px-1 py-1 text-xs"
+                        style={{ width: "3.6rem" }}
+                        placeholder="€ на ком."
+                        value={range[c.code] ?? ""}
+                        title={`${c.note ?? "Сумма вводится вручную"} - сумма на всю команду (делится на ÷)`}
                         onChange={(ev) => setRange((prev) => ({ ...prev, [c.code]: ev.target.value }))}
                       />
                     )}
