@@ -17192,6 +17192,8 @@ function PaieView({
       const monthIso = `${year}-${String(month).padStart(2, "0")}-01`;
 
       const { start: monthStart, end: monthEnd } = monthRange(year, month);
+      const today = new Date();
+      const isCurrentMonthView = year === today.getFullYear() && month === today.getMonth() + 1;
       const [{ data: emp }, { data: paramRow }] = await Promise.all([
         supabase
           .from("employees")
@@ -17204,11 +17206,14 @@ function PaieView({
           // entirely. end_date doubles as "départ en congé" for on_leave
           // (RH sets it same as for terminated) - a null end_date on_leave
           // just means it hasn't been entered yet, so still include them.
+          // Mois EN COURS : les salariés sortis (statut « Уволен ») disparaissent de Paie tout de suite,
+          // sans attendre la fin du mois. Mois déjà clos : on les garde, ils ont travaillé ce mois-là
+          // (ligne partielle du dernier mois).
           .or(
             `status.eq.active,` +
               `and(status.eq.on_leave,end_date.gte.${monthIso}),` +
-              `and(status.eq.on_leave,end_date.is.null),` +
-              `and(status.eq.terminated,end_date.gte.${monthIso})`
+              `and(status.eq.on_leave,end_date.is.null)` +
+              (isCurrentMonthView ? "" : `,and(status.eq.terminated,end_date.gte.${monthIso})`)
           )
           .order("last_name"),
         supabase.from("payroll_parameters").select("*").limit(1).maybeSingle(),
