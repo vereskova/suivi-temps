@@ -1153,7 +1153,7 @@ export default function AdminPage() {
               {comptableView === "paie" ? (
                 <PaieView supabase={supabase} />
               ) : comptableView === "paie_extras" ? (
-                <PayrollExtrasView supabase={supabase} />
+                <PayrollExtrasView supabase={supabase} canPublish />
               ) : comptableView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
               ) : (
@@ -1303,7 +1303,7 @@ export default function AdminPage() {
                   confidentialMode="rib_only"
                 />
               ) : rhReadonlyView === "paie_extras" ? (
-                <PayrollExtrasView supabase={supabase} />
+                <PayrollExtrasView supabase={supabase} canPublish />
               ) : rhReadonlyView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
               ) : rhReadonlyView === "schema" ? (
@@ -1741,7 +1741,7 @@ export default function AdminPage() {
             )}
             {view === "checklists" && <ChecklistsView supabase={supabase} />}
             {view === "paie" && <PaieView supabase={supabase} canOpenDossier />}
-            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} readOnly={role === "rh"} canPublish={role === "rh_admin"} />}
+            {view === "paie_extras" && <PayrollExtrasView supabase={supabase} readOnly={role === "rh"} canPublish />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
@@ -19554,7 +19554,7 @@ function PayrollExtrasView({
   canPublish = false,
 }: {
   supabase: ReturnType<typeof createClient>;
-  /** rh_admin seulement : publier les bonus/pénalités du mois aux équipes (page /equipe/…). */
+  /** Rôles avec accès à la table : publier les bonus/pénalités du mois aux équipes (page /equipe/…). */
   canPublish?: boolean;
   /** comptable a un accès complet (comme prévu dès la création de payroll_extras,
    *  voir 0074) ; rh_readonly n'a que du SELECT en RLS - l'UI doit donc être
@@ -20824,10 +20824,12 @@ function PayrollExtrasView({
     );
     if (!ok) return;
     setPublishing(true);
-    const { error } = await supabase
-      .from("payroll_runs")
-      .update(publishing_ ? { extras_published_at: new Date().toISOString(), extras_published_by: currentUserEmail } : { extras_published_at: null, extras_published_by: null })
-      .eq("id", runId);
+    const res = await fetch("/api/payroll/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month: `${year}-${String(month).padStart(2, "0")}-01`, publish: publishing_ }),
+    });
+    const error = res.ok ? null : { message: ((await res.json().catch(() => ({}))) as { error?: string }).error ?? "erreur" };
     setPublishing(false);
     if (error) {
       toast.error("Erreur : " + error.message);
