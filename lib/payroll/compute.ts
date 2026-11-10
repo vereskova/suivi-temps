@@ -114,6 +114,28 @@ export function computePayrollLine(input: PayrollInput, params: PayrollParams): 
   return { baseNet, joursRepas, hs25Heures, hs50Heures, primeExceptionnelle };
 }
 
+/**
+ * Minimum net à verser à un salarié chantier à temps plein pour un nombre de
+ * jours travaillés. Reconstitué à partir des montants relevés par le cabinet
+ * (09/2026 puis 10/2026 : 22 j = 2 111,87 € pour CHISTOL / DOVHAL / STARCICOV) :
+ *   minimum(j) = SMIC net après mutuelle × min(j, 21,67) / 21,67 + 30 € × min(j, 22)
+ * (1 451,87 € ; 30 € = indemnité repas/déplacement par jour). Estimation à recaler
+ * sur les chiffres du cabinet, pas une règle légale. Sert à PRÉVENIR l'écart avant
+ * l'envoi (le cabinet relève sinon lui-même le net au minimum).
+ */
+export const MINIMUM_NET_MENSUEL_35H = 1451.87;
+export const MINIMUM_INDEMNITE_JOUR = 30;
+export const MINIMUM_JOURS_STANDARD = 21.67;
+export const MINIMUM_JOURS_INDEMNITE_MAX = 22;
+
+export function minimumNetChantier(joursTravailles: number): number {
+  const j = Math.max(0, joursTravailles || 0);
+  if (j === 0) return 0;
+  const base = (MINIMUM_NET_MENSUEL_35H * Math.min(j, MINIMUM_JOURS_STANDARD)) / MINIMUM_JOURS_STANDARD;
+  const indemnites = MINIMUM_INDEMNITE_JOUR * Math.min(j, MINIMUM_JOURS_INDEMNITE_MAX);
+  return Math.round((base + indemnites) * 100) / 100;
+}
+
 export const DEFAULT_PAYROLL_PARAMS: PayrollParams = {
   tauxHoraireBase: 12.31,
   heuresNormalesMois: 151.67,

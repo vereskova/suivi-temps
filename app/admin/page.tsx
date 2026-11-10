@@ -127,6 +127,7 @@ import {
 import { CompanyDoc, EmployeeDoc } from "@/lib/documents/types";
 import {
   computePayrollLine,
+  minimumNetChantier,
   computeNightPremium,
   computePayrollExtras,
   computeControllerSplit,
@@ -17202,6 +17203,10 @@ function PaieView({
   // used as the default for "Jours travaillés" instead of a calendar
   // estimate, so it's not retyped from scratch here too.
   const [joursReelsByEmployee, setJoursReelsByEmployee] = useState<Record<string, number>>({});
+  // Jours de congé payé (code « cp » dans les pointages) : à transmettre au cabinet, sinon il part sur un mois plein.
+  const [cpJoursByEmployee, setCpJoursByEmployee] = useState<Record<string, number>>({});
+  // Salariés dont les jours ont été remplacés automatiquement par le pointage à l'ouverture (valeur enregistrée ≠ pointage).
+  const [autoDays, setAutoDays] = useState<{ id: string; saved: number; real: number }[]>([]);
   const [salaireBaseNetBulkValue, setSalaireBaseNetBulkValue] = useState("");
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -17250,16 +17255,22 @@ function PaieView({
 
       const { data: pointageForJours } = await supabase
         .from("pointage_entries")
-        .select("employee_id, work_date, is_absent, half_day")
+        .select("employee_id, work_date, is_absent, half_day, absence_types(code)")
         .gte("work_date", monthStart)
         .lte("work_date", monthEnd);
       // Même règle que Primes & Bonus : demi-journée = 0,5, week-end travaillé compte.
       const joursReels: Record<string, number> = {};
+      const cpJours: Record<string, number> = {};
       (pointageForJours ?? []).forEach((p) => {
-        if (p.is_absent) return;
+        if (p.is_absent) {
+          const code = (p as unknown as { absence_types: { code: string } | null }).absence_types?.code;
+          if (code === "cp") cpJours[p.employee_id] = (cpJours[p.employee_id] ?? 0) + (p.half_day ? 0.5 : 1);
+          return;
+        }
         joursReels[p.employee_id] = (joursReels[p.employee_id] ?? 0) + (p.half_day ? 0.5 : 1);
       });
       setJoursReelsByEmployee(joursReels);
+      setCpJoursByEmployee(cpJours);
 
       if (paramRow) {
         setParamsRowId(paramRow.id);
@@ -17301,6 +17312,20 @@ function PaieView({
         return real !== undefined ? String(real) : defaultJoursTravaillesFor(employee, monthStart, monthEnd);
       }
 
+      // Jours = pointage réel, automatiquement, pour le mois courant et le mois précédent (celui qu'on paie).
+      // Un mois plus ancien est déjà parti chez le cabinet : on garde ce qui a été enregistré.
+      const prevMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const autoFromPointage = new Date(year, month - 1, 1) >= prevMonthStart;
+      const autoChanged: { id: string; saved: number; real: number }[] = [];
+      function daysForSaved(employee: PaieEmployee, savedDays: number): string {
+        const real = joursReels[employee.id];
+        if (autoFromPointage && !isOfficeCore(employee) && real !== undefined) {
+          if (Math.abs(savedDays - real) > 0.001) autoChanged.push({ id: employee.id, saved: savedDays, real });
+          return String(real);
+        }
+        return String(savedDays);
+      }
+
       if (run?.id) {
         const { data: lines } = await supabase
           .from("payroll_line_items")
@@ -17325,13 +17350,14 @@ function PaieView({
             // suggested default. Otherwise: no saved line yet this month →
             // suggest a prorated day count instead of leaving it blank.
             joursTravailles: l
-              ? String(l.jours_travailles ?? 0)
+              ? daysForSaved(employee, Number(l.jours_travailles ?? 0))
               : isOfficeCore(employee)
                 ? "0"
                 : defaultJours(employee),
           };
         });
         setInputs(map);
+        setAutoDays(autoChanged);
       } else {
         const map: Record<string, PaieLineInput> = {};
         (emp ?? []).forEach((e) => {
@@ -17342,6 +17368,7 @@ function PaieView({
           };
         });
         setInputs(map);
+        setAutoDays([]);
       }
 
       setLoading(false);
@@ -17611,6 +17638,53 @@ function PaieView({
     return map;
   }, [employees, inputs, params]);
 
+  // Contrôles AVANT envoi au cabinet : jours ≠ pointages, net sous le minimum (sinon le cabinet corrige lui-même).
+  const dayMismatches = useMemo(() => {
+    const out: { id: string; saved: number; real: number }[] = [];
+    employees.forEach((e) => {
+      if (isFopContractor(e) || isOfficeCore(e)) return;
+      const real = joursReelsByEmployee[e.id];
+      if (real === undefined) return;
+      const saved = Number(inputs[e.id]?.joursTravailles) || 0;
+      if (Math.abs(saved - real) > 0.001) out.push({ id: e.id, saved, real });
+    });
+    return out;
+  }, [employees, inputs, joursReelsByEmployee]);
+
+  const belowMinimum = useMemo(() => {
+    const out: { id: string; net: number; min: number }[] = [];
+    employees.forEach((e) => {
+      if (isFopContractor(e) || e.category !== "chantier") return;
+      const line = inputs[e.id];
+      const net = Number(line?.netSouhaite) || 0;
+      const min = minimumNetChantier(Number(line?.joursTravailles) || 0);
+      if (net > 0 && min > 0 && net < min - 0.5) out.push({ id: e.id, net, min });
+    });
+    return out;
+  }, [employees, inputs]);
+
+  function syncDaysFromPointage() {
+    setInputs((prev) => {
+      const next = { ...prev };
+      dayMismatches.forEach((m) => {
+        next[m.id] = { ...(next[m.id] ?? EMPTY_PAIE_LINE), joursTravailles: String(m.real) };
+      });
+      return next;
+    });
+    toast.success(`${dayMismatches.length} jour(s) mis à jour d'après le pointage. Pensez à enregistrer.`);
+  }
+
+  function raiseToMinimum() {
+    setInputs((prev) => {
+      const next = { ...prev };
+      belowMinimum.forEach((m) => {
+        next[m.id] = { ...(next[m.id] ?? EMPTY_PAIE_LINE), netSouhaite: String(m.min) };
+      });
+      return next;
+    });
+    toast.success(`${belowMinimum.length} net(s) relevé(s) au minimum. Pensez à enregistrer.`);
+  }
+
   const nightComputed = useMemo(() => {
     const map: Record<string, ReturnType<typeof computeNightPremium>> = {};
     employees.forEach((e) => {
@@ -17708,6 +17782,7 @@ function PaieView({
         "Nom Prénom": employeeName(e),
         "Salaire base net €": e.salaire_base_net ?? "",
         "Jours travaillés": Number(line.joursTravailles) || 0,
+        "dont congés payés (jours)": cpJoursByEmployee[e.id] ?? 0,
         "Jours fériés travaillés": Number(line.majJoursFeries) || 0,
         "Jours repas": c?.joursRepas ?? 0,
         "HS+25% h": c?.hs25Heures ?? 0,
@@ -18121,6 +18196,62 @@ function PaieView({
         </div>
       )}
 
+      {!loading && autoDays.length > 0 && (
+        <div className="mb-4 rounded-xl border border-success-300 bg-success-50 px-4 py-3 text-sm">
+          <p className="font-bold text-success-600">
+            Jours remplis automatiquement d&apos;après le pointage pour {autoDays.length} salarié(s) / Дни проставлены автоматически по отметкам у {autoDays.length} чел.
+          </p>
+          <p className="mt-1 text-xs text-stone-600">
+            {autoDays
+              .slice(0, 10)
+              .map((m) => `${employeeName(employees.find((e) => e.id === m.id)!)} : ${m.saved} → ${m.real}`)
+              .join(" · ")}
+            {autoDays.length > 10 ? " …" : ""}
+          </p>
+          <p className="mt-1 text-[11px] text-stone-500">
+            Un jour modifié à la main est gardé jusqu&apos;à la réouverture de la page. / Ручное изменение сохраняется до перезагрузки страницы.
+          </p>
+        </div>
+      )}
+
+      {!loading && (dayMismatches.length > 0 || belowMinimum.length > 0) && (
+        <div className="mb-4 space-y-2">
+          {dayMismatches.length > 0 && (
+            <div className="rounded-xl border border-warning-300 bg-warning-50 px-4 py-3 text-sm">
+              <p className="font-bold text-warning-700">
+                Jours ≠ pointage pour {dayMismatches.length} salarié(s) / Дни не совпадают с отметками у {dayMismatches.length} чел.
+              </p>
+              <p className="mt-1 text-xs text-stone-600">
+                {dayMismatches
+                  .slice(0, 8)
+                  .map((m) => `${employeeName(employees.find((e) => e.id === m.id)!)} : ${m.saved} → ${m.real}`)
+                  .join(" · ")}
+                {dayMismatches.length > 8 ? " …" : ""}
+              </p>
+              <button className="btn btn-primary mt-2 px-3 py-1.5 text-xs" onClick={syncDaysFromPointage}>
+                Mettre les jours d&apos;après le pointage / Проставить дни по отметкам
+              </button>
+            </div>
+          )}
+          {belowMinimum.length > 0 && (
+            <div className="rounded-xl border border-error-300 bg-error-50 px-4 py-3 text-sm">
+              <p className="font-bold text-error-600">
+                Net sous le minimum pour {belowMinimum.length} salarié(s) : le cabinet les relèvera lui-même (+
+                {belowMinimum.reduce((s, m) => s + (m.min - m.net), 0).toFixed(2)} €) / Нетто ниже минимума у {belowMinimum.length} чел.
+              </p>
+              <p className="mt-1 text-xs text-stone-600">
+                {belowMinimum
+                  .map((m) => `${employeeName(employees.find((e) => e.id === m.id)!)} : ${m.net.toFixed(0)} → ${m.min.toFixed(2)}`)
+                  .join(" · ")}
+              </p>
+              <button className="btn btn-red mt-2 px-3 py-1.5 text-xs" onClick={raiseToMinimum}>
+                Relever au minimum / Поднять до минимума
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="card">
           <SkeletonRows rows={6} cols={10} />
@@ -18355,6 +18486,21 @@ function PaieView({
                           </option>
                         ))}
                       </select>
+                      {!isOfficeCore(e) && joursReelsByEmployee[e.id] !== undefined && Math.abs((Number(line.joursTravailles) || 0) - joursReelsByEmployee[e.id]) > 0.001 && (
+                        <button
+                          type="button"
+                          className="mt-1 block text-[11px] font-bold text-warning-700 underline"
+                          title="Pointage réel / По отметкам - cliquer pour appliquer"
+                          onClick={() => updateInput(e.id, "joursTravailles", String(joursReelsByEmployee[e.id]))}
+                        >
+                          pointage : {joursReelsByEmployee[e.id]}
+                        </button>
+                      )}
+                      {(cpJoursByEmployee[e.id] ?? 0) > 0 && (
+                        <span className="mt-1 block text-[11px] font-bold text-primary-700" title="Congés payés pointés ce mois / Отпуск (CP) по отметкам">
+                          dont CP : {cpJoursByEmployee[e.id]} j
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 pr-4">
                       <input
@@ -18364,6 +18510,19 @@ function PaieView({
                         value={line.netSouhaite}
                         onChange={(ev) => updateInput(e.id, "netSouhaite", ev.target.value)}
                       />
+                      {e.category === "chantier" && (Number(line.joursTravailles) || 0) > 0 && (() => {
+                        const min = minimumNetChantier(Number(line.joursTravailles) || 0);
+                        const net = Number(line.netSouhaite) || 0;
+                        const low = net > 0 && net < min - 0.5;
+                        return (
+                          <span
+                            className={`mt-1 block text-[11px] font-bold ${low ? "text-error-600" : "text-stone-400"}`}
+                            title="Net minimum estimé pour ces jours (SMIC mensualisé + 30 €/jour) / Ориентировочный минимум нетто за эти дни"
+                          >
+                            мин. {min.toFixed(2)} €{low ? ` (+${(min - net).toFixed(2)})` : ""}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="py-2 pr-4">
                       <select
