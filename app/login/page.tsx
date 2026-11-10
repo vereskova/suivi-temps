@@ -1,18 +1,39 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
 import { Mail, CheckCircle2 } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState("");
+  const [pwError, setPwError] = useState(false);
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
   );
 
   const nextParam =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+
+  async function signInWithPassword() {
+    if (!email.trim() || !password) return;
+    setStatus("sending");
+    setPwError(false);
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error || !data.user) {
+      setPwError(true);
+      setStatus("idle");
+      return;
+    }
+    const { data: roleRow } = await supabase.from("user_roles").select("role").eq("auth_user_id", data.user.id).maybeSingle();
+    const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
+    router.replace(roleRow?.role === "controleur" ? "/controle" : safeNext);
+  }
 
   async function sendMagicLink() {
     if (!email.trim()) return;
@@ -61,10 +82,41 @@ export default function LoginPage() {
           />
         </label>
 
+        {usePassword && (
+          <label className="mt-4 block text-sm font-bold text-stone-700">
+            Mot de passe / Пароль
+            <input
+              type="password"
+              className="input mt-2"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && signInWithPassword()}
+              autoComplete="current-password"
+            />
+          </label>
+        )}
+        {usePassword && pwError && (
+          <p className="mt-3 rounded-xl bg-error-50 px-3 py-2 text-center text-sm font-bold text-error-600">
+            Email ou mot de passe incorrect. / Неверная почта или пароль.
+          </p>
+        )}
+        {usePassword && (
+          <button onClick={signInWithPassword} disabled={status === "sending"} className="btn btn-primary mt-4 w-full">
+            {status === "sending" ? "…" : "Se connecter / Войти"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => { setUsePassword(!usePassword); setPwError(false); }}
+          className="mt-3 w-full text-center text-xs font-bold text-stone-400 underline"
+        >
+          {usePassword ? "Recevoir un lien par email / Получить ссылку на почту" : "Connexion par mot de passe / Войти по паролю"}
+        </button>
+
         <button
           onClick={sendMagicLink}
           disabled={status === "sending" || status === "sent"}
-          className="btn btn-primary mt-4 w-full"
+          className={`btn btn-primary mt-4 w-full ${usePassword ? "hidden" : ""}`}
         >
           {status === "sent" ? (
             <>

@@ -52,6 +52,15 @@ async function main() {
     .upsert({ auth_user_id: authUserId, role: "controleur", employee_id: employeeId }, { onConflict: "auth_user_id" });
   if (error) throw error;
 
+  // Optional: set a password so the account can also sign in with email + password (no magic link).
+  // Usage: CONTROLEUR_PASSWORD=... npx tsx scripts/seed-controleur-login.ts email [employee_id]
+  const password = process.env.CONTROLEUR_PASSWORD;
+  if (password) {
+    const { error: pwErr } = await supabase.auth.admin.updateUserById(authUserId, { password });
+    if (pwErr) throw pwErr;
+    console.log("✓ password set");
+  }
+
   console.log(`✓ ${email} -> role 'controleur'`);
   console.log("They can now log in via the magic-link form at /login and will land on /controle.");
 }
