@@ -6,6 +6,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 export type RoleCheckContext = {
   supabase: SupabaseServerClient;
   userId: string;
+  email: string;
   role: string;
   employeeId: string | null;
 };
@@ -43,6 +44,6 @@ export async function requireRole(allowedRoles: readonly string[]): Promise<Role
 
   return {
     ok: true,
-    ctx: { supabase, userId: user.id, role: roleRow.role, employeeId: roleRow.employee_id ?? null },
+    ctx: { supabase, userId: user.id, email: user.email ?? "", role: roleRow.role, employeeId: roleRow.employee_id ?? null },
   };
 }

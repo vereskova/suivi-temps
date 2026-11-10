@@ -11,6 +11,9 @@ export default function LoginPage() {
     "idle"
   );
 
+  const nextParam =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+
   async function sendMagicLink() {
     if (!email.trim()) return;
     setStatus("sending");
@@ -19,7 +22,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/callback${nextParam ? `?next=${encodeURIComponent(nextParam)}` : ""}`,
       },
     });
 

@@ -3,11 +3,13 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
+import ControlPenaltiesView from "@/components/admin/ControlPenaltiesView";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
   AlertTriangle,
   Archive,
+  ClipboardList,
   ArchiveRestore,
   ArrowLeft,
   Baby,
@@ -486,6 +488,7 @@ type ViewKey =
   | "commercial"
   | "autoparc"
   | "audit"
+  | "controle_journal"
   | "voldis_location"
   | "voldis_ajax";
 
@@ -539,6 +542,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "checklists", label: "Checklists RH", labelRu: "Чек-листы", icon: SquareCheck },
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
       { key: "paie_extras", label: "Primes & Bonus", labelRu: "Премии и бонусы", icon: Banknote },
+      { key: "controle_journal", label: "Pénalités contrôle", labelRu: "Штрафы контролёра", icon: ClipboardList },
       { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", icon: History },
     ],
   },
@@ -956,6 +960,12 @@ export default function AdminPage() {
         .maybeSingle();
 
       setRole(roleRow?.role ?? null);
+
+      // Контролёр видит только свой экран штрафов.
+      if (roleRow?.role === "controleur") {
+        router.replace("/controle");
+        return;
+      }
 
       if (roleRow?.role === "rh_admin" || roleRow?.role === "rh") {
         const [, { data: absenceRows }, { data: teamRows }] = await Promise.all([
@@ -1735,6 +1745,7 @@ export default function AdminPage() {
             {view === "commercial" && <CommercialSection supabase={supabase} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
+            {view === "controle_journal" && <ControlPenaltiesView supabase={supabase} canCancel={role === "rh_admin"} />}
           </DossierNavContext.Provider>
           )}
           </div>

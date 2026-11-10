@@ -4,12 +4,12 @@ import { NextResponse, type NextRequest } from "next/server";
 // Only /admin (the RH panel) requires login. The daily pointage form at "/" is
 // intentionally public - team leads found the magic-link email round-trip too
 // much friction on their phones, and there's no sensitive data on that form.
-const PROTECTED_PREFIX = "/admin";
+const PROTECTED_PREFIXES = ["/admin", "/controle"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
-  const isProtectedPath = request.nextUrl.pathname.startsWith(PROTECTED_PREFIX);
+  const isProtectedPath = PROTECTED_PREFIXES.some((p) => request.nextUrl.pathname.startsWith(p));
   if (!isProtectedPath) {
     return response;
   }
@@ -42,6 +42,7 @@ export async function updateSession(request: NextRequest) {
   if (!user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
+    if (request.nextUrl.pathname.startsWith("/controle")) loginUrl.searchParams.set("next", "/controle");
     return NextResponse.redirect(loginUrl);
   }
 
