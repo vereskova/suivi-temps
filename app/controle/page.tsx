@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
 import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
-import { Camera, CheckCircle2, ClipboardCheck, LogOut, Search, Trash2, X } from "lucide-react";
+import { Camera, CheckCircle2, ClipboardCheck, ImageIcon, LogOut, Pencil, Search, Trash2, X } from "lucide-react";
 
 type Member = { id: string; name: string };
 type Team = { id: string; name: string; number: string; members: Member[] };
@@ -92,6 +92,8 @@ export default function ControlePage() {
   const [tab, setTab] = useState<"check" | "sites" | "history">("check");
   const [siteFilter, setSiteFilter] = useState<"all" | "todo" | "done">("todo");
   const [siteSearch, setSiteSearch] = useState("");
+  // Редактирование существующей проверки из истории: batch_id старой записи (при сохранении она заменяется новой).
+  const [editingBatch, setEditingBatch] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/controle/context", { cache: "no-store" });
@@ -210,6 +212,7 @@ export default function ControlePage() {
         site,
         team_id: teamId,
         clean,
+        replace_batch_id: editingBatch ?? undefined,
         divisor: div,
         note,
         employee_ids: chosenMembers.map((m) => m.id),
@@ -217,25 +220,71 @@ export default function ControlePage() {
         items: clean ? [] : computed.map((c) => ({ code: c.item.code, qty: c.qty, amount: c.amount, photo_paths: (itemPhotos[c.item.code] ?? []).map((x) => x.path) })),
       }),
     });
-    const data = (await res.json()) as { error?: string; penalties?: number; team_total?: number; share_each?: number };
+    const data = (await res.json()) as { error?: string; penalties?: number; team_total?: number; share_each?: number; edit_warning?: string | null };
     setBusy(false);
     if (!res.ok) {
       setMsg({ ok: false, text: data.error ?? "Ошибка записи" });
       return;
     }
+    const wasEdit = !!editingBatch;
     setMsg({
-      ok: true,
-      text: clean
-        ? "Записано: проверка без замечаний."
-        : `Записано: ${data.penalties} пункт(ов), на команду ${eur(data.team_total ?? 0)}, на человека ${eur(data.share_each ?? 0)}.`,
+      ok: !data.edit_warning,
+      text:
+        (data.edit_warning ? `Новая запись сохранена, но старую не удалось отменить: ${data.edit_warning}. Отмените её вручную в истории. ` : "") +
+        (wasEdit ? "Изменения сохранены. " : "") +
+        (clean ? "Записано: проверка без замечаний." : `Записано: ${data.penalties} пункт(ов), на команду ${eur(data.team_total ?? 0)}, на человека ${eur(data.share_each ?? 0)}.`),
     });
-    setPicks({});
-    setItemPhotos({});
-    setNote("");
-    setPhotos([]);
-    setSearch("");
+    setEditingBatch(null);
+    resetForm();
     window.scrollTo({ top: 0, behavior: "smooth" });
     load();
+  }
+
+  function resetForm() {
+    setPicks({});
+    setItemPhotos({});
+    setPhotos([]);
+    setNote("");
+    setSearch("");
+    setDivisor(String(PENALTY_DEFAULT_DIVISOR));
+  }
+
+  /** Открыть проверку из истории для изменения: форма заполняется её данными, сохранение заменяет старую запись. */
+  function startEdit(rows: Recent[]) {
+    const first = rows[0];
+    const t = ctx?.teams.find((x) => x.id === first.team_id);
+    const targetIds = new Set(first.control_penalty_targets.map((x) => x.employee_id));
+    const photoOf = (paths: string[] | null) => (paths ?? []).map((ph) => ({ path: ph, preview: `/api/controle/photo?path=${encodeURIComponent(ph)}` }));
+    const nextPicks: Record<string, Pick> = {};
+    const nextItemPhotos: Record<string, { path: string; preview: string }[]> = {};
+    for (const r of rows) {
+      if (!r.catalog_code) continue;
+      const item = PENALTY_CATALOG.find((c) => c.code === r.catalog_code);
+      if (!item) continue;
+      nextPicks[item.code] = {
+        qty: item.unit === "per_piece" || item.unit === "per_day" ? String(r.qty) : "1",
+        amount: item.unit === "range" || item.unit === "manual" ? String(Number(r.team_amount)) : "",
+      };
+      nextItemPhotos[item.code] = photoOf(r.photo_paths);
+    }
+    setDate(first.inspection_date);
+    setTeamId(first.team_id);
+    setSite(first.site);
+    setNote(first.note ?? "");
+    setDivisor(String(first.divisor));
+    setMembers(Object.fromEntries((t?.members ?? []).map((m) => [m.id, targetIds.has(m.id)])));
+    setPicks(nextPicks);
+    setItemPhotos(nextItemPhotos);
+    setPhotos(first.catalog_code ? [] : photoOf(first.photo_paths));
+    setEditingBatch(first.batch_id);
+    setMsg(null);
+    setTab("check");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() {
+    setEditingBatch(null);
+    resetForm();
   }
 
   async function cancel(batchId: string) {
@@ -371,6 +420,13 @@ export default function ControlePage() {
         </section>
       )}
 
+      {tab === "check" && editingBatch && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-warning-50 px-3 py-2 text-sm font-bold text-warning-700">
+          <span>Редактирование проверки: после «Сохранить изменения» старая запись заменится новой.</span>
+          <button onClick={cancelEdit} className="shrink-0 rounded-lg border border-warning-300 bg-white px-2.5 py-1 text-xs">Отмена</button>
+        </div>
+      )}
+
       {/* 1. Дата, бригада, объект */}
       {tab === "check" && <section className="space-y-3 rounded-2xl border border-stone-100 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-2 gap-3">
@@ -484,10 +540,16 @@ export default function ControlePage() {
                           </div>
                         ))}
                         {(itemPhotos[item.code]?.length ?? 0) < 6 && (
-                          <label className="flex h-14 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 text-xs font-bold text-stone-500">
-                            <Camera size={16} /> Фото ошибки
-                            <input type="file" accept="image/*" multiple capture="environment" className="hidden" onChange={(e) => { addPhotos(e.target.files, item.code); e.target.value = ""; }} />
-                          </label>
+                          <>
+                            <label className="flex h-14 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 text-xs font-bold text-stone-500">
+                              <Camera size={16} /> Снять
+                              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { addPhotos(e.target.files, item.code); e.target.value = ""; }} />
+                            </label>
+                            <label className="flex h-14 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 text-xs font-bold text-stone-500">
+                              <ImageIcon size={16} /> Из галереи
+                              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files, item.code); e.target.value = ""; }} />
+                            </label>
+                          </>
                         )}
                       </div>
                     )}
@@ -539,10 +601,16 @@ export default function ControlePage() {
                 </div>
               ))}
               {photos.length < 8 && (
-                <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border border-dashed border-stone-300 text-stone-400">
-                  <Camera size={20} />
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
-                </label>
+                <>
+                  <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-stone-300 text-[10px] font-bold text-stone-400">
+                    <Camera size={18} /> Снять
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+                  </label>
+                  <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-stone-300 text-[10px] font-bold text-stone-400">
+                    <ImageIcon size={18} /> Галерея
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
+                  </label>
+                </>
               )}
             </div>
             {uploading && <p className="mt-1 text-xs text-stone-400">Загрузка фото…</p>}
@@ -593,9 +661,14 @@ export default function ControlePage() {
               {first.note && <p className="mt-1 text-[11px] italic text-stone-400">{first.note}</p>}
               {cancelled && <p className="mt-1 text-[11px] font-bold text-stone-500">ОТМЕНЕНО</p>}
               {canCancel && (
-                <button onClick={() => cancel(first.batch_id)} className="mt-2 flex items-center gap-1 text-xs font-bold text-error-600">
-                  <Trash2 size={12} /> Отменить
-                </button>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button onClick={() => startEdit(rows)} className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-primary-200 bg-primary-50 text-sm font-extrabold text-primary-700">
+                    <Pencil size={14} /> Изменить
+                  </button>
+                  <button onClick={() => cancel(first.batch_id)} className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-error-200 bg-error-50 text-sm font-bold text-error-600">
+                    <Trash2 size={14} /> Отменить
+                  </button>
+                </div>
               )}
             </div>
           );
@@ -612,7 +685,7 @@ export default function ControlePage() {
           )}
           <div className="flex gap-2">
             <button onClick={() => submit(false)} disabled={!canSubmit || !allValid || chosenMembers.length === 0} className="btn btn-red flex-1">
-              <ClipboardCheck size={16} /> {busy ? "Запись…" : "Записать штрафы"}
+              <ClipboardCheck size={16} /> {busy ? "Запись…" : editingBatch ? "Сохранить изменения" : "Записать штрафы"}
             </button>
             <button
               onClick={() => { if (window.confirm("Записать проверку без замечаний?")) submit(true); }}

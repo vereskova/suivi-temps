@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { requireRole } from "@/lib/auth/requireRole";
 import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick } from "@/lib/payroll/penalties";
+import { cancelRows, loadCancellable } from "@/lib/controle/cancel";
 import { applyToExtras, ddmm, ensureRun, monthStartIso, prevMonthStartIso, r2, serviceClient } from "@/lib/controle/server";
 
 // Запись штрафов контролёра : журнал (control_penalties + control_penalty_targets) и сразу же
@@ -22,6 +23,8 @@ type Body = {
   note?: string;
   photo_paths?: string[];
   clean?: boolean;
+  /** Редактирование: batch_id старой проверки - после записи новой старая отменяется (суммы возвращаются). */
+  replace_batch_id?: string;
 };
 
 function bad(msg: string, status = 400) {
@@ -56,6 +59,13 @@ export async function POST(request: NextRequest) {
   if (site.length < 2 || site.length > 120) return bad("Укажите название объекта");
   if (!clean && items.length === 0) return bad("Выберите хотя бы одну ошибку");
   if (items.length > 25) return bad("Слишком много пунктов за один раз");
+
+  // Редактирование : проверить права на старую запись заранее (контролёр - только свою, не старше 48 часов).
+  let oldRows: Awaited<ReturnType<typeof loadCancellable>> | null = null;
+  if (body.replace_batch_id) {
+    oldRows = await loadCancellable(sb, { batchId: String(body.replace_batch_id), email: check.ctx.email, isAdmin: check.ctx.role === "rh_admin" });
+    if (!oldRows.ok) return bad(oldRows.error, oldRows.status);
+  }
 
   const { data: team } = await sb.from("teams").select("id, name").eq("id", teamId).maybeSingle();
   if (!team) return bad("Бригада не найдена");
@@ -123,8 +133,16 @@ export async function POST(request: NextRequest) {
     await sb.from("control_penalties").delete().eq("batch_id", batchId);
   };
 
+  // Редактирование : отменить старую проверку (после того как новая уже записана, чтобы ничего не потерять).
+  const finishEdit = async (): Promise<string | null> => {
+    if (!oldRows || !oldRows.ok) return null;
+    const res = await cancelRows(sb, oldRows.rows, { reason: "изменено контролёром", email: check.ctx.email });
+    return res.ok ? null : res.error;
+  };
+
   if (clean) {
-    return NextResponse.json({ ok: true, batch_id: batchId, penalties: inserted.length, applied: 0 }, { headers: NO_STORE });
+    const editErr = await finishEdit();
+    return NextResponse.json({ ok: true, batch_id: batchId, penalties: inserted.length, applied: 0, edit_warning: editErr }, { headers: NO_STORE });
   }
 
   // Цели : доля каждого штрафа на каждого человека.
@@ -161,8 +179,9 @@ export async function POST(request: NextRequest) {
     return bad("Не удалось записать в Primes & Bonus: " + (err instanceof Error ? err.message : "ошибка"), 500);
   }
 
+  const editErr = await finishEdit();
   return NextResponse.json(
-    { ok: true, batch_id: batchId, penalties: inserted.length, applied: applied.length, share_each: totalShare, team_total: r2(computed.reduce((s, c) => s + c.teamAmount, 0)), today: todayIso },
+    { ok: true, edit_warning: editErr, batch_id: batchId, penalties: inserted.length, applied: applied.length, share_each: totalShare, team_total: r2(computed.reduce((s, c) => s + c.teamAmount, 0)), today: todayIso },
     { headers: NO_STORE }
   );
 }
