@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CalendarCheck, CheckCircle2, ChevronRight, ClipboardList, Clock, LogOut, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
 import { workingDaysBetween } from "@/lib/commercial-durations/compute";
+import ObjectFilesBrowser from "@/components/admin/ObjectFilesBrowser";
 
 // Кабинет бригадира: объекты своей команды и контрандю (план / факт), ежедневные отметки, премии.
 // Бригадир видит только свою команду; rh_admin - любую (режим проверки). Цен и сумм смет здесь нет.
@@ -54,6 +55,7 @@ export default function BrigadirPage() {
   const [tab, setTab] = useState<"objets" | "pointage" | "primes">("objets");
   const [openObject, setOpenObject] = useState<string | null>(null);
   const [showFini, setShowFini] = useState(false);
+  const autoOpened = useRef(false);
 
   const load = useCallback(
     async (teamId?: string) => {
@@ -63,6 +65,12 @@ export default function BrigadirPage() {
       if (!res.ok) return setError(data.error ?? "Нет доступа к этому экрану.");
       setCtx(data);
       setError(null);
+      // Один объект « В работе » - сразу открываем его: бригадир заходит и заполняет контрандю.
+      if (!autoOpened.current) {
+        autoOpened.current = true;
+        const active = data.objects.filter((o) => o.status === "en_cours");
+        if (active.length === 1) setOpenObject(active[0].id);
+      }
     },
     [router]
   );
@@ -220,6 +228,8 @@ function ObjectList({ objects, showFini, setShowFini, onOpen }: { objects: ObjRo
 function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => void; onChanged: () => void }) {
   const [data, setData] = useState<ObjDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [section, setSection] = useState<"works" | "files">("works");
+  const [filter, setFilter] = useState<"todo" | "done" | "all" | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/brigadir/object?id=${id}`, { cache: "no-store" });
@@ -256,9 +266,14 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
   if (error && !data) return <p className="rounded-2xl bg-error-50 p-4 text-error-700">{error}</p>;
   if (!data || !summary) return <p className="text-stone-500">Загрузка…</p>;
 
+  // Фильтр: по умолчанию - только то, что осталось сделать
+  const left = data.lines.filter((l) => !l.actual_end);
+  const activeFilter = filter ?? (left.length > 0 ? "todo" : "all");
+  const shownLines = data.lines.filter((l) => (activeFilter === "todo" ? !l.actual_end : activeFilter === "done" ? !!l.actual_end : true));
+
   // группы по разделам (в порядке появления)
   const groups: { title: string | null; lines: Line[] }[] = [];
-  for (const l of data.lines) {
+  for (const l of shownLines) {
     const last = groups[groups.length - 1];
     if (last && last.title === l.section) last.lines.push(l);
     else groups.push({ title: l.section, lines: [l] });
@@ -288,7 +303,34 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
       </div>
       {error && <p className="rounded-xl bg-error-50 p-3 text-sm text-error-700">{error}</p>}
 
-      {groups.map((g, gi) => (
+      <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-stone-200/70 p-1">
+        {([
+          { key: "works", label: "Работы" },
+          { key: "files", label: "Файлы" },
+        ] as const).map((t) => (
+          <button key={t.key} type="button" onClick={() => setSection(t.key)} className={`rounded-xl py-2.5 text-[15px] font-semibold transition ${section === t.key ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {section === "works" && data.lines.length > 0 && (
+        <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-stone-200/70 p-1">
+          {([
+            { key: "todo" as const, label: `Осталось ${left.length}` },
+            { key: "done" as const, label: `Сделано ${data.lines.length - left.length}` },
+            { key: "all" as const, label: "Все" },
+          ]).map((t) => (
+            <button key={t.key} type="button" onClick={() => setFilter(t.key)} className={`rounded-xl py-2 text-[14px] font-semibold transition ${activeFilter === t.key ? "bg-white text-stone-900 shadow-sm" : "text-stone-600"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {section === "files" && <ObjectFilesBrowser api="/api/brigadir/files" objectId={id} canEdit={false} />}
+
+      {section === "works" && groups.map((g, gi) => (
         <section key={gi} className="space-y-2">
           {g.title && <h3 className="px-1 text-[13px] font-bold uppercase tracking-wide text-stone-500">{g.title}</h3>}
           {g.lines.map((l) => (
@@ -296,13 +338,25 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
           ))}
         </section>
       ))}
-      {data.lines.length === 0 && <p className="rounded-2xl bg-white p-6 text-center text-[15px] text-stone-600">В этом объекте пока нет работ. Офис добавит их.</p>}
+      {section === "works" && data.lines.length > 0 && shownLines.length === 0 && (
+        <p className="rounded-2xl bg-white p-6 text-center text-[15px] text-stone-600">{activeFilter === "todo" ? "Всё сделано. Отличная работа!" : "Здесь пока пусто."}</p>
+      )}
+      {section === "works" && data.lines.length === 0 && <p className="rounded-2xl bg-white p-6 text-center text-[15px] text-stone-600">В этом объекте пока нет работ. Офис добавит их.</p>}
     </div>
   );
 }
 
+const DELAY_REASONS = ["Дождь / погода", "Нет материала", "Ждали технику", "Поломка", "Нет доступа на объект", "Доп. работы"];
+const shiftIso = (iso: string, days: number) => {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
+
 function LineCard({ line: l, onPatch }: { line: Line; onPatch: (c: Partial<Pick<Line, "actual_start" | "actual_end" | "delay_reason">>) => void }) {
   const today = todayIso();
+  const yesterday = shiftIso(today, -1);
+  const [datesOpen, setDatesOpen] = useState(false);
   // отклонение: по факту окончания; если работа начата, но не закончена и срок прошёл - просрочка
   let dev: { text: string; tone: "bad" | "good" | "warn" } | null = null;
   if (l.planned_end && l.actual_end) {
@@ -314,56 +368,101 @@ function LineCard({ line: l, onPatch }: { line: Line; onPatch: (c: Partial<Pick<
   }
   const late = dev && dev.tone !== "good";
   const state = l.actual_end ? "done" : l.actual_start ? "going" : "todo";
+  const planToday = !!l.planned_start && !!l.planned_end && l.planned_start <= today && today <= l.planned_end && state !== "done";
   const TONE = { bad: "bg-error-50 text-error-700", good: "bg-success-50 text-success-700", warn: "bg-warning-50 text-warning-800" };
 
   return (
     <div className={`rounded-2xl border bg-white p-4 shadow-sm ${state === "done" ? "border-success-200" : state === "going" ? "border-primary-300" : "border-stone-200"}`}>
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0">{state === "done" ? <CheckCircle2 size={22} className="text-success-600" /> : state === "going" ? <Clock size={22} className="text-primary-600" /> : <span className="block h-[22px] w-[22px] rounded-full border-2 border-stone-300" />}</span>
+        <span className="mt-0.5 shrink-0">{state === "done" ? <CheckCircle2 size={24} className="text-success-600" /> : state === "going" ? <Clock size={24} className="text-primary-600" /> : <span className="block h-6 w-6 rounded-full border-2 border-stone-300" />}</span>
         <div className="min-w-0 flex-1">
-          <p className="text-base font-semibold leading-snug text-stone-900">{l.label}</p>
-          <p className="mt-0.5 text-sm text-stone-600">
+          <p className="text-[17px] font-semibold leading-snug text-stone-900">{l.label}</p>
+          <p className="mt-0.5 text-[15px] text-stone-600">
             {l.qty.toLocaleString("ru-RU")} {l.unit}
             {l.measure != null ? ` · ${l.measure} м` : ""}
             {l.days > 0 ? ` · ${fmtDays(l.days)} дн.` : ""}
             {l.parallel ? " · параллельно" : ""}
           </p>
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-stone-600">
+            <span>План: <b className="text-stone-800">{l.planned_start ? `${dm(l.planned_start)} → ${dm(l.planned_end)}` : "—"}</b></span>
+            {planToday && <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-bold text-primary-700">Сегодня по плану</span>}
+          </p>
           {l.notes.length > 0 && <p className="mt-1 whitespace-pre-line text-[13px] leading-snug text-stone-500">{l.notes.join("\n")}</p>}
         </div>
       </div>
 
-      <div className="mt-3 rounded-xl bg-stone-50 px-3 py-2 text-sm text-stone-700">
-        План: <b>{l.planned_start ? `${dm(l.planned_start)} → ${dm(l.planned_end)}` : "—"}</b>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <label className="text-[13px] font-semibold text-stone-600">
-          Начало (факт)
-          <input type="date" className="input mt-1 w-full" value={l.actual_start ?? ""} max={today} onChange={(e) => onPatch({ actual_start: e.target.value || null })} />
-        </label>
-        <label className="text-[13px] font-semibold text-stone-600">
-          Конец (факт)
-          <input type="date" className="input mt-1 w-full" value={l.actual_end ?? ""} max={today} onChange={(e) => onPatch({ actual_end: e.target.value || null })} />
-        </label>
-      </div>
-
       {state === "todo" && (
-        <button type="button" className="btn btn-primary mt-3 h-12 w-full text-base" onClick={() => onPatch({ actual_start: today })}>
-          Начал сегодня
-        </button>
+        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+          <button type="button" className="btn btn-primary h-14 text-[17px]" onClick={() => onPatch({ actual_start: today })}>
+            Начал сегодня
+          </button>
+          <button type="button" className="btn h-14 px-4 text-[15px]" onClick={() => onPatch({ actual_start: yesterday })}>
+            вчера
+          </button>
+        </div>
       )}
       {state === "going" && (
-        <button type="button" className="btn btn-green mt-3 h-12 w-full text-base" onClick={() => onPatch({ actual_end: today })}>
-          Закончил сегодня
-        </button>
+        <>
+          <p className="mt-3 text-sm text-stone-600">Начато: <b className="text-stone-800">{dm(l.actual_start)}</b></p>
+          <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+            <button type="button" className="btn btn-green h-14 text-[17px]" onClick={() => onPatch({ actual_end: today })}>
+              Закончил сегодня
+            </button>
+            <button type="button" className="btn h-14 px-4 text-[15px]" onClick={() => onPatch({ actual_end: yesterday })}>
+              вчера
+            </button>
+          </div>
+        </>
+      )}
+      {state === "done" && (
+        <p className="mt-3 flex items-center justify-between gap-2 rounded-xl bg-success-50 px-3 py-2.5 text-[15px] text-success-800">
+          <span>
+            Сделано: <b>{dm(l.actual_start)} → {dm(l.actual_end)}</b>
+          </span>
+          <button type="button" className="rounded-lg px-2 py-1 text-sm font-semibold text-success-800 underline" onClick={() => onPatch({ actual_end: null })}>
+            ↶ вернуть в работу
+          </button>
+        </p>
       )}
 
-      {dev && <p className={`mt-3 rounded-xl px-3 py-2 text-sm font-bold ${TONE[dev.tone]}`}>{dev.text}</p>}
+      {dev && <p className={`mt-3 rounded-xl px-3 py-2 text-[15px] font-bold ${TONE[dev.tone]}`}>{dev.text}</p>}
       {(late || l.delay_reason) && (
-        <label className="mt-3 block text-[13px] font-semibold text-stone-600">
-          Причина задержки
-          <input key={l.id + String(l.delay_reason)} className="input mt-1 w-full" placeholder="Например: дождь, нет материала, ждали технику" defaultValue={l.delay_reason ?? ""} onBlur={(e) => (e.target.value.trim() || null) !== l.delay_reason && onPatch({ delay_reason: e.target.value.trim() || null })} />
-        </label>
+        <div className="mt-3">
+          <p className="text-[13px] font-semibold text-stone-600">Причина задержки</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {DELAY_REASONS.map((r) => (
+              <button key={r} type="button" onClick={() => onPatch({ delay_reason: l.delay_reason === r ? null : r })} className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${l.delay_reason === r ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white text-stone-700"}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <input key={l.id + String(l.delay_reason)} className="input mt-2 w-full" placeholder="Или напишите своё" defaultValue={l.delay_reason && !DELAY_REASONS.includes(l.delay_reason) ? l.delay_reason : ""} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== l.delay_reason && onPatch({ delay_reason: e.target.value.trim() })} />
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-stone-100 pt-3">
+        {state === "going" ? (
+          <button type="button" className="py-1 text-sm font-semibold text-stone-500 underline" onClick={() => onPatch({ actual_start: null })}>
+            ↶ не начинал
+          </button>
+        ) : (
+          <span />
+        )}
+        <button type="button" className="py-1 text-sm font-semibold text-primary-700" onClick={() => setDatesOpen((v) => !v)}>
+          {datesOpen ? "Скрыть даты" : "Изменить даты"}
+        </button>
+      </div>
+      {datesOpen && (
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="text-[13px] font-semibold text-stone-600">
+            Начало (факт)
+            <input type="date" className="input mt-1 w-full" value={l.actual_start ?? ""} max={today} onChange={(e) => onPatch({ actual_start: e.target.value || null })} />
+          </label>
+          <label className="text-[13px] font-semibold text-stone-600">
+            Конец (факт)
+            <input type="date" className="input mt-1 w-full" value={l.actual_end ?? ""} max={today} onChange={(e) => onPatch({ actual_end: e.target.value || null })} />
+          </label>
+        </div>
       )}
     </div>
   );

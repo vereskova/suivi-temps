@@ -48,7 +48,13 @@ export async function GET(request: NextRequest) {
         actual_start: l.actual_start,
         actual_end: l.actual_end,
         delay_reason: l.delay_reason,
-        notes: Array.isArray(l.subs) ? (l.subs as { label?: string }[]).map((s) => s.label ?? "").filter(Boolean) : [],
+        notes: Array.isArray(l.subs)
+          ? (l.subs as { label?: string }[])
+              .flatMap((s) => (s.label ?? "").split("\n"))
+              .map((x) => x.trim())
+              // строки с ценой (« 1 500 € », « TTC », « P.U HT ») бригадиру не показываем
+              .filter((x) => x && !/(€|\beur\b|\bttc\b|\bht\b|\btva\b|prix|coût|cout)/i.test(x))
+          : [],
       })),
     },
     { headers: NO_STORE }

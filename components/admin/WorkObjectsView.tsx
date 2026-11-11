@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronRight, Download, FileSpreadsheet, Folder, FolderOpen, Plus, Search, Trash2 } from "lucide-react";
 import { evalNorm, planSchedule, workingDaysBetween, type NormDef } from "@/lib/commercial-durations/compute";
 import { autoQty, weeksFromWorkingDays, type ObjectParams } from "@/lib/commercial/qty";
+import ObjectFilesBrowser from "@/components/admin/ObjectFilesBrowser";
 
 // Объекты (chantiers): папки по командам как в iCloud (KOMANDA_N), внутри статусы
 // En cours / A venir / Pas fini / Fini. У объекта - вариант сметы (Standard / Avec LT / Ombrière),
@@ -319,7 +320,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
   const [creating, setCreating] = useState(false);
   const [newForm, setNewForm] = useState({ name: "", team_id: "", variant: "standard" as Variant, power: "", start: "", fill: true });
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [view, setView] = useState<"devis" | "plan">("devis");
+  const [view, setView] = useState<"devis" | "plan" | "files">("devis");
   const [custom, setCustom] = useState({ label: "", unit: "jour", qty: "1", days: "" });
 
   useEffect(() => {
@@ -778,11 +779,13 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                 {([
                   { key: "devis", fr: "Devis", ru: "Смета" },
                   { key: "plan", fr: "Compte rendu", ru: "Контрандю · план / факт" },
+                  { key: "files", fr: "Fichiers", ru: "Файлы" },
                 ] as const).map((t) => (
                   <button key={t.key} type="button" onClick={() => setView(t.key)} className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition ${view === t.key ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}>
                     {t.fr} <span className="font-normal opacity-70">· {t.ru}</span>
                   </button>
                 ))}
+                {view === "devis" && (
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <button type="button" className="btn gap-1.5 px-3 py-1.5 text-[14px]" onClick={fillTemplate} title="Добавить в смету все позиции шаблона VLADIS">
                     <FileSpreadsheet size={15} /> Заполнить по шаблону
@@ -791,7 +794,10 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                     <Download size={15} /> Скачать Excel
                   </a>
                 </div>
+                )}
               </div>
+
+              {view === "files" && <ObjectFilesBrowser key={obj.id} api="/api/commercial/object-files" objectId={obj.id} canEdit />}
 
               {view === "devis" && (
                 <>
@@ -919,6 +925,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
               )}
 
               {/* Добавление работ */}
+              {view !== "files" && (
               <div className="space-y-3">
                 <button type="button" className="btn gap-1.5 px-3 py-2 text-[15px]" onClick={() => setPickerOpen((v) => !v)}>
                   <Plus size={16} /> Добавить работу из каталога
@@ -965,6 +972,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
         </section>
