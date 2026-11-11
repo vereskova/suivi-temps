@@ -43,7 +43,7 @@ export const ASSIGNABLE_ROLES: { role: string; label: string; hint: string }[] =
   { role: "rh_admin", label: "RH Admin", hint: "Полный доступ ко всему, включая Настройки." },
   { role: "rh", label: "RH", hint: "Сотрудники и RH-разделы; без Paie, Commercial, Autoparc, аудита. Primes & Bonus - только чтение." },
   { role: "comptable", label: "Comptable", hint: "Paie и Primes & Bonus (полный доступ) + просмотр сотрудников." },
-  { role: "rh_readonly", label: "Employés + Primes", hint: "Сотрудники (без конфиденциальных данных: зарплата, соцстрахование…), Primes & Bonus, оргсхема, телефоны - с редактированием." },
+  { role: "rh_readonly", label: "Employés + Primes", hint: "Сотрудники (без конфиденциальных данных: зарплата, соцстрахование…), Primes & Bonus, справочник штрафов, оргсхема, телефоны - с редактированием." },
   { role: "commercial", label: "Commercial", hint: "Только раздел Commercial." },
   { role: "commercial_rh", label: "Commercial + Employés", hint: "Commercial и просмотр сотрудников." },
   { role: "controleur", label: "Контролёр", hint: "Только экран /controle: внесение штрафов по объектам." },

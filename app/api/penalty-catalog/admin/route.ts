@@ -5,10 +5,10 @@ import { serviceClient } from "@/lib/controle/server";
 import { sanitizeCatalogDoc, type PenaltyCatalogDoc } from "@/lib/payroll/penalties";
 
 // Редактирование справочника штрафов офисом : черновик -> « Подтвердить » -> новая версия для всех.
-// Роли : rh_admin, rh.
+// Роли : rh_admin, rh, rh_readonly (Production).
 
 const NO_STORE = { "Cache-Control": "no-store" };
-const EDITORS = ["rh_admin", "rh"] as const;
+const EDITORS = ["rh_admin", "rh", "rh_readonly"] as const;
 const bad = (error: string, status = 400) => NextResponse.json({ error }, { status, headers: NO_STORE });
 
 type Row = { id: string; version: number | null; status: string; data: unknown; note: string | null; created_by_email: string | null; updated_at: string; published_by_email: string | null; published_at: string | null };

@@ -640,7 +640,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   paie_extras: ["rh_admin", "rh", "comptable", "rh_readonly"],
   planning: ["rh_admin", "rh"],
   audit: ["rh_admin"],
-  penalty_catalog: ["rh_admin", "rh"],
+  penalty_catalog: ["rh_admin", "rh", "rh_readonly"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
   voldis_location: ["rh_admin"],
@@ -801,7 +801,7 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
     "admin_commercial_rh_view",
     "commercial"
   );
-  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "organigramme" | "schema" | "phones">(
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "penalty_catalog" | "organigramme" | "schema" | "phones">(
     "admin_rh_readonly_view",
     "employees"
   );
@@ -1243,6 +1243,17 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
           }}
         />
         <SidebarLink
+          icon={ListChecks}
+          active={rhReadonlyView === "penalty_catalog"}
+          tab="penalty_catalog"
+          label="Barème des pénalités"
+          labelRu="Справочник штрафов"
+          onClick={() => {
+            setRhReadonlyView("penalty_catalog");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
           icon={Network}
           active={rhReadonlyView === "organigramme"}
           tab="organigramme"
@@ -1347,6 +1358,8 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
                 />
               ) : rhReadonlyView === "paie_extras" ? (
                 <PayrollExtrasView supabase={supabase} canPublish />
+              ) : rhReadonlyView === "penalty_catalog" ? (
+                <PenaltyCatalogView />
               ) : rhReadonlyView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
               ) : rhReadonlyView === "schema" ? (
