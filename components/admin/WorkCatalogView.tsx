@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { evalNorm, type NormDef } from "@/lib/commercial-durations/compute";
+import { QTY_SOURCES, autoQty } from "@/lib/commercial/qty";
 
 // Смета VLADIS (Modele_DEVIS_VLADIS2.xlsx) в том же виде :
 //   раздел (серая полоса) -> позиция (с отступом : Quantité / Unité / P.U HT) -> подпозиция (на всю ширину),
@@ -22,6 +23,7 @@ type Pos = {
   norm_lt: string | null;
   norm_ombriere: string | null;
   norm_basis: "power" | "qty" | "sub_measure";
+  qty_source: string;
 };
 type Sub = { id: string; position_id: string; position: number; label: string; measure_value: number | null; measure_unit: string | null };
 
@@ -31,14 +33,14 @@ const VARIANTS = [
   { key: "norm_ombriere", label: "Ombrière" },
 ] as const;
 
-const POS_COLS = "id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis";
+const POS_COLS = "id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis, qty_source";
 const UNIT_SUGGESTIONS = ["U", "M2", "Ml", "Kwc", "pièce", "jour", "semaine", "heure", "forfait", "kg", "m3"];
 /** Старые нормы (досье по клиентам) и вторые/третьи варианты Main-d'œuvre в выбор не попадают. */
 const HIDDEN_NORMS = new Set(["main_doeuvre_standard", "main_doeuvre_ombriere", "pose_bac_acier", "depose_bac_acier", "depose_fibrociment", "demontage_panneau", "mo_lt", "mo_ombriere"]);
 const MO_TRIPLE = "mo_standard";
 
-type NewPos = { label: string; unit: string; price: string; norm: string; basis: Pos["norm_basis"] };
-const EMPTY_NEW: NewPos = { label: "", unit: "U", price: "", norm: "", basis: "qty" };
+type NewPos = { label: string; unit: string; price: string; norm: string; basis: Pos["norm_basis"]; qty_source: string };
+const EMPTY_NEW: NewPos = { label: "", unit: "U", price: "", norm: "", basis: "qty", qty_source: "manual" };
 
 const eur = (n: number) => n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 const days = (n: number) => n.toLocaleString("fr-FR", { maximumFractionDigits: 1 });
@@ -92,6 +94,9 @@ export default function WorkCatalogView({
 
   // тестовые вводы (не сохраняются)
   const [kwc, setKwc] = useState("150");
+  const [roofT, setRoofT] = useState("");
+  const [panelsT, setPanelsT] = useState("");
+  const [cableT, setCableT] = useState("");
   const [qty, setQty] = useState<Record<string, string>>({});
   const [measure, setMeasure] = useState<Record<string, string>>({});
   const [manualDays, setManualDays] = useState<Record<string, string>>({});
@@ -134,16 +139,19 @@ export default function WorkCatalogView({
 
   const power = num(kwc);
 
-  /** Мощность подставляется в Quantité только у строк в kWc (Main-d'œuvre); у « U » количество вводится как обычно. */
-  const qtyIsPower = (p: Pos) => p.norm_basis === "power" && p.unit.toLowerCase() === "kwc";
+  /** Количество по правилу позиции из тестовых параметров (мощность, кровля, панели, кабель); null - вводится вручную. */
+  const sandbox = { power, roof: num(roofT), panels: num(panelsT), cable: num(cableT), weeks: null };
+  const autoOf = (p: Pos): number | null => (p.qty_source === "manual" || p.qty_source === "weeks" ? null : autoQty(p.qty_source, sandbox));
   function quantityOf(p: Pos): number {
-    if (qtyIsPower(p)) return power;
+    const a = autoOf(p);
+    if (a != null) return a;
     const raw = qty[p.id];
     return raw === undefined ? 1 : num(raw);
   }
+  const defaultMeasure = (s: Sub) => (sandbox.cable > 0 ? sandbox.cable : (s.measure_value ?? 0));
   function measureOf(s: Sub): number {
     const raw = measure[s.id];
-    return raw === undefined ? (s.measure_value ?? 0) : num(raw);
+    return raw === undefined ? defaultMeasure(s) : num(raw);
   }
   /** x pour la norme selon la base de calcul de la position. */
   function basisValue(p: Pos): number {
@@ -215,6 +223,7 @@ export default function WorkCatalogView({
       norm_lt: triple ? "mo_lt" : form.norm || null,
       norm_ombriere: triple ? "mo_ombriere" : form.norm || null,
       norm_basis: form.norm ? form.basis : "qty",
+      qty_source: form.qty_source,
     };
     const { data, error: err } = await supabase.from("work_positions").insert(row).select(POS_COLS).single();
     if (err || !data) return fail("Не удалось добавить позицию", err ?? { message: "нет данных" });
@@ -231,6 +240,11 @@ export default function WorkCatalogView({
     const { error: err } = await supabase.from("work_positions").update(clean).eq("id", p.id);
     if (err) return fail("Не удалось сохранить", err);
     setPositions((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...clean } : x)));
+  }
+  async function updateQtySource(p: Pos, source: string) {
+    const { error: err } = await supabase.from("work_positions").update({ qty_source: source }).eq("id", p.id);
+    if (err) return fail("Не удалось сохранить", err);
+    setPositions((prev) => prev.map((x) => (x.id === p.id ? { ...x, qty_source: source } : x)));
   }
   async function deletePosition(p: Pos) {
     if (!window.confirm(`Удалить позицию «${p.label}» вместе с её подпозициями?`)) return;
@@ -305,15 +319,27 @@ export default function WorkCatalogView({
           Puissance (kWc)
           <input className={`${QTY_INPUT} mt-1 block w-32 !text-left text-[15px]`} inputMode="decimal" value={kwc} onChange={(e) => setKwc(e.target.value)} />
         </label>
+        <label className="text-sm font-semibold text-stone-700">
+          Surface toiture (м²)
+          <input className={`${QTY_INPUT} mt-1 block w-32 !text-left text-[15px]`} inputMode="decimal" value={roofT} onChange={(e) => setRoofT(e.target.value)} />
+        </label>
+        <label className="text-sm font-semibold text-stone-700">
+          Nombre de panneaux
+          <input className={`${QTY_INPUT} mt-1 block w-32 !text-left text-[15px]`} inputMode="decimal" value={panelsT} onChange={(e) => setPanelsT(e.target.value)} />
+        </label>
+        <label className="text-sm font-semibold text-stone-700">
+          Longueur câble AC (м)
+          <input className={`${QTY_INPUT} mt-1 block w-32 !text-left text-[15px]`} inputMode="decimal" value={cableT} onChange={(e) => setCableT(e.target.value)} />
+        </label>
         <p className="min-w-[16rem] flex-1 text-[13px] leading-relaxed text-stone-600">
-          Тестовый расчёт: введите мощность, количества и меры - зелёные колонки покажут дни по нормам. Введённое здесь нигде не сохраняется. Для строк без нормы дни вводятся вручную.
+          Тестовый расчёт: введите параметры объекта (мощность, кровля, панели, кабель) - количества подставятся по правилам в колонке «Quantité ←», а зелёные колонки покажут дни по нормам. Введённое здесь нигде не сохраняется. Для строк без нормы дни вводятся вручную.
           {canEdit ? " Названия, единицы, цены и тексты подпозиций правятся прямо в таблице (наведите на строку) и сохраняются в каталог." : ""}
         </p>
       </div>
       {error && <p className="rounded-lg bg-error-50 p-2 text-sm text-error-700">{error}</p>}
 
       <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-        <table className="w-full min-w-[1275px] table-fixed border-collapse text-[14px] text-stone-900">
+        <table className="w-full min-w-[1450px] table-fixed border-collapse text-[14px] text-stone-900">
           <colgroup>
             <col style={{ width: 52 }} />
             <col />
@@ -324,6 +350,7 @@ export default function WorkCatalogView({
             <col style={{ width: 110 }} />
             <col style={{ width: 110 }} />
             <col style={{ width: 110 }} />
+            <col style={{ width: 180 }} />
           </colgroup>
           <thead>
             <tr>
@@ -338,6 +365,9 @@ export default function WorkCatalogView({
                   {v.label}
                 </th>
               ))}
+              <th className="bg-stone-600 px-3 py-2.5 text-left text-[14px] font-semibold normal-case tracking-normal text-white" title="Откуда берётся количество в смете объекта">
+                Quantité ←
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -356,6 +386,7 @@ export default function WorkCatalogView({
                       )}
                     </td>
                     <td colSpan={3} className={GREEN_BAND} />
+                    <td className="bg-[#e9edf4]" />
                   </tr>
 
                   {secPositions.map((p) => {
@@ -386,9 +417,9 @@ export default function WorkCatalogView({
                             )}
                           </td>
                           <td className="px-2 py-1 text-right">
-                            {qtyIsPower(p) ? (
-                              <span className="px-2 tabular-nums text-stone-600" title="Берётся из поля Puissance">
-                                {power.toLocaleString("fr-FR")}
+                            {autoOf(p) != null ? (
+                              <span className="px-2 tabular-nums text-stone-600" title={`Автоматически: ${QTY_SOURCES.find((x) => x.value === p.qty_source)?.label}`}>
+                                {quantityOf(p).toLocaleString("fr-FR")}
                               </span>
                             ) : (
                               <input className={`${QTY_INPUT} tabular-nums`} inputMode="decimal" value={qty[p.id] ?? "1"} onChange={(e) => setQty((q) => ({ ...q, [p.id]: e.target.value }))} />
@@ -436,11 +467,24 @@ export default function WorkCatalogView({
                               );
                             })
                           )}
+                          <td className="px-2 py-1 text-[13px] text-stone-600">
+                            {canEdit ? (
+                              <select className="w-full rounded-md border border-transparent bg-transparent px-1 py-0.5 text-[13px] outline-none hover:border-stone-300 focus:border-primary-500 focus:bg-white" value={p.qty_source} title="Откуда берётся количество в смете объекта" onChange={(e) => updateQtySource(p, e.target.value)}>
+                                {QTY_SOURCES.map((x) => (
+                                  <option key={x.value} value={x.value}>
+                                    {x.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="px-1">{QTY_SOURCES.find((x) => x.value === p.qty_source)?.label}</span>
+                            )}
+                          </td>
                         </tr>
 
                         {ps.map((sub) => (
                           <tr key={sub.id} className="group border-b border-stone-200">
-                            <td colSpan={6} className="px-3 py-1.5 text-[13px] leading-snug text-stone-600">
+                            <td colSpan={6} className="relative py-1.5 pl-3 pr-44 text-[13px] leading-snug text-stone-600">
                               <div className="flex items-start gap-2">
                                 {/* Мера - в начале строки, как в исходной таблице: « 90 ml *Pour un tirage… » */}
                                 {sub.measure_value != null ? (
@@ -448,7 +492,7 @@ export default function WorkCatalogView({
                                     <input
                                       className="w-16 rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-right outline-none focus:border-primary-500 focus:bg-white"
                                       inputMode="decimal"
-                                      value={measure[sub.id] ?? String(sub.measure_value)}
+                                      value={measure[sub.id] ?? String(defaultMeasure(sub))}
                                       onChange={(e) => setMeasure((m) => ({ ...m, [sub.id]: e.target.value }))}
                                     />
                                     {canEdit ? (
@@ -462,13 +506,7 @@ export default function WorkCatalogView({
                                       <span>{sub.measure_unit}</span>
                                     )}
                                   </span>
-                                ) : (
-                                  canEdit && (
-                                    <button type="button" className={`${ACTION} shrink-0 pt-0.5 text-xs font-semibold text-primary-600 hover:text-primary-700`} onClick={() => updateSub(sub, { measure_value: 0, measure_unit: "ml" })}>
-                                      + мера
-                                    </button>
-                                  )
-                                )}
+                                ) : null}
                                 {canEdit ? (
                                   <textarea
                                     className="min-w-[16rem] flex-1 resize-none rounded-md border border-transparent bg-transparent px-1.5 py-0.5 leading-snug outline-none transition [field-sizing:content] hover:border-stone-300 focus:border-primary-500 focus:bg-white"
@@ -481,10 +519,14 @@ export default function WorkCatalogView({
                                   <span className="flex-1 whitespace-pre-line px-1">{sub.label}</span>
                                 )}
                                 {canEdit && (
-                                  <span className={`${ACTION} flex shrink-0 items-center gap-3 pt-0.5 text-xs`}>
-                                    {sub.measure_value != null && (
+                                  <span className={`${ACTION} absolute right-3 top-1.5 flex items-center gap-3 text-xs`}>
+                                    {sub.measure_value != null ? (
                                       <button type="button" className="text-stone-500 hover:text-stone-800" onClick={() => updateSub(sub, { measure_value: null, measure_unit: null })}>
                                         убрать меру
+                                      </button>
+                                    ) : (
+                                      <button type="button" className="font-semibold text-primary-600 hover:text-primary-700" onClick={() => updateSub(sub, { measure_value: 0, measure_unit: "ml" })}>
+                                        + мера
                                       </button>
                                     )}
                                     <button type="button" className="text-base leading-none text-stone-500 hover:text-error-600" title="Удалить подпозицию" onClick={() => deleteSub(sub)}>
@@ -495,6 +537,7 @@ export default function WorkCatalogView({
                               </div>
                             </td>
                             <td colSpan={3} className={GREEN_CELL} />
+                            <td />
                           </tr>
                         ))}
                       </Fragment>
@@ -530,6 +573,16 @@ export default function WorkCatalogView({
                                       {n.code === MO_TRIPLE ? "Main-d'œuvre (Standard / LT / Ombrière)" : n.label}
                                     </option>
                                   ))}
+                              </select>
+                            </label>
+                            <label className="w-52 text-[13px] font-semibold text-stone-700">
+                              Количество ←
+                              <select className="input mt-1 w-full py-1.5 text-[15px]" value={form.qty_source} onChange={(e) => setForm((f) => ({ ...f, qty_source: e.target.value }))}>
+                                {QTY_SOURCES.map((x) => (
+                                  <option key={x.value} value={x.value}>
+                                    {x.label}
+                                  </option>
+                                ))}
                               </select>
                             </label>
                             {form.norm && (
@@ -570,6 +623,7 @@ export default function WorkCatalogView({
                         )}
                       </td>
                       <td colSpan={3} className={GREEN_CELL} />
+                            <td />
                     </tr>
                   )}
 
@@ -579,6 +633,7 @@ export default function WorkCatalogView({
                     </td>
                     <td className="px-3 py-2.5 text-right font-bold tabular-nums">{eur(sectionTotals.get(sec.code) ?? 0)}</td>
                     <td colSpan={3} className={GREEN_CELL} />
+                            <td />
                   </tr>
                 </Fragment>
               );
@@ -589,14 +644,14 @@ export default function WorkCatalogView({
                 Total € HT
               </td>
               <td className="px-3 py-2 text-right font-bold tabular-nums">{eur(totalHt)}</td>
-              <td colSpan={3} />
+              <td colSpan={4} />
             </tr>
             <tr>
               <td colSpan={5} className="whitespace-nowrap px-3 py-1.5 text-right text-stone-700">
                 TVA 20 %
               </td>
               <td className="px-3 py-1.5 text-right tabular-nums text-stone-700">{eur(totalHt * 0.2)}</td>
-              <td colSpan={3} />
+              <td colSpan={4} />
             </tr>
             <tr>
               <td colSpan={5} className="whitespace-nowrap px-3 py-2 text-right font-bold">
@@ -606,6 +661,7 @@ export default function WorkCatalogView({
               <td colSpan={3} className={`px-2 py-2 text-center text-[15px] font-bold ${GREEN_HEAD}`}>
                 Total jours
               </td>
+              <td />
             </tr>
             <tr>
               <td colSpan={6} />
@@ -614,6 +670,7 @@ export default function WorkCatalogView({
                   {days(d)}
                 </td>
               ))}
+              <td />
             </tr>
           </tbody>
         </table>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronRight, Folder, FolderOpen, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronRight, Download, FileSpreadsheet, Folder, FolderOpen, Plus, Search, Trash2 } from "lucide-react";
 import { evalNorm, planSchedule, workingDaysBetween, type NormDef } from "@/lib/commercial-durations/compute";
+import { autoQty, weeksFromWorkingDays, type ObjectParams } from "@/lib/commercial/qty";
 
 // Объекты (chantiers): папки по командам как в iCloud (KOMANDA_N), внутри статусы
 // En cours / A venir / Pas fini / Fini. У объекта - вариант сметы (Standard / Avec LT / Ombrière),
@@ -20,13 +21,21 @@ type Obj = {
   status: Status;
   variant: Variant;
   power_kwc: number | null;
+  roof_m2: number | null;
+  panels_count: number | null;
+  cable_m: number | null;
   start_date: string | null;
   finished_at: string | null;
   client: string | null;
   address: string | null;
   notes: string | null;
 };
+type ObjSub = { label: string; measure_unit: string | null };
 type Line = {
+  subs: ObjSub[];
+  qty_source: string;
+  qty_manual: boolean;
+  measure_manual: boolean;
   id: string;
   object_id: string;
   position: number;
@@ -55,8 +64,9 @@ type CatPos = {
   norm_lt: string | null;
   norm_ombriere: string | null;
   norm_basis: "power" | "qty" | "sub_measure";
+  qty_source: string;
 };
-type CatSub = { position_id: string; measure_value: number | null; measure_unit: string | null };
+type CatSub = { position_id: string; position: number; label: string; measure_value: number | null; measure_unit: string | null };
 
 const STATUSES: { key: Status; fr: string; ru: string }[] = [
   { key: "en_cours", fr: "En cours", ru: "В работе" },
@@ -71,12 +81,27 @@ const VARIANTS: { key: Variant; label: string; norm: "norm_standard" | "norm_lt"
   { key: "ombriere", label: "Ombrière", norm: "norm_ombriere" },
 ];
 
-const LINE_COLS = "id, object_id, position, section_code, catalog_position_id, label, unit, qty, price_ht, measure, manual_days, parallel, actual_start, actual_end, delay_reason";
-const OBJ_COLS = "id, name, team_id, status, variant, power_kwc, start_date, finished_at, client, address, notes";
+const LINE_COLS = "id, object_id, position, section_code, catalog_position_id, label, unit, qty, price_ht, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs, qty_source, qty_manual, measure_manual";
+const OBJ_COLS = "id, name, team_id, status, variant, power_kwc, roof_m2, panels_count, cable_m, start_date, finished_at, client, address, notes";
 
 const GHOST = "w-full rounded-md border border-transparent bg-transparent px-2 py-1 outline-none transition hover:border-stone-300 focus:border-primary-500 focus:bg-white";
 const FIELD = "rounded-md border border-stone-300 bg-white px-2 py-1.5 text-[15px] outline-none focus:border-primary-500";
 
+const normObj = (o: Obj): Obj => ({
+  ...o,
+  power_kwc: o.power_kwc == null ? null : Number(o.power_kwc),
+  roof_m2: o.roof_m2 == null ? null : Number(o.roof_m2),
+  panels_count: o.panels_count == null ? null : Number(o.panels_count),
+  cable_m: o.cable_m == null ? null : Number(o.cable_m),
+});
+const normLine = (l: Line): Line => ({
+  ...l,
+  qty: Number(l.qty),
+  price_ht: l.price_ht == null ? null : Number(l.price_ht),
+  measure: l.measure == null ? null : Number(l.measure),
+  manual_days: l.manual_days == null ? null : Number(l.manual_days),
+  subs: Array.isArray(l.subs) ? l.subs : [],
+});
 const num = (raw: string) => {
   const n = Number(String(raw).replace(",", ".").replace(/\s/g, ""));
   return Number.isFinite(n) ? n : 0;
@@ -88,6 +113,194 @@ const todayIso = () => {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 const teamNum = (name: string) => Number(name.replace(/\D+/g, "")) || 999;
+
+const eur = (n: number) => n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
+const ACTION = "opacity-0 transition group-hover:opacity-100 focus:opacity-100";
+
+/** Цена: в покое как в смете (« 1 500,00 € »), при редактировании - обычное число. */
+function PriceInput({ value, onCommit }: { value: number | null; onCommit: (v: number | null) => void }) {
+  const [focus, setFocus] = useState(false);
+  const [draft, setDraft] = useState("");
+  return (
+    <input
+      className={`${GHOST} text-right tabular-nums`}
+      inputMode="decimal"
+      value={focus ? draft : value == null ? "" : eur(value)}
+      onFocus={() => {
+        setFocus(true);
+        setDraft(value == null ? "" : String(value).replace(".", ","));
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        setFocus(false);
+        const v = draft.trim() === "" ? null : num(draft);
+        if (v !== value) onCommit(v);
+      }}
+    />
+  );
+}
+
+/** Смета объекта (Devis): разделы -> позиции -> подпозиции, как в шаблоне. Лишние позиции удаляются крестиком. */
+function DevisTable({
+  lines,
+  sections,
+  daysOf,
+  patchLine,
+  deleteLine,
+}: {
+  lines: Line[];
+  sections: CatSection[];
+  daysOf: (l: Line) => number;
+  patchLine: (id: string, patch: Partial<Line>) => void;
+  deleteLine: (id: string) => void;
+}) {
+  const groups = [
+    ...sections.map((s) => ({ code: s.code as string | null, label: s.label, items: lines.filter((l) => l.section_code === s.code) })),
+    { code: null, label: "AUTRES TRAVAUX", items: lines.filter((l) => !l.section_code || !sections.some((s) => s.code === l.section_code)) },
+  ].filter((g) => g.items.length > 0);
+  const lineTotal = (l: Line) => (l.price_ht ?? 0) * l.qty;
+  const totalHt = lines.reduce((a, l) => a + lineTotal(l), 0);
+  const TH = "bg-[#2b4aa8] px-3 py-2.5 text-[14px] font-semibold text-white";
+  const GREEN_CELL = "bg-[#e4eed6]";
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+      <table className="w-full min-w-[1000px] table-fixed border-collapse text-[14px] text-stone-900">
+        <colgroup>
+          <col style={{ width: 52 }} />
+          <col />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 130 }} />
+          <col style={{ width: 140 }} />
+          <col style={{ width: 100 }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th className={`${TH} text-left`}>N°</th>
+            <th className={`${TH} text-left`}>Désignation</th>
+            <th className={`${TH} text-right`}>Quantité</th>
+            <th className={`${TH} text-left`}>Unité</th>
+            <th className={`${TH} text-right`}>P.U HT</th>
+            <th className={`${TH} text-right`}>Total HT</th>
+            <th className="bg-[#5b7f3a] px-2 py-2.5 text-center text-[14px] font-semibold text-white">Jours</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.map((g, gi) => (
+            <Fragment key={g.code ?? "autres"}>
+              <tr className="bg-[#e9edf4]">
+                <td className="px-3 py-2 text-[13px] font-semibold">{gi + 1}</td>
+                <td colSpan={5} className="px-3 py-2 text-[13px] font-semibold tracking-wide">
+                  {g.label}
+                </td>
+                <td className="bg-[#c9dcb0]" />
+              </tr>
+              {g.items.map((l) => (
+                <Fragment key={l.id}>
+                  <tr className="group border-b border-stone-200 hover:bg-stone-50/70">
+                    <td />
+                    <td className="py-1 pl-6 pr-3">
+                      <div className="flex items-center gap-1">
+                        <input key={l.id + l.label} className={GHOST} defaultValue={l.label} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== l.label && patchLine(l.id, { label: e.target.value.trim() })} />
+                        {l.qty_manual && l.qty_source !== "manual" && (
+                          <button type="button" className="shrink-0 whitespace-nowrap rounded bg-warning-50 px-1.5 py-0.5 text-xs font-semibold text-warning-800 hover:bg-warning-100" title="Количество введено вручную - вернуть автоматический расчёт" onClick={() => patchLine(l.id, { qty_manual: false })}>
+                            ↺ авто
+                          </button>
+                        )}
+                        <button type="button" className={`${ACTION} shrink-0 whitespace-nowrap text-xs font-semibold text-primary-600 hover:text-primary-700`} onClick={() => patchLine(l.id, { subs: [...l.subs, { label: "", measure_unit: null }] })}>
+                          + подпозиция
+                        </button>
+                        <button type="button" className={`${ACTION} shrink-0 px-1.5 text-lg leading-none text-stone-500 hover:!text-error-600`} title="Убрать позицию из сметы" onClick={() => deleteLine(l.id)}>
+                          ×
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1">
+                      <input key={l.id + String(l.qty)} title={l.qty_source !== "manual" && !l.qty_manual ? "Подставлено автоматически по правилу позиции" : l.qty_manual && l.qty_source !== "manual" ? "Введено вручную (кнопка ↺ вернёт автоматический расчёт)" : undefined} className={`w-full rounded-md border px-2 py-0.5 text-right tabular-nums outline-none focus:border-primary-500 focus:bg-white ${l.qty_source !== "manual" && !l.qty_manual ? "border-[#b9cf9b] bg-[#eef5e3]" : "border-stone-200 bg-stone-50"}`} inputMode="decimal" defaultValue={l.qty} onBlur={(e) => num(e.target.value) !== l.qty && patchLine(l.id, { qty: num(e.target.value), qty_manual: true })} />
+                    </td>
+                    <td className="px-1 py-1">
+                      <input key={l.id + String(l.unit)} className={GHOST} defaultValue={l.unit ?? ""} onBlur={(e) => (e.target.value.trim() || null) !== l.unit && patchLine(l.id, { unit: e.target.value.trim() || null })} />
+                    </td>
+                    <td className="px-1 py-1">
+                      <PriceInput key={l.id + String(l.price_ht)} value={l.price_ht} onCommit={(v) => patchLine(l.id, { price_ht: v })} />
+                    </td>
+                    <td className="px-3 py-1 text-right tabular-nums">{l.price_ht == null ? "" : eur(lineTotal(l))}</td>
+                    <td className={`px-2 py-1 text-center text-[15px] font-semibold tabular-nums ${GREEN_CELL}`}>{daysOf(l) > 0 ? fmtDays(daysOf(l)) : "—"}</td>
+                  </tr>
+                  {l.subs.map((sub, k) => (
+                    <tr key={l.id + ":" + k} className="group border-b border-stone-200">
+                      <td colSpan={6} className="relative py-1.5 pl-3 pr-44 text-[13px] leading-snug text-stone-600">
+                        <div className="flex items-start gap-2">
+                          {sub.measure_unit != null && (
+                            <span className="inline-flex shrink-0 items-center gap-1 pt-0.5 text-stone-800">
+                              <input key={l.id + String(l.measure)} className="w-16 rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-right outline-none focus:border-primary-500 focus:bg-white" inputMode="decimal" defaultValue={l.measure ?? ""} onBlur={(e) => patchLine(l.id, { measure: e.target.value.trim() ? num(e.target.value) : null, measure_manual: true })} />
+                              <input key={l.id + k + String(sub.measure_unit)} className="w-10 rounded-md border border-transparent bg-transparent px-1 py-0.5 outline-none hover:border-stone-300 focus:border-primary-500 focus:bg-white" defaultValue={sub.measure_unit} onBlur={(e) => e.target.value.trim() && e.target.value !== sub.measure_unit && patchLine(l.id, { subs: l.subs.map((x, j) => (j === k ? { ...x, measure_unit: e.target.value.trim() } : x)) })} />
+                            </span>
+                          )}
+                          <textarea
+                            className="min-w-[14rem] flex-1 resize-none rounded-md border border-transparent bg-transparent px-1.5 py-0.5 leading-snug outline-none transition [field-sizing:content] hover:border-stone-300 focus:border-primary-500 focus:bg-white"
+                            rows={Math.max(1, sub.label.split("\n").length)}
+                            defaultValue={sub.label}
+                            placeholder="Описание подпозиции"
+                            onBlur={(e) => e.target.value !== sub.label && patchLine(l.id, { subs: l.subs.map((x, j) => (j === k ? { ...x, label: e.target.value } : x)) })}
+                          />
+                        </div>
+                        <span className={`${ACTION} absolute right-3 top-1.5 flex items-center gap-3 text-xs`}>
+                          {sub.measure_unit == null ? (
+                            <button type="button" className="font-semibold text-primary-600 hover:text-primary-700" onClick={() => patchLine(l.id, { subs: l.subs.map((x, j) => (j === k ? { ...x, measure_unit: "ml" } : x)) })}>
+                              + мера
+                            </button>
+                          ) : (
+                            <button type="button" className="text-stone-500 hover:text-stone-800" onClick={() => patchLine(l.id, { subs: l.subs.map((x, j) => (j === k ? { ...x, measure_unit: null } : x)) })}>
+                              убрать меру
+                            </button>
+                          )}
+                          <button type="button" className="text-base leading-none text-stone-500 hover:text-error-600" title="Удалить подпозицию" onClick={() => patchLine(l.id, { subs: l.subs.filter((_, j) => j !== k) })}>
+                            ×
+                          </button>
+                        </span>
+                      </td>
+                      <td className={GREEN_CELL} />
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+              <tr className="border-b border-stone-300">
+                <td colSpan={5} className="whitespace-nowrap px-3 py-2 text-right font-bold">
+                  Sous-total HT :
+                </td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums">{eur(g.items.reduce((a, l) => a + lineTotal(l), 0))}</td>
+                <td className={GREEN_CELL} />
+              </tr>
+            </Fragment>
+          ))}
+          <tr>
+            <td colSpan={5} className="whitespace-nowrap px-3 py-2 text-right font-bold">
+              Total € HT
+            </td>
+            <td className="px-3 py-2 text-right font-bold tabular-nums">{eur(totalHt)}</td>
+            <td />
+          </tr>
+          <tr>
+            <td colSpan={5} className="whitespace-nowrap px-3 py-1.5 text-right text-stone-700">
+              TVA 20 %
+            </td>
+            <td className="px-3 py-1.5 text-right tabular-nums text-stone-700">{eur(totalHt * 0.2)}</td>
+            <td />
+          </tr>
+          <tr>
+            <td colSpan={5} className="whitespace-nowrap px-3 py-2 text-right font-bold">
+              Total TTC
+            </td>
+            <td className="px-3 py-2 text-right font-bold tabular-nums">{eur(totalHt * 1.2)}</td>
+            <td />
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export default function WorkObjectsView({ supabase, norms, userEmail }: { supabase: SupabaseClient; norms: Record<string, NormDef>; userEmail?: string }) {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -104,8 +317,9 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
   const [openTeams, setOpenTeams] = useState<Set<string>>(new Set());
   const [openFini, setOpenFini] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
-  const [newForm, setNewForm] = useState({ name: "", team_id: "", variant: "standard" as Variant, power: "", start: "" });
+  const [newForm, setNewForm] = useState({ name: "", team_id: "", variant: "standard" as Variant, power: "", start: "", fill: true });
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [view, setView] = useState<"devis" | "plan">("devis");
   const [custom, setCustom] = useState({ label: "", unit: "jour", qty: "1", days: "" });
 
   useEffect(() => {
@@ -115,15 +329,15 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
         supabase.from("teams").select("id, name").order("name"),
         supabase.from("work_objects").select(OBJ_COLS).order("name"),
         supabase.from("work_sections").select("code, label, position").order("position"),
-        supabase.from("work_positions").select("id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis").eq("active", true).order("position"),
-        supabase.from("work_subpositions").select("position_id, measure_value, measure_unit").order("position"),
+        supabase.from("work_positions").select("id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis, qty_source").eq("active", true).order("position"),
+        supabase.from("work_subpositions").select("position_id, position, label, measure_value, measure_unit").order("position"),
       ]);
       if (!alive) return;
       const failed = t.error ?? o.error ?? s.error ?? p.error ?? sp.error;
       if (failed) setError(failed.message);
       else {
         setTeams(((t.data as Team[]) ?? []).sort((a, b) => teamNum(a.name) - teamNum(b.name)));
-        setObjects(((o.data as Obj[]) ?? []).map((x) => ({ ...x, power_kwc: x.power_kwc == null ? null : Number(x.power_kwc) })));
+        setObjects(((o.data as Obj[]) ?? []).map(normObj));
         setCatSections((s.data as CatSection[]) ?? []);
         setCatPos(((p.data as CatPos[]) ?? []).map((x) => ({ ...x, price_ht: x.price_ht == null ? null : Number(x.price_ht) })));
         setCatSubs(((sp.data as CatSub[]) ?? []).map((x) => ({ ...x, measure_value: x.measure_value == null ? null : Number(x.measure_value) })));
@@ -142,15 +356,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
         setError(err.message);
         return;
       }
-      setLines(
-        ((data as Line[]) ?? []).map((l) => ({
-          ...l,
-          qty: Number(l.qty),
-          price_ht: l.price_ht == null ? null : Number(l.price_ht),
-          measure: l.measure == null ? null : Number(l.measure),
-          manual_days: l.manual_days == null ? null : Number(l.manual_days),
-        }))
-      );
+      setLines(((data as Line[]) ?? []).map(normLine));
     },
     [supabase]
   );
@@ -182,6 +388,30 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
   );
   const schedule = useMemo(() => planSchedule(obj?.start_date ?? null, lines.map((l) => ({ days: daysOf(l), parallel: l.parallel }))), [obj, lines, daysOf]);
 
+  // Параметры объекта для автоматических количеств; « недели » - по плановым датам всех работ.
+  const planWeeks = useMemo(() => {
+    const starts = schedule.filter(Boolean).map((x) => x!.start).sort();
+    const ends = schedule.filter(Boolean).map((x) => x!.end).sort();
+    return starts.length && ends.length ? weeksFromWorkingDays(workingDaysBetween(starts[0], ends[ends.length - 1]) + 1) : null;
+  }, [schedule]);
+  const params: ObjectParams = useMemo(
+    () => ({ power: obj?.power_kwc ?? null, roof: obj?.roof_m2 ?? null, panels: obj?.panels_count ?? null, cable: obj?.cable_m ?? null, weeks: planWeeks }),
+    [obj, planWeeks]
+  );
+  // Авто-расчёт: количество (по правилу позиции) и мера тиража кабеля подставляются сами, пока их не поправили вручную.
+  useEffect(() => {
+    if (!obj) return;
+    for (const l of lines) {
+      if (!l.qty_manual && l.qty_source !== "manual") {
+        const target = autoQty(l.qty_source, params);
+        if (target != null && target !== l.qty) patchLine(l.id, { qty: target });
+      }
+      const cp = l.catalog_position_id ? catById.get(l.catalog_position_id) : undefined;
+      if (cp?.norm_basis === "sub_measure" && !l.measure_manual && params.cable != null && l.measure !== params.cable) patchLine(l.id, { measure: params.cable });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, params, obj, catById]);
+
   // ── изменения объекта ──────────────────────────────────────────────────────
   async function patchObject(id: string, patch: Partial<Obj>) {
     setObjects((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
@@ -208,10 +438,11 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
       setError("Не удалось создать объект: " + (err?.message ?? ""));
       return;
     }
-    const created = { ...(data as Obj), power_kwc: (data as Obj).power_kwc == null ? null : Number((data as Obj).power_kwc) };
+    const created = normObj(data as Obj);
     setObjects((prev) => [...prev, created]);
+    if (newForm.fill) await insertTemplate(created);
     setCreating(false);
-    setNewForm({ name: "", team_id: "", variant: "standard", power: "", start: "" });
+    setNewForm({ name: "", team_id: "", variant: "standard", power: "", start: "", fill: true });
     setError(null);
     selectObject(created);
   }
@@ -230,26 +461,48 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
     const position = lines.length ? Math.max(...lines.map((l) => l.position)) + 1 : 1;
     const { data, error: err } = await supabase.from("work_object_lines").insert({ ...base, object_id: obj.id, position }).select(LINE_COLS).single();
     if (err || !data) return setError("Не удалось добавить работу: " + (err?.message ?? ""));
-    const l = data as Line;
-    setLines((prev) => [...prev, { ...l, qty: Number(l.qty), price_ht: l.price_ht == null ? null : Number(l.price_ht), measure: l.measure == null ? null : Number(l.measure), manual_days: l.manual_days == null ? null : Number(l.manual_days) }]);
+    setLines((prev) => [...prev, normLine(data as Line)]);
   }
-  function addFromCatalog(cp: CatPos) {
-    const isKwc = cp.unit.toLowerCase() === "kwc";
-    const sub = catSubs.find((s) => s.position_id === cp.id && s.measure_value != null);
-    addLine({
+  /** Строка сметы объекта из позиции каталога: подпозиции копируются и дальше правятся отдельно для объекта. */
+  function lineFromCatalog(cp: CatPos, o: Obj | null): Omit<Line, "id" | "object_id" | "position"> {
+    const subsOf = catSubs.filter((x) => x.position_id === cp.id);
+    const withMeasure = subsOf.find((x) => x.measure_value != null);
+    const params: ObjectParams = { power: o?.power_kwc ?? null, roof: o?.roof_m2 ?? null, panels: o?.panels_count ?? null, cable: o?.cable_m ?? null, weeks: null };
+    return {
       section_code: cp.section_code,
       catalog_position_id: cp.id,
       label: cp.label,
       unit: cp.unit,
-      qty: isKwc ? (obj?.power_kwc ?? 1) : 1,
+      qty: autoQty(cp.qty_source, params) ?? 1,
       price_ht: cp.price_ht,
-      measure: cp.norm_basis === "sub_measure" ? (sub?.measure_value ?? null) : null,
+      measure: cp.norm_basis === "sub_measure" && params.cable != null ? params.cable : (withMeasure?.measure_value ?? null),
       manual_days: null,
       parallel: false,
       actual_start: null,
       actual_end: null,
       delay_reason: null,
-    });
+      subs: subsOf.map((x) => ({ label: x.label, measure_unit: x.measure_value != null ? (x.measure_unit ?? "ml") : null })),
+      qty_source: cp.qty_source,
+      qty_manual: false,
+      measure_manual: false,
+    };
+  }
+  function addFromCatalog(cp: CatPos) {
+    addLine(lineFromCatalog(cp, obj));
+  }
+  /** Вся смета по шаблону VLADIS: все позиции каталога - лишние потом удаляются. */
+  async function insertTemplate(o: Obj, startPosition = 1) {
+    const ordered = [...catSections].sort((a, b) => a.position - b.position).flatMap((sec) => catPos.filter((p) => p.section_code === sec.code).sort((a, b) => a.position - b.position));
+    if (ordered.length === 0) return;
+    const rows = ordered.map((cp, k) => ({ ...lineFromCatalog(cp, o), object_id: o.id, position: startPosition + k }));
+    const { error: err } = await supabase.from("work_object_lines").insert(rows);
+    if (err) setError("Не удалось заполнить смету: " + err.message);
+  }
+  async function fillTemplate() {
+    if (!obj) return;
+    if (lines.length > 0 && !window.confirm("В смете уже есть работы. Добавить к ним весь шаблон сметы?")) return;
+    await insertTemplate(obj, lines.length ? Math.max(...lines.map((l) => l.position)) + 1 : 1);
+    await loadLines(obj.id);
   }
   function addCustom() {
     const label = custom.label.trim();
@@ -267,6 +520,10 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
       actual_start: null,
       actual_end: null,
       delay_reason: null,
+      subs: [],
+      qty_source: "manual",
+      qty_manual: false,
+      measure_manual: false,
     });
     setCustom({ label: "", unit: "jour", qty: "1", days: "" });
   }
@@ -339,6 +596,10 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                 <input className={`${FIELD} w-1/2`} placeholder="kWc" inputMode="decimal" value={newForm.power} onChange={(e) => setNewForm((f) => ({ ...f, power: e.target.value }))} />
                 <input type="date" className={`${FIELD} w-1/2`} value={newForm.start} onChange={(e) => setNewForm((f) => ({ ...f, start: e.target.value }))} />
               </div>
+              <label className="flex cursor-pointer items-center gap-2 text-[14px] text-stone-700">
+                <input type="checkbox" checked={newForm.fill} onChange={(e) => setNewForm((f) => ({ ...f, fill: e.target.checked }))} />
+                Сразу заполнить смету по шаблону
+              </label>
               <div className="flex gap-2">
                 <button type="button" className="btn btn-primary flex-1 py-1.5 text-[15px]" disabled={!newForm.name.trim()} onClick={createObject}>
                   Создать
@@ -478,6 +739,21 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                   </label>
                 </div>
 
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="text-[13px] font-semibold text-stone-700">
+                    Surface toiture, м²
+                    <input key={obj.id + String(obj.roof_m2)} className={`${FIELD} mt-1 w-full`} inputMode="decimal" defaultValue={obj.roof_m2 ?? ""} onBlur={(e) => patchObject(obj.id, { roof_m2: e.target.value.trim() ? num(e.target.value) : null })} />
+                  </label>
+                  <label className="text-[13px] font-semibold text-stone-700">
+                    Nombre de panneaux
+                    <input key={obj.id + String(obj.panels_count)} className={`${FIELD} mt-1 w-full`} inputMode="numeric" defaultValue={obj.panels_count ?? ""} onBlur={(e) => patchObject(obj.id, { panels_count: e.target.value.trim() ? Math.round(num(e.target.value)) : null })} />
+                  </label>
+                  <label className="text-[13px] font-semibold text-stone-700">
+                    Longueur câble AC, м
+                    <input key={obj.id + String(obj.cable_m)} className={`${FIELD} mt-1 w-full`} inputMode="decimal" defaultValue={obj.cable_m ?? ""} onBlur={(e) => patchObject(obj.id, { cable_m: e.target.value.trim() ? num(e.target.value) : null })} />
+                  </label>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-x-8 gap-y-1 border-t border-stone-100 pt-3 text-[15px]">
                   <span>
                     План: <b>{fmtDays(totalPlanDays)} дн.</b>
@@ -497,7 +773,38 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                 </div>
               </div>
 
+              {/* Вкладки: смета объекта / контрандю (план-факт) */}
+              <div className="flex flex-wrap items-center gap-2">
+                {([
+                  { key: "devis", fr: "Devis", ru: "Смета" },
+                  { key: "plan", fr: "Compte rendu", ru: "Контрандю · план / факт" },
+                ] as const).map((t) => (
+                  <button key={t.key} type="button" onClick={() => setView(t.key)} className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition ${view === t.key ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}>
+                    {t.fr} <span className="font-normal opacity-70">· {t.ru}</span>
+                  </button>
+                ))}
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <button type="button" className="btn gap-1.5 px-3 py-1.5 text-[14px]" onClick={fillTemplate} title="Добавить в смету все позиции шаблона VLADIS">
+                    <FileSpreadsheet size={15} /> Заполнить по шаблону
+                  </button>
+                  <a className="btn btn-primary gap-1.5 px-3 py-1.5 text-[14px]" href={`/api/commercial/object-devis?objectId=${obj.id}`} download>
+                    <Download size={15} /> Скачать Excel
+                  </a>
+                </div>
+              </div>
+
+              {view === "devis" && (
+                <>
+                  <DevisTable lines={lines} sections={catSections} daysOf={daysOf} patchLine={patchLine} deleteLine={deleteLine} />
+                  <p className="text-[13px] leading-relaxed text-stone-600">
+                    <span className="mr-1.5 inline-block h-3 w-5 rounded border border-[#b9cf9b] bg-[#eef5e3] align-middle" />
+                    Зелёное поле - количество подставлено автоматически из параметров объекта (мощность, кровля, панели, кабель) и из длительности работ. Введёте своё - оно станет ручным, кнопка «↺ авто» вернёт расчёт. Дни считаются по нормам выбранного варианта.
+                  </p>
+                </>
+              )}
+
               {/* Работы / контрандю */}
+              {view === "plan" && (
               <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
                 <table className="w-full min-w-[1280px] table-fixed border-collapse text-[15px]">
                   <colgroup>
@@ -556,7 +863,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                               {subMeasure && (
                                 <label className="inline-flex items-center gap-1">
                                   мера
-                                  <input key={l.id + String(l.measure)} className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 text-right" inputMode="decimal" defaultValue={l.measure ?? ""} onBlur={(e) => patchLine(l.id, { measure: e.target.value.trim() ? num(e.target.value) : null })} />
+                                  <input key={l.id + String(l.measure)} className="w-16 rounded border border-stone-300 bg-white px-1 py-0.5 text-right" inputMode="decimal" defaultValue={l.measure ?? ""} onBlur={(e) => patchLine(l.id, { measure: e.target.value.trim() ? num(e.target.value) : null, measure_manual: true })} />
                                   ml
                                 </label>
                               )}
@@ -569,7 +876,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                             </div>
                           </td>
                           <td className="px-2 py-2 text-right">
-                            <input key={l.id + String(l.qty)} className={`${GHOST} text-right tabular-nums`} inputMode="decimal" defaultValue={l.qty} onBlur={(e) => num(e.target.value) !== l.qty && patchLine(l.id, { qty: num(e.target.value) })} />
+                            <input key={l.id + String(l.qty)} className={`${GHOST} text-right tabular-nums`} inputMode="decimal" defaultValue={l.qty} onBlur={(e) => num(e.target.value) !== l.qty && patchLine(l.id, { qty: num(e.target.value), qty_manual: true })} />
                             <span className="block px-2 text-[13px] text-stone-500">{l.unit}</span>
                           </td>
                           <td className="px-2 py-2 text-right">
@@ -609,6 +916,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                   </tbody>
                 </table>
               </div>
+              )}
 
               {/* Добавление работ */}
               <div className="space-y-3">

@@ -10684,6 +10684,8 @@ function computeDelaiFills(
   surfaceToitureM2: number | null = null,
   toitureMateriau: "bac_acier" | "fibrociment" | null = null
 ): { id: string; delai_prevu: string }[] {
+  // Старые нормы досье по клиентам удалены (11/11/2026): сроки теперь считаются в « Объектах ». Без них не заполняем.
+  if (!norms.main_doeuvre_standard && !norms.pose_bac_acier) return [];
   const fills: { id: string; delai_prevu: string }[] = [];
   for (const item of itemsToScan) {
     const label = item.label.toLowerCase().trim();
