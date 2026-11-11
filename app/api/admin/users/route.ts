@@ -64,8 +64,6 @@ export async function GET() {
         is_me: u.id === check.ctx.userId,
       };
     })
-    // Служебные бригадные ящики komanda_* (вход бригад) в списке не нужны.
-    .filter((u) => !/^komanda/i.test(u.email))
     .sort((a, b) => (a.role ? 0 : 1) - (b.role ? 0 : 1) || a.email.localeCompare(b.email));
 
   return NextResponse.json(
