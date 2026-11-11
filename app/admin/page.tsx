@@ -17442,6 +17442,11 @@ function PaieView({
                 : defaultJours(employee),
           };
         });
+        // Jours remplacés automatiquement par le pointage : les jours repas suivent aussi.
+        const maxRepas = paramRow ? Number(paramRow.max_jours_repas) || 22 : DEFAULT_PAYROLL_PARAMS.maxJoursRepas;
+        autoChanged.forEach((m) => {
+          if (map[m.id]) map[m.id].joursRepasManuel = m.real > 0 ? String(Math.min(maxRepas, Math.ceil(m.real))) : "";
+        });
         setInputs(map);
         setAutoDays(autoChanged);
       } else {
@@ -17696,10 +17701,18 @@ function PaieView({
     }
   }
 
+  /** Jours repas suivent les jours travaillés (1 repas par jour, demi-journée arrondie au-dessus, plafonné). */
+  const repasForDays = (days: number) => (days > 0 ? String(Math.min(params.maxJoursRepas || 22, Math.ceil(days))) : "");
+
   function updateInput(employeeId: string, field: keyof PaieLineInput, value: string) {
     setInputs((prev) => ({
       ...prev,
-      [employeeId]: { ...(prev[employeeId] ?? EMPTY_PAIE_LINE), [field]: value },
+      [employeeId]: {
+        ...(prev[employeeId] ?? EMPTY_PAIE_LINE),
+        [field]: value,
+        // Changer les jours travaillés recale automatiquement les jours repas (modifiables ensuite à la main).
+        ...(field === "joursTravailles" ? { joursRepasManuel: repasForDays(Number(value) || 0) } : {}),
+      },
     }));
   }
 
@@ -17753,7 +17766,7 @@ function PaieView({
     setInputs((prev) => {
       const next = { ...prev };
       dayMismatches.forEach((m) => {
-        next[m.id] = { ...(next[m.id] ?? EMPTY_PAIE_LINE), joursTravailles: String(m.real) };
+        next[m.id] = { ...(next[m.id] ?? EMPTY_PAIE_LINE), joursTravailles: String(m.real), joursRepasManuel: repasForDays(m.real) };
       });
       return next;
     });
