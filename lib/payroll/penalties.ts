@@ -1,6 +1,6 @@
 /**
  * Справочник штрафов контролёра - из таблицы « Ошибки штраф.numbers »
- * (лист ШТРАФЫ, колонка « Цена х3 »), обновлён 10/11/2026 - заменяет версию от 12/10/2026.
+ * (лист ШТРАФЫ, колонка « Цена х3 »), обновлён 11/11/2026 (3.6 = 150; 3.7 « CDC и Capo » = 150, 3.8 удалён; 1.2 убран) - заменяет версию от 10/11/2026.
  * Суммы - на команду из 3 человек : на одного человека штраф = сумма ÷ 3
  * (PENALTY_DEFAULT_DIVISOR). Цены « за шт. » (1.9 = 10 €, 3.2 = 5 €, 3.3 = 2 €) и « в день »
  * (3.1 = 5 €). Строки « стоимость кабеля / CDC + время на работы » и « увольнение, минус 100 % банк »
@@ -51,9 +51,8 @@ export const PENALTY_CATALOG: PenaltyCatalogItem[] = [
   { code: "3.3", stage: "Conectique non cire", description: "Конектики не затянуты", severity: "Серьёзная", amount: 2, unit: "per_piece" },
   { code: "3.4", stage: "Нет наклеек AC-DC", description: "Отсутствуют наклейки для обозначения AC (переменный ток) и DC (постоянный ток)", severity: "Средняя", amount: 150, unit: "fixed" },
   { code: "3.5", stage: "AGCP / Rondelle crantée", description: "Не установлены или неправильно затянуты зубчатые шайбы (rondelle crantée) на соединениях AGCP", severity: "Серьёзная", amount: 150, unit: "fixed" },
-  { code: "3.6", stage: "Nettoyage", description: "Мусор на объекте после завершения", severity: "Малая", amount: 100, unit: "fixed" },
-  { code: "3.7", stage: "Manque joint CDC", description: "Нет Жуан на CDC", severity: "Серьёзная", amount: 300, unit: "fixed" },
-  { code: "3.8", stage: "Manque joint Capo", description: "Нет Жуан на Capo", severity: "Средняя", amount: 150, unit: "fixed" },
+  { code: "3.6", stage: "Nettoyage", description: "Мусор на объекте после завершения", severity: "Малая", amount: 150, unit: "fixed" },
+  { code: "3.7", stage: "Manque joint CDC / Capo", description: "Нет Жуан на CDC и Capo", severity: "Серьёзная", amount: 150, unit: "fixed" },
   { code: "3.9", stage: "Manque ruban isolant de marquage", description: "Нет маркировочной изоленты N L1 L2 L3", severity: "Малая", amount: 150, unit: "fixed" },
 ];
 
