@@ -47,6 +47,32 @@ const num = (raw: string) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const GHOST = "w-full rounded-md border border-transparent bg-transparent px-2 py-0.5 outline-none transition hover:border-stone-300 focus:border-primary-500 focus:bg-white";
+const QTY_INPUT = "w-full rounded-md border border-stone-200 bg-stone-50 px-2 py-0.5 text-right outline-none focus:border-primary-500 focus:bg-white";
+const UNIT_INPUT = `${GHOST} [&::-webkit-calendar-picker-indicator]:hidden`;
+
+/** Цена: в покое выглядит как в смете (« 1 500,00 € »), при редактировании - обычное число. */
+function PriceInput({ value, onCommit }: { value: number | null; onCommit: (raw: string) => void }) {
+  const [focus, setFocus] = useState(false);
+  const [draft, setDraft] = useState("");
+  return (
+    <input
+      className={`${GHOST} text-right tabular-nums`}
+      inputMode="decimal"
+      value={focus ? draft : value == null ? "" : eur(value)}
+      onFocus={() => {
+        setFocus(true);
+        setDraft(value == null ? "" : String(value).replace(".", ","));
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        setFocus(false);
+        onCommit(draft);
+      }}
+    />
+  );
+}
+
 export default function WorkCatalogView({
   supabase,
   norms,
@@ -262,6 +288,9 @@ export default function WorkCatalogView({
 
   const GREEN_HEAD = "bg-[#5b7f3a] text-white";
   const GREEN_CELL = "bg-[#e4eed6]";
+  const GREEN_BAND = "bg-[#c9dcb0]";
+  const TH = "bg-[#2b4aa8] px-3 py-2.5 text-[14px] font-semibold normal-case tracking-normal text-white";
+  const ACTION = "opacity-0 transition group-hover:opacity-100 focus:opacity-100";
 
   return (
     <div className="space-y-3">
@@ -270,130 +299,124 @@ export default function WorkCatalogView({
           <option key={u} value={u} />
         ))}
       </datalist>
-      <div className="card flex flex-wrap items-end gap-4 p-3">
-        <label className="text-xs font-semibold text-stone-500">
-          Puissance (kWc) / мощность
-          <input className="input mt-1 block w-28 py-1 text-sm" inputMode="decimal" value={kwc} onChange={(e) => setKwc(e.target.value)} />
+
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3 rounded-xl border border-stone-200 bg-white px-4 py-3">
+        <label className="text-sm font-semibold text-stone-700">
+          Puissance (kWc)
+          <input className={`${QTY_INPUT} mt-1 block w-32 !text-left text-[15px]`} inputMode="decimal" value={kwc} onChange={(e) => setKwc(e.target.value)} />
         </label>
-        <p className="max-w-xl text-xs text-stone-500">
-          Тестовый расчёт: введи мощность, количества и меры (в подпозициях) - зелёные колонки покажут дни по нормам. Ничего из введённого здесь не
-          сохраняется. Для строк без нормы дни вводятся вручную.
-          {canEdit ? " Названия, единицы, цены (P.U HT) и тексты подпозиций можно править, а в каждый раздел добавлять свою позицию (кнопка «+ позиция») - всё это сохраняется в каталог." : ""}
+        <p className="min-w-[16rem] flex-1 text-[13px] leading-relaxed text-stone-600">
+          Тестовый расчёт: введите мощность, количества и меры - зелёные колонки покажут дни по нормам. Введённое здесь нигде не сохраняется. Для строк без нормы дни вводятся вручную.
+          {canEdit ? " Названия, единицы, цены и тексты подпозиций правятся прямо в таблице (наведите на строку) и сохраняются в каталог." : ""}
         </p>
       </div>
-      {error && <p className="rounded-lg bg-error-50 p-2 text-xs text-error-700">{error}</p>}
+      {error && <p className="rounded-lg bg-error-50 p-2 text-sm text-error-700">{error}</p>}
 
-      <div className="card overflow-x-auto p-0">
-        <table className="w-full min-w-[1040px] border-collapse text-sm">
+      <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+        <table className="w-full min-w-[1275px] table-fixed border-collapse text-[14px] text-stone-900">
+          <colgroup>
+            <col style={{ width: 52 }} />
+            <col />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 124 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 140 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+            <col style={{ width: 110 }} />
+          </colgroup>
           <thead>
-            <tr className="text-left text-white">
-              <th className="w-10 bg-[#2b4aa8] px-2 py-2.5 font-bold">N°</th>
-              <th className="bg-[#2b4aa8] px-2 py-2.5 font-bold">Désignation</th>
-              <th className="w-24 bg-[#2b4aa8] px-2 py-2.5 text-right font-bold">Quantité</th>
-              <th className="w-20 bg-[#2b4aa8] px-2 py-2.5 font-bold">Unité</th>
-              <th className="w-28 bg-[#2b4aa8] px-2 py-2.5 text-right font-bold">P.U HT</th>
-              <th className="w-32 bg-[#2b4aa8] px-2 py-2.5 text-right font-bold">Total HT</th>
+            <tr>
+              <th className={`${TH} text-left`}>N°</th>
+              <th className={`${TH} text-left`}>Désignation</th>
+              <th className={`${TH} text-right`}>Quantité</th>
+              <th className={`${TH} text-left`}>Unité</th>
+              <th className={`${TH} text-right`}>P.U HT</th>
+              <th className={`${TH} text-right`}>Total HT</th>
               {VARIANTS.map((v) => (
-                <th key={v.key} className={`w-28 px-2 py-2.5 text-center font-bold ${GREEN_HEAD}`}>
+                <th key={v.key} className={`px-2 py-2.5 text-center text-[14px] font-semibold normal-case tracking-normal ${GREEN_HEAD}`}>
                   {v.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {sections.map((sec) => {
+            {sections.map((sec, si) => {
               const secPositions = positions.filter((p) => p.section_code === sec.code);
               return (
                 <Fragment key={sec.code}>
                   <tr className="bg-[#e9edf4]">
-                    <td className="px-2 py-2 font-bold">{sec.position}</td>
-                    <td colSpan={5} className="px-2 py-2 font-bold">
+                    <td className="px-3 py-2 text-[13px] font-semibold">{si + 1}</td>
+                    <td colSpan={5} className="px-3 py-2 text-[13px] font-semibold tracking-wide">
                       {sec.label}
-                      {sec.label_ru && <span className="ml-2 text-[11px] font-medium text-stone-400">{sec.label_ru}</span>}
                       {canEdit && secPositions.length === 0 && (
-                        <button type="button" className="ml-3 text-xs font-normal text-stone-400 hover:text-error-600" onClick={() => deleteSection(sec)}>
-                          удалить раздел
+                        <button type="button" className="ml-4 text-xs font-normal text-stone-500 underline hover:text-error-600" onClick={() => deleteSection(sec)}>
+                          удалить пустой раздел
                         </button>
                       )}
                     </td>
-                    <td colSpan={3} className="bg-[#c9dcb0]" />
+                    <td colSpan={3} className={GREEN_BAND} />
                   </tr>
+
                   {secPositions.map((p) => {
                     const ps = subsByPos.get(p.id) ?? [];
                     const manual = !hasNorm(p);
                     return (
                       <Fragment key={p.id}>
-                        <tr className="border-b border-stone-200">
+                        <tr className="group border-b border-stone-200 hover:bg-stone-50/70">
                           <td />
-                          <td className="px-2 py-1.5 pl-6 font-medium">
+                          <td className="py-1 pl-6 pr-3">
                             {canEdit ? (
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1.5">
-                                  <input
-                                    key={p.id + p.label}
-                                    className="input w-full py-0.5 text-sm font-medium"
-                                    defaultValue={p.label}
-                                    onBlur={(e) => e.target.value.trim() !== p.label && updatePosition(p, { label: e.target.value })}
-                                  />
-                                  <button type="button" className="text-stone-400 hover:text-error-600" title="Удалить позицию" onClick={() => deletePosition(p)}>
-                                    ×
-                                  </button>
-                                </div>
-                                <button type="button" className="text-[11px] font-bold text-primary-600 hover:text-primary-700" onClick={() => addSub(p)}>
+                              <div className="flex items-center gap-1">
+                                <input
+                                  key={p.id + p.label}
+                                  className={GHOST}
+                                  defaultValue={p.label}
+                                  onBlur={(e) => e.target.value.trim() !== p.label && updatePosition(p, { label: e.target.value })}
+                                />
+                                <button type="button" className={`${ACTION} shrink-0 whitespace-nowrap text-xs font-semibold text-primary-600 hover:text-primary-700`} onClick={() => addSub(p)}>
                                   + подпозиция
+                                </button>
+                                <button type="button" className={`${ACTION} shrink-0 px-1.5 text-lg leading-none text-stone-500 hover:!text-error-600`} title="Удалить позицию" onClick={() => deletePosition(p)}>
+                                  ×
                                 </button>
                               </div>
                             ) : (
-                              p.label
+                              <span className="px-2">{p.label}</span>
                             )}
                           </td>
                           <td className="px-2 py-1 text-right">
                             {qtyIsPower(p) ? (
-                              <span className="text-stone-500" title="Берётся из поля «Puissance»">
+                              <span className="px-2 tabular-nums text-stone-600" title="Берётся из поля Puissance">
                                 {power.toLocaleString("fr-FR")}
                               </span>
                             ) : (
-                              <input
-                                className="input w-20 py-0.5 text-right text-sm"
-                                inputMode="decimal"
-                                value={qty[p.id] ?? "1"}
-                                onChange={(e) => setQty((q) => ({ ...q, [p.id]: e.target.value }))}
-                              />
+                              <input className={`${QTY_INPUT} tabular-nums`} inputMode="decimal" value={qty[p.id] ?? "1"} onChange={(e) => setQty((q) => ({ ...q, [p.id]: e.target.value }))} />
                             )}
                           </td>
-                          <td className="px-2 py-1.5 text-stone-600">
+                          <td className="px-1 py-1">
                             {canEdit ? (
                               <input
                                 key={p.id + p.unit}
                                 list="work-units"
-                                className="input w-16 py-0.5 text-sm"
+                                className={UNIT_INPUT}
                                 defaultValue={p.unit}
                                 onBlur={(e) => e.target.value.trim() !== p.unit && updatePosition(p, { unit: e.target.value })}
                               />
                             ) : (
-                              p.unit
+                              <span className="px-2">{p.unit}</span>
                             )}
                           </td>
-                          <td className="px-2 py-1 text-right">
-                            {canEdit ? (
-                              <input
-                                key={p.id + String(p.price_ht)}
-                                className="input w-24 py-0.5 text-right text-sm"
-                                inputMode="decimal"
-                                defaultValue={p.price_ht ?? ""}
-                                onBlur={(e) => savePrice(p, e.target.value)}
-                              />
-                            ) : (
-                              <span>{p.price_ht == null ? "" : eur(p.price_ht)}</span>
-                            )}
+                          <td className="px-1 py-1 text-right">
+                            {canEdit ? <PriceInput key={p.id + String(p.price_ht)} value={p.price_ht} onCommit={(raw) => savePrice(p, raw)} /> : <span className="px-2 tabular-nums">{p.price_ht == null ? "" : eur(p.price_ht)}</span>}
                           </td>
-                          <td className="px-2 py-1.5 text-right tabular-nums">{p.price_ht == null ? "" : eur(lineTotal(p))}</td>
+                          <td className="px-3 py-1 text-right tabular-nums">{p.price_ht == null ? "" : eur(lineTotal(p))}</td>
                           {manual ? (
-                            <td colSpan={3} className={`px-2 py-1 text-center ${GREEN_CELL}`}>
+                            <td colSpan={3} className={`px-3 py-1 text-center ${GREEN_CELL}`}>
                               <input
-                                className="input w-24 bg-white py-0.5 text-center text-sm"
+                                className="w-24 rounded-md border border-[#b9cf9b] bg-white px-2 py-1 text-center text-[15px] font-semibold outline-none focus:border-[#5b7f3a]"
                                 inputMode="decimal"
-                                placeholder="дни"
+                                placeholder="jours"
                                 value={manualDays[p.id] ?? ""}
                                 onChange={(e) => setManualDays((m) => ({ ...m, [p.id]: e.target.value }))}
                               />
@@ -404,7 +427,7 @@ export default function WorkCatalogView({
                               return (
                                 <td
                                   key={v.key}
-                                  className={`px-2 py-1.5 text-center font-semibold tabular-nums ${GREEN_CELL} ${r?.out ? "text-warning-700" : ""}`}
+                                  className={`px-2 py-1 text-center text-[15px] font-semibold tabular-nums ${GREEN_CELL} ${r?.out ? "text-warning-700" : ""}`}
                                   title={r?.out ? "Вне шкалы нормы - значение ориентировочное" : (p[v.key] ?? undefined)}
                                 >
                                   {r ? days(r.jours) : "-"}
@@ -414,52 +437,57 @@ export default function WorkCatalogView({
                             })
                           )}
                         </tr>
-                        {ps.map((s) => (
-                          <tr key={s.id} className="border-b border-stone-200">
-                            <td colSpan={6} className="px-2 py-1.5 text-[13px] text-stone-700">
-                              <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-                                {s.measure_value != null && (
-                                  <span className="inline-flex items-center gap-1 font-semibold">
+
+                        {ps.map((sub) => (
+                          <tr key={sub.id} className="group border-b border-stone-200">
+                            <td colSpan={6} className="px-3 py-1.5 text-[13px] leading-snug text-stone-600">
+                              <div className="flex items-start gap-2">
+                                {/* Мера - в начале строки, как в исходной таблице: « 90 ml *Pour un tirage… » */}
+                                {sub.measure_value != null ? (
+                                  <span className="inline-flex shrink-0 items-center gap-1 pt-0.5 text-stone-800">
                                     <input
-                                      className="input w-20 py-0.5 text-right text-sm"
+                                      className="w-16 rounded-md border border-stone-200 bg-stone-50 px-1.5 py-0.5 text-right outline-none focus:border-primary-500 focus:bg-white"
                                       inputMode="decimal"
-                                      value={measure[s.id] ?? String(s.measure_value)}
-                                      onChange={(e) => setMeasure((m) => ({ ...m, [s.id]: e.target.value }))}
+                                      value={measure[sub.id] ?? String(sub.measure_value)}
+                                      onChange={(e) => setMeasure((m) => ({ ...m, [sub.id]: e.target.value }))}
                                     />
                                     {canEdit ? (
                                       <input
-                                        key={s.id + s.measure_unit}
-                                        className="input w-14 py-0.5 text-sm"
-                                        defaultValue={s.measure_unit ?? ""}
-                                        onBlur={(e) => e.target.value !== (s.measure_unit ?? "") && updateSub(s, { measure_unit: e.target.value.trim() || null })}
+                                        key={sub.id + sub.measure_unit}
+                                        className="w-10 rounded-md border border-transparent bg-transparent px-1 py-0.5 outline-none hover:border-stone-300 focus:border-primary-500 focus:bg-white"
+                                        defaultValue={sub.measure_unit ?? ""}
+                                        onBlur={(e) => e.target.value !== (sub.measure_unit ?? "") && updateSub(sub, { measure_unit: e.target.value.trim() || null })}
                                       />
                                     ) : (
-                                      s.measure_unit
+                                      <span>{sub.measure_unit}</span>
                                     )}
                                   </span>
+                                ) : (
+                                  canEdit && (
+                                    <button type="button" className={`${ACTION} shrink-0 pt-0.5 text-xs font-semibold text-primary-600 hover:text-primary-700`} onClick={() => updateSub(sub, { measure_value: 0, measure_unit: "ml" })}>
+                                      + мера
+                                    </button>
+                                  )
                                 )}
                                 {canEdit ? (
                                   <textarea
-                                    className="input min-h-[2rem] flex-1 basis-80 py-0.5 text-[13px]"
-                                    rows={Math.min(6, Math.max(1, s.label.split("\n").length))}
-                                    defaultValue={s.label}
-                                    onBlur={(e) => saveSubLabel(s, e.target.value)}
+                                    className="min-w-[16rem] flex-1 resize-none rounded-md border border-transparent bg-transparent px-1.5 py-0.5 leading-snug outline-none transition [field-sizing:content] hover:border-stone-300 focus:border-primary-500 focus:bg-white"
+                                    rows={Math.max(1, sub.label.split("\n").length)}
+                                    defaultValue={sub.label}
+                                    placeholder="Описание подпозиции"
+                                    onBlur={(e) => saveSubLabel(sub, e.target.value)}
                                   />
                                 ) : (
-                                  <span className="flex-1 basis-80 whitespace-pre-line">{s.label}</span>
+                                  <span className="flex-1 whitespace-pre-line px-1">{sub.label}</span>
                                 )}
                                 {canEdit && (
-                                  <span className="flex items-center gap-2 text-[11px]">
-                                    {s.measure_value == null ? (
-                                      <button type="button" className="font-bold text-primary-600 hover:text-primary-700" onClick={() => updateSub(s, { measure_value: 0, measure_unit: "ml" })}>
-                                        + мера
-                                      </button>
-                                    ) : (
-                                      <button type="button" className="text-stone-400 hover:text-stone-600" onClick={() => updateSub(s, { measure_value: null, measure_unit: null })}>
-                                        без меры
+                                  <span className={`${ACTION} flex shrink-0 items-center gap-3 pt-0.5 text-xs`}>
+                                    {sub.measure_value != null && (
+                                      <button type="button" className="text-stone-500 hover:text-stone-800" onClick={() => updateSub(sub, { measure_value: null, measure_unit: null })}>
+                                        убрать меру
                                       </button>
                                     )}
-                                    <button type="button" className="text-stone-400 hover:text-error-600" title="Удалить подпозицию" onClick={() => deleteSub(s)}>
+                                    <button type="button" className="text-base leading-none text-stone-500 hover:text-error-600" title="Удалить подпозицию" onClick={() => deleteSub(sub)}>
                                       ×
                                     </button>
                                   </span>
@@ -472,27 +500,28 @@ export default function WorkCatalogView({
                       </Fragment>
                     );
                   })}
+
                   {canEdit && (
-                    <tr>
+                    <tr className="border-b border-stone-200">
                       <td />
-                      <td colSpan={5} className="px-2 py-1.5 pl-6">
+                      <td colSpan={5} className="px-3 py-1.5 pl-6">
                         {adding === sec.code ? (
-                          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-stone-300 p-2">
-                            <label className="flex-1 basis-56 text-[11px] font-semibold text-stone-500">
-                              Название
-                              <input className="input mt-0.5 w-full py-0.5 text-sm" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} autoFocus />
+                          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-stone-300 bg-stone-50/60 p-3">
+                            <label className="flex-1 basis-60 text-[13px] font-semibold text-stone-700">
+                              Désignation
+                              <input className="input mt-1 w-full py-1.5 text-[15px]" value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} autoFocus />
                             </label>
-                            <label className="w-20 text-[11px] font-semibold text-stone-500">
-                              Единица
-                              <input list="work-units" className="input mt-0.5 w-full py-0.5 text-sm" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} />
+                            <label className="w-24 text-[13px] font-semibold text-stone-700">
+                              Unité
+                              <input list="work-units" className="input mt-1 w-full py-1.5 text-[15px]" value={form.unit} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} />
                             </label>
-                            <label className="w-24 text-[11px] font-semibold text-stone-500">
+                            <label className="w-28 text-[13px] font-semibold text-stone-700">
                               P.U HT
-                              <input className="input mt-0.5 w-full py-0.5 text-right text-sm" inputMode="decimal" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} />
+                              <input className="input mt-1 w-full py-1.5 text-right text-[15px]" inputMode="decimal" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} />
                             </label>
-                            <label className="w-56 text-[11px] font-semibold text-stone-500">
+                            <label className="w-60 text-[13px] font-semibold text-stone-700">
                               Дни (норма)
-                              <select className="input mt-0.5 w-full py-0.5 text-sm" value={form.norm} onChange={(e) => setForm((f) => ({ ...f, norm: e.target.value }))}>
+                              <select className="input mt-1 w-full py-1.5 text-[15px]" value={form.norm} onChange={(e) => setForm((f) => ({ ...f, norm: e.target.value }))}>
                                 <option value="">вручную (без нормы)</option>
                                 {normOptions
                                   .filter((n) => !HIDDEN_NORMS.has(n.code) || n.code === MO_TRIPLE)
@@ -504,24 +533,38 @@ export default function WorkCatalogView({
                               </select>
                             </label>
                             {form.norm && (
-                              <label className="w-44 text-[11px] font-semibold text-stone-500">
+                              <label className="w-48 text-[13px] font-semibold text-stone-700">
                                 Считать от
-                                <select className="input mt-0.5 w-full py-0.5 text-sm" value={form.basis} onChange={(e) => setForm((f) => ({ ...f, basis: e.target.value as Pos["norm_basis"] }))}>
+                                <select className="input mt-1 w-full py-1.5 text-[15px]" value={form.basis} onChange={(e) => setForm((f) => ({ ...f, basis: e.target.value as Pos["norm_basis"] }))}>
                                   <option value="qty">количества позиции</option>
                                   <option value="power">мощности (kWc)</option>
                                   <option value="sub_measure">меры в подпозиции</option>
                                 </select>
                               </label>
                             )}
-                            <button type="button" className="btn btn-primary px-3 py-1 text-xs" disabled={!form.label.trim()} onClick={() => addPosition(sec.code)}>
+                            <button type="button" className="btn btn-primary px-4 py-1.5 text-[15px]" disabled={!form.label.trim()} onClick={() => addPosition(sec.code)}>
                               Добавить
                             </button>
-                            <button type="button" className="px-2 py-1 text-xs text-stone-500" onClick={() => { setAdding(null); setForm(EMPTY_NEW); }}>
+                            <button
+                              type="button"
+                              className="px-2 py-1.5 text-[15px] text-stone-600"
+                              onClick={() => {
+                                setAdding(null);
+                                setForm(EMPTY_NEW);
+                              }}
+                            >
                               Отмена
                             </button>
                           </div>
                         ) : (
-                          <button type="button" className="text-xs font-bold text-primary-600 hover:text-primary-700" onClick={() => { setAdding(sec.code); setForm(EMPTY_NEW); }}>
+                          <button
+                            type="button"
+                            className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+                            onClick={() => {
+                              setAdding(sec.code);
+                              setForm(EMPTY_NEW);
+                            }}
+                          >
                             + позиция в этот раздел
                           </button>
                         )}
@@ -529,39 +572,45 @@ export default function WorkCatalogView({
                       <td colSpan={3} className={GREEN_CELL} />
                     </tr>
                   )}
-                  <tr>
-                    <td colSpan={4} />
-                    <td className="px-2 py-1.5 text-right font-bold">Sous-total HT :</td>
-                    <td className="px-2 py-1.5 text-right font-bold tabular-nums">{eur(sectionTotals.get(sec.code) ?? 0)}</td>
+
+                  <tr className="border-b border-stone-300">
+                    <td colSpan={5} className="whitespace-nowrap px-3 py-2.5 text-right font-bold">
+                      Sous-total HT :
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-bold tabular-nums">{eur(sectionTotals.get(sec.code) ?? 0)}</td>
                     <td colSpan={3} className={GREEN_CELL} />
                   </tr>
                 </Fragment>
               );
             })}
-            <tr className="border-t-2 border-stone-300">
-              <td colSpan={4} />
-              <td className="px-2 py-1.5 text-right font-bold">Total € HT</td>
-              <td className="px-2 py-1.5 text-right font-bold tabular-nums">{eur(totalHt)}</td>
+
+            <tr>
+              <td colSpan={5} className="whitespace-nowrap px-3 py-2 text-right font-bold">
+                Total € HT
+              </td>
+              <td className="px-3 py-2 text-right font-bold tabular-nums">{eur(totalHt)}</td>
               <td colSpan={3} />
             </tr>
             <tr>
-              <td colSpan={4} />
-              <td className="px-2 py-1 text-right text-stone-500">TVA 20 %</td>
-              <td className="px-2 py-1 text-right tabular-nums text-stone-500">{eur(totalHt * 0.2)}</td>
+              <td colSpan={5} className="whitespace-nowrap px-3 py-1.5 text-right text-stone-700">
+                TVA 20 %
+              </td>
+              <td className="px-3 py-1.5 text-right tabular-nums text-stone-700">{eur(totalHt * 0.2)}</td>
               <td colSpan={3} />
             </tr>
             <tr>
-              <td colSpan={4} />
-              <td className="px-2 py-1 text-right font-bold">Total TTC</td>
-              <td className="px-2 py-1 text-right font-bold tabular-nums">{eur(totalHt * 1.2)}</td>
-              <td className={`px-2 py-2 text-center text-xs font-bold ${GREEN_HEAD}`} colSpan={3}>
-                Сумма дней по колонке
+              <td colSpan={5} className="whitespace-nowrap px-3 py-2 text-right font-bold">
+                Total TTC
+              </td>
+              <td className="px-3 py-2 text-right font-bold tabular-nums">{eur(totalHt * 1.2)}</td>
+              <td colSpan={3} className={`px-2 py-2 text-center text-[15px] font-bold ${GREEN_HEAD}`}>
+                Total jours
               </td>
             </tr>
             <tr>
               <td colSpan={6} />
               {dayTotals.map((d, i) => (
-                <td key={i} className={`px-2 py-1.5 text-center font-bold tabular-nums ${GREEN_CELL}`}>
+                <td key={i} className={`px-2 py-2.5 text-center text-base font-bold tabular-nums ${GREEN_CELL}`}>
                   {days(d)}
                 </td>
               ))}
@@ -569,32 +618,27 @@ export default function WorkCatalogView({
           </tbody>
         </table>
       </div>
+
       {canEdit && (
         <div>
           {newSection === null ? (
-            <button type="button" className="text-xs font-bold text-primary-600 hover:text-primary-700" onClick={() => setNewSection("")}>
+            <button type="button" className="text-sm font-semibold text-primary-600 hover:text-primary-700" onClick={() => setNewSection("")}>
               + раздел
             </button>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <input
-                className="input w-72 py-1 text-sm"
-                placeholder="Название раздела, напр. TRANSPORT"
-                value={newSection}
-                onChange={(e) => setNewSection(e.target.value)}
-                autoFocus
-              />
-              <button type="button" className="btn btn-primary px-3 py-1 text-xs" disabled={!newSection.trim()} onClick={addSection}>
+              <input className="input w-80 py-1.5 text-[15px]" placeholder="Название раздела, напр. TRANSPORT" value={newSection} onChange={(e) => setNewSection(e.target.value)} autoFocus />
+              <button type="button" className="btn btn-primary px-4 py-1.5 text-[15px]" disabled={!newSection.trim()} onClick={addSection}>
                 Добавить раздел
               </button>
-              <button type="button" className="px-2 py-1 text-xs text-stone-500" onClick={() => setNewSection(null)}>
+              <button type="button" className="px-2 py-1.5 text-[15px] text-stone-600" onClick={() => setNewSection(null)}>
                 Отмена
               </button>
             </div>
           )}
         </div>
       )}
-      <p className="text-[11px] text-stone-400">* - вне шкалы нормы (например, Avec LT свыше 500 kWc, Ombrière свыше 1000 kWc): значение ориентировочное.</p>
+      <p className="text-[13px] text-stone-500">* - вне шкалы нормы (например, Avec LT свыше 500 kWc, Ombrière свыше 1000 kWc): значение ориентировочное.</p>
     </div>
   );
 }

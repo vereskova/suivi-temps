@@ -7,6 +7,7 @@ import ControlPenaltiesView from "@/components/admin/ControlPenaltiesView";
 import SettingsView from "@/components/admin/SettingsView";
 import WorkCatalogView from "@/components/admin/WorkCatalogView";
 import PenaltyCatalogView from "@/components/admin/PenaltyCatalogView";
+import WorkObjectsView from "@/components/admin/WorkObjectsView";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
@@ -10906,7 +10907,7 @@ function CommercialNormsView({
  *  sont chargées une fois ici et passées en prop, comme un calculateur avec
  *  une feuille de données séparée que le calcul principal va lire. */
 function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType<typeof createClient>; canEdit?: boolean }) {
-  const [commercialTab, setCommercialTab] = useState<"dossiers" | "smeta" | "normes">("smeta");
+  const [commercialTab, setCommercialTab] = useState<"objets" | "smeta" | "normes" | "dossiers">("objets");
 
   const [normRows, setNormRows] = useState<DurationNormRow[]>([]);
   const [normPoints, setNormPoints] = useState<DurationNormPointRow[]>([]);
@@ -10954,12 +10955,12 @@ function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType
     <div className="space-y-4">
       <div className="flex gap-2">
         <button
-          onClick={() => setCommercialTab("dossiers")}
+          onClick={() => setCommercialTab("objets")}
           className={`rounded-full px-4 py-1.5 text-sm font-bold ${
-            commercialTab === "dossiers" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+            commercialTab === "objets" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
           }`}
         >
-          <Bi fr="Dossiers" ru="Досье" />
+          <Bi fr="Chantiers" ru="Объекты" />
         </button>
         <button
           onClick={() => setCommercialTab("smeta")}
@@ -10977,9 +10978,21 @@ function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType
         >
           <Bi fr="Normes" ru="Нормы" />
         </button>
+        {/* Старые досье по клиентам (там пока живут Sinao и документы клиенту / команде) - до переноса на объекты. */}
+        <button
+          onClick={() => setCommercialTab("dossiers")}
+          className={`ml-auto rounded-full px-3 py-1.5 text-xs font-semibold ${
+            commercialTab === "dossiers" ? "bg-stone-700 text-white" : "text-stone-400 hover:text-stone-600"
+          }`}
+          title="Старые досье по клиентам (Sinao, документы)"
+        >
+          Archive · архив досье
+        </button>
       </div>
       {commercialTab === "dossiers" ? (
         <CommercialView supabase={supabase} norms={norms} />
+      ) : commercialTab === "objets" ? (
+        <WorkObjectsView supabase={supabase} norms={norms} />
       ) : commercialTab === "smeta" ? (
         <WorkCatalogView supabase={supabase} norms={norms} normOptions={normRows.map((n) => ({ code: n.code, label: n.label }))} canEdit={canEdit} />
       ) : (

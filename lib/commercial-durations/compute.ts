@@ -140,3 +140,65 @@ export function evalNorm(def: NormDef | undefined, x: number): NormResult {
   }
   return evalLinear(def.points, x);
 }
+
+// ── Планирование работ объекта по рабочим дням ─────────────────────────────────────────────
+
+const holidayCache = new Map<number, Set<string>>();
+function holidaysAround(year: number): Set<string> {
+  let set = holidayCache.get(year);
+  if (!set) {
+    set = new Set<string>();
+    for (let y = year - 1; y <= year + 1; y++) frenchHolidaysForYear(y).forEach((h) => set!.add(h.date));
+    holidayCache.set(year, set);
+  }
+  return set;
+}
+export function isWorkingDay(iso: string): boolean {
+  return !isWeekend(iso) && !holidaysAround(Number(iso.slice(0, 4))).has(iso);
+}
+function shiftDay(iso: string, delta: number): string {
+  const d = toUtcDate(iso);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return toIso(d);
+}
+/** Ближайший рабочий день, начиная с самой даты (включительно). */
+export function onOrNextWorkingDay(iso: string): string {
+  let cur = iso;
+  for (let i = 0; i < 20 && !isWorkingDay(cur); i++) cur = shiftDay(cur, 1);
+  return cur;
+}
+/** Сколько рабочих дней от `fromIso` до `toIso` (со знаком : + если to позже). 0 = тот же рабочий день. */
+export function workingDaysBetween(fromIso: string, toIso_: string): number {
+  if (fromIso === toIso_) return 0;
+  const forward = toIso_ > fromIso;
+  let cur = fromIso;
+  let n = 0;
+  for (let i = 0; i < 800 && cur !== toIso_; i++) {
+    cur = shiftDay(cur, forward ? 1 : -1);
+    if (isWorkingDay(cur)) n += forward ? 1 : -1;
+  }
+  return n;
+}
+
+/** Плановые даты работ подряд от даты старта: каждая следующая начинается на следующий рабочий день после
+ *  конца предыдущей, а « параллельная » - в тот же день, что и предыдущая. Работа без дней (0) даты не получает. */
+export function planSchedule(startIso: string | null, lines: { days: number; parallel?: boolean }[]): ({ start: string; end: string } | null)[] {
+  const out: ({ start: string; end: string } | null)[] = [];
+  if (!startIso) return lines.map(() => null);
+  let cursor = onOrNextWorkingDay(startIso);
+  let prevStart: string | null = null;
+  for (const l of lines) {
+    if (!(l.days > 0)) {
+      out.push(null);
+      continue;
+    }
+    const start: string = l.parallel && prevStart ? prevStart : cursor;
+    const span = Math.max(1, Math.ceil(l.days));
+    const end = addWorkingDays(start, span - 1);
+    out.push({ start, end });
+    prevStart = start;
+    const next = onOrNextWorkingDay(shiftDay(end, 1));
+    if (next > cursor) cursor = next;
+  }
+  return out;
+}
