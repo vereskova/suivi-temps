@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, Check, ChevronDown, History, ListOrdered, Plus, Search, Trash2, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, History, ListOrdered, Plus, Search, Trash2, Undo2 } from "lucide-react";
 import {
   PENALTY_SEVERITIES,
   PENALTY_UNITS,
@@ -54,8 +54,14 @@ function diffDocs(base: PenaltyCatalogDoc, next: PenaltyCatalogDoc) {
   const removed = base.items.filter((i) => !nextById.has(i.id));
   const changed = next.items.filter((i) => baseById.has(i.id) && itemSig(i) !== itemSig(baseById.get(i.id)!)).map((i) => i.id);
   const sectionsChanged = JSON.stringify(base.sections) !== JSON.stringify(next.sections) || base.divisor !== next.divisor;
-  return { added, removed, changed, sectionsChanged, any: added.length + removed.length + changed.length > 0 || sectionsChanged };
+  // Порядок пунктов (перетаскивание, стрелки): сравниваем последовательности id тех пунктов, что есть и там и там.
+  const common = (a: CatalogItem[], b: CatalogItem[]) => a.filter((i) => b.some((j) => j.id === i.id)).map((i) => i.id).join("|");
+  const reordered = common(base.items, next.items) !== common(next.items, base.items);
+  return { added, removed, changed, sectionsChanged, reordered, any: added.length + removed.length + changed.length > 0 || sectionsChanged || reordered };
 }
+
+/** Куда сейчас « целится » перетаскиваемый пункт (для линии-подсказки). */
+type DropOver = { kind: "item"; id: string; pos: "before" | "after" } | { kind: "section"; id: string; pos: "start" | "end" };
 
 const FIELD = "block text-[13px] font-semibold text-stone-700";
 const ICON_BTN = "rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-100 hover:text-stone-800 disabled:opacity-30 disabled:hover:bg-transparent";
@@ -72,6 +78,8 @@ export default function PenaltyCatalogView() {
   const [showHistory, setShowHistory] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<DropOver | null>(null);
   const loadedRef = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -138,6 +146,40 @@ export default function PenaltyCatalogView() {
     });
     setSearch("");
     setOpenId(newId);
+  }
+  /** Перенос пункта (перетаскиванием): в раздел sectionId, перед пунктом beforeId (null = в конец раздела). */
+  function moveTo(id: string, sectionId: string, beforeId: string | null) {
+    if (beforeId === id) return;
+    update((d) => {
+      const item = d.items.find((i) => i.id === id);
+      if (!item) return d;
+      const rest = d.items.filter((i) => i.id !== id);
+      let idx: number;
+      if (beforeId) idx = rest.findIndex((i) => i.id === beforeId);
+      else {
+        const last = rest.map((i) => i.section).lastIndexOf(sectionId);
+        idx = last >= 0 ? last + 1 : rest.length;
+      }
+      if (idx < 0) idx = rest.length;
+      rest.splice(idx, 0, { ...item, section: sectionId });
+      return { ...d, items: rest };
+    });
+  }
+  function endDrag() {
+    setDragId(null);
+    setOver(null);
+  }
+  /** Сброс на пункт: вставка до него или после него (после = перед следующим пунктом раздела). */
+  function dropOnItem(target: CatalogItem, pos: "before" | "after") {
+    if (!dragId || !doc || dragId === target.id) return endDrag();
+    let beforeId: string | null = target.id;
+    if (pos === "after") {
+      const mine = doc.items.filter((i) => i.section === target.section);
+      const k = mine.findIndex((i) => i.id === target.id);
+      beforeId = mine.slice(k + 1).find((i) => i.id !== dragId)?.id ?? null;
+    }
+    moveTo(dragId, target.section, beforeId);
+    endDrag();
   }
   function moveItem(id: string, dir: -1 | 1) {
     update((d) => {
@@ -238,7 +280,7 @@ export default function PenaltyCatalogView() {
 
   const pub = data.published;
   const baseById = new Map(pub.doc.items.map((i) => [i.id, i]));
-  const changeCount = diff ? diff.added.length + diff.removed.length + diff.changed.length + (diff.sectionsChanged ? 1 : 0) : 0;
+  const changeCount = diff ? diff.added.length + diff.removed.length + diff.changed.length + (diff.sectionsChanged ? 1 : 0) + (diff.reordered ? 1 : 0) : 0;
   const unconfirmed = !!diff?.any;
   const q = search.trim().toLowerCase();
   const matches = (i: CatalogItem) => !q || `${i.code} ${i.stage} ${i.description}`.toLowerCase().includes(q);
@@ -321,7 +363,21 @@ export default function PenaltyCatalogView() {
         if (q && items.length === 0) return null;
         return (
           <section key={sec.id} className="card overflow-hidden p-0">
-            <div className="group flex flex-wrap items-center gap-3 border-b border-stone-100 bg-stone-50/70 px-4 py-3">
+            <div
+              className={`group relative flex flex-wrap items-center gap-3 border-b border-stone-100 bg-stone-50/70 px-4 py-3 ${over?.kind === "section" && over.id === sec.id && over.pos === "start" ? "ring-2 ring-inset ring-primary-400" : ""}`}
+              onDragOver={(e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                setOver({ kind: "section", id: sec.id, pos: "start" });
+              }}
+              onDrop={(e) => {
+                if (!dragId) return;
+                e.preventDefault();
+                const first = doc.items.find((i) => i.section === sec.id && i.id !== dragId);
+                moveTo(dragId, sec.id, first?.id ?? null);
+                endDrag();
+              }}
+            >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-stone-900 text-xs font-bold text-white">{si + 1}</span>
               <input
                 className="min-w-[12rem] flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-base font-bold tracking-tight outline-none transition hover:border-stone-200 focus:border-primary-400 focus:bg-white"
@@ -352,9 +408,44 @@ export default function PenaltyCatalogView() {
                 const open = openId === it.id;
                 const sev = it.severity ? SEV[it.severity] : null;
                 return (
-                  <li key={it.id} className={`relative ${isNew ? "bg-success-50/40" : isChanged ? "bg-warning-50/40" : ""}`}>
+                  <li
+                    key={it.id}
+                    className={`relative ${isNew ? "bg-success-50/40" : isChanged ? "bg-warning-50/40" : ""} ${dragId === it.id ? "opacity-40" : ""}`}
+                    onDragOver={(e) => {
+                      if (!dragId || dragId === it.id) return;
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      const pos = e.clientY < r.top + r.height / 2 ? "before" : "after";
+                      setOver((cur) => (cur?.kind === "item" && cur.id === it.id && cur.pos === pos ? cur : { kind: "item", id: it.id, pos }));
+                    }}
+                    onDrop={(e) => {
+                      if (!dragId) return;
+                      e.preventDefault();
+                      dropOnItem(it, over?.kind === "item" && over.id === it.id ? over.pos : "before");
+                    }}
+                  >
+                    {over?.kind === "item" && over.id === it.id && dragId !== it.id && (
+                      <span className={`pointer-events-none absolute inset-x-3 z-10 h-[3px] rounded-full bg-primary-500 ${over.pos === "before" ? "-top-px" : "-bottom-px"}`} />
+                    )}
                     {(isNew || isChanged) && <span className={`absolute inset-y-0 left-0 w-1 ${isNew ? "bg-success-500" : "bg-warning-500"}`} />}
-                    <button type="button" onClick={() => setOpenId(open ? null : it.id)} className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-stone-50/80">
+                    {!q && (
+                      <span
+                        draggable
+                        title="Перетащите, чтобы переставить пункт или перенести в другой раздел"
+                        className="absolute left-1.5 top-3.5 z-10 flex h-7 w-5 cursor-grab items-center justify-center rounded text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 active:cursor-grabbing"
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", it.id);
+                          const row = e.currentTarget.closest("li");
+                          if (row) e.dataTransfer.setDragImage(row, 24, 24);
+                          setDragId(it.id);
+                        }}
+                        onDragEnd={endDrag}
+                      >
+                        <GripVertical size={16} />
+                      </span>
+                    )}
+                    <button type="button" onClick={() => setOpenId(open ? null : it.id)} className={`flex w-full items-start gap-3 py-3 pr-4 text-left transition hover:bg-stone-50/80 ${q ? "pl-4" : "pl-9"}`}>
                       <span className="mt-0.5 w-12 shrink-0 rounded-md bg-stone-100 px-1.5 py-0.5 text-center font-mono text-sm font-semibold text-stone-700">{it.code}</span>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -478,9 +569,24 @@ export default function PenaltyCatalogView() {
               })}
             </ul>
             {!q && (
-              <button type="button" onClick={() => addItem(sec.id)} className="flex w-full items-center gap-2 border-t border-stone-100 px-4 py-3.5 text-[15px] font-semibold text-primary-600 transition hover:bg-primary-50/50">
-                <Plus size={16} /> Добавить пункт в раздел
-              </button>
+              <div
+                className={dragId && over?.kind === "section" && over.id === sec.id && over.pos === "end" ? "ring-2 ring-inset ring-primary-400" : ""}
+                onDragOver={(e) => {
+                  if (!dragId) return;
+                  e.preventDefault();
+                  setOver({ kind: "section", id: sec.id, pos: "end" });
+                }}
+                onDrop={(e) => {
+                  if (!dragId) return;
+                  e.preventDefault();
+                  moveTo(dragId, sec.id, null);
+                  endDrag();
+                }}
+              >
+                <button type="button" onClick={() => addItem(sec.id)} className="flex w-full items-center gap-2 border-t border-stone-100 px-4 py-3.5 text-[15px] font-semibold text-primary-600 transition hover:bg-primary-50/50">
+                  <Plus size={16} /> {dragId ? "Отпустите здесь, чтобы поставить в конец раздела" : "Добавить пункт в раздел"}
+                </button>
+              </div>
             )}
           </section>
         );
@@ -537,6 +643,7 @@ export default function PenaltyCatalogView() {
                   {diff.changed.length > 0 && <span className="rounded-full bg-warning-50 px-2.5 py-1 font-semibold text-warning-800">изменено: {diff.changed.length}</span>}
                   {diff.removed.length > 0 && <span className="rounded-full bg-error-50 px-2.5 py-1 font-semibold text-error-700">удалено: {diff.removed.length}</span>}
                   {diff.sectionsChanged && <span className="rounded-full bg-stone-100 px-2.5 py-1 font-semibold text-stone-600">разделы / делитель</span>}
+                  {diff.reordered && <span className="rounded-full bg-stone-100 px-2.5 py-1 font-semibold text-stone-600">изменён порядок пунктов</span>}
                 </div>
                 <p className="text-sm text-stone-600">Контролёр, который сейчас заполняет проверку, получит просьбу обновить страницу и отметить ошибки заново. Уже внесённые штрафы останутся как есть.</p>
                 <input className="input w-full py-2 text-[15px]" placeholder="Комментарий к версии (необязательно): что изменили" value={note} onChange={(e) => setNote(e.target.value)} />
