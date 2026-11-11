@@ -59,6 +59,8 @@ export default function Home() {
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [substitutes, setSubstitutes] = useState<{ id: string; name: string }[]>([]);
   const [substituteDraft, setSubstituteDraft] = useState("");
+  // Встроено в кабинет бригадира (/brigadir): ?embed=1 прячет служебную ссылку, ?team=<id> выбирает бригаду.
+  const [embedded, setEmbedded] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -95,6 +97,11 @@ export default function Home() {
       );
 
       setLoading(false);
+
+      const q = new URLSearchParams(window.location.search);
+      if (q.get("embed") === "1") setEmbedded(true);
+      const wanted = q.get("team");
+      if (wanted && (teamRows ?? []).some((t) => t.id === wanted)) changeTeam(wanted);
     }
 
     init();
@@ -251,9 +258,11 @@ export default function Home() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1.5 pt-1">
-            <Link href="/admin" className="text-xs font-bold text-primary-600 hover:text-primary-700">
-              Espace RH
-            </Link>
+            {!embedded && (
+              <Link href="/admin" className="text-xs font-bold text-primary-600 hover:text-primary-700">
+                Espace RH
+              </Link>
+            )}
           </div>
         </div>
 

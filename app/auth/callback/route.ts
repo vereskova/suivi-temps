@@ -17,6 +17,7 @@ export async function GET(request: Request) {
         if (user) {
           const { data: roleRow } = await supabase.from("user_roles").select("role").eq("auth_user_id", user.id).maybeSingle();
           if (roleRow?.role === "controleur") next = "/controle";
+          if (roleRow?.role === "brigadir") next = "/brigadir";
         }
       }
       return NextResponse.redirect(`${origin}${next}`);

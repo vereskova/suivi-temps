@@ -32,7 +32,7 @@ export default function LoginPage() {
     }
     const { data: roleRow } = await supabase.from("user_roles").select("role").eq("auth_user_id", data.user.id).maybeSingle();
     const safeNext = nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/";
-    router.replace(roleRow?.role === "controleur" ? "/controle" : safeNext);
+    router.replace(roleRow?.role === "controleur" ? "/controle" : roleRow?.role === "brigadir" ? "/brigadir" : safeNext);
   }
 
   async function sendMagicLink() {

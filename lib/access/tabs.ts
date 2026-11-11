@@ -47,4 +47,5 @@ export const ASSIGNABLE_ROLES: { role: string; label: string; hint: string }[] =
   { role: "commercial", label: "Commercial", hint: "Только раздел Commercial." },
   { role: "commercial_rh", label: "Commercial + Employés", hint: "Commercial и просмотр сотрудников." },
   { role: "controleur", label: "Контролёр", hint: "Только экран /controle: внесение штрафов по объектам." },
+  { role: "brigadir", label: "Бригадир", hint: "Только кабинет /brigadir: объекты и контрандю своей команды (команда - по привязанному сотруднику), отметки, премии." },
 ];
