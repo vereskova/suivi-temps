@@ -6,6 +6,7 @@ import { ChevronRight, Download, FileSpreadsheet, Folder, FolderOpen, Plus, Sear
 import { evalNorm, planSchedule, workingDaysBetween, type NormDef } from "@/lib/commercial-durations/compute";
 import { autoQty, weeksFromWorkingDays, type ObjectParams } from "@/lib/commercial/qty";
 import ObjectFilesBrowser from "@/components/admin/ObjectFilesBrowser";
+import SheetGrid, { type Sheet } from "@/components/admin/SheetGrid";
 
 // Объекты (chantiers): папки по командам как в iCloud (KOMANDA_N), внутри статусы
 // En cours / A venir / Pas fini / Fini. У объекта - вариант сметы (Standard / Avec LT / Ombrière),
@@ -303,7 +304,88 @@ function DevisTable({
   );
 }
 
-export default function WorkObjectsView({ supabase, norms, userEmail }: { supabase: SupabaseClient; norms: Record<string, NormDef>; userEmail?: string }) {
+/** « Контрандю из файла »: таблицы Compte rendu из папки объекта, как они были у бригады. */
+function ReportTab({ objectId }: { objectId: string }) {
+  const [reports, setReports] = useState<{ id: string; file_name: string; file_mtime: string | null; sheets: Sheet[] }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [ri, setRi] = useState(0);
+  const [si, setSi] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const res = await fetch(`/api/commercial/object-report?objectId=${objectId}`, { cache: "no-store" });
+      const json = (await res.json().catch(() => ({}))) as { reports?: typeof reports; error?: string };
+      if (!alive) return;
+      if (!res.ok) setError(json.error ?? "Ошибка загрузки");
+      else setReports(json.reports ?? []);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [objectId]);
+  if (error) return <p className="rounded-lg bg-error-50 p-3 text-sm text-error-700">{error}</p>;
+  if (!reports) return <p className="text-sm text-stone-500">Загрузка…</p>;
+  if (reports.length === 0) return <p className="rounded-xl border border-stone-200 bg-white p-8 text-center text-stone-600">У этого объекта нет таблицы «Compte rendu».</p>;
+  const report = reports[ri];
+  const sheet = report.sheets[si];
+  return (
+    <div className="space-y-3">
+      {reports.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          {reports.map((r, i) => (
+            <button key={r.id} type="button" onClick={() => { setRi(i); setSi(0); }} className={`rounded-full px-3 py-1 text-[13px] font-semibold ${i === ri ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-700"}`}>
+              {r.file_name}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="text-[13px] text-stone-500">
+        Файл: {report.file_name}
+        {report.file_mtime ? ` · изменён ${report.file_mtime.slice(8, 10)}/${report.file_mtime.slice(5, 7)}/${report.file_mtime.slice(0, 4)}` : ""}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {report.sheets.map((s, i) => (
+          <button key={s.name} type="button" onClick={() => setSi(i)} className={`rounded-lg border px-3 py-1.5 text-[13px] font-semibold ${i === si ? "border-primary-500 bg-primary-50 text-primary-800" : "border-stone-300 bg-white text-stone-700"}`}>
+            {s.name}
+          </button>
+        ))}
+      </div>
+      {sheet && <SheetGrid sheet={sheet} />}
+    </div>
+  );
+}
+
+/** Только просмотр для Production: сам загружает нормы и отключает все поля. */
+export function WorkObjectsReadOnly({ supabase }: { supabase: SupabaseClient }) {
+  const [norms, setNorms] = useState<Record<string, NormDef> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [{ data: n }, { data: p }] = await Promise.all([
+        supabase.from("commercial_duration_norms").select("id, code, mode, overflow_step, overflow_days"),
+        supabase.from("commercial_duration_norm_points").select("norm_id, x, y, position").order("position"),
+      ]);
+      if (!alive) return;
+      const map: Record<string, NormDef> = {};
+      for (const row of n ?? []) {
+        map[row.code as string] = {
+          mode: row.mode as NormDef["mode"],
+          overflowStep: row.overflow_step == null ? null : Number(row.overflow_step),
+          overflowDays: row.overflow_days == null ? null : Number(row.overflow_days),
+          points: (p ?? []).filter((pt) => pt.norm_id === row.id).map((pt) => ({ x: Number(pt.x), y: Number(pt.y) })),
+        };
+      }
+      setNorms(map);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [supabase]);
+  if (!norms) return <p className="text-sm text-stone-500">Загрузка…</p>;
+  return <WorkObjectsView supabase={supabase} norms={norms} readOnly />;
+}
+
+export default function WorkObjectsView({ supabase, norms, userEmail, readOnly = false }: { supabase: SupabaseClient; norms: Record<string, NormDef>; userEmail?: string; readOnly?: boolean }) {
   const [teams, setTeams] = useState<Team[]>([]);
   const [objects, setObjects] = useState<Obj[]>([]);
   const [catSections, setCatSections] = useState<CatSection[]>([]);
@@ -318,9 +400,11 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
   const [openTeams, setOpenTeams] = useState<Set<string>>(new Set());
   const [openFini, setOpenFini] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
+  const [planMsg, setPlanMsg] = useState<string | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
   const [newForm, setNewForm] = useState({ name: "", team_id: "", variant: "standard" as Variant, power: "", start: "", fill: true });
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [view, setView] = useState<"devis" | "plan" | "files">("devis");
+  const [view, setView] = useState<"devis" | "plan" | "files" | "report">(readOnly ? "plan" : "devis");
   const [custom, setCustom] = useState({ label: "", unit: "jour", qty: "1", days: "" });
 
   useEffect(() => {
@@ -447,6 +531,18 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
     setError(null);
     selectObject(created);
   }
+  /** Даты начала из планинга: объектам без даты ставится самая ранняя дата их работ в планинге (по команде и названию). */
+  async function pullPlanningDates() {
+    setPlanBusy(true);
+    setPlanMsg(null);
+    const res = await fetch("/api/commercial/planning-dates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apply: true }) });
+    const json = (await res.json().catch(() => ({}))) as { error?: string; withoutDate?: number; matched?: number };
+    setPlanBusy(false);
+    if (!res.ok) return setPlanMsg(json.error ?? "Ошибка");
+    setPlanMsg(`Из планинга проставлено дат: ${json.matched ?? 0} (объектов без даты было ${json.withoutDate ?? 0})`);
+    const { data } = await supabase.from("work_objects").select(OBJ_COLS).order("name");
+    setObjects(((data as Obj[]) ?? []).map(normObj));
+  }
   async function deleteObject(o: Obj) {
     if (!window.confirm(`Удалить объект «${o.name}» вместе со списком работ? Это нельзя отменить.`)) return;
     const { error: err } = await supabase.from("work_objects").delete().eq("id", o.id);
@@ -571,9 +667,17 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
             <input className={`${FIELD} w-full pl-9`} placeholder="Найти объект…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <button type="button" className="btn btn-primary w-full gap-1.5 px-3 py-2 text-[15px]" onClick={() => setCreating((v) => !v)}>
-            <Plus size={16} /> Новый объект
-          </button>
+          {!readOnly && (
+            <>
+              <button type="button" className="btn btn-primary w-full gap-1.5 px-3 py-2 text-[15px]" onClick={() => setCreating((v) => !v)}>
+                <Plus size={16} /> Новый объект
+              </button>
+              <button type="button" className="btn w-full px-3 py-2 text-[14px]" disabled={planBusy} onClick={pullPlanningDates} title="Объектам без даты старта проставить дату из планинга">
+                {planBusy ? "Читаю планинг…" : "Даты начала из планинга"}
+              </button>
+            </>
+          )}
+          {planMsg && <p className="rounded-lg bg-primary-50 px-3 py-2 text-[13px] font-semibold text-primary-800">{planMsg}</p>}
 
           {creating && (
             <div className="space-y-2 rounded-xl border border-stone-200 bg-white p-3">
@@ -690,6 +794,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
             <div className="rounded-xl border border-dashed border-stone-300 bg-white p-10 text-center text-[15px] text-stone-600">Выберите объект в папке команды или создайте новый.</div>
           ) : (
             <div className="space-y-4">
+              <fieldset disabled={readOnly} className="contents">
               <div className="space-y-4 rounded-xl border border-stone-200 bg-white p-5">
                 <div className="flex flex-wrap items-start gap-3">
                   <input key={obj.id + obj.name} className={`${GHOST} min-w-[14rem] flex-1 !text-xl font-bold`} defaultValue={obj.name} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== obj.name && patchObject(obj.id, { name: e.target.value.trim() })} />
@@ -773,14 +878,17 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                   {!obj.start_date && <span className="text-warning-700">Укажите дату старта - тогда посчитаются плановые даты</span>}
                 </div>
               </div>
+              </fieldset>
 
               {/* Вкладки: смета объекта / контрандю (план-факт) */}
               <div className="flex flex-wrap items-center gap-2">
                 {([
                   { key: "devis", fr: "Devis", ru: "Смета" },
                   { key: "plan", fr: "Compte rendu", ru: "Контрандю · план / факт" },
+                  { key: "report", fr: "Compte rendu", ru: "Контрандю из файла" },
                   { key: "files", fr: "Fichiers", ru: "Файлы" },
-                ] as const).map((t) => (
+                ] as const)
+                  .filter((t) => !(readOnly && t.key === "devis")).map((t) => (
                   <button key={t.key} type="button" onClick={() => setView(t.key)} className={`rounded-full px-4 py-1.5 text-[15px] font-semibold transition ${view === t.key ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}>
                     {t.fr} <span className="font-normal opacity-70">· {t.ru}</span>
                   </button>
@@ -797,7 +905,9 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                 )}
               </div>
 
-              {view === "files" && <ObjectFilesBrowser key={obj.id} api="/api/commercial/object-files" objectId={obj.id} canEdit />}
+              {view === "files" && <ObjectFilesBrowser key={obj.id} api="/api/commercial/object-files" objectId={obj.id} canEdit={!readOnly} />}
+
+              {view === "report" && <ReportTab key={obj.id} objectId={obj.id} />}
 
               {view === "devis" && (
                 <>
@@ -811,6 +921,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
 
               {/* Работы / контрандю */}
               {view === "plan" && (
+              <fieldset disabled={readOnly} className="contents">
               <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
                 <table className="w-full min-w-[1280px] table-fixed border-collapse text-[15px]">
                   <colgroup>
@@ -922,10 +1033,11 @@ export default function WorkObjectsView({ supabase, norms, userEmail }: { supaba
                   </tbody>
                 </table>
               </div>
+              </fieldset>
               )}
 
               {/* Добавление работ */}
-              {view !== "files" && (
+              {!readOnly && (view === "devis" || view === "plan") && (
               <div className="space-y-3">
                 <button type="button" className="btn gap-1.5 px-3 py-2 text-[15px]" onClick={() => setPickerOpen((v) => !v)}>
                   <Plus size={16} /> Добавить работу из каталога

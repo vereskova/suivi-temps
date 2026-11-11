@@ -7,7 +7,7 @@ import ControlPenaltiesView from "@/components/admin/ControlPenaltiesView";
 import SettingsView from "@/components/admin/SettingsView";
 import WorkCatalogView from "@/components/admin/WorkCatalogView";
 import PenaltyCatalogView from "@/components/admin/PenaltyCatalogView";
-import WorkObjectsView from "@/components/admin/WorkObjectsView";
+import WorkObjectsView, { WorkObjectsReadOnly } from "@/components/admin/WorkObjectsView";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
@@ -802,7 +802,7 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
     "admin_commercial_rh_view",
     "commercial"
   );
-  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "penalty_catalog" | "organigramme" | "schema" | "phones">(
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "penalty_catalog" | "objects" | "organigramme" | "schema" | "phones">(
     "admin_rh_readonly_view",
     "employees"
   );
@@ -1255,6 +1255,17 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
           }}
         />
         <SidebarLink
+          icon={ClipboardList}
+          active={rhReadonlyView === "objects"}
+          tab="objects"
+          label="Chantiers"
+          labelRu="Объекты и контрандю"
+          onClick={() => {
+            setRhReadonlyView("objects");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
           icon={Network}
           active={rhReadonlyView === "organigramme"}
           tab="organigramme"
@@ -1361,6 +1372,8 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
                 <PayrollExtrasView supabase={supabase} canPublish />
               ) : rhReadonlyView === "penalty_catalog" ? (
                 <PenaltyCatalogView />
+              ) : rhReadonlyView === "objects" ? (
+                <WorkObjectsReadOnly supabase={supabase} />
               ) : rhReadonlyView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
               ) : rhReadonlyView === "schema" ? (

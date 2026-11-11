@@ -15,7 +15,7 @@ const bad = (error: string, status = 400) => NextResponse.json({ error }, { stat
 const LIST_COLS = "id, folder, name, size_bytes, mime, taken_at, created_at, source, team_visible";
 
 export async function GET(request: NextRequest) {
-  const check = await requireRole(ROLES);
+  const check = await requireRole([...ROLES, "rh_readonly"]); // Production читает файлы; менять может только Commercial / rh_admin
   if (!check.ok) return check.response;
   const sb = serviceClient();
   if (!sb) return bad("Server misconfigured", 500);
