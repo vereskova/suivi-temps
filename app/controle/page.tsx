@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
-import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
+import { DEFAULT_PENALTY_DOC, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, findCatalogItem, type CatalogItem, type PenaltyCatalogDoc } from "@/lib/payroll/penalties";
 import { Camera, CheckCircle2, ClipboardCheck, ImageIcon, LogOut, Pencil, Search, Trash2, X } from "lucide-react";
 
 type Member = { id: string; name: string };
@@ -18,6 +18,7 @@ type Recent = {
   site: string;
   team_id: string;
   catalog_code: string | null;
+  catalog_item_id: string | null;
   stage: string;
   description: string;
   unit: string;
@@ -41,6 +42,8 @@ type Ctx = {
   siteJobs: SiteJob[];
   lastChecks: Record<string, LastCheck>;
   recent: Recent[];
+  /** Действующий (подтверждённый офисом) справочник штрафов. */
+  catalog: { version: number; doc: PenaltyCatalogDoc };
 };
 type Pick = { qty: string; amount: string };
 
@@ -95,6 +98,7 @@ export default function ControlePage() {
   // Редактирование существующей проверки из истории: batch_id старой записи (при сохранении она заменяется новой).
   const [editingBatch, setEditingBatch] = useState<string | null>(null);
 
+  const divisorInit = useRef(false);
   const load = useCallback(async () => {
     const res = await fetch("/api/controle/context", { cache: "no-store" });
     if (res.status === 401 || res.status === 403) {
@@ -109,6 +113,10 @@ export default function ControlePage() {
     }
     setCtx(data);
     setLoadedAt(Date.now());
+    if (!divisorInit.current) {
+      divisorInit.current = true;
+      if (data.catalog?.doc?.divisor) setDivisor(String(data.catalog.doc.divisor));
+    }
   }, [router]);
 
   useEffect(() => {
@@ -117,7 +125,8 @@ export default function ControlePage() {
   }, [load]);
 
   const team = ctx?.teams.find((t) => t.id === teamId) ?? null;
-  const div = Number(divisor) > 0 ? Number(divisor) : PENALTY_DEFAULT_DIVISOR;
+  const catalogDoc = useMemo(() => ctx?.catalog?.doc ?? DEFAULT_PENALTY_DOC, [ctx]);
+  const div = Number(divisor) > 0 ? Number(divisor) : catalogDoc.divisor;
 
   function chooseTeam(id: string) {
     setTeamId(id);
@@ -127,25 +136,25 @@ export default function ControlePage() {
     if (first && !site) setSite(first);
   }
 
-  function togglePick(item: PenaltyCatalogItem) {
+  function togglePick(item: CatalogItem) {
     setPicks((prev) => {
       const next = { ...prev };
-      if (next[item.code]) {
-        delete next[item.code];
+      if (next[item.id]) {
+        delete next[item.id];
         setItemPhotos((ph) => {
           const rest = { ...ph };
-          delete rest[item.code];
+          delete rest[item.id];
           return rest;
         });
-      } else next[item.code] = { qty: "1", amount: item.unit === "range" ? String(item.amount) : "" };
+      } else next[item.id] = { qty: "1", amount: item.unit === "range" ? String(item.amount) : "" };
       return next;
     });
   }
 
   const computed = useMemo(
     () =>
-      PENALTY_CATALOG.filter((c) => picks[c.code]).map((item) => {
-        const p = picks[item.code];
+      catalogDoc.items.filter((c) => picks[c.id]).map((item) => {
+        const p = picks[item.id];
         const qty = Number(p.qty);
         const amount = Number(p.amount);
         const needQty = item.unit === "per_piece" || item.unit === "per_day";
@@ -156,7 +165,7 @@ export default function ControlePage() {
           : { teamAmount: 0, share: 0, line: "" };
         return { item, qty: needQty ? qty : 1, amount, valid, ...r };
       }),
-    [picks, site, div]
+    [picks, site, div, catalogDoc]
   );
   const allValid = computed.length > 0 && computed.every((c) => c.valid);
   const teamTotal = computed.reduce((s, c) => s + c.teamAmount, 0);
@@ -165,13 +174,11 @@ export default function ControlePage() {
 
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const list = PENALTY_CATALOG.filter((c) => !q || `${c.code} ${c.stage} ${c.description}`.toLowerCase().includes(q));
-    return [
-      { title: "Монтаж (1.x)", items: list.filter((c) => c.code.startsWith("1.")) },
-      { title: "Электрика (2.x)", items: list.filter((c) => c.code.startsWith("2.")) },
-      { title: "Финиш и порядок (3.x)", items: list.filter((c) => c.code.startsWith("3.")) },
-    ].filter((g) => g.items.length > 0);
-  }, [search]);
+    const list = catalogDoc.items.filter((c) => !q || `${c.code} ${c.stage} ${c.description}`.toLowerCase().includes(q));
+    return catalogDoc.sections
+      .map((sec, i) => ({ title: `${i + 1}. ${sec.title}`, items: list.filter((c) => c.section === sec.id) }))
+      .filter((g) => g.items.length > 0);
+  }, [search, catalogDoc]);
 
   /** Загрузка фото на сервер (с уменьшением на телефоне). code = код пункта, без кода - общие фото проверки. */
   async function addPhotos(files: FileList | null, code?: string) {
@@ -214,16 +221,23 @@ export default function ControlePage() {
         clean,
         replace_batch_id: editingBatch ?? undefined,
         divisor: div,
+        catalog_version: ctx?.catalog?.version,
         note,
         employee_ids: chosenMembers.map((m) => m.id),
         photo_paths: photos.map((p) => p.path),
-        items: clean ? [] : computed.map((c) => ({ code: c.item.code, qty: c.qty, amount: c.amount, photo_paths: (itemPhotos[c.item.code] ?? []).map((x) => x.path) })),
+        items: clean ? [] : computed.map((c) => ({ id: c.item.id, code: c.item.code, qty: c.qty, amount: c.amount, photo_paths: (itemPhotos[c.item.id] ?? []).map((x) => x.path) })),
       }),
     });
     const data = (await res.json()) as { error?: string; penalties?: number; team_total?: number; share_each?: number; edit_warning?: string | null };
     setBusy(false);
     if (!res.ok) {
       setMsg({ ok: false, text: data.error ?? "Ошибка записи" });
+      if (res.status === 409) {
+        // Офис подтвердил новый справочник : подтягиваем его, выбранные пункты придётся отметить заново.
+        setPicks({});
+        divisorInit.current = false;
+        load();
+      }
       return;
     }
     const wasEdit = !!editingBatch;
@@ -246,7 +260,7 @@ export default function ControlePage() {
     setPhotos([]);
     setNote("");
     setSearch("");
-    setDivisor(String(PENALTY_DEFAULT_DIVISOR));
+    setDivisor(String(catalogDoc.divisor));
   }
 
   /** Открыть проверку из истории для изменения: форма заполняется её данными, сохранение заменяет старую запись. */
@@ -259,13 +273,13 @@ export default function ControlePage() {
     const nextItemPhotos: Record<string, { path: string; preview: string }[]> = {};
     for (const r of rows) {
       if (!r.catalog_code) continue;
-      const item = PENALTY_CATALOG.find((c) => c.code === r.catalog_code);
+      const item = findCatalogItem(catalogDoc, { id: r.catalog_item_id, code: r.catalog_code });
       if (!item) continue;
-      nextPicks[item.code] = {
+      nextPicks[item.id] = {
         qty: item.unit === "per_piece" || item.unit === "per_day" ? String(r.qty) : "1",
         amount: item.unit === "range" || item.unit === "manual" ? String(Number(r.team_amount)) : "",
       };
-      nextItemPhotos[item.code] = photoOf(r.photo_paths);
+      nextItemPhotos[item.id] = photoOf(r.photo_paths);
     }
     setDate(first.inspection_date);
     setTeamId(first.team_id);
@@ -479,10 +493,10 @@ export default function ControlePage() {
             <div key={g.title} className="space-y-2">
               <p className="text-[11px] font-extrabold uppercase tracking-wide text-stone-400">{g.title}</p>
               {g.items.map((item) => {
-                const p = picks[item.code];
-                const c = computed.find((x) => x.item.code === item.code);
+                const p = picks[item.id];
+                const c = computed.find((x) => x.item.id === item.id);
                 return (
-                  <div key={item.code} className={`rounded-xl border p-3 ${p ? "border-primary-300 bg-primary-50/40" : "border-stone-100"}`}>
+                  <div key={item.id} className={`rounded-xl border p-3 ${p ? "border-primary-300 bg-primary-50/40" : "border-stone-100"}`}>
                     <button onClick={() => togglePick(item)} className="flex w-full items-start gap-3 text-left">
                       <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs ${p ? "border-primary-600 bg-primary-600 text-white" : "border-stone-300"}`}>{p ? "✓" : ""}</span>
                       <span className="min-w-0 flex-1">
@@ -503,19 +517,19 @@ export default function ControlePage() {
                         {(item.unit === "per_piece" || item.unit === "per_day") && (
                           <label className="text-xs font-bold text-stone-500">
                             {item.unit === "per_piece" ? "Штук" : "Дней"}
-                            <input type="number" inputMode="numeric" min={1} className="input mt-1 w-24" value={p.qty} onChange={(e) => setPicks({ ...picks, [item.code]: { ...p, qty: e.target.value } })} />
+                            <input type="number" inputMode="numeric" min={1} className="input mt-1 w-24" value={p.qty} onChange={(e) => setPicks({ ...picks, [item.id]: { ...p, qty: e.target.value } })} />
                           </label>
                         )}
                         {item.unit === "range" && (
                           <label className="text-xs font-bold text-stone-500">
                             Сумма, € ({item.amount}–{item.amountMax})
-                            <input type="number" inputMode="numeric" min={item.amount} max={item.amountMax} className="input mt-1 w-28" value={p.amount} onChange={(e) => setPicks({ ...picks, [item.code]: { ...p, amount: e.target.value } })} />
+                            <input type="number" inputMode="numeric" min={item.amount} max={item.amountMax} className="input mt-1 w-28" value={p.amount} onChange={(e) => setPicks({ ...picks, [item.id]: { ...p, amount: e.target.value } })} />
                           </label>
                         )}
                         {item.unit === "manual" && (
                           <label className="text-xs font-bold text-stone-500">
                             Сумма на команду, €
-                            <input type="number" inputMode="decimal" min={1} className="input mt-1 w-32" value={p.amount} onChange={(e) => setPicks({ ...picks, [item.code]: { ...p, amount: e.target.value } })} />
+                            <input type="number" inputMode="decimal" min={1} className="input mt-1 w-32" value={p.amount} onChange={(e) => setPicks({ ...picks, [item.id]: { ...p, amount: e.target.value } })} />
                           </label>
                         )}
                         {c?.valid && (
@@ -527,27 +541,27 @@ export default function ControlePage() {
                     )}
                     {p && (
                       <div className="mt-3 flex flex-wrap items-center gap-2 pl-8">
-                        {(itemPhotos[item.code] ?? []).map((ph) => (
+                        {(itemPhotos[item.id] ?? []).map((ph) => (
                           <div key={ph.path} className="relative h-14 w-14 overflow-hidden rounded-lg border border-stone-200">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={ph.preview} alt="" className="h-full w-full object-cover" />
                             <button
-                              onClick={() => setItemPhotos((all) => ({ ...all, [item.code]: (all[item.code] ?? []).filter((x) => x.path !== ph.path) }))}
+                              onClick={() => setItemPhotos((all) => ({ ...all, [item.id]: (all[item.id] ?? []).filter((x) => x.path !== ph.path) }))}
                               className="absolute right-0 top-0 rounded-bl bg-black/60 p-0.5 text-white"
                             >
                               <X size={12} />
                             </button>
                           </div>
                         ))}
-                        {(itemPhotos[item.code]?.length ?? 0) < 6 && (
+                        {(itemPhotos[item.id]?.length ?? 0) < 6 && (
                           <>
                             <label className="flex h-14 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 text-xs font-bold text-stone-500">
                               <Camera size={16} /> Снять
-                              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { addPhotos(e.target.files, item.code); e.target.value = ""; }} />
+                              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { addPhotos(e.target.files, item.id); e.target.value = ""; }} />
                             </label>
                             <label className="flex h-14 cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-stone-300 px-3 text-xs font-bold text-stone-500">
                               <ImageIcon size={16} /> Из галереи
-                              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files, item.code); e.target.value = ""; }} />
+                              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => { addPhotos(e.target.files, item.id); e.target.value = ""; }} />
                             </label>
                           </>
                         )}

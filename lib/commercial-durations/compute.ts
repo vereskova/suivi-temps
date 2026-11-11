@@ -40,12 +40,15 @@ export function addWorkingDays(startIso: string, jours: number): string {
   return cur;
 }
 
-export type NormMode = "linear" | "step_ceil" | "step_floor";
+export type NormMode = "linear" | "step_ceil" | "step_floor" | "rate";
 export type NormPoint = { x: number; y: number };
 /** Une norme telle que chargée depuis `commercial_duration_norms`/`..._points`. */
 export type NormDef = {
   mode: NormMode;
   points: NormPoint[]; // triées par x croissant
+  /** « Хвост » после последнего порога : +overflowDays за каждые overflowStep (Standard : +1 j par 23 kWc au-delà de 500). */
+  overflowStep?: number | null;
+  overflowDays?: number | null;
 };
 
 export type NormResult = { jours: number; extrapolated: boolean };
@@ -98,15 +101,28 @@ function evalStepCeil(points: NormPoint[], x: number): NormResult {
  *  la lecture naturelle d'une norme écrite comme une liste de paliers bruts
  *  ("100 → 6 jours, 150 → 8 jours, 200 → 10 jours...") : 170 n'a pas encore
  *  atteint le palier 200, donc reste au palier 150, fixe à 8. */
-function evalStepFloor(points: NormPoint[], x: number): NormResult {
+function evalStepFloor(points: NormPoint[], x: number, overflow?: { step: number; days: number }): NormResult {
   const sorted = [...points].sort((a, b) => a.x - b.x);
+  const last = sorted[sorted.length - 1];
+  if (overflow && x > last.x) {
+    // Au-delà du dernier palier : +days par tranche (entamée) de `step`.
+    return { jours: last.y + Math.ceil((x - last.x) / overflow.step) * overflow.days, extrapolated: false };
+  }
   let current = sorted[0];
   for (const p of sorted) {
     if (p.x <= x) current = p;
     else break;
   }
-  const extrapolated = x < sorted[0].x || x > sorted[sorted.length - 1].x;
+  const extrapolated = x < sorted[0].x || x > last.x;
   return { jours: current.y, extrapolated };
+}
+
+/** Производительность : « x = 230, y = 1 » = 230 (m², pièces...) par jour. Jours = quantité / x * y,
+ *  arrondi au demi-jour supérieur. */
+function evalRate(points: NormPoint[], qty: number): NormResult {
+  const p = points[0];
+  if (!p || p.x <= 0 || qty <= 0) return { jours: 0, extrapolated: false };
+  return { jours: Math.ceil((qty / p.x) * p.y * 2) / 2, extrapolated: false };
 }
 
 /** Point d'entrée unique pour toutes les normes de délais - `def` vient de
@@ -115,8 +131,12 @@ function evalStepFloor(points: NormPoint[], x: number): NormResult {
  *  que soit `x` - faute d'un deuxième point pour en déduire un taux. */
 export function evalNorm(def: NormDef | undefined, x: number): NormResult {
   if (!def || def.points.length === 0) return { jours: 0, extrapolated: false };
+  if (def.mode === "rate") return evalRate(def.points, x);
   if (def.points.length === 1) return { jours: def.points[0].y, extrapolated: false };
   if (def.mode === "step_ceil") return evalStepCeil(def.points, x);
-  if (def.mode === "step_floor") return evalStepFloor(def.points, x);
+  if (def.mode === "step_floor") {
+    const overflow = def.overflowStep && def.overflowDays ? { step: Number(def.overflowStep), days: Number(def.overflowDays) } : undefined;
+    return evalStepFloor(def.points, x, overflow);
+  }
   return evalLinear(def.points, x);
 }

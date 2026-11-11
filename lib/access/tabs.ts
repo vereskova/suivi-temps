@@ -29,6 +29,7 @@ export const TAB_CATALOG: TabDef[] = [
   { key: "paie", label: "Paie", labelRu: "Зарплата", group: "RH" },
   { key: "paie_extras", label: "Primes & Bonus", labelRu: "Премии и бонусы", group: "RH" },
   { key: "controle_journal", label: "Pénalités contrôle", labelRu: "Штрафы контролёра", group: "RH" },
+  { key: "penalty_catalog", label: "Barème des pénalités", labelRu: "Справочник штрафов", group: "RH" },
   { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", group: "RH" },
   { key: "commercial", label: "Commercial", labelRu: "Коммерция", group: "Commercial" },
   { key: "autoparc", label: "Autoparc", labelRu: "Автопарк", group: "Autoparc" },

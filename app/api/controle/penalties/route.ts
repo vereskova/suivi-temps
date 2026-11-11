@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { requireRole } from "@/lib/auth/requireRole";
-import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick } from "@/lib/payroll/penalties";
+import { PENALTY_DEFAULT_DIVISOR, describePenaltyPick, findCatalogItem, type CatalogItem } from "@/lib/payroll/penalties";
+import { loadPublishedCatalog } from "@/lib/controle/catalog";
 import { cancelRows, loadCancellable } from "@/lib/controle/cancel";
 import { applyToExtras, ddmm, ensureRun, monthStartIso, prevMonthStartIso, r2, serviceClient } from "@/lib/controle/server";
 
@@ -12,7 +13,7 @@ import { applyToExtras, ddmm, ensureRun, monthStartIso, prevMonthStartIso, r2, s
 const NO_STORE = { "Cache-Control": "no-store" };
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-type ItemInput = { code?: string; qty?: number; amount?: number; photo_paths?: string[] };
+type ItemInput = { id?: string; code?: string; qty?: number; amount?: number; photo_paths?: string[] };
 type Body = {
   inspection_date?: string;
   site?: string;
@@ -25,6 +26,8 @@ type Body = {
   clean?: boolean;
   /** Редактирование: batch_id старой проверки - после записи новой старая отменяется (суммы возвращаются). */
   replace_batch_id?: string;
+  /** Версия справочника, с которой работал экран; если офис успел подтвердить новую - просим обновить страницу. */
+  catalog_version?: number;
 };
 
 function bad(msg: string, status = 400) {
@@ -46,7 +49,11 @@ export async function POST(request: NextRequest) {
   const note = String(body.note ?? "").trim().slice(0, 600) || null;
   const items = Array.isArray(body.items) ? body.items : [];
   const clean = body.clean === true;
-  const divisor = Number(body.divisor) > 0 ? Number(body.divisor) : PENALTY_DEFAULT_DIVISOR;
+  const catalog = await loadPublishedCatalog(sb);
+  if (typeof body.catalog_version === "number" && body.catalog_version !== catalog.version) {
+    return bad("Справочник штрафов обновлён офисом. Обновите страницу и отметьте ошибки ещё раз.", 409);
+  }
+  const divisor = Number(body.divisor) > 0 ? Number(body.divisor) : catalog.doc.divisor || PENALTY_DEFAULT_DIVISOR;
   const photoPaths = (Array.isArray(body.photo_paths) ? body.photo_paths : []).filter((p) => typeof p === "string" && p.length < 300).slice(0, 8);
 
   if (!ISO.test(date)) return bad("Укажите дату проверки");
@@ -81,10 +88,10 @@ export async function POST(request: NextRequest) {
   if (!clean && (members ?? []).length !== employeeIds.length) return bad("Есть люди, которых нет в этой бригаде");
 
   // Пересчёт каждого пункта по справочнику.
-  const computed: { item: (typeof PENALTY_CATALOG)[number]; qty: number; base: number; teamAmount: number; share: number; line: string; photos: string[] }[] = [];
+  const computed: { item: CatalogItem; qty: number; base: number; teamAmount: number; share: number; line: string; photos: string[] }[] = [];
   for (const it of items) {
-    const catalogItem = PENALTY_CATALOG.find((c) => c.code === it.code);
-    if (!catalogItem) return bad(`Неизвестный пункт справочника: ${String(it.code)}`);
+    const catalogItem = findCatalogItem(catalog.doc, { id: it.id, code: it.code });
+    if (!catalogItem) return bad(`Неизвестный пункт справочника: ${String(it.code ?? it.id)}`);
     const qty = Number(it.qty);
     const amount = Number(it.amount);
     if ((catalogItem.unit === "per_piece" || catalogItem.unit === "per_day") && !(qty > 0 && qty <= 1000)) return bad(`${catalogItem.code}: укажите количество`);
@@ -120,13 +127,23 @@ export async function POST(request: NextRequest) {
         },
       ]
     : computed.map((c) => ({
-        batch_id: batchId, inspection_date: date, site, team_id: teamId, catalog_code: c.item.code, stage: c.item.stage,
+        batch_id: batchId, inspection_date: date, site, team_id: teamId, catalog_code: c.item.code, catalog_item_id: c.item.id, catalog_version: catalog.version, stage: c.item.stage,
         description: c.item.description, severity: c.item.severity, unit: c.item.unit, qty: c.qty, unit_amount: r2(c.base),
         team_amount: c.teamAmount, divisor, share_each: c.share, note, photo_paths: c.photos,
         created_by_email: check.ctx.email, created_by_user: check.ctx.userId,
       }));
 
-  const { data: inserted, error: insErr } = await sb.from("control_penalties").insert(rows).select("id, catalog_code, share_each");
+  let { data: inserted, error: insErr } = await sb.from("control_penalties").insert(rows).select("id, catalog_code, share_each");
+  if (insErr && /catalog_item_id|catalog_version/.test(insErr.message)) {
+    // миграция 0134 ещё не выполнена : пишем без новых колонок
+    const legacyRows = rows.map((r) => {
+      const { catalog_item_id: _a, catalog_version: _b, ...rest } = r as Record<string, unknown>;
+      void _a;
+      void _b;
+      return rest;
+    });
+    ({ data: inserted, error: insErr } = await sb.from("control_penalties").insert(legacyRows).select("id, catalog_code, share_each"));
+  }
   if (insErr || !inserted) return bad("Не удалось сохранить: " + (insErr?.message ?? ""), 500);
 
   const rollbackJournal = async () => {

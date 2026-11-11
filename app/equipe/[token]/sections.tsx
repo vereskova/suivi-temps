@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
+import { DEFAULT_PENALTY_DOC, type CatalogItem, type PenaltyCatalogDoc } from "@/lib/payroll/penalties";
 import { ONE_DAY_VOLUMES, OMBRIERE_POSE, POWER_TABLES, RANGE_TABLES } from "@/lib/team-info/norms";
 
 export type TeamSection = "primes" | "errors" | "norms";
@@ -14,7 +14,7 @@ export const SECTION_TITLES: Record<TeamSection, { title: string; sub: string }>
 
 const eur = (n: number) => `${n.toLocaleString("ru-RU")} €`;
 
-function priceText(it: PenaltyCatalogItem): string {
+function priceText(it: CatalogItem): string {
   if (it.unit === "range") return `${it.amount}-${it.amountMax} €`;
   if (it.unit === "per_piece") return `${eur(it.amount)} за шт.`;
   if (it.unit === "per_day") return `${eur(it.amount)} в день`;
@@ -28,29 +28,25 @@ const LEVEL_STYLE: Record<string, string> = {
   Малая: "bg-stone-100 text-stone-600",
 };
 
-const GROUPS: { prefix: string; title: string }[] = [
-  { prefix: "1.", title: "1. Монтаж и DC" },
-  { prefix: "2.", title: "2. AC, щит и связь" },
-  { prefix: "3.", title: "3. Порядок, фото и маркировка" },
-];
-
 /** « Список ошибок »: справочник штрафов контролёра (тот же, что используется при начислении). */
-export function ErrorsSection() {
+export function ErrorsSection({ catalog }: { catalog?: PenaltyCatalogDoc | null }) {
   const [q, setQ] = useState("");
+  const doc = catalog ?? DEFAULT_PENALTY_DOC;
   const groups = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return GROUPS.map((g) => ({
-      ...g,
-      items: PENALTY_CATALOG.filter((it) => it.code.startsWith(g.prefix)).filter(
-        (it) => !s || `${it.code} ${it.stage} ${it.description}`.toLowerCase().includes(s)
-      ),
-    })).filter((g) => g.items.length > 0);
-  }, [q]);
+    return doc.sections
+      .map((sec, i) => ({
+        id: sec.id,
+        title: `${i + 1}. ${sec.title}`,
+        items: doc.items.filter((it) => it.section === sec.id).filter((it) => !s || `${it.code} ${it.stage} ${it.description}`.toLowerCase().includes(s)),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [q, doc]);
 
   return (
     <div className="space-y-4">
       <p className="rounded-2xl border border-stone-200 bg-white p-3.5 text-[13px] leading-relaxed text-stone-600">
-        Штраф указан на всю бригаду. На одного человека он делится на {PENALTY_DEFAULT_DIVISOR}. Уровень показывает, насколько ошибка серьёзная.
+        Штраф указан на всю бригаду. На одного человека он делится на {doc.divisor}. Уровень показывает, насколько ошибка серьёзная.
       </p>
       <input
         type="search"
@@ -61,11 +57,11 @@ export function ErrorsSection() {
       />
       {groups.length === 0 && <p className="py-8 text-center text-sm text-stone-400">Ничего не найдено</p>}
       {groups.map((g) => (
-        <section key={g.prefix}>
+        <section key={g.id}>
           <h2 className="mb-2 px-1 text-[13px] font-bold uppercase tracking-wide text-stone-400">{g.title}</h2>
           <div className="divide-y divide-stone-100 overflow-hidden rounded-2xl border border-stone-200 bg-white">
             {g.items.map((it) => (
-              <div key={it.code} className="flex items-start gap-3 px-3.5 py-3">
+              <div key={it.id} className="flex items-start gap-3 px-3.5 py-3">
                 <span className="mt-0.5 w-9 shrink-0 text-[13px] font-semibold text-stone-400">{it.code}</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] font-semibold leading-snug text-stone-900">{it.stage}</p>

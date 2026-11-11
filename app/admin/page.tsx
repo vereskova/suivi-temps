@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import ControlPenaltiesView from "@/components/admin/ControlPenaltiesView";
 import SettingsView from "@/components/admin/SettingsView";
+import WorkCatalogView from "@/components/admin/WorkCatalogView";
+import PenaltyCatalogView from "@/components/admin/PenaltyCatalogView";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
@@ -152,7 +154,7 @@ import {
   type TeamDayRow,
   type TeamStanding,
 } from "@/lib/payroll/quality-bank";
-import { PENALTY_CATALOG, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type PenaltyCatalogItem } from "@/lib/payroll/penalties";
+import { DEFAULT_PENALTY_DOC, PENALTY_DEFAULT_DIVISOR, describePenaltyPick, type CatalogItem, type PenaltyCatalogDoc } from "@/lib/payroll/penalties";
 import { bankShareOfMonth, controllerMonthDelta, controllerShareWithCarry, fetchControllerCarryDeltas } from "@/lib/payroll/penalty-dispute";
 import {
   countWeekdaysBetween,
@@ -492,6 +494,7 @@ type ViewKey =
   | "autoparc"
   | "audit"
   | "controle_journal"
+  | "penalty_catalog"
   | "settings"
   | "voldis_location"
   | "voldis_ajax";
@@ -547,6 +550,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { key: "paie", label: "Paie", labelRu: "Зарплата", icon: Wallet },
       { key: "paie_extras", label: "Primes & Bonus", labelRu: "Премии и бонусы", icon: Banknote },
       { key: "controle_journal", label: "Pénalités contrôle", labelRu: "Штрафы контролёра", icon: ClipboardList },
+      { key: "penalty_catalog", label: "Barème des pénalités", labelRu: "Справочник штрафов", icon: ListChecks },
       { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", icon: History },
     ],
   },
@@ -636,6 +640,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   paie_extras: ["rh_admin", "rh", "comptable", "rh_readonly"],
   planning: ["rh_admin", "rh"],
   audit: ["rh_admin"],
+  penalty_catalog: ["rh_admin", "rh"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
   voldis_location: ["rh_admin"],
@@ -1792,11 +1797,12 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
             {view === "paie" && <PaieView supabase={supabase} canOpenDossier />}
             {view === "paie_extras" && <PayrollExtrasView supabase={supabase} readOnly={role === "rh"} canPublish />}
             {view === "dashboards" && <DashboardsView supabase={supabase} onNavigateToEmployees={() => setView("effectif")} />}
-            {view === "commercial" && <CommercialSection supabase={supabase} />}
+            {view === "commercial" && <CommercialSection supabase={supabase} canEdit={role === "rh_admin"} />}
             {view === "autoparc" && <AutoparcView supabase={supabase} />}
             {view === "audit" && <AuditLogView supabase={supabase} />}
             {view === "settings" && role === "rh_admin" && <SettingsView />}
             {view === "controle_journal" && <ControlPenaltiesView supabase={supabase} canCancel={role === "rh_admin"} />}
+            {view === "penalty_catalog" && <PenaltyCatalogView />}
           </AccessGate>
           </DossierNavContext.Provider>
           )}
@@ -10672,10 +10678,6 @@ function computeDelaiFills(
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms[code], puissanceKwc).jours) });
     } else if (/tirage/.test(label) && longueurCableM && longueurCableM > 0) {
       fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.tirage_cable, longueurCableM).jours) });
-    } else if (/pose\s*si\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_si, puissanceKwc).jours) });
-    } else if (/pose\s*ppv\b/.test(label) && puissanceKwc && puissanceKwc > 0) {
-      fills.push({ id: item.id, delai_prevu: formatJoursLabel(evalNorm(norms.pose_ppv, puissanceKwc).jours) });
     } else if (/^d[ée]pose\s+bac\s+acier/.test(label)) {
       // Un toit est soit bac acier, soit fibrociment, jamais les deux - le
       // libellé de la ligne ("Dépose Bac acier") ne change jamais, seule la
@@ -10729,15 +10731,17 @@ type DurationNormRow = {
   code: string;
   label: string;
   label_ru: string;
-  unit: "kwc" | "m" | "m2";
+  unit: "kwc" | "m" | "m2" | "piece";
   mode: NormMode;
   checklist_hint: string | null;
   position: number;
+  overflow_step: number | null;
+  overflow_days: number | null;
 };
 type DurationNormPointRow = { id: string; norm_id: string; x: number; y: number; position: number };
 
 function normUnitLabel(unit: DurationNormRow["unit"]): string {
-  return unit === "kwc" ? "kWc" : unit === "m2" ? "m²" : "m";
+  return unit === "kwc" ? "kWc" : unit === "m2" ? "m²" : unit === "piece" ? "pièces" : "m";
 }
 
 /** Onglet "Normes" du module Commercial - la table éditable qui alimente
@@ -10812,6 +10816,8 @@ function CommercialNormsView({
                   <Bi fr="palier (borne haute)" ru="порог (верхняя граница)" />
                 ) : norm.mode === "step_floor" ? (
                   <Bi fr="palier (seuil atteint)" ru="порог (по достижении)" />
+                ) : norm.mode === "rate" ? (
+                  <Bi fr="cadence par jour" ru="производительность в день" />
                 ) : (
                   <Bi fr="linéaire" ru="линейно" />
                 )}
@@ -10886,8 +10892,8 @@ function CommercialNormsView({
  *  (CommercialView, inchangée) et l'onglet "Normes" éditable - les normes
  *  sont chargées une fois ici et passées en prop, comme un calculateur avec
  *  une feuille de données séparée que le calcul principal va lire. */
-function CommercialSection({ supabase }: { supabase: ReturnType<typeof createClient> }) {
-  const [commercialTab, setCommercialTab] = useState<"dossiers" | "normes">("dossiers");
+function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType<typeof createClient>; canEdit?: boolean }) {
+  const [commercialTab, setCommercialTab] = useState<"dossiers" | "smeta" | "normes">("smeta");
 
   const [normRows, setNormRows] = useState<DurationNormRow[]>([]);
   const [normPoints, setNormPoints] = useState<DurationNormPointRow[]>([]);
@@ -10896,7 +10902,7 @@ function CommercialSection({ supabase }: { supabase: ReturnType<typeof createCli
   const reloadNorms = async () => {
     const { data: nRows } = await supabase
       .from("commercial_duration_norms")
-      .select("id, code, label, label_ru, unit, mode, checklist_hint, position")
+      .select("id, code, label, label_ru, unit, mode, checklist_hint, position, overflow_step, overflow_days")
       .order("position");
     const { data: pRows } = await supabase
       .from("commercial_duration_norm_points")
@@ -10920,6 +10926,8 @@ function CommercialSection({ supabase }: { supabase: ReturnType<typeof createCli
     normRows.forEach((n) => {
       map[n.code] = {
         mode: n.mode,
+        overflowStep: n.overflow_step == null ? null : Number(n.overflow_step),
+        overflowDays: n.overflow_days == null ? null : Number(n.overflow_days),
         points: normPoints
           .filter((p) => p.norm_id === n.id)
           .sort((a, b) => a.position - b.position)
@@ -10941,6 +10949,14 @@ function CommercialSection({ supabase }: { supabase: ReturnType<typeof createCli
           <Bi fr="Dossiers" ru="Досье" />
         </button>
         <button
+          onClick={() => setCommercialTab("smeta")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold ${
+            commercialTab === "smeta" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          <Bi fr="Devis · catalogue" ru="Смета · каталог работ" />
+        </button>
+        <button
           onClick={() => setCommercialTab("normes")}
           className={`rounded-full px-4 py-1.5 text-sm font-bold ${
             commercialTab === "normes" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
@@ -10951,6 +10967,8 @@ function CommercialSection({ supabase }: { supabase: ReturnType<typeof createCli
       </div>
       {commercialTab === "dossiers" ? (
         <CommercialView supabase={supabase} norms={norms} />
+      ) : commercialTab === "smeta" ? (
+        <WorkCatalogView supabase={supabase} norms={norms} normOptions={normRows.map((n) => ({ code: n.code, label: n.label }))} canEdit={canEdit} />
       ) : (
         <CommercialNormsView
           supabase={supabase}
@@ -16579,7 +16597,22 @@ function PenaltyPickerButton({
   const [added, setAdded] = useState<string[]>([]);
   const [customText, setCustomText] = useState("");
   const [customAmount, setCustomAmount] = useState("");
+  const [catalogDoc, setCatalogDoc] = useState<PenaltyCatalogDoc>(DEFAULT_PENALTY_DOC);
   const POPOVER_WIDTH = 440;
+
+  // Действующий справочник (подтверждённый офисом) - подгружаем при каждом открытии окна.
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch("/api/penalty-catalog", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { doc?: PenaltyCatalogDoc } | null) => {
+        if (d?.doc) {
+          setCatalogDoc(d.doc);
+          setDivisor((cur) => (cur === String(PENALTY_DEFAULT_DIVISOR) ? String(d.doc!.divisor) : cur));
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !btnRef.current) return;
@@ -16595,10 +16628,10 @@ function PenaltyPickerButton({
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return PENALTY_CATALOG.filter((c) => !q || `${c.code} ${c.stage} ${c.description}`.toLowerCase().includes(q));
-  }, [search]);
+    return catalogDoc.items.filter((c) => !q || `${c.code} ${c.stage} ${c.description}`.toLowerCase().includes(q));
+  }, [search, catalogDoc]);
 
-  function unitText(c: PenaltyCatalogItem) {
+  function unitText(c: CatalogItem) {
     if (c.unit === "manual") return "вручную";
     if (c.unit === "range") return `${c.amount}-${c.amountMax} €`;
     if (c.unit === "per_piece") return `${c.amount} €/шт`;
@@ -16606,15 +16639,15 @@ function PenaltyPickerButton({
     return `${c.amount} €`;
   }
 
-  function add(c: PenaltyCatalogItem) {
+  function add(c: CatalogItem) {
     const div = Number(divisor.replace(",", ".")) || PENALTY_DEFAULT_DIVISOR;
-    const q = Number((qty[c.code] ?? "1").replace(",", ".")) || 0;
+    const q = Number((qty[c.id] ?? "1").replace(",", ".")) || 0;
     if ((c.unit === "per_piece" || c.unit === "per_day") && q <= 0) return;
     const r =
       c.unit === "range"
-        ? Number((range[c.code] ?? String(c.amount)).replace(",", ".")) || c.amount
+        ? Number((range[c.id] ?? String(c.amount)).replace(",", ".")) || c.amount
         : c.unit === "manual"
-          ? Number((range[c.code] ?? "").replace(",", ".")) || 0
+          ? Number((range[c.id] ?? "").replace(",", ".")) || 0
           : undefined;
     if (c.unit === "manual" && !(r && r > 0)) return; // сумма на команду вводится вручную
     const { share, line } = describePenaltyPick({ item: c, qty: q, rangeAmount: r, site, divisor: div });
@@ -16693,7 +16726,7 @@ function PenaltyPickerButton({
               )}
               <div className="mt-2 overflow-y-auto rounded-lg border border-stone-200" style={{ maxHeight: Math.min(320, Math.max(140, pos.maxHeight - 230)) }}>
                 {items.map((c) => (
-                  <div key={c.code} className="flex items-center gap-2 border-b border-stone-100 px-2 py-1.5 text-xs">
+                  <div key={c.id} className="flex items-center gap-2 border-b border-stone-100 px-2 py-1.5 text-xs">
                     <span className="w-8 shrink-0 font-mono text-stone-500">{c.code}</span>
                     <span className="min-w-0 flex-1" title={c.description + (c.note ? ` - ${c.note}` : "")}>
                       <span className="font-semibold">{c.stage}</span>
@@ -16705,18 +16738,18 @@ function PenaltyPickerButton({
                       <input
                         className="input px-1 py-1 text-xs"
                         style={{ width: "3.2rem" }}
-                        value={qty[c.code] ?? "1"}
+                        value={qty[c.id] ?? "1"}
                         title={c.unit === "per_piece" ? "Количество штук" : "Количество дней"}
-                        onChange={(ev) => setQty((prev) => ({ ...prev, [c.code]: ev.target.value }))}
+                        onChange={(ev) => setQty((prev) => ({ ...prev, [c.id]: ev.target.value }))}
                       />
                     )}
                     {c.unit === "range" && (
                       <input
                         className="input px-1 py-1 text-xs"
                         style={{ width: "3.6rem" }}
-                        value={range[c.code] ?? String(c.amount)}
+                        value={range[c.id] ?? String(c.amount)}
                         title={c.note ?? "Сумма в диапазоне"}
-                        onChange={(ev) => setRange((prev) => ({ ...prev, [c.code]: ev.target.value }))}
+                        onChange={(ev) => setRange((prev) => ({ ...prev, [c.id]: ev.target.value }))}
                       />
                     )}
                     {c.unit === "manual" && (
@@ -16724,9 +16757,9 @@ function PenaltyPickerButton({
                         className="input px-1 py-1 text-xs"
                         style={{ width: "3.6rem" }}
                         placeholder="€ на ком."
-                        value={range[c.code] ?? ""}
+                        value={range[c.id] ?? ""}
                         title={`${c.note ?? "Сумма вводится вручную"} - сумма на всю команду (делится на ÷)`}
-                        onChange={(ev) => setRange((prev) => ({ ...prev, [c.code]: ev.target.value }))}
+                        onChange={(ev) => setRange((prev) => ({ ...prev, [c.id]: ev.target.value }))}
                       />
                     )}
                     <button type="button" className="shrink-0 rounded-md bg-warning-500 px-2 py-1 font-bold text-white hover:bg-warning-600" onClick={() => add(c)} title="Добавить к штрафу">

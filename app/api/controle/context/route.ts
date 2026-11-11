@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { loadPublishedCatalog } from "@/lib/controle/catalog";
 import { serviceClient } from "@/lib/controle/server";
 import { fetchPlanningJobs, type PlanningJob } from "@/lib/planning/parsePlanning";
 import { siteJobsInWindow, siteSuggestionsByTeam } from "@/lib/planning/siteSuggestions";
@@ -70,19 +71,19 @@ export async function GET() {
 
   // Последние записи (30 дней) : свои у контролёра, все у rh_admin.
   const since = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  let q = sb
-    .from("control_penalties")
-    .select(
-      "id, batch_id, created_at, inspection_date, site, team_id, catalog_code, stage, description, unit, qty, team_amount, divisor, share_each, note, photo_paths, created_by_email, status, control_penalty_targets(employee_id, share)"
-    )
-    .gte("inspection_date", since)
-    .order("created_at", { ascending: false })
-    .limit(200);
-  if (check.ctx.role !== "rh_admin") q = q.eq("created_by_email", check.ctx.email);
-  const { data: recent } = await q;
+  const recentCols = (withItemId: boolean) =>
+    `id, batch_id, created_at, inspection_date, site, team_id, catalog_code, ${withItemId ? "catalog_item_id, " : ""}stage, description, unit, qty, team_amount, divisor, share_each, note, photo_paths, created_by_email, status, control_penalty_targets(employee_id, share)`;
+  const recentQuery = (withItemId: boolean) => {
+    let q = sb.from("control_penalties").select(recentCols(withItemId)).gte("inspection_date", since).order("created_at", { ascending: false }).limit(200);
+    if (check.ctx.role !== "rh_admin") q = q.eq("created_by_email", check.ctx.email);
+    return q;
+  };
+  const first = await recentQuery(true);
+  // миграция 0134 ещё не выполнена : читаем без новой колонки
+  const recent = first.error ? (await recentQuery(false)).data : first.data;
 
   return NextResponse.json(
-    { email: check.ctx.email, role: check.ctx.role, teams: teamList, sitesByTeam, siteJobs, lastChecks, recent: recent ?? [] },
+    { email: check.ctx.email, role: check.ctx.role, teams: teamList, sitesByTeam, siteJobs, lastChecks, recent: recent ?? [], catalog: await loadPublishedCatalog(sb) },
     { headers: NO_STORE }
   );
 }

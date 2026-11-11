@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ErrorsSection, NormsSection, SECTION_TITLES, type TeamSection } from "./sections";
+import type { PenaltyCatalogDoc } from "@/lib/payroll/penalties";
 
 type Result = {
   salaireJours: number;
@@ -48,7 +49,7 @@ type Person = {
 type BankTeam = { rank: number; name: string; mine: boolean; penalties: number; eligible: boolean; sharePct: number; amount: number };
 type BankMember = { id: string; name: string; days: number; amount: number };
 type QualityBank = { periodStart: string; payoutDate: string; pool: number; excludedWorst: number; teams: BankTeam[]; members: BankMember[] };
-type Payload = { team: string; year: number; month: number; hasRun: boolean; published?: boolean; employees: Person[]; qualityBank?: QualityBank | null };
+type Payload = { team: string; year: number; month: number; hasRun: boolean; published?: boolean; employees: Person[]; qualityBank?: QualityBank | null; catalog?: PenaltyCatalogDoc };
 
 const MONTHS_RU = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const REFRESH_MS = 20000;
@@ -670,7 +671,7 @@ export default function TeamPrimesPage() {
 
       {section === "errors" && (
         <div className="mx-auto mt-4 max-w-xl px-4">
-          <ErrorsSection />
+          <ErrorsSection catalog={data?.catalog} />
         </div>
       )}
       {section === "norms" && (

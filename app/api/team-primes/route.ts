@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { loadPublishedCatalog } from "@/lib/controle/catalog";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { computeControllerSplit, computePayrollExtras } from "@/lib/payroll/compute";
 import { controllerMonthDelta, controllerShareWithCarry, fetchControllerCarryDeltas } from "@/lib/payroll/penalty-dispute";
@@ -377,6 +378,7 @@ export async function GET(request: NextRequest) {
       updatedAt: new Date().toISOString(),
       employees: rows,
       qualityBank,
+      catalog: (await loadPublishedCatalog(sb)).doc,
     },
     { headers: NO_STORE }
   );
