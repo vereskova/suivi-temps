@@ -8,6 +8,7 @@ import SettingsView from "@/components/admin/SettingsView";
 import WorkCatalogView from "@/components/admin/WorkCatalogView";
 import PenaltyCatalogView from "@/components/admin/PenaltyCatalogView";
 import WorkObjectsView, { WorkObjectsReadOnly } from "@/components/admin/WorkObjectsView";
+import FileSystemBrowser from "@/components/files/FileSystemBrowser";
 import { useRouter } from "next/navigation";
 import * as XLSX from "xlsx";
 import {
@@ -47,6 +48,7 @@ import {
   FileSpreadsheet,
   FileText,
   FolderLock,
+  FolderOpen,
   Fingerprint,
   GraduationCap,
   HardHat,
@@ -496,6 +498,7 @@ type ViewKey =
   | "audit"
   | "controle_journal"
   | "penalty_catalog"
+  | "files"
   | "settings"
   | "voldis_location"
   | "voldis_ajax";
@@ -557,7 +560,10 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
   {
     title: "Commercial",
-    items: [{ key: "commercial", label: "Commercial", labelRu: "Коммерция", icon: Briefcase }],
+    items: [
+      { key: "commercial", label: "Commercial", labelRu: "Коммерция", icon: Briefcase },
+      { key: "files", label: "Dossiers chantiers", labelRu: "Папки объектов", icon: FolderOpen },
+    ],
   },
   {
     title: "Autoparc",
@@ -642,6 +648,7 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   planning: ["rh_admin", "rh"],
   audit: ["rh_admin"],
   penalty_catalog: ["rh_admin", "rh", "rh_readonly"],
+  files: ["rh_admin", "rh", "rh_readonly", "commercial", "commercial_rh"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
   voldis_location: ["rh_admin"],
@@ -802,7 +809,7 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
     "admin_commercial_rh_view",
     "commercial"
   );
-  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "penalty_catalog" | "objects" | "organigramme" | "schema" | "phones">(
+  const [rhReadonlyView, setRhReadonlyView] = usePersistedView<"employees" | "paie_extras" | "penalty_catalog" | "objects" | "files" | "organigramme" | "schema" | "phones">(
     "admin_rh_readonly_view",
     "employees"
   );
@@ -1266,6 +1273,17 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
           }}
         />
         <SidebarLink
+          icon={FolderOpen}
+          active={rhReadonlyView === "files"}
+          tab="files"
+          label="Dossiers chantiers"
+          labelRu="Папки объектов"
+          onClick={() => {
+            setRhReadonlyView("files");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
           icon={Network}
           active={rhReadonlyView === "organigramme"}
           tab="organigramme"
@@ -1374,6 +1392,8 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
                 <PenaltyCatalogView />
               ) : rhReadonlyView === "objects" ? (
                 <WorkObjectsReadOnly supabase={supabase} />
+              ) : rhReadonlyView === "files" ? (
+                <FileSystemBrowser api="/api/files/fs" />
               ) : rhReadonlyView === "phones" ? (
                 <PhoneDirectoryView supabase={supabase} />
               ) : rhReadonlyView === "schema" ? (
@@ -1830,6 +1850,7 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
             {view === "settings" && role === "rh_admin" && <SettingsView />}
             {view === "controle_journal" && <ControlPenaltiesView supabase={supabase} canCancel={role === "rh_admin"} />}
             {view === "penalty_catalog" && <PenaltyCatalogView />}
+            {view === "files" && <FileSystemBrowser api="/api/files/fs" />}
           </AccessGate>
           </DossierNavContext.Provider>
           )}
@@ -10922,7 +10943,7 @@ function CommercialNormsView({
  *  sont chargées une fois ici et passées en prop, comme un calculateur avec
  *  une feuille de données séparée que le calcul principal va lire. */
 function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType<typeof createClient>; canEdit?: boolean }) {
-  const [commercialTab, setCommercialTab] = useState<"objets" | "smeta" | "normes" | "dossiers">("objets");
+  const [commercialTab, setCommercialTab] = useState<"objets" | "files" | "smeta" | "normes" | "dossiers">("objets");
 
   const [normRows, setNormRows] = useState<DurationNormRow[]>([]);
   const [normPoints, setNormPoints] = useState<DurationNormPointRow[]>([]);
@@ -10978,6 +10999,14 @@ function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType
           <Bi fr="Chantiers" ru="Объекты" />
         </button>
         <button
+          onClick={() => setCommercialTab("files")}
+          className={`rounded-full px-4 py-1.5 text-sm font-bold ${
+            commercialTab === "files" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
+          }`}
+        >
+          <Bi fr="Dossiers" ru="Папки" />
+        </button>
+        <button
           onClick={() => setCommercialTab("smeta")}
           className={`rounded-full px-4 py-1.5 text-sm font-bold ${
             commercialTab === "smeta" ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-500"
@@ -11008,6 +11037,8 @@ function CommercialSection({ supabase, canEdit = false }: { supabase: ReturnType
         <CommercialView supabase={supabase} norms={norms} />
       ) : commercialTab === "objets" ? (
         <WorkObjectsView supabase={supabase} norms={norms} />
+      ) : commercialTab === "files" ? (
+        <FileSystemBrowser api="/api/files/fs" />
       ) : commercialTab === "smeta" ? (
         <WorkCatalogView supabase={supabase} norms={norms} normOptions={normRows.map((n) => ({ code: n.code, label: n.label }))} canEdit={canEdit} />
       ) : (

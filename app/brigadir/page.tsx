@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarCheck, Check, ChevronRight, ClipboardList, LogOut, MoreHorizontal, Play, Undo2, Wallet } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, ChevronRight, ClipboardList, FolderOpen, LogOut, MoreHorizontal, Play, Undo2, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
 import { workingDaysBetween } from "@/lib/commercial-durations/compute";
 import ObjectFilesBrowser from "@/components/admin/ObjectFilesBrowser";
+import FileSystemBrowser from "@/components/files/FileSystemBrowser";
 
 // Кабинет бригадира: на экране только то, что нужно сегодня - что делаем сейчас и что дальше.
 // Бригадир видит только свою команду; rh_admin - любую (режим проверки). Цен и сумм смет здесь нет.
@@ -63,7 +64,7 @@ export default function BrigadirPage() {
   const router = useRouter();
   const [ctx, setCtx] = useState<Ctx | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"work" | "pointage" | "primes">("work");
+  const [tab, setTab] = useState<"work" | "files" | "pointage" | "primes">("work");
   const [openObject, setOpenObject] = useState<string | null>(null);
   const [showFini, setShowFini] = useState(false);
   const autoOpened = useRef(false);
@@ -108,6 +109,7 @@ export default function BrigadirPage() {
 
   const NAV = [
     { key: "work" as const, label: "Работа", icon: ClipboardList },
+    { key: "files" as const, label: "Папки", icon: FolderOpen },
     { key: "pointage" as const, label: "Часы", icon: CalendarCheck },
     { key: "primes" as const, label: "Премии", icon: Wallet },
   ];
@@ -153,6 +155,8 @@ export default function BrigadirPage() {
             <ObjectList objects={ctx.objects} showFini={showFini} setShowFini={setShowFini} onOpen={setOpenObject} />
           ))}
 
+        {tab === "files" && <FileSystemBrowser api="/api/files/fs" rootLabel="Мои папки" />}
+
         {tab === "pointage" && <iframe key={ctx.team.id} title="Часы" src={`/?embed=1&team=${ctx.team.id}`} className="h-[calc(100dvh-10rem)] min-h-[560px] w-full rounded-2xl border border-stone-200 bg-white" />}
 
         {tab === "primes" &&
@@ -165,7 +169,7 @@ export default function BrigadirPage() {
 
       {/* Нижнее меню - как в обычных приложениях на телефоне */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-stone-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto grid max-w-2xl grid-cols-3 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5">
+        <div className="mx-auto grid max-w-2xl grid-cols-4 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5">
           {NAV.map((t) => (
             <button
               key={t.key}

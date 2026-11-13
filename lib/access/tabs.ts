@@ -33,6 +33,7 @@ export const TAB_CATALOG: TabDef[] = [
   { key: "audit", label: "Journal d'audit", labelRu: "Журнал аудита", group: "RH" },
   { key: "commercial", label: "Commercial", labelRu: "Коммерция", group: "Commercial" },
   { key: "objects", label: "Chantiers", labelRu: "Объекты и контрандю", group: "Commercial" },
+  { key: "files", label: "Dossiers chantiers", labelRu: "Папки объектов", group: "Commercial" },
   { key: "autoparc", label: "Autoparc", labelRu: "Автопарк", group: "Autoparc" },
 ];
 
