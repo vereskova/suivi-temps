@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth/requireRole";
 import { serviceClient } from "@/lib/controle/server";
 import { FILES_BUCKET, MAX_FILE_BYTES, cleanFolder, cleanName, isPriceFile, newStoragePath } from "@/lib/commercial/files";
 import { randomUUID } from "crypto";
+import { saveObjectReport } from "@/lib/commercial/saveReport";
 import { FOLDER_COLORS, STATUS_FOLDERS, statusKey, statusLabel, teamFolderName, type FsCover, type FsFile, type FsFolder, type FsListing, type StatusKey } from "@/lib/files/tree";
 
 // Файловая система объектов, как в iCloud: Корень -> KOMANDA_N -> статус -> объект -> папки -> файлы.
@@ -15,6 +16,7 @@ import { FOLDER_COLORS, STATUS_FOLDERS, statusKey, statusLabel, teamFolderName, 
 //   POST   { action: "mkdir", path, name, ifExists? }                          - новая папка (в статусе = новый объект)
 //   POST   { action: "sign",     path, name, size, mime }                       - ссылка для прямой загрузки файла
 //   POST   { action: "register", path, storage_path, name, size, mime }        - записать загруженный файл
+//   POST   { action: "save_report", path }                                      - собрать контрандо объекта в Excel и положить в « Compte rendu »
 //   POST   { action: "move",     path, to_status }                              - перенести объект в другую папку статуса
 //   POST   { action: "rename", path, name }                                     - переименовать папку (объект или вложенную)
 //   POST   { action: "rename_file", path, file_id, name }                       - переименовать файл
@@ -368,6 +370,14 @@ export async function POST(request: NextRequest) {
       if (error) return bad(error.message, 500);
     }
     return NextResponse.json({ ok: true }, { headers: NO_STORE });
+  }
+
+  if (body.action === "save_report") {
+    if (a.brigade) return bad("Недоступно", 403);
+    if (r.level !== 3 || !r.object) return bad("Откройте папку объекта");
+    const res = await saveObjectReport(a.sb, r.object.id, a.email);
+    if (!res.ok) return bad(res.error, 400);
+    return NextResponse.json({ ok: true, name: res.name, created: res.created }, { headers: NO_STORE });
   }
 
   if (body.action === "move") {

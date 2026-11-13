@@ -244,6 +244,7 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
   const [showDone, setShowDone] = useState(false);
   const [showAllNext, setShowAllNext] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
+  const [reportNote, setReportNote] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
@@ -267,6 +268,11 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
       return false;
     }
     setError(null);
+    const j = (await res.json().catch(() => ({}))) as { report_saved?: boolean };
+    if (j.report_saved) {
+      setReportNote(true);
+      setTimeout(() => setReportNote(false), 9000);
+    }
     onChanged();
     return true;
   }
@@ -376,6 +382,11 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
         </>
       )}
 
+      {reportNote && (
+        <div className="fixed inset-x-4 bottom-44 z-40 mx-auto max-w-md rounded-2xl bg-success-700 px-4 py-3 text-[15px] font-semibold text-white shadow-xl">
+          Все работы выполнены. Контрандю готово и лежит в папке объекта «Compte rendu».
+        </div>
+      )}
       {toast && (
         <div className="fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-stone-900 px-4 py-3.5 text-white shadow-xl">
           <Check size={20} className="shrink-0 text-success-400" />

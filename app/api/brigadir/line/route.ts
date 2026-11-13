@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBrigadir } from "@/lib/brigadir/access";
+import { isReportComplete, saveObjectReport } from "@/lib/commercial/saveReport";
 
 // Бригадир вносит факт по работе: дата начала, дата окончания, причина задержки. Только объекты своей команды.
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -37,5 +38,19 @@ export async function PATCH(request: NextRequest) {
 
   const { error } = await acc.sb.from("work_object_lines").update(patch).eq("id", body.line_id);
   if (error) return bad("Не удалось сохранить: " + error.message, 500);
-  return NextResponse.json({ ok: true }, { headers: NO_STORE });
+
+  // Когда у всех работ объекта есть дата окончания - контрандо готово: собираем Excel и кладём в папку « Compte rendu » объекта.
+  let reportSaved = false;
+  if ("actual_end" in patch && patch.actual_end) {
+    try {
+      const { data: all } = await acc.sb.from("work_object_lines").select("actual_end").eq("object_id", line.object_id as string);
+      if (isReportComplete((all ?? []) as { actual_end: string | null }[])) {
+        const saved = await saveObjectReport(acc.sb, line.object_id as string, acc.email);
+        reportSaved = saved.ok;
+      }
+    } catch {
+      // сохранение отметки уже прошло; контрандю можно собрать вручную из папки объекта
+    }
+  }
+  return NextResponse.json({ ok: true, report_saved: reportSaved }, { headers: NO_STORE });
 }

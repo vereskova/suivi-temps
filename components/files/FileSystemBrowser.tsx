@@ -445,6 +445,16 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
       setEditing(null);
     }
   }
+  async function saveReport() {
+    try {
+      const r = (await post({ action: "save_report", path: cur.join("/") })) as { name?: string };
+      setError(null);
+      await refresh(cur);
+      window.alert(`Контрандю собрано и положено в папку «Compte rendu»: ${r.name ?? ""}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка");
+    }
+  }
   async function renameFile(f: FsFile) {
     const name = window.prompt("Новое имя файла", f.name)?.trim();
     if (!name || name === f.name) return;
@@ -542,6 +552,11 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
                 <ImagePlus size={16} /> Фото
               </button>
             </>
+          )}
+          {data.canManage && level === 3 && (
+            <button type="button" className="btn gap-1.5 px-3 py-2 text-[15px]" onClick={saveReport} title="Excel с плановыми и фактическими датами - в папку « Compte rendu » этого объекта">
+              <FileSpreadsheet size={16} /> Собрать контрандю
+            </button>
           )}
           {data.canManage && level === 3 && (
             <label className="ml-auto inline-flex items-center gap-2 text-[14px] text-stone-600">
