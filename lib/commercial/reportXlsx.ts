@@ -15,6 +15,7 @@ export type ReportRow = {
   actual_start: string | null;
   actual_end: string | null;
   delay_reason: string | null;
+  notes?: string[];
 };
 
 const fr = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "");
@@ -63,7 +64,7 @@ export function buildReportWorkbook(obj: { name: string; team: string | null; va
     }
     n++;
     ws.getCell(r, 1).value = n;
-    ws.getCell(r, 2).value = l.label;
+    ws.getCell(r, 2).value = l.notes && l.notes.length ? `${l.label}\n${l.notes.join("\n")}` : l.label;
     ws.getCell(r, 2).alignment = { wrapText: true, vertical: "top", indent: l.section ? 1 : 0 };
     ws.getCell(r, 3).value = Number(l.qty);
     ws.getCell(r, 4).value = l.unit ?? "";
@@ -96,7 +97,9 @@ export function buildReportWorkbook(obj: { name: string; team: string | null; va
   const total = allDone && planEnds.length && actEnds.length ? workingDaysBetween(planEnds[planEnds.length - 1], actEnds[actEnds.length - 1]) : null;
   ws.getCell(r, 2).value =
     total == null
-      ? "Работы выполнены не полностью."
+      ? actEnds.length === 0
+        ? "Контрандю для команды: плановые даты посчитаны по смете и нормам. Факт бригада вносит в своём кабинете (вкладка « Работа »), файл обновляется."
+        : "Работы выполнены не полностью."
       : total > 0
         ? `ИТОГО: объект закончен с опозданием ${total} раб. дн. (план ${fr(planEnds[planEnds.length - 1])}, факт ${fr(actEnds[actEnds.length - 1])}).`
         : total < 0

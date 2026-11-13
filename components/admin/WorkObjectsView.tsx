@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ChevronRight, Download, FileSpreadsheet, Folder, FolderOpen, Plus, Search, Trash2 } from "lucide-react";
 import { evalNorm, planSchedule, workingDaysBetween, type NormDef } from "@/lib/commercial-durations/compute";
@@ -456,6 +456,21 @@ export default function WorkObjectsView({ supabase, norms, userEmail, readOnly =
 
   const obj = objects.find((o) => o.id === selectedId) ?? null;
   const catById = useMemo(() => new Map(catPos.map((p) => [p.id, p])), [catPos]);
+
+  // Контрандю для команды берётся из сметы: после любого изменения сметы (работы, количества, дни, вариант, мощность, дата старта)
+  // файл в папке « Compte rendu » объекта пересобирается (через 4 с после последней правки). Просто открытие объекта файл не трогает.
+  const reportSig = useRef<{ id: string; sig: string } | null>(null);
+  useEffect(() => {
+    if (readOnly || !obj || lines.length === 0) return;
+    const sig = [obj.variant, obj.power_kwc ?? "", obj.start_date ?? "", ...lines.map((l) => `${l.id}|${l.position}|${l.label}|${l.qty}|${l.measure ?? ""}|${l.manual_days ?? ""}|${l.parallel ? 1 : 0}`)].join(";");
+    const prev = reportSig.current;
+    reportSig.current = { id: obj.id, sig };
+    if (!prev || prev.id !== obj.id || prev.sig === sig) return; // первая загрузка объекта или без изменений
+    const t = setTimeout(() => {
+      fetch("/api/commercial/object-report-file", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ object_id: obj.id }) }).catch(() => {});
+    }, 4000);
+    return () => clearTimeout(t);
+  }, [obj, lines, readOnly]);
 
   // ── дни по нормам и плановые даты ──────────────────────────────────────────
   const daysOf = useCallback(
