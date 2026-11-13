@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ErrorsSection, NormsSection, SECTION_TITLES, type TeamSection } from "./sections";
 import type { PenaltyCatalogDoc } from "@/lib/payroll/penalties";
+import { frenchHolidaysForYear } from "@/lib/payroll/frenchHolidays";
 
 type Result = {
   salaireJours: number;
@@ -66,6 +67,25 @@ function tenureText(hireIso: string | null): string | null {
   const y = Math.floor(months / 12);
   const m = months % 12;
   return [y > 0 ? `${y} г.` : "", m > 0 ? `${m} мес.` : ""].filter(Boolean).join(" ");
+}
+
+/** Будние дни (пн-пт) с начала периода Банка (1-е число месяца начала) по сегодня + сколько из них - французские праздники. */
+function bankPeriodWorkdays(periodStart: string): { fromIso: string; weekdays: number; holidays: number } {
+  const fromIso = `${periodStart.slice(0, 7)}-01`;
+  const start = new Date(`${fromIso}T00:00:00Z`);
+  const now = new Date();
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const holidaySet = new Set<string>();
+  for (let y = start.getUTCFullYear(); y <= end.getUTCFullYear(); y++) frenchHolidaysForYear(y).forEach((h) => holidaySet.add(h.date));
+  let weekdays = 0;
+  let holidays = 0;
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    const dow = d.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    weekdays += 1;
+    if (holidaySet.has(d.toISOString().slice(0, 10))) holidays += 1;
+  }
+  return { fromIso, weekdays, holidays };
 }
 
 /** Банка БАНК 3000 : заполнена на amount / 3000. Цвет - по уровню заполнения. */
@@ -281,6 +301,15 @@ function QualityBankCard({ bank }: { bank: QualityBank }) {
                   ? `Бригаде ${eur(mine.amount)}. Делится между людьми по отработанным дням в бригаде: чем больше дней, тем больше премия. Выплата в конце ${frDate(bank.payoutDate).slice(3, 5) === "01" ? "января" : "сентября"}, если человек остаётся в компании.`
                   : "Сейчас бригада в трёх худших: премии из Банка нет. Чтобы подняться в рейтинг, нужно меньше штрафов."}
               </p>
+              {(() => {
+                const w = bankPeriodWorkdays(bank.periodStart);
+                return (
+                  <p className="mt-1 text-[11px] leading-snug text-stone-400">
+                    Дни считаются с {frDate(w.fromIso)} · будних дней в периоде: {w.weekdays}
+                    {w.holidays > 0 ? ` (${w.weekdays - w.holidays} без праздников)` : ""}
+                  </p>
+                );
+              })()}
               <ul className="mt-2 divide-y divide-amber-200/70">
                 {bank.members.map((m) => (
                   <li key={m.id} className="flex items-center gap-2 py-1.5 text-[13px]">
