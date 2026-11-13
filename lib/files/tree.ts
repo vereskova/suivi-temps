@@ -18,7 +18,20 @@ export function teamFolderName(teamName: string): string {
   return n ? `KOMANDA_${Number(n)}` : teamName;
 }
 
-export type FsFolder = { name: string; count?: number; hidden?: boolean };
+/** Своя обложка папки: цвет из палитры, эмодзи и/или картинка (ссылка временная). */
+export type FsCover = { color?: string | null; emoji?: string | null; url?: string | null };
+export const FOLDER_COLORS: Record<string, [string, string]> = {
+  blue: ["#4BA3F0", "#7CC4FF"],
+  red: ["#E5534B", "#F4908A"],
+  orange: ["#F08A24", "#FDB462"],
+  yellow: ["#E8B923", "#FCD95B"],
+  green: ["#3FAF6B", "#7DD6A0"],
+  teal: ["#1FA8A0", "#6ED3CC"],
+  purple: ["#8B63D6", "#B79BEB"],
+  pink: ["#E0589C", "#F59CC6"],
+  gray: ["#7C8794", "#B3BCC6"],
+};
+export type FsFolder = { name: string; count?: number; hidden?: boolean; cover?: FsCover | null };
 export type FsFile = { id: string; name: string; size_bytes: number | null; mime: string | null; taken_at: string | null; created_at: string; team_visible?: boolean };
 export type FsListing = {
   path: string[];

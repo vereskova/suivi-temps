@@ -4,7 +4,8 @@ import { requireRole } from "@/lib/auth/requireRole";
 import { requireBrigadir } from "@/lib/brigadir/access";
 import { serviceClient } from "@/lib/controle/server";
 import { FILES_BUCKET, MAX_FILE_BYTES, cleanFolder, cleanName, isPriceFile, newStoragePath } from "@/lib/commercial/files";
-import { STATUS_FOLDERS, statusKey, statusLabel, teamFolderName, type FsFile, type FsFolder, type FsListing, type StatusKey } from "@/lib/files/tree";
+import { randomUUID } from "crypto";
+import { FOLDER_COLORS, STATUS_FOLDERS, statusKey, statusLabel, teamFolderName, type FsCover, type FsFile, type FsFolder, type FsListing, type StatusKey } from "@/lib/files/tree";
 
 // Файловая система объектов, как в iCloud: Корень -> KOMANDA_N -> статус -> объект -> папки -> файлы.
 // Офис (rh_admin, rh, rh_readonly, commercial, commercial_rh) видит все команды; бригадир - только свою папку команды
@@ -16,6 +17,9 @@ import { STATUS_FOLDERS, statusKey, statusLabel, teamFolderName, type FsFile, ty
 //   POST   { action: "sign",     path, name, size, mime }                       - ссылка для прямой загрузки файла
 //   POST   { action: "register", path, storage_path, name, size, mime }        - записать загруженный файл
 //   POST   { action: "move",     path, to_status }                              - перенести объект в другую папку статуса
+//   POST   { action: "rename", path, name }                                     - переименовать папку (объект или вложенную)
+//   POST   { action: "rename_file", path, file_id, name }                       - переименовать файл
+//   POST   { action: "cover_sign" | "cover_set" | "cover_clear", path, ... }    - своя обложка папки (цвет, эмодзи, картинка)
 //   PATCH  { path, visible, file_id? }                                          - видимость для бригады (файл или папка)
 //   DELETE ?fileId=  |  ?path=a/b/c                                             - удалить файл / папку (объект целиком, если путь = объект)
 
@@ -68,6 +72,35 @@ const parsePath = (raw: unknown): string[] =>
     .map((s) => s.trim())
     .filter((s) => s && s !== "." && s !== "..");
 
+/** Ключ обложки папки (см. migration 0147). */
+function coverKey(r: Resolved): string | null {
+  if (r.level === 1) return `t:${r.team!.id}`;
+  if (r.level === 2) return `t:${r.team!.id}:${r.status}`;
+  if (r.level >= 3) return r.sub ? `o:${r.object!.id}:${r.sub}` : `o:${r.object!.id}`;
+  return null;
+}
+
+/** Подкладывает обложки в список папок (картинки - временные ссылки на час). */
+async function attachCovers(a: Access, folders: FsFolder[], keyOf: (name: string) => string | null) {
+  const keys = folders.map((f) => keyOf(f.name)).filter((k): k is string => !!k);
+  if (keys.length === 0) return;
+  const { data } = await a.sb.from("fs_folder_covers").select("scope_key, color, emoji, image_path").in("scope_key", keys);
+  const rows = new Map((data ?? []).map((c) => [c.scope_key as string, c]));
+  const imgPaths = (data ?? []).map((c) => c.image_path as string | null).filter((x): x is string => !!x);
+  const urls = new Map<string, string>();
+  if (imgPaths.length) {
+    const { data: signed } = await a.sb.storage.from(FILES_BUCKET).createSignedUrls(imgPaths, 3600);
+    (signed ?? []).forEach((x) => x.path && x.signedUrl && urls.set(x.path, x.signedUrl));
+  }
+  folders.forEach((f) => {
+    const k = keyOf(f.name);
+    const c = k ? rows.get(k) : undefined;
+    if (!c) return;
+    const cover: FsCover = { color: (c.color as string | null) ?? null, emoji: (c.emoji as string | null) ?? null, url: c.image_path ? (urls.get(c.image_path as string) ?? null) : null };
+    if (cover.color || cover.emoji || cover.url) f.cover = cover;
+  });
+}
+
 const collator = new Intl.Collator("ru", { numeric: true, sensitivity: "base" });
 const byName = (x: { name: string }, y: { name: string }) => collator.compare(x.name, y.name);
 
@@ -107,14 +140,22 @@ export async function GET(request: NextRequest) {
     const counts = new Map<string, number>();
     (data ?? []).forEach((o) => counts.set(o.team_id as string, (counts.get(o.team_id as string) ?? 0) + 1));
     listing.folders = a.teams.map((t) => ({ name: teamFolderName(t.name), count: counts.get(t.id) ?? 0 }));
+    const idByLabel = new Map(a.teams.map((t) => [teamFolderName(t.name), t.id]));
+    await attachCovers(a, listing.folders, (n) => (idByLabel.get(n) ? `t:${idByLabel.get(n)}` : null));
   } else if (r.level === 1) {
     const { data } = await a.sb.from("work_objects").select("status").eq("team_id", r.team!.id).limit(5000);
     const counts = new Map<string, number>();
     (data ?? []).forEach((o) => counts.set(o.status as string, (counts.get(o.status as string) ?? 0) + 1));
     listing.folders = STATUS_FOLDERS.map((s) => ({ name: s.label, count: counts.get(s.key) ?? 0 }));
+    await attachCovers(a, listing.folders, (n) => {
+      const k = statusKey(n);
+      return k ? `t:${r.team!.id}:${k}` : null;
+    });
   } else if (r.level === 2) {
-    const { data } = await a.sb.from("work_objects").select("name").eq("team_id", r.team!.id).eq("status", r.status!).order("name").limit(2000);
+    const { data } = await a.sb.from("work_objects").select("id, name").eq("team_id", r.team!.id).eq("status", r.status!).order("name").limit(2000);
+    const idByName = new Map((data ?? []).map((o) => [o.name as string, o.id as string]));
     listing.folders = (data ?? []).map((o) => ({ name: o.name as string })).sort(byName);
+    await attachCovers(a, listing.folders, (n) => (idByName.get(n) ? `o:${idByName.get(n)}` : null));
     listing.canMkdir = !a.brigade; // новая папка здесь = новый объект
     listing.canUploadFolders = !a.brigade; // загрузка папки здесь = новый объект с файлами
   } else {
@@ -145,6 +186,7 @@ export async function GET(request: NextRequest) {
     }
     listing.folders = Array.from(sub, ([name, v]): FsFolder => ({ name, count: v.count, hidden: !a.brigade && v.hidden && v.count > 0 })).sort(byName);
     listing.files = items.sort(byName);
+    await attachCovers(a, listing.folders, (n) => `o:${obj.id}:${prefix}${n}`);
     listing.canMkdir = true;
     listing.canUploadFiles = true;
     listing.canUploadFolders = true;
@@ -155,7 +197,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const a = await getAccess();
   if (a instanceof NextResponse) return a;
-  const body = (await request.json().catch(() => null)) as { action?: string; path?: string; name?: string; ifExists?: string; size?: number; mime?: string; storage_path?: string; to_status?: string } | null;
+  const body = (await request.json().catch(() => null)) as { action?: string; path?: string; name?: string; ifExists?: string; size?: number; mime?: string; storage_path?: string; to_status?: string; file_id?: string; color?: string | null; emoji?: string | null; image_path?: string | null; keep_image?: boolean } | null;
   if (!body?.action) return bad("Некорректный запрос");
   const segs = parsePath(body.path);
   const r = await resolve(a, segs);
@@ -211,6 +253,105 @@ export async function POST(request: NextRequest) {
       team_visible: a.brigade ? true : !isPriceFile(r.sub, name),
     });
     if (error) return bad("Не удалось записать файл: " + error.message, 500);
+    return NextResponse.json({ ok: true }, { headers: NO_STORE });
+  }
+
+  // ── Переименование и обложки: только офис ────────────────────────────────────────────────
+  if (body.action === "rename" || body.action === "rename_file" || body.action.startsWith("cover_")) {
+    if (a.brigade) return bad("Недоступно", 403);
+  }
+
+  if (body.action === "rename") {
+    const name = cleanName(body.name);
+    if (!name || name === "." || name === "..") return bad("Введите название");
+    if (r.level < 3 || !r.object) return bad("Эту папку переименовать нельзя");
+    const oid = r.object.id;
+    if (!r.sub) {
+      if (name === r.object.name) return NextResponse.json({ ok: true }, { headers: NO_STORE });
+      const { data: dup } = await a.sb.from("work_objects").select("id").eq("team_id", r.team!.id).eq("name", name).neq("id", oid).limit(1);
+      if (dup && dup.length) return bad(`Папка «${name}» уже есть у этой команды`, 409);
+      const { error } = await a.sb.from("work_objects").update({ name, updated_at: new Date().toISOString() }).eq("id", oid);
+      if (error) return bad(error.message, 500);
+      return NextResponse.json({ ok: true, name }, { headers: NO_STORE });
+    }
+    const parts = r.sub.split("/");
+    const oldPath = r.sub;
+    const newPath = cleanFolder([...parts.slice(0, -1), name].join("/"));
+    if (newPath === oldPath) return NextResponse.json({ ok: true }, { headers: NO_STORE });
+    // Нельзя переименовать в уже существующую папку
+    const parent = parts.slice(0, -1).join("/");
+    const [{ data: ef }, { data: er }] = await Promise.all([
+      a.sb.from("work_object_files").select("folder").eq("object_id", oid).limit(8000),
+      a.sb.from("work_object_folders").select("path").eq("object_id", oid).limit(2000),
+    ]);
+    const taken = new Set<string>();
+    const note = (p: string) => {
+      const pre = parent ? parent + "/" : "";
+      if (p.startsWith(pre)) taken.add(p.slice(pre.length).split("/")[0]);
+    };
+    (ef ?? []).forEach((x) => note(x.folder as string));
+    (er ?? []).forEach((x) => note(x.path as string));
+    if (taken.has(name)) return bad(`Папка «${name}» уже есть`, 409);
+    const swap = (p: string) => (p === oldPath ? newPath : newPath + p.slice(oldPath.length));
+    const inTree = (p: string) => p === oldPath || p.startsWith(oldPath + "/");
+    for (const folder of new Set((ef ?? []).map((x) => x.folder as string).filter(inTree)))
+      await a.sb.from("work_object_files").update({ folder: swap(folder) }).eq("object_id", oid).eq("folder", folder);
+    for (const path of new Set((er ?? []).map((x) => x.path as string).filter(inTree)))
+      await a.sb.from("work_object_folders").update({ path: swap(path) }).eq("object_id", oid).eq("path", path);
+    const { data: cv } = await a.sb.from("fs_folder_covers").select("scope_key").like("scope_key", `o:${oid}:%`);
+    for (const c of cv ?? []) {
+      const sub = (c.scope_key as string).slice(`o:${oid}:`.length);
+      if (inTree(sub)) await a.sb.from("fs_folder_covers").update({ scope_key: `o:${oid}:${swap(sub)}` }).eq("scope_key", c.scope_key as string);
+    }
+    return NextResponse.json({ ok: true, name }, { headers: NO_STORE });
+  }
+
+  if (body.action === "rename_file") {
+    const name = cleanName(body.name);
+    if (!name || !body.file_id) return bad("Введите название файла");
+    if (r.level < 3 || !r.object) return bad("Недоступно на этом уровне");
+    const { error } = await a.sb.from("work_object_files").update({ name }).eq("id", body.file_id).eq("object_id", r.object.id);
+    if (error) return bad(error.message, 500);
+    return NextResponse.json({ ok: true }, { headers: NO_STORE });
+  }
+
+  if (body.action === "cover_sign") {
+    if (!coverKey(r)) return bad("Для корня обложка не задаётся");
+    if (Number(body.size ?? 0) > 5 * 1024 * 1024) return bad("Картинка больше 5 МБ", 413);
+    const ext = (String(body.name ?? "").match(/\.([A-Za-z0-9]{1,5})$/)?.[1] ?? "jpg").toLowerCase();
+    const path = `_covers/${randomUUID()}.${ext}`;
+    const { data, error } = await a.sb.storage.from(FILES_BUCKET).createSignedUploadUrl(path);
+    if (error || !data) return bad(error?.message ?? "Не удалось подготовить загрузку", 500);
+    return NextResponse.json({ path, token: data.token }, { headers: NO_STORE });
+  }
+
+  if (body.action === "cover_set" || body.action === "cover_clear") {
+    const key = coverKey(r);
+    if (!key) return bad("Для корня обложка не задаётся");
+    const { data: old } = await a.sb.from("fs_folder_covers").select("image_path").eq("scope_key", key).maybeSingle();
+    if (body.action === "cover_clear") {
+      if (old?.image_path) await a.sb.storage.from(FILES_BUCKET).remove([old.image_path as string]);
+      await a.sb.from("fs_folder_covers").delete().eq("scope_key", key);
+      return NextResponse.json({ ok: true }, { headers: NO_STORE });
+    }
+    const color = body.color && FOLDER_COLORS[body.color] ? body.color : null;
+    const emoji = String(body.emoji ?? "").trim().slice(0, 8) || null;
+    let image = (old?.image_path as string | null) ?? null;
+    if (body.image_path) {
+      const ip = String(body.image_path);
+      if (!ip.startsWith("_covers/") || ip.includes("..")) return bad("Некорректный путь картинки");
+      if (image && image !== ip) await a.sb.storage.from(FILES_BUCKET).remove([image]);
+      image = ip;
+    } else if (body.keep_image === false) {
+      if (image) await a.sb.storage.from(FILES_BUCKET).remove([image]);
+      image = null;
+    }
+    if (!color && !emoji && !image) {
+      await a.sb.from("fs_folder_covers").delete().eq("scope_key", key);
+    } else {
+      const { error } = await a.sb.from("fs_folder_covers").upsert({ scope_key: key, color, emoji, image_path: image, updated_by: a.email, updated_at: new Date().toISOString() });
+      if (error) return bad(error.message, 500);
+    }
     return NextResponse.json({ ok: true }, { headers: NO_STORE });
   }
 
