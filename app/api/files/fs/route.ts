@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireRole } from "@/lib/auth/requireRole";
-import { requireBrigadir } from "@/lib/brigadir/access";
 import { serviceClient } from "@/lib/controle/server";
 import { FILES_BUCKET, MAX_FILE_BYTES, cleanFolder, cleanName, isPriceFile, newStoragePath } from "@/lib/commercial/files";
 import { randomUUID } from "crypto";
@@ -34,17 +33,22 @@ type Access = { sb: SupabaseClient; email: string; brigade: boolean; canDelete: 
 const teamNum = (name: string) => Number(name.replace(/\D+/g, "")) || 999;
 
 async function getAccess(): Promise<Access | NextResponse> {
-  const check = await requireRole([...OFFICE, "brigadir"]);
-  if (!check.ok) return check.response;
   const sb = serviceClient();
   if (!sb) return bad("Server misconfigured", 500);
+  // Проверка роли и список команд идут параллельно (раньше - друг за другом, это заметно тормозило)
+  const [check, teamsRes] = await Promise.all([requireRole([...OFFICE, "brigadir"]), sb.from("teams").select("id, name, active")]);
+  if (!check.ok) return check.response;
+  const allTeams = ((teamsRes.data ?? []) as (Team & { active: boolean | null })[]).map((t) => ({ id: t.id, name: t.name, active: t.active }));
   if (check.ctx.role === "brigadir") {
-    const acc = await requireBrigadir();
-    if (!acc.ok) return acc.response as NextResponse;
-    return { sb, email: acc.email, brigade: true, canDelete: false, teams: acc.teams };
+    let ids: string[] = [];
+    if (check.ctx.employeeId) {
+      const { data: emp } = await sb.from("employees").select("team_id, secondary_team_id").eq("id", check.ctx.employeeId).maybeSingle();
+      ids = [emp?.team_id, emp?.secondary_team_id].filter((x): x is string => !!x);
+    }
+    const teams = allTeams.filter((t) => ids.includes(t.id)).map(({ id, name }) => ({ id, name })).sort((x, y) => teamNum(x.name) - teamNum(y.name));
+    return { sb, email: check.ctx.email, brigade: true, canDelete: false, teams };
   }
-  const { data } = await sb.from("teams").select("id, name").eq("active", true);
-  const teams = ((data ?? []) as Team[]).sort((a, b) => teamNum(a.name) - teamNum(b.name));
+  const teams = allTeams.filter((t) => t.active).map(({ id, name }) => ({ id, name })).sort((x, y) => teamNum(x.name) - teamNum(y.name));
   return { sb, email: check.ctx.email, brigade: false, canDelete: OFFICE_DELETE.includes(check.ctx.role), teams };
 }
 
@@ -80,13 +84,21 @@ function coverKey(r: Resolved): string | null {
   return null;
 }
 
+type CoverRow = { scope_key: string; color: string | null; emoji: string | null; image_path: string | null };
+/** Запрос обложек: по списку ключей или по префиксу (все обложки объекта). Запускается заранее, параллельно основному списку. */
+function coverRows(a: Access, q: { keys?: string[]; like?: string }): PromiseLike<CoverRow[]> {
+  const base = a.sb.from("fs_folder_covers").select("scope_key, color, emoji, image_path");
+  const run = q.like ? base.like("scope_key", q.like) : base.in("scope_key", q.keys ?? []);
+  return Promise.resolve(run).then((r) => (r.data ?? []) as CoverRow[]);
+}
+
 /** Подкладывает обложки в список папок (картинки - временные ссылки на час). */
-async function attachCovers(a: Access, folders: FsFolder[], keyOf: (name: string) => string | null) {
+async function attachCovers(a: Access, folders: FsFolder[], keyOf: (name: string) => string | null, rowsP?: PromiseLike<CoverRow[]>) {
   const keys = folders.map((f) => keyOf(f.name)).filter((k): k is string => !!k);
   if (keys.length === 0) return;
-  const { data } = await a.sb.from("fs_folder_covers").select("scope_key, color, emoji, image_path").in("scope_key", keys);
-  const rows = new Map((data ?? []).map((c) => [c.scope_key as string, c]));
-  const imgPaths = (data ?? []).map((c) => c.image_path as string | null).filter((x): x is string => !!x);
+  const data = await (rowsP ?? coverRows(a, { keys }));
+  const rows = new Map(data.map((c) => [c.scope_key, c]));
+  const imgPaths = data.map((c) => c.image_path).filter((x): x is string => !!x);
   const urls = new Map<string, string>();
   if (imgPaths.length) {
     const { data: signed } = await a.sb.storage.from(FILES_BUCKET).createSignedUrls(imgPaths, 3600);
@@ -96,7 +108,7 @@ async function attachCovers(a: Access, folders: FsFolder[], keyOf: (name: string
     const k = keyOf(f.name);
     const c = k ? rows.get(k) : undefined;
     if (!c) return;
-    const cover: FsCover = { color: (c.color as string | null) ?? null, emoji: (c.emoji as string | null) ?? null, url: c.image_path ? (urls.get(c.image_path as string) ?? null) : null };
+    const cover: FsCover = { color: c.color ?? null, emoji: c.emoji ?? null, url: c.image_path ? (urls.get(c.image_path) ?? null) : null };
     if (cover.color || cover.emoji || cover.url) f.cover = cover;
   });
 }
@@ -136,13 +148,15 @@ export async function GET(request: NextRequest) {
 
   if (r.level === 0) {
     const ids = a.teams.map((t) => t.id);
+    const coversP = coverRows(a, { keys: ids.map((id) => `t:${id}`) });
     const { data } = ids.length ? await a.sb.from("work_objects").select("team_id").in("team_id", ids).limit(5000) : { data: [] };
     const counts = new Map<string, number>();
     (data ?? []).forEach((o) => counts.set(o.team_id as string, (counts.get(o.team_id as string) ?? 0) + 1));
     listing.folders = a.teams.map((t) => ({ name: teamFolderName(t.name), count: counts.get(t.id) ?? 0 }));
     const idByLabel = new Map(a.teams.map((t) => [teamFolderName(t.name), t.id]));
-    await attachCovers(a, listing.folders, (n) => (idByLabel.get(n) ? `t:${idByLabel.get(n)}` : null));
+    await attachCovers(a, listing.folders, (n) => (idByLabel.get(n) ? `t:${idByLabel.get(n)}` : null), coversP);
   } else if (r.level === 1) {
+    const coversP = coverRows(a, { keys: STATUS_FOLDERS.map((st) => `t:${r.team!.id}:${st.key}`) });
     const { data } = await a.sb.from("work_objects").select("status").eq("team_id", r.team!.id).limit(5000);
     const counts = new Map<string, number>();
     (data ?? []).forEach((o) => counts.set(o.status as string, (counts.get(o.status as string) ?? 0) + 1));
@@ -150,7 +164,7 @@ export async function GET(request: NextRequest) {
     await attachCovers(a, listing.folders, (n) => {
       const k = statusKey(n);
       return k ? `t:${r.team!.id}:${k}` : null;
-    });
+    }, coversP);
   } else if (r.level === 2) {
     const { data } = await a.sb.from("work_objects").select("id, name").eq("team_id", r.team!.id).eq("status", r.status!).order("name").limit(2000);
     const idByName = new Map((data ?? []).map((o) => [o.name as string, o.id as string]));
@@ -162,6 +176,7 @@ export async function GET(request: NextRequest) {
     const obj = r.object!;
     let fq = a.sb.from("work_object_files").select("id, folder, name, size_bytes, mime, taken_at, created_at, team_visible").eq("object_id", obj.id).order("name").limit(8000);
     if (a.brigade) fq = fq.eq("team_visible", true);
+    const coversP = coverRows(a, { like: `o:${obj.id}:%` });
     const [{ data: files }, { data: dirs }] = await Promise.all([fq, a.sb.from("work_object_folders").select("path, team_visible").eq("object_id", obj.id).limit(2000)]);
     const prefix = r.sub ? r.sub + "/" : "";
     const sub = new Map<string, { count: number; hidden: boolean }>();
@@ -186,7 +201,7 @@ export async function GET(request: NextRequest) {
     }
     listing.folders = Array.from(sub, ([name, v]): FsFolder => ({ name, count: v.count, hidden: !a.brigade && v.hidden && v.count > 0 })).sort(byName);
     listing.files = items.sort(byName);
-    await attachCovers(a, listing.folders, (n) => `o:${obj.id}:${prefix}${n}`);
+    await attachCovers(a, listing.folders, (n) => `o:${obj.id}:${prefix}${n}`, coversP);
     listing.canMkdir = true;
     listing.canUploadFiles = true;
     listing.canUploadFolders = true;

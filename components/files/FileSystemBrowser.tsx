@@ -233,17 +233,31 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
 
   const reqId = useRef(0);
   const lastGood = useRef<string[]>([]);
+  // Кэш просмотренных папок: повторное открытие и «назад» мгновенные, свежие данные подгружаются в фоне
+  const cache = useRef(new Map<string, FsListing>());
+  const inflight = useRef(new Set<string>());
+  const [loading, setLoading] = useState(false);
   const load = useCallback(
     async (p: string[]) => {
+      const key = p.join("/");
+      const cached = cache.current.get(key);
+      if (cached) {
+        lastGood.current = cached.path;
+        setData(cached);
+        setError(null);
+      }
       const id = ++reqId.current;
-      const res = await fetch(`${api}?path=${encodeURIComponent(p.join("/"))}`, { cache: "no-store" });
+      setLoading(true);
+      const res = await fetch(`${api}?path=${encodeURIComponent(key)}`, { cache: "no-store" });
       const json = (await res.json().catch(() => ({}))) as FsListing & { error?: string };
       if (id !== reqId.current) return false; // пришёл устаревший ответ (быстрые клики) - игнорируем
+      setLoading(false);
       if (!res.ok) {
         setError(json.error ?? "Ошибка загрузки");
         setPath(lastGood.current); // вернуться на последнюю открывшуюся папку
         return false;
       }
+      cache.current.set(key, json);
       lastGood.current = json.path;
       setData(json);
       setError(null);
@@ -251,8 +265,28 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
     },
     [api]
   );
+  /** Подгрузить содержимое папки заранее (при наведении), чтобы открытие было мгновенным. */
+  const prefetch = useCallback(
+    (p: string[]) => {
+      const key = p.join("/");
+      if (cache.current.has(key) || inflight.current.has(key)) return;
+      inflight.current.add(key);
+      fetch(`${api}?path=${encodeURIComponent(key)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<FsListing>) : null))
+        .then((j) => {
+          if (j) cache.current.set(key, j);
+        })
+        .catch(() => {})
+        .finally(() => inflight.current.delete(key));
+    },
+    [api]
+  );
+  /** После изменений (создали / удалили / загрузили) кэш сбрасывается. */
+  const refresh = async (p: string[]) => {
+    cache.current.clear();
+    await load(p);
+  };
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load(path);
   }, [load, path]);
 
@@ -332,7 +366,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
     await Promise.all(Array.from({ length: Math.min(POOL, Math.max(1, tasks.length)) }, worker));
     setProg(null);
     setError(failed.length ? `Не загружено ${failed.length}: ${failed.slice(0, 3).join("; ")}${failed.length > 3 ? "…" : ""}` : null);
-    await load(cur);
+    await refresh(cur);
   }
 
   const fromInput = (list: FileList | null, here: string[], level: number, withDirs: boolean) => {
@@ -362,7 +396,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
     try {
       await post({ action: "mkdir", path: cur.join("/"), name });
       setNewName(null);
-      await load(cur);
+      await refresh(cur);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка");
     }
@@ -374,18 +408,18 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
     if (!window.confirm(msg)) return;
     const res = await fetch(`${api}?path=${encodeURIComponent(target.join("/"))}`, { method: "DELETE" });
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Не удалось удалить");
-    await load(cur);
+    await refresh(cur);
   }
   async function removeFile(f: FsFile) {
     if (!window.confirm(`Удалить файл «${f.name}»?`)) return;
     const res = await fetch(`${api}?fileId=${f.id}`, { method: "DELETE" });
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Не удалось удалить");
-    await load(cur);
+    await refresh(cur);
   }
   async function setVisible(target: string[], visible: boolean, fileId?: string) {
     const res = await fetch(api, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: target.join("/"), visible, file_id: fileId }) });
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Не удалось изменить");
-    await load(cur);
+    await refresh(cur);
   }
   async function saveFolder(f: FsFolder, v: { name: string; color: string | null; emoji: string; image: File | null; removeImage: boolean }) {
     const target = [...cur, f.name];
@@ -405,7 +439,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
       }
       await post({ action: "cover_set", path: finalTarget.join("/"), color: v.color, emoji: v.emoji || null, image_path, keep_image: v.removeImage ? false : true });
       setEditing(null);
-      await load(cur);
+      await refresh(cur);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка");
       setEditing(null);
@@ -416,7 +450,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
     if (!name || name === f.name) return;
     try {
       await post({ action: "rename_file", path: cur.join("/"), file_id: f.id, name });
-      await load(cur);
+      await refresh(cur);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка");
     }
@@ -478,6 +512,8 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
           </button>
         </div>
       </div>
+
+      <div className={`h-0.5 overflow-hidden rounded-full ${loading ? "bg-primary-100" : "bg-transparent"}`}>{loading && <div className="h-full w-1/3 animate-pulse rounded-full bg-primary-500" />}</div>
 
       {/* Действия */}
       {data && (data.canMkdir || canUpload || (data.canManage && level === 3)) && (
@@ -562,6 +598,8 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
                 return (
                   <div
                     key={`d-${f.name}`}
+                    onMouseEnter={() => prefetch(target)}
+                    onTouchStart={() => prefetch(target)}
                     className={`group relative flex flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-stone-50 ${dropTarget === f.name ? "bg-primary-50 ring-2 ring-primary-300" : ""}`}
                     onDragOver={(e) => {
                       if (level < 1 || (level === 1 && !data.canManage) || level === 1) return;
@@ -633,7 +671,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
             <>
               {folders.map((f) => (
                 <div key={`d-${f.name}`} className="group flex items-center gap-3 px-3 py-2 hover:bg-stone-50">
-                  <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => open([...cur, f.name])}>
+                  <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-left" onMouseEnter={() => prefetch([...cur, f.name])} onClick={() => open([...cur, f.name])}>
                     <FolderGlyph size={30} dim={f.hidden} cover={f.cover} />
                     <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-stone-900">{f.name}</span>
                     {f.count !== undefined && <span className="rounded-full bg-stone-100 px-2.5 py-0.5 text-sm font-semibold text-stone-600">{f.count}</span>}
