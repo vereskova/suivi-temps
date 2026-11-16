@@ -91,10 +91,13 @@ export function proposeMatches(txs: VBankTx[], charges: VCharge[], tenants: VTen
   const out: Proposal[] = [];
 
   txs
-    .filter((t) => t.side === "credit" && !t.charge_id && !t.tenant_id)
+    // Aussi les virements déjà « закреплён » à un locataire mais sans échéance (attribution manuelle) :
+    // sinon l'échéance du mois reste impayée alors que l'argent est bien arrivé.
+    .filter((t) => t.side === "credit" && !t.charge_id)
     .sort((a, b) => day(a.settled_at).localeCompare(day(b.settled_at)))
     .forEach((tx) => {
-      const g = guessTenant(tx, tenants, learned);
+      const preset = tx.tenant_id ? tenants.find((x) => x.id === tx.tenant_id) : undefined;
+      const g = preset ? { tenant: preset, reason: "закреплён за арендатором" } : guessTenant(tx, tenants, learned);
       if (!g) return;
       const amount = num(tx.amount);
       const txDay = day(tx.settled_at);
@@ -126,7 +129,8 @@ export function proposeMatches(txs: VBankTx[], charges: VCharge[], tenants: VTen
         return;
       }
 
-      // 3. locataire reconnu, aucune échéance
+      // 3. locataire reconnu, aucune échéance (rien à proposer si le virement est déjà rattaché au locataire)
+      if (preset) return;
       out.push({ kind: "assign", tx, tenant: g.tenant, confidence: "sure", reason: g.reason });
     });
   return out;
@@ -193,6 +197,10 @@ export function analyzeTxs(txs: VBankTx[], charges: VCharge[], tenants: VTenant[
         if (c) {
           const sum = linkedSum.get(c.id) ?? amount;
           if (Math.abs(sum - num(c.amount_due)) > 0.5) out.set(t.id, { reason: `По платежу ожидалось ${fmt(num(c.amount_due))}` });
+        } else if (!t.charge_id && !t.category) {
+          // закреплён за арендатором, но не привязан к начислению → предложить записать оплату
+          const p = proposalFor.get(t.id);
+          if (p) out.set(t.id, { reason: `Подтвердить оплату: ${p.tenant.name}`, action: "assign" });
         }
         return;
       }
