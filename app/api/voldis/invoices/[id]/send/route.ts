@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { renderInvoicePdf } from "@/lib/voldis/invoice-pdf";
 import { mailConfigured, sendMail } from "@/lib/voldis/mail";
 import { monthLabelFr, type VInvoice, type VSettings, type VTenant } from "@/lib/voldis/rental";
 
-// Envoi par e-mail d'une facture / quittance au locataire (rh_admin). Body optionnel : { to }.
+// Envoi par e-mail d'une facture / quittance au locataire (rh_admin + comptable). Body optionnel : { to }.
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const check = await requireRole(["rh_admin"]);
+  const check = await requireRole(VOLDIS_LOCATION_ROLES);
   if (!check.ok) return check.response;
   const { supabase } = check.ctx;
   const { id } = await params;

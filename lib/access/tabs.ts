@@ -35,6 +35,8 @@ export const TAB_CATALOG: TabDef[] = [
   { key: "objects", label: "Chantiers", labelRu: "Объекты и контрандю", group: "Commercial" },
   { key: "files", label: "Dossiers chantiers", labelRu: "Папки объектов", group: "Commercial" },
   { key: "autoparc", label: "Autoparc", labelRu: "Автопарк", group: "Autoparc" },
+  { key: "voldis_location", label: "VOLDIS · Location de locaux", labelRu: "VOLDIS · Аренда локалей", group: "VOLDIS" },
+  { key: "voldis_ajax", label: "VOLDIS · Ajax", labelRu: "VOLDIS · Ajax - доступы", group: "VOLDIS" },
 ];
 
 export type TabMode = "view" | "edit";
@@ -44,7 +46,7 @@ export type TabsConfig = Record<string, TabMode>;
 export const ASSIGNABLE_ROLES: { role: string; label: string; hint: string }[] = [
   { role: "rh_admin", label: "RH Admin", hint: "Полный доступ ко всему, включая Настройки." },
   { role: "rh", label: "RH", hint: "Сотрудники и RH-разделы; без Paie, Commercial, Autoparc, аудита. Primes & Bonus - только чтение." },
-  { role: "comptable", label: "Comptable", hint: "Paie и Primes & Bonus (полный доступ) + просмотр сотрудников." },
+  { role: "comptable", label: "Comptable", hint: "Paie и Primes & Bonus (полный доступ) + просмотр сотрудников + весь VOLDIS: « Аренда локалей » и Ajax (полный доступ)." },
   { role: "rh_readonly", label: "Employés + Primes", hint: "Сотрудники (без конфиденциальных данных: зарплата, соцстрахование…), Primes & Bonus, справочник штрафов, оргсхема, телефоны - с редактированием." },
   { role: "commercial", label: "Commercial", hint: "Только раздел Commercial." },
   { role: "commercial_rh", label: "Commercial + Employés", hint: "Commercial и просмотр сотрудников." },

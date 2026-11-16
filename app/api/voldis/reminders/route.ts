@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { mailConfigured, sendMail } from "@/lib/voldis/mail";
 import { monthLabelFr, num, remaining, round2, type VCharge, type VSettings, type VTenant } from "@/lib/voldis/rental";
 
-// Relance de paiement : un e-mail au locataire qui liste ses loyers impayés (rh_admin). Body : { tenantId }.
+// Relance de paiement : un e-mail au locataire qui liste ses loyers impayés (rh_admin + comptable). Body : { tenantId }.
 export async function POST(req: Request) {
-  const check = await requireRole(["rh_admin"]);
+  const check = await requireRole(VOLDIS_LOCATION_ROLES);
   if (!check.ok) return check.response;
   const { supabase } = check.ctx;
   if (!mailConfigured()) {

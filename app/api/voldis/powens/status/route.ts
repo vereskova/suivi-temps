@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { connectionStates, getLink, powensConfigured, serviceDb } from "@/lib/voldis/powens";
 
-// État de la synchronisation bancaire VOLDIS (rh_admin) : configurée ? banque liée ? reconnexion nécessaire ?
+// État de la synchronisation bancaire VOLDIS (rh_admin + comptable) : configurée ? banque liée ? reconnexion nécessaire ?
 export async function GET() {
-  const check = await requireRole(["rh_admin"]);
+  const check = await requireRole(VOLDIS_LOCATION_ROLES);
   if (!check.ok) return check.response;
   if (!powensConfigured()) return NextResponse.json({ configured: false, connected: false });
   try {

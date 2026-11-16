@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { renderInvoicePdf } from "@/lib/voldis/invoice-pdf";
 import type { VInvoice, VSettings, VTenant } from "@/lib/voldis/rental";
 
-// Téléchargement du PDF d'une facture / quittance (rh_admin). Régénéré à la volée si le fichier stocké manque.
+// Téléchargement du PDF d'une facture / quittance (rh_admin + comptable). Régénéré à la volée si le fichier stocké manque.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const check = await requireRole(["rh_admin"]);
+  const check = await requireRole(VOLDIS_LOCATION_ROLES);
   if (!check.ok) return check.response;
   const { supabase } = check.ctx;
   const { id } = await params;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { renderInvoicePdf } from "@/lib/voldis/invoice-pdf";
 import {
   buildInvoiceLines,
@@ -23,7 +24,7 @@ const BUCKET = "voldis-documents";
  * Body : { chargeId, kind: "invoice" | "receipt" }.
  */
 export async function POST(req: Request) {
-  const check = await requireRole(["rh_admin"]);
+  const check = await requireRole(VOLDIS_LOCATION_ROLES);
   if (!check.ok) return check.response;
   const { supabase } = check.ctx;
 

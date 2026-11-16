@@ -571,7 +571,8 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   },
 ];
 
-/** 2e société du groupe : VOLDIS (location de locaux). Menu propre, rh_admin uniquement. */
+/** 2e société du groupe : VOLDIS (location de locaux). Menu propre, rh_admin ; le comptable a aussi tout VOLDIS
+ *  (Location + Ajax) dans son propre shell, voir comptableVoldisNavItems. */
 const VOLDIS_NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Location",
@@ -651,8 +652,8 @@ const VIEW_ACCESS_ROLES: Record<string, string[]> = {
   files: ["rh_admin", "rh", "rh_readonly", "commercial", "commercial_rh"],
   commercial: ["rh_admin", "commercial", "commercial_rh"],
   autoparc: ["rh_admin"],
-  voldis_location: ["rh_admin"],
-  voldis_ajax: ["rh_admin"],
+  voldis_location: ["rh_admin", "comptable"],
+  voldis_ajax: ["rh_admin", "comptable"],
 };
 
 /** rh_admin-only indicator of which roles can see the currently open page -
@@ -801,9 +802,10 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
     setDossierTargetEmployeeId(employeeId);
     setView("dossier");
   }
-  const [comptableView, setComptableView] = usePersistedView<"paie" | "paie_extras" | "employees" | "phones">(
+  const [comptableView, setComptableView] = usePersistedView<"paie" | "paie_extras" | "employees" | "phones" | "voldis_location" | "voldis_ajax">(
     "admin_comptable_view",
-    "paie"
+    "paie",
+    new Set(["paie", "paie_extras", "employees", "phones", "voldis_location", "voldis_ajax"])
   );
   const [commercialRhView, setCommercialRhView] = usePersistedView<"commercial" | "employees" | "organigramme" | "schema" | "phones">(
     "admin_commercial_rh_view",
@@ -1134,6 +1136,34 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
         />
       </SidebarSection>
     );
+    // VOLDIS (Location de locaux + Ajax) : accès complet du comptable (demande de l'utilisatrice 16/11/2026 :
+    // « сюда полностью нужен доступ компаблю », puis « ко всему Волдис », Ajax compris).
+    const comptableVoldisNavItems = (
+      <SidebarSection title="VOLDIS">
+        <SidebarLink
+          icon={Building2}
+          active={comptableView === "voldis_location"}
+          tab="voldis_location"
+          label="Location de locaux"
+          labelRu="Аренда локалей"
+          onClick={() => {
+            setComptableView("voldis_location");
+            setMobileNavOpen(false);
+          }}
+        />
+        <SidebarLink
+          icon={AjaxIcon as unknown as LucideIcon}
+          active={comptableView === "voldis_ajax"}
+          tab="voldis_ajax"
+          label="Ajax"
+          labelRu="Ajax - доступы"
+          onClick={() => {
+            setComptableView("voldis_ajax");
+            setMobileNavOpen(false);
+          }}
+        />
+      </SidebarSection>
+    );
     return (
       <main className="min-h-screen p-4 md:p-8">
         <div className="mx-auto max-w-none">
@@ -1152,7 +1182,13 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
               </div>
               <div className="min-w-0">
                 <p className="text-lg font-extrabold tracking-tight text-stone-900 leading-tight truncate">VLADIS</p>
-                <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">Comptabilité</p>
+                <p className="text-xs font-semibold text-stone-400 leading-tight hidden sm:block truncate">
+                  {comptableView === "voldis_location"
+                    ? "VOLDIS · Location de locaux / Аренда локалей"
+                    : comptableView === "voldis_ajax"
+                      ? "VOLDIS · Ajax / Доступы"
+                      : "Comptabilité"}
+                </p>
               </div>
             </div>
             <button
@@ -1184,17 +1220,25 @@ function AdminPageInner({ setAccessTabs }: { setAccessTabs: (t: Record<string, s
                   </button>
                 </div>
                 {comptableNavItems}
+                {comptableVoldisNavItems}
               </nav>
             </div>
           )}
 
           <div className="flex gap-6 items-start">
             <aside className="hidden lg:block w-60 shrink-0">
-              <nav className="card p-3 space-y-4 sticky top-4">{comptableNavItems}</nav>
+              <nav className="card p-3 space-y-4 sticky top-4">
+                {comptableNavItems}
+                {comptableVoldisNavItems}
+              </nav>
             </aside>
             <div className="flex-1 min-w-0">
               <AccessGate tab={comptableView === "employees" ? "effectif" : comptableView}>
-              {comptableView === "paie" ? (
+              {comptableView === "voldis_location" ? (
+                <LocationView supabase={supabase} />
+              ) : comptableView === "voldis_ajax" ? (
+                <AjaxView supabase={supabase} />
+              ) : comptableView === "paie" ? (
                 <PaieView supabase={supabase} />
               ) : comptableView === "paie_extras" ? (
                 <PayrollExtrasView supabase={supabase} canPublish />

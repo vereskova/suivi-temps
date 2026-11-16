@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
+import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { getLink, powensConfigured, serviceDb, syncTransactions } from "@/lib/voldis/powens";
 
-// Synchronisation à la demande (bouton « Synchroniser » de l'onglet Banque), rh_admin.
+// Synchronisation à la demande (bouton « Synchroniser » de l'onglet Banque), rh_admin + comptable.
 export async function POST() {
-  const check = await requireRole(["rh_admin"]);
+  const check = await requireRole(VOLDIS_LOCATION_ROLES);
   if (!check.ok) return check.response;
   if (!powensConfigured()) return NextResponse.json({ error: "Powens n'est pas configuré sur le serveur." }, { status: 400 });
   try {
