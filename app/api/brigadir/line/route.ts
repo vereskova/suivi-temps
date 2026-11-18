@@ -43,7 +43,7 @@ export async function PATCH(request: NextRequest) {
   let reportSaved = false;
   if ("actual_end" in patch && patch.actual_end) {
     try {
-      const { data: all } = await acc.sb.from("work_object_lines").select("actual_end").eq("object_id", line.object_id as string);
+      const { data: all } = await acc.sb.from("work_object_lines").select("actual_end").eq("object_id", line.object_id as string).eq("is_info", false);
       if (isReportComplete((all ?? []) as { actual_end: string | null }[])) {
         const saved = await saveObjectReport(acc.sb, line.object_id as string, acc.email);
         reportSaved = saved.ok;

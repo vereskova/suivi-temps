@@ -110,6 +110,7 @@ function InvoiceDoc({ cfg, tenant, invoice }: { cfg: VSettings; tenant: VTenant 
   const period = invoice.period_start && invoice.period_end ? `du ${date(invoice.period_start)} au ${date(invoice.period_end)}` : date(invoice.issue_date);
   const C = { label: "34%", q: "6%", pu: "14%", tva: "9%", ht: "13%", mtva: "12%", ttc: "12%" };
   const blanks = Math.max(0, 5 - invoice.lines.length);
+  const isDeposit = invoice.lines.length > 0 && invoice.lines.every((l: InvoiceLine) => /^dépôt de garantie/i.test(l.label));
   return (
     <Document title={`Facture ${invoice.number}`}>
       <Page size="A4" style={[s.page, { paddingTop: 50, paddingHorizontal: 44, fontSize: 8.5 }]}>
@@ -151,7 +152,7 @@ function InvoiceDoc({ cfg, tenant, invoice }: { cfg: VSettings; tenant: VTenant 
             <Text style={lab}>PÉRIODE / DATE DE LA PRESTATION</Text>
             <Text style={{ marginTop: 4, fontSize: 9 }}>{period}</Text>
             <Text style={[lab, { marginTop: 8 }]}>NATURE DE L&apos;OPÉRATION</Text>
-            <Text style={{ marginTop: 4, fontSize: 9 }}>Prestation de services (location de locaux)</Text>
+            <Text style={{ marginTop: 4, fontSize: 9 }}>{isDeposit ? "Dépôt de garantie (bail de location de locaux)" : "Prestation de services (location de locaux)"}</Text>
           </View>
         </View>
 

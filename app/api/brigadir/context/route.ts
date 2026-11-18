@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const ids = (objects ?? []).map((o) => o.id as string);
   const counts = new Map<string, { total: number; done: number }>();
   if (ids.length) {
-    const { data: lines } = await acc.sb.from("work_object_lines").select("object_id, actual_end").in("object_id", ids).limit(20000);
+    const { data: lines } = await acc.sb.from("work_object_lines").select("object_id, actual_end, is_info").eq("is_info", false).in("object_id", ids).limit(20000);
     for (const l of lines ?? []) {
       const c = counts.get(l.object_id as string) ?? { total: 0, done: 0 };
       c.total++;

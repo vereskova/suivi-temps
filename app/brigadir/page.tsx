@@ -24,6 +24,7 @@ type Line = {
   measure: number | null;
   section: string | null;
   parallel: boolean;
+  is_info?: boolean;
   days: number;
   planned_start: string | null;
   planned_end: string | null;
@@ -293,18 +294,20 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
   }
 
   const view = useMemo(() => {
-    const lines = data?.lines ?? [];
+    const all = data?.lines ?? [];
+    const lines = all.filter((l) => !l.is_info);
     return {
       going: lines.filter((l) => l.actual_start && !l.actual_end),
       next: lines.filter((l) => !l.actual_start),
       done: lines.filter((l) => l.actual_end),
+      info: all.filter((l) => l.is_info),
     };
   }, [data]);
 
   if (error && !data) return <p className="rounded-2xl bg-error-50 p-4 text-error-700">{error}</p>;
   if (!data) return <p className="text-stone-500">Загрузка…</p>;
 
-  const total = data.lines.length;
+  const total = data.lines.filter((l) => !l.is_info).length;
   const nextShown = showAllNext ? view.next : view.next.slice(0, 3);
 
   return (
@@ -365,6 +368,19 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
                   Показать ещё {view.next.length - nextShown.length}
                 </button>
               )}
+            </section>
+          )}
+
+          {view.info.length > 0 && (
+            <section className="space-y-2.5">
+              <h3 className="px-1 text-[15px] font-bold uppercase tracking-wide text-stone-500">Техника и материалы для объекта</h3>
+              {view.info.map((l) => (
+                <div key={l.id} className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
+                  <p className="text-[16px] font-bold text-stone-900">{l.label}</p>
+                  <p className="mt-0.5 text-[15px] text-stone-600">{`${String(l.qty).replace(".", ",")} ${l.unit ?? ""}`.trim()}</p>
+                  {l.notes.length > 0 && <p className="mt-1 whitespace-pre-line text-[14px] text-stone-500">{l.notes.join("\n")}</p>}
+                </div>
+              ))}
             </section>
           )}
 

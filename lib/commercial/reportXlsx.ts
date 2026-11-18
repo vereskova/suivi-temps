@@ -16,6 +16,7 @@ export type ReportRow = {
   actual_end: string | null;
   delay_reason: string | null;
   notes?: string[];
+  info?: boolean;
 };
 
 const fr = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "");
@@ -89,9 +90,10 @@ export function buildReportWorkbook(obj: { name: string; team: string | null; va
     r++;
   }
 
-  const planEnds = rows.map((x) => x.planned_end).filter((x): x is string => !!x).sort();
-  const actEnds = rows.map((x) => x.actual_end).filter((x): x is string => !!x).sort();
-  const allDone = rows.length > 0 && rows.every((x) => x.actual_end);
+  const workRows = rows.filter((x) => !x.info);
+  const planEnds = workRows.map((x) => x.planned_end).filter((x): x is string => !!x).sort();
+  const actEnds = workRows.map((x) => x.actual_end).filter((x): x is string => !!x).sort();
+  const allDone = workRows.length > 0 && workRows.every((x) => x.actual_end);
   r += 1;
   ws.mergeCells(r, 2, r, 11);
   const total = allDone && planEnds.length && actEnds.length ? workingDaysBetween(planEnds[planEnds.length - 1], actEnds[actEnds.length - 1]) : null;

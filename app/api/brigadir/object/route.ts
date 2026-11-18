@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   const { data: lines } = await acc.sb
     .from("work_object_lines")
-    .select("id, position, section_code, catalog_position_id, label, unit, qty, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs")
+    .select("id, position, section_code, catalog_position_id, label, unit, qty, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs, is_info")
     .eq("object_id", id)
     .order("position");
   const rows = (lines ?? []).map((l) => ({ ...l, qty: Number(l.qty), measure: l.measure == null ? null : Number(l.measure), manual_days: l.manual_days == null ? null : Number(l.manual_days) }));
@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
         measure: l.measure,
         section: l.section_code ? (sectionLabel.get(l.section_code) ?? null) : null,
         parallel: l.parallel,
+        is_info: !!l.is_info,
         days: plan[i].days,
         planned_start: plan[i].start,
         planned_end: plan[i].end,

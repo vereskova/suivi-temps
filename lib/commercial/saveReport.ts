@@ -18,7 +18,7 @@ export async function saveObjectReport(sb: SupabaseClient, objectId: string, by:
   if (!obj) return { ok: false, error: "Объект не найден" };
   const { data: lines } = await sb
     .from("work_object_lines")
-    .select("position, section_code, catalog_position_id, label, unit, qty, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs")
+    .select("position, section_code, catalog_position_id, label, unit, qty, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs, is_info")
     .eq("object_id", objectId)
     .order("position");
   if (!lines || lines.length === 0) return { ok: false, error: "У объекта нет работ - контрандю собирать не из чего" };
@@ -36,7 +36,7 @@ export async function saveObjectReport(sb: SupabaseClient, objectId: string, by:
   const sectionLabel = new Map((sections ?? []).map((s) => [s.code as string, s.label as string]));
 
   const reportRows: ReportRow[] = rows.map((l, i) => ({
-    section: l.section_code ? (sectionLabel.get(l.section_code) ?? null) : null,
+    section: l.is_info ? "Техника и материалы (информация, не работа)" : l.section_code ? (sectionLabel.get(l.section_code) ?? null) : null,
     label: l.label,
     qty: l.qty,
     unit: l.unit,
@@ -47,6 +47,7 @@ export async function saveObjectReport(sb: SupabaseClient, objectId: string, by:
     actual_end: l.actual_end,
     delay_reason: l.delay_reason,
     // подстроки сметы (что именно входит в работу); строки с ценами в файл для бригады не попадают
+    info: !!l.is_info,
     notes: Array.isArray(l.subs)
       ? (l.subs as { label?: string }[])
           .flatMap((x) => (x.label ?? "").split("\n"))
@@ -54,6 +55,8 @@ export async function saveObjectReport(sb: SupabaseClient, objectId: string, by:
           .filter((x) => x && !/(€|\beur\b|\bttc\b|\bht\b|\btva\b|prix|coût|cout)/i.test(x))
       : [],
   }));
+  // техника и прочая информация (не работы) - в конец файла
+  reportRows.sort((a, b) => Number(!!a.info) - Number(!!b.info));
   const wb = buildReportWorkbook({ name: obj.name, team: (team?.name as string | undefined) ?? null, variant: obj.variant, power_kwc: obj.power_kwc == null ? null : Number(obj.power_kwc), start_date: obj.start_date }, reportRows);
   const buf = Buffer.from(await wb.xlsx.writeBuffer());
 

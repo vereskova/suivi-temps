@@ -24,6 +24,7 @@ type Pos = {
   norm_ombriere: string | null;
   norm_basis: "power" | "qty" | "sub_measure";
   qty_source: string;
+  is_info: boolean;
 };
 type Sub = { id: string; position_id: string; position: number; label: string; measure_value: number | null; measure_unit: string | null };
 type CustomLine = { id: string; section_code: string; label: string; unit: string; price: string; qty: string; days: string };
@@ -37,7 +38,7 @@ const VARIANTS = [
   { key: "norm_ombriere", label: "Ombrière" },
 ] as const;
 
-const POS_COLS = "id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis, qty_source";
+const POS_COLS = "id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis, qty_source, is_info";
 const UNIT_SUGGESTIONS = ["U", "M2", "Ml", "Kwc", "pièce", "jour", "semaine", "heure", "forfait", "kg", "m3"];
 /** Старые нормы (досье по клиентам) и вторые/третьи варианты Main-d'œuvre в выбор не попадают. */
 const HIDDEN_NORMS = new Set(["main_doeuvre_standard", "main_doeuvre_ombriere", "pose_bac_acier", "depose_bac_acier", "depose_fibrociment", "demontage_panneau", "mo_lt", "mo_ombriere"]);
@@ -399,6 +400,7 @@ export default function WorkCatalogView({
           parallel: false,
           subs: subsOf.map((x) => ({ label: x.label, measure_unit: x.measure_value != null ? (x.measure_unit ?? "ml") : null })),
           qty_source: p.qty_source,
+          is_info: p.is_info,
           qty_manual: target != null && Math.abs(target - q) > 1e-9,
           measure_manual: p.norm_basis === "sub_measure" && m != null && (objParams.cable_m == null || Math.abs(objParams.cable_m - m) > 1e-9),
         });

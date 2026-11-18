@@ -34,6 +34,7 @@ type Obj = {
 };
 type ObjSub = { label: string; measure_unit: string | null };
 type Line = {
+  is_info: boolean;
   subs: ObjSub[];
   qty_source: string;
   qty_manual: boolean;
@@ -67,6 +68,7 @@ type CatPos = {
   norm_ombriere: string | null;
   norm_basis: "power" | "qty" | "sub_measure";
   qty_source: string;
+  is_info: boolean;
 };
 type CatSub = { position_id: string; position: number; label: string; measure_value: number | null; measure_unit: string | null };
 
@@ -83,7 +85,7 @@ const VARIANTS: { key: Variant; label: string; norm: "norm_standard" | "norm_lt"
   { key: "ombriere", label: "Ombrière", norm: "norm_ombriere" },
 ];
 
-const LINE_COLS = "id, object_id, position, section_code, catalog_position_id, label, unit, qty, price_ht, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs, qty_source, qty_manual, measure_manual";
+const LINE_COLS = "id, object_id, position, section_code, catalog_position_id, label, unit, qty, price_ht, measure, manual_days, parallel, actual_start, actual_end, delay_reason, subs, qty_source, qty_manual, measure_manual, is_info";
 const OBJ_COLS = "id, name, team_id, status, variant, power_kwc, roof_m2, panels_count, cable_m, start_date, finished_at, client, address, notes";
 
 const GHOST = "w-full rounded-md border border-transparent bg-transparent px-2 py-1 outline-none transition hover:border-stone-300 focus:border-primary-500 focus:bg-white";
@@ -414,7 +416,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail, readOnly =
         supabase.from("teams").select("id, name").order("name"),
         supabase.from("work_objects").select(OBJ_COLS).order("name"),
         supabase.from("work_sections").select("code, label, position").order("position"),
-        supabase.from("work_positions").select("id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis, qty_source").eq("active", true).order("position"),
+        supabase.from("work_positions").select("id, section_code, position, label, unit, price_ht, norm_standard, norm_lt, norm_ombriere, norm_basis, qty_source, is_info").eq("active", true).order("position"),
         supabase.from("work_subpositions").select("position_id, position, label, measure_value, measure_unit").order("position"),
       ]);
       if (!alive) return;
@@ -597,6 +599,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail, readOnly =
       qty_source: cp.qty_source,
       qty_manual: false,
       measure_manual: false,
+      is_info: cp.is_info,
     };
   }
   function addFromCatalog(cp: CatPos) {
@@ -636,6 +639,7 @@ export default function WorkObjectsView({ supabase, norms, userEmail, readOnly =
       qty_source: "manual",
       qty_manual: false,
       measure_manual: false,
+      is_info: false,
     });
     setCustom({ label: "", unit: "jour", qty: "1", days: "" });
   }
