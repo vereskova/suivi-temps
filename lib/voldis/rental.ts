@@ -287,13 +287,15 @@ export const totalsOf = (lines: InvoiceLine[]) => ({
 });
 
 /** Prochain numéro « F-2026-0007 » d'après les numéros existants de l'année. */
-export function nextInvoiceNumber(prefix: string, year: number, existing: string[]): string {
-  const re = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+/** Номер счёта с привязкой к помещению: F-B1-2026-0001 (префикс - лот - год - порядковый номер внутри лота и года). Без лота - старый формат F-2026-0001. */
+export function nextInvoiceNumber(prefix: string, year: number, existing: string[], lot?: string | null): string {
+  const base = lot ? `${prefix}-${lot.replace(/\s+/g, "")}-${year}` : `${prefix}-${year}`;
+  const re = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d+)$`);
   const max = existing.reduce((m, n) => {
     const hit = n.match(re);
     return hit ? Math.max(m, Number(hit[1])) : m;
   }, 0);
-  return `${prefix}-${year}-${String(max + 1).padStart(4, "0")}`;
+  return `${base}-${String(max + 1).padStart(4, "0")}`;
 }
 
 

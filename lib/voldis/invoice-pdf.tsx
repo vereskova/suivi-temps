@@ -93,108 +93,127 @@ function Footer({ cfg }: { cfg: VSettings }) {
   return <Text style={s.footer} fixed>{parts.join(" · ")}</Text>;
 }
 
+const NAVY = "#1e3a64";
+const GREY = "#8a8f98";
+/** NIC de l'établissement VOLDIS (SIRET 944 722 735 00015, voir les baux) : la fiche société ne stocke que le SIREN. */
+const VOLDIS_NIC = "00015";
+const spaced = (v: string | null | undefined, group: number) => (v ?? "").replace(/\s+/g, "").replace(new RegExp(`(.{${group}})`, "g"), "$1 ").trim();
+const sirenFmt = (v: string | null | undefined) => (v ?? "").replace(/\s+/g, "").replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3");
+const pct = (n: number) => `${num(n).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
+const lab = { fontSize: 7, color: GREY, letterSpacing: 0.6, fontWeight: 700 } as const;
+
 function InvoiceDoc({ cfg, tenant, invoice }: { cfg: VSettings; tenant: VTenant | null; invoice: VInvoice }) {
-  const vatLines = invoice.lines.filter((l: InvoiceLine) => num(l.vat) > 0);
-  const vatRate = vatLines.length ? vatLines[0].vat_rate : 0;
-  const periodText = invoice.period_start && invoice.period_end ? `Période : du ${date(invoice.period_start)} au ${date(invoice.period_end)}` : "";
-  const legal = [cfg.legal_form ? `${cfg.company_name} ${cfg.legal_form}` : cfg.company_name, cfg.siren ? `SIREN ${cfg.siren}` : null, cfg.vat_number ? `N°TVA ${cfg.vat_number}` : null].filter(Boolean).join(" - ");
-  const COLS = { n: "7%", label: "41%", q: "11%", u: "11%", pu: "15%", tot: "15%" };
+  const addrParts = (cfg.address ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const siret = cfg.siren ? `${sirenFmt(cfg.siren)} ${VOLDIS_NIC}` : "";
+  const dueText = !invoice.due_date || invoice.due_date === invoice.issue_date ? "À réception" : date(invoice.due_date);
+  const period = invoice.period_start && invoice.period_end ? `du ${date(invoice.period_start)} au ${date(invoice.period_end)}` : date(invoice.issue_date);
+  const C = { label: "34%", q: "6%", pu: "14%", tva: "9%", ht: "13%", mtva: "12%", ttc: "12%" };
+  const blanks = Math.max(0, 5 - invoice.lines.length);
   return (
     <Document title={`Facture ${invoice.number}`}>
-      <Page size="A4" style={s.page}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 14 }}>
-          <View>
-            <Text style={s.fBrand}>{cfg.company_name}</Text>
-            {cfg.legal_form ? <Text style={[s.muted, { marginTop: 2 }]}>{cfg.legal_form}</Text> : null}
-          </View>
-          <Text style={s.fTitle}>FACTURE</Text>
-        </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <View style={{ width: "46%", fontSize: 11, lineHeight: 1.4 }}>
-            {(cfg.address ?? "").split(",").map((part, i) => (
-              <Text key={i}>{part.trim()}</Text>
+      <Page size="A4" style={[s.page, { paddingTop: 50, paddingHorizontal: 44, fontSize: 8.5 }]}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <View style={{ width: "55%" }}>
+            <Text style={{ fontSize: 20, lineHeight: 1.2, fontWeight: 700, color: NAVY, marginBottom: 8 }}>{cfg.company_name}</Text>
+            {cfg.legal_form ? <Text style={{ color: GREY, fontSize: 8.5, lineHeight: 1.45 }}>{cfg.legal_form} au capital de 1 000 €</Text> : null}
+            {addrParts.map((x, i) => (
+              <Text key={i} style={{ color: GREY, fontSize: 8.5, lineHeight: 1.45 }}>{x}</Text>
             ))}
-            <Text>France</Text>
-            {cfg.phone ? <Text>{cfg.phone}</Text> : null}
-            {cfg.email ? <Text>{cfg.email}</Text> : null}
+            {siret ? <Text style={{ color: GREY, fontSize: 8.5, lineHeight: 1.45 }}>SIRET {siret} · RCS Toulouse</Text> : null}
+            <Text style={{ color: GREY, fontSize: 8.5, lineHeight: 1.45 }}>N° TVA intracom. : {cfg.vat_number ?? "Pas de n° TVA valide"}</Text>
           </View>
+          <View style={{ width: "42%" }}>
+            <Text style={{ fontSize: 22, lineHeight: 1.2, fontWeight: 700, color: NAVY, textAlign: "right", marginBottom: 8 }}>FACTURE</Text>
+            {[
+              ["N°", invoice.number],
+              ["Date d\u2019émission", date(invoice.issue_date)],
+              ["Date d\u2019échéance", dueText],
+            ].map(([k, v]) => (
+              <View key={k} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 3 }}>
+                <Text style={{ color: GREY, width: "55%", textAlign: "right", fontSize: 8.5 }}>{k}</Text>
+                <Text style={{ fontWeight: 700, width: "45%", textAlign: "right", fontSize: 8.5 }}>{v}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 34, marginBottom: 26 }}>
           <View style={{ width: "50%" }}>
-            <View style={s.fBox}>
-              <Text style={{ fontWeight: 700, fontSize: 11 }}>{tenant?.name ?? ""}</Text>
-              {tenant?.address ? <Text style={{ fontSize: 11 }}>{tenant.address}</Text> : null}
-            </View>
-            {tenant?.siren ? <Text style={{ textAlign: "right", marginTop: 8, fontSize: 11 }}>SIREN {tenant.siren}</Text> : null}
+            <Text style={lab}>DESTINATAIRE</Text>
+            <Text style={{ fontSize: 10, fontWeight: 700, marginTop: 4 }}>{tenant?.name ?? ""}</Text>
+            {(tenant?.address ?? "").split(",").map((x, i) => (
+              <Text key={i} style={{ color: GREY, fontSize: 8.5, lineHeight: 1.45 }}>{x.trim()}</Text>
+            ))}
+            {tenant?.siren ? <Text style={{ color: GREY, fontSize: 8.5, lineHeight: 1.45 }}>SIREN {sirenFmt(tenant.siren)}</Text> : null}
+          </View>
+          <View style={{ width: "46%", alignItems: "flex-end" }}>
+            <Text style={lab}>PÉRIODE / DATE DE LA PRESTATION</Text>
+            <Text style={{ marginTop: 4, fontSize: 9 }}>{period}</Text>
+            <Text style={[lab, { marginTop: 8 }]}>NATURE DE L&apos;OPÉRATION</Text>
+            <Text style={{ marginTop: 4, fontSize: 9 }}>Prestation de services (location de locaux)</Text>
           </View>
         </View>
 
-        <View style={{ marginTop: 18, marginBottom: 14, fontSize: 11 }}>
-          <View style={{ flexDirection: "row" }}>
-            <Text style={{ width: 110 }}>N° Facture :</Text>
-            <Text>{invoice.number}</Text>
-          </View>
-          <View style={{ flexDirection: "row" }}>
-            <Text style={{ width: 110 }}>Date d&apos;écriture :</Text>
-            <Text>{date(invoice.issue_date)}</Text>
-          </View>
-        </View>
-        {periodText ? <Text style={{ marginBottom: 12, fontSize: 11 }}>{periodText}</Text> : null}
-
-        <View style={s.fTh}>
-          <Text style={[s.fCell, { width: COLS.n }]}>N°</Text>
-          <Text style={[s.fCell, { width: COLS.label, textAlign: "center" }]}>Désignation</Text>
-          <Text style={[s.fCell, { width: COLS.q, textAlign: "center" }]}>Quantité</Text>
-          <Text style={[s.fCell, { width: COLS.u, textAlign: "center" }]}>Unité</Text>
-          <Text style={[s.fCell, { width: COLS.pu, textAlign: "right" }]}>P.U HT</Text>
-          <Text style={[s.fCell, { width: COLS.tot, textAlign: "right" }]}>Total HT</Text>
+        <View style={{ flexDirection: "row", backgroundColor: NAVY, color: "#ffffff", fontWeight: 700, paddingVertical: 6 }}>
+          <Text style={{ fontSize: 8.5, width: C.label, paddingLeft: 6 }}>Désignation</Text>
+          <Text style={{ fontSize: 8.5, width: C.q, textAlign: "right" }}>Qté</Text>
+          <Text style={{ fontSize: 8.5, width: C.pu, textAlign: "right" }}>P.U. HT</Text>
+          <Text style={{ fontSize: 8.5, width: C.tva, textAlign: "right" }}>TVA</Text>
+          <Text style={{ fontSize: 8.5, width: C.ht, textAlign: "right" }}>Montant HT</Text>
+          <Text style={{ fontSize: 8.5, width: C.mtva, textAlign: "right" }}>Montant TVA</Text>
+          <Text style={{ fontSize: 8.5, width: C.ttc, paddingRight: 6, textAlign: "right" }}>Total TTC</Text>
         </View>
         {invoice.lines.map((l: InvoiceLine, i: number) => (
-          <View key={i} style={s.fTr} wrap={false}>
-            <Text style={[s.fCell, { width: COLS.n }]}>1.{i + 1}</Text>
-            <Text style={[s.fCell, { width: COLS.label }]}>{l.label}</Text>
-            <Text style={[s.fCell, { width: COLS.q, textAlign: "right" }]}>1,00</Text>
-            <Text style={[s.fCell, { width: COLS.u }]}>mois</Text>
-            <Text style={[s.fCell, { width: COLS.pu, textAlign: "right" }]}>{eur(l.amount_ht)}</Text>
-            <Text style={[s.fCell, { width: COLS.tot, textAlign: "right" }]}>{eur(l.amount_ht)}</Text>
+          <View key={i} style={{ flexDirection: "row", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#e6e8ec" }} wrap={false}>
+            <Text style={{ fontSize: 8.5, width: C.label, paddingLeft: 6 }}>{l.label}</Text>
+            <Text style={{ fontSize: 8.5, width: C.q, textAlign: "right" }}>1</Text>
+            <Text style={{ fontSize: 8.5, width: C.pu, textAlign: "right" }}>{eur(l.amount_ht)}</Text>
+            <Text style={{ fontSize: 8.5, width: C.tva, textAlign: "right" }}>{pct(l.vat_rate)}</Text>
+            <Text style={{ fontSize: 8.5, width: C.ht, textAlign: "right" }}>{eur(l.amount_ht)}</Text>
+            <Text style={{ fontSize: 8.5, width: C.mtva, textAlign: "right" }}>{eur(l.vat)}</Text>
+            <Text style={{ fontSize: 8.5, width: C.ttc, paddingRight: 6, textAlign: "right" }}>{eur(l.amount_ttc)}</Text>
           </View>
         ))}
-        <Text style={{ textAlign: "right", paddingVertical: 6, paddingHorizontal: 8, fontSize: 10.5 }}>Sous-total HT : {eur(invoice.total_ht)}</Text>
+        {Array.from({ length: blanks }).map((_, i) => (
+          <View key={`b${i}`} style={{ height: 20, borderBottomWidth: 1, borderBottomColor: "#e6e8ec" }} />
+        ))}
 
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginTop: 4 }}>
-          <View style={s.fRib}>
-            <Text style={[s.muted, { textAlign: "center", marginBottom: 4 }]}>RIB {cfg.company_name}</Text>
-            {cfg.iban ? <Text style={[s.muted, { fontSize: 9 }]}>IBAN : {cfg.iban}</Text> : null}
-            {cfg.bic ? <Text style={[s.muted, { fontSize: 9 }]}>BIC/SWIFT : {cfg.bic}</Text> : null}
+        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 22 }} wrap={false}>
+          <View style={{ width: "55%" }}>
+            <Text style={lab}>RÈGLEMENT</Text>
+            <Text style={{ marginTop: 5, fontSize: 9 }}>{cfg.payment_terms}</Text>
+            {invoice.notes ? <Text style={{ marginTop: 3, fontSize: 9 }}>{invoice.notes}</Text> : null}
+            {cfg.iban ? <Text style={{ marginTop: 6, fontWeight: 700, fontSize: 9 }}>IBAN : {spaced(cfg.iban, 4)}</Text> : null}
+            {cfg.bic ? <Text style={{ color: GREY }}>BIC : {cfg.bic}</Text> : null}
+            <Text style={{ color: GREY, marginTop: 3 }}>Titulaire du compte : {cfg.company_name}</Text>
           </View>
-          <View style={{ width: "48%" }}>
-            <View style={s.fTot}>
-              <Text style={{ fontWeight: 700 }}>Total € HT</Text>
-              <Text>{eur(invoice.total_ht)}</Text>
-            </View>
-            {num(invoice.vat_amount) > 0 ? (
-              <View style={s.fTot}>
-                <Text>TVA {vatRate} %</Text>
-                <Text>{eur(invoice.vat_amount)}</Text>
+          <View style={{ width: "40%" }}>
+            {[
+              ["Total HT", eur(invoice.total_ht)],
+              ["Total TVA", eur(invoice.vat_amount)],
+              ["Total TTC", eur(invoice.total_ttc)],
+            ].map(([k, v]) => (
+              <View key={k} style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                <Text style={{ color: GREY, width: "55%", textAlign: "right", fontSize: 8.5 }}>{k}</Text>
+                <Text style={{ width: "45%", textAlign: "right", fontSize: 8.5 }}>{v}</Text>
               </View>
-            ) : null}
-            <View style={s.fTotBlue}>
-              <Text>Total TTC</Text>
-              <Text>{eur(invoice.total_ttc)}</Text>
+            ))}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", backgroundColor: NAVY, color: "#ffffff", fontWeight: 700, paddingVertical: 7, paddingHorizontal: 10, marginTop: 8 }}>
+              <Text>NET À PAYER</Text>
+              <Text style={{ fontSize: 10 }}>{eur(invoice.total_ttc)}</Text>
             </View>
           </View>
         </View>
 
-        <View style={{ marginTop: 26, alignItems: "center" }}>
-          {invoice.notes ? <Text style={{ fontSize: 11, marginBottom: 6 }}>{invoice.notes}</Text> : null}
-          <Text style={{ fontSize: 11 }}>{cfg.payment_terms}</Text>
-        </View>
-        <Text style={{ marginTop: 22, fontSize: 8.5, color: MUTED, lineHeight: 1.4 }}>{cfg.late_penalty}</Text>
+        <Text style={{ marginTop: 14, fontSize: 7, color: GREY, lineHeight: 1.5 }}>
+          {cfg.late_penalty.replace(/\.\s*$/, "")} (art. L441-10 du Code de commerce). Pas d&apos;escompte pour paiement anticipé.
+        </Text>
 
-        <View style={{ position: "absolute", bottom: 30, left: 52, right: 52, alignItems: "center" }} fixed>
-          <Text style={{ fontSize: 8, color: MUTED, textAlign: "center" }}>{legal}</Text>
-          <Text style={{ fontSize: 8, color: MUTED, textAlign: "center" }}>
-            {cfg.address ?? ""}{cfg.phone ? ` - Tél. ${cfg.phone}` : ""}{cfg.email ? ` - ${cfg.email}` : ""}
+        <View style={{ position: "absolute", bottom: 40, left: 44, right: 44, borderTopWidth: 1, borderTopColor: "#e6e8ec", paddingTop: 6, alignItems: "center" }} fixed>
+          <Text style={{ fontSize: 7, color: GREY }}>
+            {cfg.company_name} · {cfg.legal_form ?? ""} · SIREN {sirenFmt(cfg.siren)} · {cfg.address ?? ""}
           </Text>
-          <Text style={{ fontSize: 7.5, color: MUTED, alignSelf: "flex-end", marginTop: 6 }}>{invoice.number} - 1/1</Text>
         </View>
       </Page>
     </Document>

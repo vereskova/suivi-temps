@@ -67,8 +67,13 @@ export async function POST(req: Request) {
   const prefix = body.kind === "receipt" ? cfg.receipt_prefix : cfg.invoice_prefix;
   const issueDate = body.kind === "receipt" ? (charge.paid_on ?? new Date().toISOString().slice(0, 10)) : new Date().toISOString().slice(0, 10);
   const year = Number(issueDate.slice(0, 4));
-  const { data: numbers } = await supabase.from("voldis_invoices").select("number").like("number", `${prefix}-${year}-%`);
-  const number = nextInvoiceNumber(prefix, year, (numbers ?? []).map((n) => n.number as string));
+  // номер привязан к помещению (лоту): F-B1-2026-0001
+  const propertyId = charge.property_id ?? lease?.property_id ?? null;
+  const { data: prop } = propertyId ? await supabase.from("voldis_properties").select("lot_number").eq("id", propertyId).maybeSingle<{ lot_number: string }>() : { data: null };
+  const lot = prop?.lot_number ?? null;
+  const like = lot ? `${prefix}-${lot.replace(/\s+/g, "")}-${year}-%` : `${prefix}-${year}-%`;
+  const { data: numbers } = await supabase.from("voldis_invoices").select("number").like("number", like);
+  const number = nextInvoiceNumber(prefix, year, (numbers ?? []).map((n) => n.number as string), lot);
 
   const row = {
     number,

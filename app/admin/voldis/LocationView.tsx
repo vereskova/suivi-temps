@@ -4,16 +4,18 @@ import { useState } from "react";
 import type { Supabase } from "./data";
 import { useVoldisData } from "./data";
 import Bank from "./tabs/Bank";
+import Invoices from "./tabs/Invoices";
 import Month from "./tabs/Month";
 import Plan from "./tabs/Plan";
 import Settings from "./tabs/Settings";
 import LotCard from "./LotCard";
 
-type Tab = "plan" | "mois" | "banque" | "reglages";
+type Tab = "plan" | "mois" | "factures" | "banque" | "reglages";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "plan", label: "План" },
   { key: "mois", label: "Месяц" },
+  { key: "factures", label: "Счета" },
   { key: "banque", label: "Банк" },
   { key: "reglages", label: "Настройки" },
 ];
@@ -75,6 +77,7 @@ export default function LocationView({ supabase }: { supabase: Supabase }) {
         <>
           {tab === "plan" && <Plan supabase={supabase} data={data} go={setTab} />}
           {tab === "mois" && <Month supabase={supabase} data={data} onOpenLot={setLotFromMonth} />}
+          {tab === "factures" && <Invoices supabase={supabase} data={data} />}
           {tab === "banque" && <Bank supabase={supabase} data={data} />}
           {tab === "reglages" && <Settings supabase={supabase} data={data} />}
           {lotFromMonth && <LotCard supabase={supabase} data={data} lotId={lotFromMonth} onClose={() => setLotFromMonth(null)} />}
