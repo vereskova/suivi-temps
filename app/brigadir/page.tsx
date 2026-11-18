@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarCheck, Check, ChevronRight, ClipboardList, FolderOpen, LogOut, MoreHorizontal, Play, Undo2, Wallet } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, ChevronRight, ClipboardList, FolderOpen, LogOut, Undo2, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
 import { workingDaysBetween } from "@/lib/commercial-durations/compute";
@@ -46,11 +46,6 @@ const GROUPS: { key: Status; title: string; dot: string }[] = [
 
 const todayIso = () => {
   const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
-const shiftIso = (iso: string, days: number) => {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + days);
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 };
 const dm = (iso: string | null) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : "—");
@@ -242,8 +237,6 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
   const [data, setData] = useState<ObjDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState<"works" | "files">("works");
-  const [showDone, setShowDone] = useState(false);
-  const [showAllNext, setShowAllNext] = useState(false);
   const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
   const [reportNote, setReportNote] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -308,7 +301,6 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
   if (!data) return <p className="text-stone-500">Загрузка…</p>;
 
   const total = data.lines.filter((l) => !l.is_info).length;
-  const nextShown = showAllNext ? view.next : view.next.slice(0, 3);
 
   return (
     <div className="space-y-5">
@@ -348,26 +340,14 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
         <>
           {total === 0 && <p className="rounded-2xl bg-white p-6 text-center text-[16px] text-stone-600">В этом объекте пока нет работ. Офис добавит их.</p>}
 
-          {view.going.length > 0 && (
+          {data.lines.some((l) => !l.is_info) && (
             <section className="space-y-2.5">
-              <h3 className="px-1 text-[15px] font-bold uppercase tracking-wide text-primary-700">Сейчас делаем</h3>
-              {view.going.map((l) => (
-                <WorkCard key={l.id} line={l} onAct={act} />
-              ))}
-            </section>
-          )}
-
-          {view.next.length > 0 && (
-            <section className="space-y-2.5">
-              <h3 className="px-1 text-[15px] font-bold uppercase tracking-wide text-stone-500">{view.going.length > 0 ? "Дальше по плану" : "Что делаем дальше"}</h3>
-              {nextShown.map((l, i) => (
-                <WorkCard key={l.id} line={l} onAct={act} highlight={i === 0 && view.going.length === 0} />
-              ))}
-              {view.next.length > nextShown.length && (
-                <button type="button" onClick={() => setShowAllNext(true)} className="w-full rounded-2xl border border-stone-300 bg-white py-3.5 text-[16px] font-semibold text-stone-700">
-                  Показать ещё {view.next.length - nextShown.length}
-                </button>
-              )}
+              <p className="px-1 text-[14px] text-stone-500">Впишите даты, когда начали и закончили. Кнопка «Сегодня» ставит сегодняшнюю дату.</p>
+              {data.lines
+                .filter((l) => !l.is_info)
+                .map((l) => (
+                  <WorkRow key={l.id} line={l} onAct={act} />
+                ))}
             </section>
           )}
 
@@ -384,17 +364,7 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
             </section>
           )}
 
-          {total > 0 && view.going.length === 0 && view.next.length === 0 && <p className="rounded-2xl bg-success-50 p-6 text-center text-[17px] font-bold text-success-800">Все работы сделаны. Отлично!</p>}
-
-          {view.done.length > 0 && (
-            <section className="space-y-2">
-              <button type="button" onClick={() => setShowDone((v) => !v)} className="flex w-full items-center gap-2 px-1 text-left">
-                <h3 className="text-[15px] font-bold uppercase tracking-wide text-success-700">Сделано · {view.done.length}</h3>
-                <ChevronRight size={18} className={`ml-auto text-stone-400 transition ${showDone ? "rotate-90" : ""}`} />
-              </button>
-              {showDone && view.done.map((l) => <DoneRow key={l.id} line={l} onAct={act} />)}
-            </section>
-          )}
+          {total > 0 && view.done.length === total && <p className="rounded-2xl bg-success-50 p-6 text-center text-[17px] font-bold text-success-800">Все работы сделаны. Отлично!</p>}
         </>
       )}
 
@@ -456,118 +426,59 @@ function ReasonBox({ line: l, title, onAct }: { line: Line; title: string; onAct
   );
 }
 
-function WorkCard({ line: l, onAct, highlight }: { line: Line; onAct: (line: Line, change: Change, text: string) => void; highlight?: boolean }) {
+function WorkRow({ line: l, onAct }: { line: Line; onAct: (line: Line, change: Change, text: string) => void }) {
   const today = todayIso();
-  const [menu, setMenu] = useState(false);
   const going = !!l.actual_start && !l.actual_end;
-  const planToday = !!l.planned_start && !!l.planned_end && l.planned_start <= today && today <= l.planned_end;
+  const done = !!l.actual_end;
   const overdue = going && !!l.planned_end && today > l.planned_end ? workingDaysBetween(l.planned_end, today) : 0;
+  const late = done && l.planned_end && l.actual_end ? workingDaysBetween(l.planned_end, l.actual_end) : 0;
 
-  return (
-    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${going ? "border-primary-300" : highlight ? "border-stone-400" : "border-stone-200"}`}>
-      <p className="text-[19px] font-bold leading-snug text-stone-900">{l.label}</p>
-      <p className="mt-1 text-[15px] text-stone-600">
-        {l.qty.toLocaleString("ru-RU")} {l.unit}
-        {l.measure != null ? ` · ${l.measure} м` : ""}
-        {l.days > 0 ? ` · ${fmtDays(l.days)} ${plural(Math.round(l.days), "день", "дня", "дней")}` : ""}
-        {l.planned_start ? ` · по плану ${dm(l.planned_start)}–${dm(l.planned_end)}` : ""}
-      </p>
-      {planToday && !going && <span className="mt-2 inline-block rounded-full bg-primary-50 px-3 py-1 text-[13px] font-bold text-primary-700">Сегодня по плану</span>}
-      {going && <p className="mt-2 text-[15px] font-semibold text-primary-700">Идёт с {dm(l.actual_start)}</p>}
-      {l.notes.length > 0 && <p className="mt-2 whitespace-pre-line text-[14px] leading-snug text-stone-500">{l.notes.join("\n")}</p>}
-
-      <div className="mt-3 flex gap-2">
-        {going ? (
-          <button type="button" className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-success-600 text-[18px] font-bold text-white active:bg-success-700" onClick={() => onAct(l, { actual_end: today }, `Готово: ${l.label}`)}>
-            <Check size={22} strokeWidth={3} /> Готово
-          </button>
-        ) : (
-          <button type="button" className="flex h-14 flex-1 items-center justify-center gap-2 rounded-2xl bg-primary-600 text-[18px] font-bold text-white active:bg-primary-700" onClick={() => onAct(l, { actual_start: today }, `Начали: ${l.label}`)}>
-            <Play size={20} fill="currentColor" /> Начали
+  const field = (key: "actual_start" | "actual_end", label: string) => (
+    <div className="min-w-0 flex-1">
+      <span className="block text-[13px] font-semibold text-stone-500">{label}</span>
+      <div className="mt-1 flex items-center gap-1.5">
+        <input
+          type="date"
+          max={today}
+          value={l[key] ?? ""}
+          onChange={(e) => onAct(l, { [key]: e.target.value || null }, e.target.value ? `Записано: ${l.label}` : `Дата убрана: ${l.label}`)}
+          className="input h-11 min-w-0 flex-1 px-2 text-[15px]"
+        />
+        {!l[key] && (
+          <button type="button" className="h-11 shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-[14px] font-bold text-primary-700 active:bg-stone-100" onClick={() => onAct(l, { [key]: today }, `${label}: ${l.label}`)}>
+            Сегодня
           </button>
         )}
-        <button type="button" aria-label="Другое" onClick={() => setMenu((v) => !v)} className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-stone-300 text-stone-600 active:bg-stone-100">
-          <MoreHorizontal size={24} />
-        </button>
       </div>
-
-      {menu && (
-        <div className="mt-2.5 space-y-2 rounded-2xl bg-stone-50 p-3">
-          {going ? (
-            <>
-              <button
-                type="button"
-                className="w-full rounded-xl bg-white py-3 text-[16px] font-semibold text-stone-800 shadow-sm"
-                onClick={() => {
-                  onAct(l, { actual_end: shiftIso(today, -1) }, `Готово вчера: ${l.label}`);
-                  setMenu(false);
-                }}
-              >
-                Закончили вчера
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-xl bg-white py-3 text-[16px] font-semibold text-stone-800 shadow-sm"
-                onClick={() => {
-                  onAct(l, { actual_start: null }, `Отменено: ${l.label}`);
-                  setMenu(false);
-                }}
-              >
-                Ещё не начинали
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="w-full rounded-xl bg-white py-3 text-[16px] font-semibold text-stone-800 shadow-sm"
-              onClick={() => {
-                onAct(l, { actual_start: shiftIso(today, -1) }, `Начали вчера: ${l.label}`);
-                setMenu(false);
-              }}
-            >
-              Начали вчера
-            </button>
-          )}
-          <label className="block text-[14px] font-semibold text-stone-600">
-            Другая дата {going ? "окончания" : "начала"}
-            <input
-              type="date"
-              max={today}
-              className="input mt-1 w-full"
-              onChange={(e) => {
-                if (!e.target.value) return;
-                onAct(l, going ? { actual_end: e.target.value } : { actual_start: e.target.value }, `Записано: ${l.label}`);
-                setMenu(false);
-              }}
-            />
-          </label>
-        </div>
-      )}
-
-      {overdue > 0 && <ReasonBox line={l} title={`Просрочено на ${overdue} ${plural(overdue, "день", "дня", "дней")}. Объясните причину`} onAct={onAct} />}
     </div>
   );
-}
 
-function DoneRow({ line: l, onAct }: { line: Line; onAct: (line: Line, change: Change, text: string) => void }) {
-  const late = l.planned_end && l.actual_end ? workingDaysBetween(l.planned_end, l.actual_end) : 0;
   return (
-    <div className="rounded-2xl border border-stone-200 bg-white px-4 py-3">
-      <div className="flex items-center gap-3">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-100 text-success-700">
-          <Check size={17} strokeWidth={3} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[16px] font-semibold leading-snug text-stone-900">{l.label}</span>
-          <span className="block text-[14px] text-stone-500">
-            {dm(l.actual_start)}–{dm(l.actual_end)}
-            {late > 0 ? ` · опоздание ${late} ${plural(late, "день", "дня", "дней")}` : ""}
+    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${done ? "border-success-300" : going ? "border-primary-300" : "border-stone-200"}`}>
+      <div className="flex items-start gap-2.5">
+        {done && (
+          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success-100 text-success-700">
+            <Check size={15} strokeWidth={3} />
           </span>
-        </span>
-        <button type="button" onClick={() => onAct(l, { actual_end: null }, `Вернули в работу: ${l.label}`)} className="shrink-0 rounded-lg px-2 py-1.5 text-[14px] font-semibold text-stone-500 underline">
-          Вернуть
-        </button>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[17px] font-bold leading-snug text-stone-900">{l.label}</p>
+          <p className="mt-0.5 text-[14px] text-stone-600">
+            {l.qty.toLocaleString("ru-RU")} {l.unit}
+            {l.measure != null ? ` · ${l.measure} м` : ""}
+            {l.days > 0 ? ` · ${fmtDays(l.days)} ${plural(Math.round(l.days), "день", "дня", "дней")}` : ""}
+          </p>
+          <p className="mt-0.5 text-[14px] font-semibold text-stone-700">{l.planned_start ? `План: ${dm(l.planned_start)}–${dm(l.planned_end)}` : "План: без дат"}</p>
+        </div>
       </div>
+      {l.notes.length > 0 && <p className="mt-2 whitespace-pre-line text-[13px] leading-snug text-stone-500">{l.notes.join("\n")}</p>}
+      <div className="mt-3 flex gap-2.5">
+        {field("actual_start", "Начали")}
+        {field("actual_end", "Закончили")}
+      </div>
+      {late > 0 && <p className="mt-2 text-[14px] font-semibold text-error-700">{`Опоздание ${late} ${plural(late, "день", "дня", "дней")}`}</p>}
+      {late < 0 && <p className="mt-2 text-[14px] font-semibold text-success-700">{`Раньше плана на ${-late} ${plural(-late, "день", "дня", "дней")}`}</p>}
+      {overdue > 0 && <ReasonBox line={l} title={`Просрочено на ${overdue} ${plural(overdue, "день", "дня", "дней")}. Объясните причину`} onAct={onAct} />}
       {late > 0 && <ReasonBox line={l} title="Закончено с опозданием. Объясните причину" onAct={onAct} />}
     </div>
   );
