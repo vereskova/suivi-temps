@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarCheck, Check, ChevronRight, ClipboardList, FolderOpen, LogOut, Undo2, Wallet } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, ChevronRight, ClipboardList, FolderOpen, LogOut, Wallet } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { LogoMark } from "@/components/Logo";
 import { workingDaysBetween } from "@/lib/commercial-durations/compute";
@@ -35,6 +35,10 @@ type Line = {
 };
 type ObjDetail = { object: { id: string; name: string; status: Status; variant: string; start_date: string | null }; lines: Line[]; error?: string };
 type Change = Partial<Pick<Line, "actual_start" | "actual_end" | "delay_reason">>;
+type Draft = { s: string; e: string; n: string };
+const draftOf = (l: Line): Draft => ({ s: l.actual_start ?? "", e: l.actual_end ?? "", n: l.delay_reason ?? "" });
+/** Даты отличаются от плана: тогда заметка обязательна. */
+const deviates = (l: Line, d: Draft) => (!!l.planned_start && !!d.s && d.s !== l.planned_start) || (!!l.planned_end && !!d.e && d.e !== l.planned_end);
 
 // Простые русские названия вместо французских папок
 const GROUPS: { key: Status; title: string; dot: string }[] = [
@@ -237,15 +241,18 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
   const [data, setData] = useState<ObjDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [section, setSection] = useState<"works" | "files">("works");
-  const [toast, setToast] = useState<{ text: string; undo: () => void } | null>(null);
   const [reportNote, setReportNote] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [draft, setDraft] = useState<Record<string, Draft>>({});
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const [sending, setSending] = useState(false);
+  const [sentNote, setSentNote] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/brigadir/object?id=${id}`, { cache: "no-store" });
     const json = (await res.json()) as ObjDetail;
     if (!res.ok) return setError(json.error ?? "Ошибка загрузки");
     setData(json);
+    setDraft(Object.fromEntries(json.lines.map((l) => [l.id, draftOf(l)])));
   }, [id]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -270,20 +277,40 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
     onChanged();
     return true;
   }
-  /** Записать и показать « Отменить » на 7 секунд - чтобы не бояться ошибочного нажатия. */
-  async function act(line: Line, change: Change, text: string) {
-    const prev: Change = {};
-    for (const k of Object.keys(change) as (keyof Change)[]) prev[k] = line[k];
-    if (!(await save(line.id, change))) return;
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({
-      text,
-      undo: () => {
-        save(line.id, prev);
-        setToast(null);
-      },
-    });
-    toastTimer.current = setTimeout(() => setToast(null), 7000);
+  const dirtyLines = (data?.lines ?? []).filter((l) => {
+    const d = draft[l.id];
+    if (l.is_info || !d) return false;
+    const o = draftOf(l);
+    return d.s !== o.s || d.e !== o.e || d.n.trim() !== o.n.trim();
+  });
+  async function send() {
+    const bad: Record<string, string> = {};
+    for (const l of dirtyLines) {
+      const d = draft[l.id];
+      if (d.s && d.e && d.e < d.s) bad[l.id] = "Окончание раньше начала";
+      else if (deviates(l, d) && !d.n.trim()) bad[l.id] = "Даты отличаются от плана - напишите заметку";
+    }
+    setErrs(bad);
+    const first = Object.keys(bad)[0];
+    if (first) {
+      document.getElementById(`work-${first}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setSending(true);
+    let ok = true;
+    for (const l of dirtyLines) {
+      const d = draft[l.id];
+      if (!(await save(l.id, { actual_start: d.s || null, actual_end: d.e || null, delay_reason: d.n.trim() || null }))) {
+        ok = false;
+        break;
+      }
+    }
+    setSending(false);
+    if (ok) {
+      setSentNote(true);
+      setTimeout(() => setSentNote(false), 6000);
+      await load();
+    }
   }
 
   const view = useMemo(() => {
@@ -342,11 +369,11 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
 
           {data.lines.some((l) => !l.is_info) && (
             <section className="space-y-2.5">
-              <p className="px-1 text-[14px] text-stone-500">Впишите даты, когда начали и закончили. Кнопка «Сегодня» ставит сегодняшнюю дату.</p>
+              <p className="px-1 text-[14px] text-stone-500">Впишите даты, когда начали и закончили, и нажмите «Отправить». Если даты не совпали с планом, напишите заметку: почему.</p>
               {data.lines
                 .filter((l) => !l.is_info)
                 .map((l) => (
-                  <WorkRow key={l.id} line={l} onAct={act} />
+                  <WorkRow key={l.id} line={l} draft={draft[l.id] ?? draftOf(l)} dirty={dirtyLines.some((x) => x.id === l.id)} error={errs[l.id]} onDraft={(patch) => { setDraft((m) => ({ ...m, [l.id]: { ...(m[l.id] ?? draftOf(l)), ...patch } })); setErrs((m) => { const n = { ...m }; delete n[l.id]; return n; }); }} />
                 ))}
             </section>
           )}
@@ -368,84 +395,36 @@ function ObjectScreen({ id, onBack, onChanged }: { id: string; onBack: () => voi
         </>
       )}
 
+      {section === "works" && dirtyLines.length > 0 && (
+        <div className="fixed inset-x-4 bottom-20 z-40 mx-auto max-w-md">
+          <button type="button" disabled={sending} onClick={send} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-primary-600 text-[18px] font-bold text-white shadow-xl active:bg-primary-700 disabled:opacity-60">
+            {sending ? "Отправляю…" : `Отправить (${dirtyLines.length})`}
+          </button>
+        </div>
+      )}
+      {sentNote && <div className="fixed inset-x-4 bottom-20 z-40 mx-auto max-w-md rounded-2xl bg-success-700 px-4 py-3 text-center text-[16px] font-semibold text-white shadow-xl">Отправлено. Офис видит ваши даты.</div>}
       {reportNote && (
-        <div className="fixed inset-x-4 bottom-44 z-40 mx-auto max-w-md rounded-2xl bg-success-700 px-4 py-3 text-[15px] font-semibold text-white shadow-xl">
+        <div className="fixed inset-x-4 bottom-36 z-40 mx-auto max-w-md rounded-2xl bg-success-700 px-4 py-3 text-[15px] font-semibold text-white shadow-xl">
           Все работы выполнены. Контрандю готово и лежит в папке объекта «Compte rendu».
         </div>
       )}
-      {toast && (
-        <div className="fixed inset-x-4 bottom-24 z-40 mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-stone-900 px-4 py-3.5 text-white shadow-xl">
-          <Check size={20} className="shrink-0 text-success-400" />
-          <span className="min-w-0 flex-1 text-[15px] font-semibold">{toast.text}</span>
-          <button type="button" onClick={toast.undo} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white/15 px-3 py-1.5 text-[15px] font-bold">
-            <Undo2 size={16} /> Отменить
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-/** Поле « Объясните причину »: бригадир пишет своими словами, почему задержка. */
-function ReasonBox({ line: l, title, onAct }: { line: Line; title: string; onAct: (line: Line, change: Change, text: string) => void }) {
-  const [text, setText] = useState(l.delay_reason ?? "");
-  const [editing, setEditing] = useState(!l.delay_reason);
-  const saved = (l.delay_reason ?? "").trim();
-  return (
-    <div className="mt-3 rounded-2xl bg-warning-50 p-3.5">
-      <p className="text-[16px] font-bold text-warning-900">{title}</p>
-      {editing ? (
-        <>
-          <textarea
-            className="mt-2 min-h-[5.5rem] w-full rounded-xl border border-warning-300 bg-white px-3 py-2.5 text-[16px] leading-snug outline-none focus:border-warning-600"
-            placeholder="Объясните причину"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <button
-            type="button"
-            disabled={!text.trim() || text.trim() === saved}
-            className="mt-2 h-12 w-full rounded-xl bg-stone-900 text-[16px] font-bold text-white disabled:opacity-40"
-            onClick={() => {
-              onAct(l, { delay_reason: text.trim() }, "Причина записана");
-              setEditing(false);
-            }}
-          >
-            Сохранить
-          </button>
-        </>
-      ) : (
-        <>
-          <p className="mt-2 whitespace-pre-line rounded-xl bg-white px-3 py-2.5 text-[16px] leading-snug text-stone-800">{saved}</p>
-          <button type="button" className="mt-2 text-[15px] font-semibold text-warning-900 underline" onClick={() => setEditing(true)}>
-            Изменить
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-function WorkRow({ line: l, onAct }: { line: Line; onAct: (line: Line, change: Change, text: string) => void }) {
+function WorkRow({ line: l, draft: d, dirty, error, onDraft }: { line: Line; draft: Draft; dirty: boolean; error?: string; onDraft: (patch: Partial<Draft>) => void }) {
   const today = todayIso();
-  const going = !!l.actual_start && !l.actual_end;
-  const done = !!l.actual_end;
-  const overdue = going && !!l.planned_end && today > l.planned_end ? workingDaysBetween(l.planned_end, today) : 0;
-  const late = done && l.planned_end && l.actual_end ? workingDaysBetween(l.planned_end, l.actual_end) : 0;
+  const done = !!l.actual_end && !dirty;
+  const dev = deviates(l, d);
+  const lateDays = d.e && l.planned_end ? workingDaysBetween(l.planned_end, d.e) : 0;
 
-  const field = (key: "actual_start" | "actual_end", label: string) => (
+  const field = (key: "s" | "e", label: string) => (
     <div className="min-w-0 flex-1">
       <span className="block text-[13px] font-semibold text-stone-500">{label}</span>
       <div className="mt-1 flex items-center gap-1.5">
-        <input
-          type="date"
-          max={today}
-          value={l[key] ?? ""}
-          onChange={(e) => onAct(l, { [key]: e.target.value || null }, e.target.value ? `Записано: ${l.label}` : `Дата убрана: ${l.label}`)}
-          className="input h-11 min-w-0 flex-1 px-2 text-[15px]"
-        />
-        {!l[key] && (
-          <button type="button" className="h-11 shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-[14px] font-bold text-primary-700 active:bg-stone-100" onClick={() => onAct(l, { [key]: today }, `${label}: ${l.label}`)}>
+        <input type="date" max={today} value={d[key]} onChange={(e) => onDraft({ [key]: e.target.value })} className="input h-11 min-w-0 flex-1 px-2 text-[15px]" />
+        {!d[key] && (
+          <button type="button" className="h-11 shrink-0 rounded-xl border border-stone-300 bg-white px-3 text-[14px] font-bold text-primary-700 active:bg-stone-100" onClick={() => onDraft({ [key]: today })}>
             Сегодня
           </button>
         )}
@@ -454,7 +433,7 @@ function WorkRow({ line: l, onAct }: { line: Line; onAct: (line: Line, change: C
   );
 
   return (
-    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${done ? "border-success-300" : going ? "border-primary-300" : "border-stone-200"}`}>
+    <div id={`work-${l.id}`} className={`rounded-2xl border bg-white p-4 shadow-sm ${error ? "border-error-400" : dirty ? "border-warning-400" : done ? "border-success-300" : "border-stone-200"}`}>
       <div className="flex items-start gap-2.5">
         {done && (
           <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-success-100 text-success-700">
@@ -470,16 +449,27 @@ function WorkRow({ line: l, onAct }: { line: Line; onAct: (line: Line, change: C
           </p>
           <p className="mt-0.5 text-[14px] font-semibold text-stone-700">{l.planned_start ? `План: ${dm(l.planned_start)}–${dm(l.planned_end)}` : "План: без дат"}</p>
         </div>
+        {dirty && <span className="shrink-0 rounded-full bg-warning-100 px-2.5 py-1 text-[12px] font-bold text-warning-800">не отправлено</span>}
       </div>
       {l.notes.length > 0 && <p className="mt-2 whitespace-pre-line text-[13px] leading-snug text-stone-500">{l.notes.join("\n")}</p>}
       <div className="mt-3 flex gap-2.5">
-        {field("actual_start", "Начали")}
-        {field("actual_end", "Закончили")}
+        {field("s", "Начали")}
+        {field("e", "Закончили")}
       </div>
-      {late > 0 && <p className="mt-2 text-[14px] font-semibold text-error-700">{`Опоздание ${late} ${plural(late, "день", "дня", "дней")}`}</p>}
-      {late < 0 && <p className="mt-2 text-[14px] font-semibold text-success-700">{`Раньше плана на ${-late} ${plural(-late, "день", "дня", "дней")}`}</p>}
-      {overdue > 0 && <ReasonBox line={l} title={`Просрочено на ${overdue} ${plural(overdue, "день", "дня", "дней")}. Объясните причину`} onAct={onAct} />}
-      {late > 0 && <ReasonBox line={l} title="Закончено с опозданием. Объясните причину" onAct={onAct} />}
+      {lateDays > 0 && <p className="mt-2 text-[14px] font-semibold text-error-700">{`Опоздание ${lateDays} ${plural(lateDays, "день", "дня", "дней")}`}</p>}
+      {lateDays < 0 && <p className="mt-2 text-[14px] font-semibold text-success-700">{`Раньше плана на ${-lateDays} ${plural(-lateDays, "день", "дня", "дней")}`}</p>}
+      <label className="mt-3 block">
+        <span className={`block text-[13px] font-semibold ${dev ? "text-warning-900" : "text-stone-500"}`}>{dev ? "Заметка: почему даты не по плану (обязательно)" : "Заметка (если нужно)"}</span>
+        <textarea
+          rows={2}
+          value={d.n}
+          maxLength={300}
+          onChange={(e) => onDraft({ n: e.target.value })}
+          placeholder={dev ? "Объясните причину" : "Например: ждали материал"}
+          className={`mt-1 w-full rounded-xl border bg-white px-3 py-2.5 text-[16px] leading-snug outline-none focus:border-primary-500 ${dev && !d.n.trim() ? "border-warning-400" : "border-stone-300"}`}
+        />
+      </label>
+      {error && <p className="mt-2 text-[14px] font-semibold text-error-700">{error}</p>}
     </div>
   );
 }
