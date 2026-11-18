@@ -61,6 +61,8 @@ export default function Home() {
   const [substituteDraft, setSubstituteDraft] = useState("");
   // Встроено в кабинет бригадира (/brigadir): ?embed=1 прячет служебную ссылку, ?team=<id> выбирает бригаду.
   const [embedded, setEmbedded] = useState(false);
+  // В кабинете бригадира бригада задана заранее: выбор не нужен, показываем только её название.
+  const [teamLocked, setTeamLocked] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -101,7 +103,10 @@ export default function Home() {
       const q = new URLSearchParams(window.location.search);
       if (q.get("embed") === "1") setEmbedded(true);
       const wanted = q.get("team");
-      if (wanted && (teamRows ?? []).some((t) => t.id === wanted)) changeTeam(wanted);
+      if (wanted && (teamRows ?? []).some((t) => t.id === wanted)) {
+        changeTeam(wanted);
+        if (q.get("embed") === "1") setTeamLocked(true);
+      }
     }
 
     init();
@@ -272,21 +277,27 @@ export default function Home() {
             <span className="block text-xs font-medium text-stone-400">Бригада</span>
           </label>
 
-          <select
-            className="input mt-2"
-            value={selectedTeamId}
-            onChange={(e) => changeTeam(e.target.value)}
-          >
-            <option value="" disabled>
-              Sélectionner une équipe / Выберите бригаду
-            </option>
-
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+          {teamLocked ? (
+            <div className="input mt-2 flex items-center bg-stone-50 font-semibold text-stone-800">
+              {teams.find((t) => t.id === selectedTeamId)?.name ?? ""}
+            </div>
+          ) : (
+            <select
+              className="input mt-2"
+              value={selectedTeamId}
+              onChange={(e) => changeTeam(e.target.value)}
+            >
+              <option value="" disabled>
+                Sélectionner une équipe / Выберите бригаду
               </option>
-            ))}
-          </select>
+
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="mt-4">
