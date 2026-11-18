@@ -155,7 +155,7 @@ export default function BrigadirPage() {
             <ObjectList objects={ctx.objects} showFini={showFini} setShowFini={setShowFini} onOpen={setOpenObject} />
           ))}
 
-        {tab === "files" && <FileSystemBrowser api="/api/files/fs" rootLabel="Мои папки" />}
+        {tab === "files" && <FileSystemBrowser key={ctx.team.id} api={ctx.role === "rh_admin" ? `/api/files/fs?as_team=${ctx.team.id}` : "/api/files/fs"} rootLabel="Мои папки" />}
 
         {tab === "pointage" && <iframe key={ctx.team.id} title="Часы" src={`/?embed=1&team=${ctx.team.id}`} className="h-[calc(100dvh-10rem)] min-h-[560px] w-full rounded-2xl border border-stone-200 bg-white" />}
 

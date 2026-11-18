@@ -205,6 +205,8 @@ async function collectDrop(dt: DataTransfer): Promise<{ items: Item[]; dirs: str
 
 export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { api: string; rootLabel?: string }) {
   const [path, setPath] = useState<string[]>([]);
+  /** Адрес API с параметрами запроса: api может уже содержать « ? » (режим проверки: ?as_team=...). */
+  const url = useCallback((query: string) => `${api}${api.includes("?") ? "&" : "?"}${query}`, [api]);
   const [data, setData] = useState<FsListing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [prog, setProg] = useState<Prog | null>(null);
@@ -248,7 +250,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
       }
       const id = ++reqId.current;
       setLoading(true);
-      const res = await fetch(`${api}?path=${encodeURIComponent(key)}`, { cache: "no-store" });
+      const res = await fetch(url(`path=${encodeURIComponent(key)}`), { cache: "no-store" });
       const json = (await res.json().catch(() => ({}))) as FsListing & { error?: string };
       if (id !== reqId.current) return false; // пришёл устаревший ответ (быстрые клики) - игнорируем
       setLoading(false);
@@ -263,7 +265,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
       setError(null);
       return true;
     },
-    [api]
+    [url]
   );
   /** Подгрузить содержимое папки заранее (при наведении), чтобы открытие было мгновенным. */
   const prefetch = useCallback(
@@ -271,7 +273,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
       const key = p.join("/");
       if (cache.current.has(key) || inflight.current.has(key)) return;
       inflight.current.add(key);
-      fetch(`${api}?path=${encodeURIComponent(key)}`, { cache: "no-store" })
+      fetch(url(`path=${encodeURIComponent(key)}`), { cache: "no-store" })
         .then((r) => (r.ok ? (r.json() as Promise<FsListing>) : null))
         .then((j) => {
           if (j) cache.current.set(key, j);
@@ -279,7 +281,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
         .catch(() => {})
         .finally(() => inflight.current.delete(key));
     },
-    [api]
+    [url]
   );
   /** После изменений (создали / удалили / загрузили) кэш сбрасывается. */
   const refresh = async (p: string[]) => {
@@ -406,13 +408,13 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
     const isObject = target.length === 3;
     const msg = isObject ? `Удалить объект «${f.name}» со всеми файлами, сметой и контрандю? Это нельзя отменить.` : `Удалить папку «${f.name}» со всем содержимым? Это нельзя отменить.`;
     if (!window.confirm(msg)) return;
-    const res = await fetch(`${api}?path=${encodeURIComponent(target.join("/"))}`, { method: "DELETE" });
+    const res = await fetch(url(`path=${encodeURIComponent(target.join("/"))}`), { method: "DELETE" });
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Не удалось удалить");
     await refresh(cur);
   }
   async function removeFile(f: FsFile) {
     if (!window.confirm(`Удалить файл «${f.name}»?`)) return;
-    const res = await fetch(`${api}?fileId=${f.id}`, { method: "DELETE" });
+    const res = await fetch(url(`fileId=${f.id}`), { method: "DELETE" });
     if (!res.ok) return setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Не удалось удалить");
     await refresh(cur);
   }
@@ -655,7 +657,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
                 const Icon = iconFor(f);
                 return (
                   <div key={f.id} className="group relative flex flex-col items-center gap-1 rounded-xl p-2 text-center hover:bg-stone-50">
-                    <a href={`${api}?fileId=${f.id}`} className="flex w-full flex-col items-center gap-1" title={f.name}>
+                    <a href={url(`fileId=${f.id}`)} className="flex w-full flex-col items-center gap-1" title={f.name}>
                       <span className="flex h-[58px] w-[72px] items-center justify-center rounded-lg bg-stone-100">
                         <Icon size={32} className="text-stone-500" />
                       </span>
@@ -715,7 +717,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
                   <div key={f.id} className="group flex items-center gap-3 px-3 py-2">
                     <Icon size={22} className="shrink-0 text-stone-500" />
                     <span className="min-w-0 flex-1">
-                      <a href={`${api}?fileId=${f.id}`} className="block truncate text-[15px] font-medium text-stone-900 hover:text-primary-700" title={f.name}>
+                      <a href={url(`fileId=${f.id}`)} className="block truncate text-[15px] font-medium text-stone-900 hover:text-primary-700" title={f.name}>
                         {f.name}
                       </a>
                       <span className="block truncate text-[13px] text-stone-500">
@@ -724,7 +726,7 @@ export default function FileSystemBrowser({ api, rootLabel = "Папки" }: { a
                       </span>
                     </span>
                     <span className="shrink-0 text-sm text-stone-500">{sizeText(f.size_bytes)}</span>
-                    <a href={`${api}?fileId=${f.id}`} className="shrink-0 rounded-lg p-2 text-stone-500 hover:bg-stone-100" title="Скачать">
+                    <a href={url(`fileId=${f.id}`)} className="shrink-0 rounded-lg p-2 text-stone-500 hover:bg-stone-100" title="Скачать">
                       <Download size={17} />
                     </a>
                     {data.canManage && (

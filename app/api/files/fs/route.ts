@@ -34,7 +34,7 @@ type Access = { sb: SupabaseClient; email: string; brigade: boolean; canDelete: 
 
 const teamNum = (name: string) => Number(name.replace(/\D+/g, "")) || 999;
 
-async function getAccess(): Promise<Access | NextResponse> {
+async function getAccess(asTeam: string | null = null): Promise<Access | NextResponse> {
   const sb = serviceClient();
   if (!sb) return bad("Server misconfigured", 500);
   // Проверка роли и список команд идут параллельно (раньше - друг за другом, это заметно тормозило)
@@ -49,6 +49,11 @@ async function getAccess(): Promise<Access | NextResponse> {
     }
     const teams = allTeams.filter((t) => ids.includes(t.id)).map(({ id, name }) => ({ id, name })).sort((x, y) => teamNum(x.name) - teamNum(y.name));
     return { sb, email: check.ctx.email, brigade: true, canDelete: false, teams };
+  }
+  // Режим проверки кабинета бригадира: админ видит только папку выбранной бригады и с теми же ограничениями, что у бригадира
+  if (asTeam && check.ctx.role === "rh_admin") {
+    const only = allTeams.filter((t) => t.id === asTeam).map(({ id, name }) => ({ id, name }));
+    return { sb, email: check.ctx.email, brigade: true, canDelete: false, teams: only };
   }
   const teams = allTeams.filter((t) => t.active).map(({ id, name }) => ({ id, name })).sort((x, y) => teamNum(x.name) - teamNum(y.name));
   return { sb, email: check.ctx.email, brigade: false, canDelete: OFFICE_DELETE.includes(check.ctx.role), teams };
@@ -119,7 +124,7 @@ const collator = new Intl.Collator("ru", { numeric: true, sensitivity: "base" })
 const byName = (x: { name: string }, y: { name: string }) => collator.compare(x.name, y.name);
 
 export async function GET(request: NextRequest) {
-  const a = await getAccess();
+  const a = await getAccess(request.nextUrl.searchParams.get("as_team"));
   if (a instanceof NextResponse) return a;
 
   // Скачивание файла
@@ -212,7 +217,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const a = await getAccess();
+  const a = await getAccess(request.nextUrl.searchParams.get("as_team"));
   if (a instanceof NextResponse) return a;
   const body = (await request.json().catch(() => null)) as { action?: string; path?: string; name?: string; ifExists?: string; size?: number; mime?: string; storage_path?: string; to_status?: string; file_id?: string; color?: string | null; emoji?: string | null; image_path?: string | null; keep_image?: boolean } | null;
   if (!body?.action) return bad("Некорректный запрос");
@@ -394,7 +399,7 @@ export async function POST(request: NextRequest) {
 
 /** Видимость для бригады: { path, visible, file_id? } - один файл либо вся папка (с вложенными). */
 export async function PATCH(request: NextRequest) {
-  const a = await getAccess();
+  const a = await getAccess(request.nextUrl.searchParams.get("as_team"));
   if (a instanceof NextResponse) return a;
   if (a.brigade) return bad("Недоступно", 403);
   const body = (await request.json().catch(() => null)) as { path?: string; visible?: boolean; file_id?: string } | null;
@@ -427,7 +432,7 @@ async function removeStorage(sb: SupabaseClient, paths: string[]) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const a = await getAccess();
+  const a = await getAccess(request.nextUrl.searchParams.get("as_team"));
   if (a instanceof NextResponse) return a;
   if (a.brigade || !a.canDelete) return bad("Удалять может только офис", 403);
 
