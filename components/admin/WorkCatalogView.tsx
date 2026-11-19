@@ -140,7 +140,10 @@ export default function WorkCatalogView({
         setError((s.error ?? p.error ?? sp.error)?.message ?? "Ошибка загрузки");
       } else {
         setSections((s.data as Section[]) ?? []);
-        setPositions(((p.data as Pos[]) ?? []).map((x) => ({ ...x, price_ht: x.price_ht == null ? null : Number(x.price_ht) })));
+        const loaded = ((p.data as Pos[]) ?? []).map((x) => ({ ...x, price_ht: x.price_ht == null ? null : Number(x.price_ht) }));
+        setPositions(loaded);
+        // смета начинается пустой: позиции каталога появляются только когда их выбирают в подсказках раздела
+        setHidden(new Set(loaded.map((x) => x.id)));
         setSubs(((sp.data as Sub[]) ?? []).map((x) => ({ ...x, measure_value: x.measure_value == null ? null : Number(x.measure_value) })));
       }
       setLoading(false);
@@ -320,9 +323,8 @@ export default function WorkCatalogView({
     setCustom((list) => [...list, { id: "c" + Date.now().toString(36) + list.length, section_code: sectionCode, label, unit: unit || "U", price: price == null ? "" : String(price).replace(".", ","), qty: "1", days: "" }]);
   function optionsFor(sec: Section): PickOption[] {
     const fromCatalog: PickOption[] = positions
-      .filter((p) => hidden.has(p.id))
-      .sort((a, b) => Number(b.section_code === sec.code) - Number(a.section_code === sec.code))
-      .map((p) => ({ key: "p" + p.id, label: p.label, hint: `каталог · ${sections.find((x) => x.code === p.section_code)?.label ?? ""}`, pos: p }));
+      .filter((p) => hidden.has(p.id) && p.section_code === sec.code)
+      .map((p) => ({ key: "p" + p.id, label: p.label, hint: `каталог · ${sec.label}`, pos: p }));
     const inCatalog = new Set(positions.map((p) => p.label.trim().toLowerCase()));
     const used = new Set(custom.map((c) => c.label.trim().toLowerCase()));
     const fromHistory: PickOption[] = history
@@ -882,11 +884,25 @@ export default function WorkCatalogView({
           )}
         </div>
       )}
-      {hidden.size > 0 && (
-        <button type="button" className="text-sm font-semibold text-primary-600 hover:text-primary-700" onClick={() => setHidden(new Set())}>
-          Вернуть все убранные строки ({hidden.size})
-        </button>
-      )}
+      <div className="flex flex-wrap items-center gap-4">
+        {hidden.size > 0 && (
+          <button type="button" className="text-sm font-semibold text-primary-600 hover:text-primary-700" onClick={() => setHidden(new Set())}>
+            {devisPositions.length === 0 ? `Показать весь каталог (${hidden.size})` : `Вернуть все убранные строки (${hidden.size})`}
+          </button>
+        )}
+        {(devisPositions.length > 0 || custom.length > 0) && (
+          <button
+            type="button"
+            className="text-sm font-semibold text-stone-500 hover:text-stone-700"
+            onClick={() => {
+              setHidden(new Set(positions.map((x) => x.id)));
+              setCustom([]);
+            }}
+          >
+            Очистить смету
+          </button>
+        )}
+      </div>
       <p className="text-[13px] text-stone-500">* - вне шкалы нормы (например, Avec LT свыше 500 kWc, Ombrière свыше 1000 kWc): значение ориентировочное.</p>
     </div>
   );
