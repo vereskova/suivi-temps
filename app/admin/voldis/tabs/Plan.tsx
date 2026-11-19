@@ -32,13 +32,13 @@ export default function Plan({ supabase, data, go }: { supabase: Supabase; data:
       if (!lease) return void m.set(p.lot_number, p.occupant ? "other" : "free");
       const c = charges.find((x) => x.lease_id === lease.id && x.kind === "rent" && ymOf(x.due_date) === month);
       const st = c ? rentState(c, today) : "expected";
-      m.set(p.lot_number, st === "paid" ? "paid" : st === "late" ? "late" : "expected");
+      m.set(p.lot_number, st === "paid" || st === "lost" ? "paid" : st === "late" ? "late" : "expected");
     });
     return m;
   }, [props, active, charges, month, today]);
 
   const monthExpected = round2(active.filter((l) => leaseCoversMonth(l, month)).reduce((s, l) => s + num(l.monthly_total), 0));
-  const monthPaid = round2(charges.filter((c) => c.kind === "rent" && ymOf(c.due_date) === month).reduce((s, c) => s + Math.min(num(c.amount_paid), num(c.amount_due)), 0));
+  const monthPaid = round2(charges.filter((c) => c.kind === "rent" && ymOf(c.due_date) === month).reduce((s, c) => s + (c.status === "lost" ? num(c.amount_due) : Math.min(num(c.amount_paid), num(c.amount_due))), 0));
   const lateCharges = charges.filter((c) => c.kind === "rent" && rentState(c, today) === "late");
   const lateTotal = round2(lateCharges.reduce((s, c) => s + remaining(c), 0));
 
