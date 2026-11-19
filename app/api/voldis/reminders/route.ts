@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
 import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
-import { mailConfigured, sendMail } from "@/lib/voldis/mail";
+import { mailConfigured, parseEmails, sendMail } from "@/lib/voldis/mail";
 import { monthLabelFr, num, remaining, round2, type VCharge, type VSettings, type VTenant } from "@/lib/voldis/rental";
 
 // Relance de paiement : un e-mail au locataire qui liste ses loyers impayés (rh_admin + comptable). Body : { tenantId }.
@@ -23,10 +23,11 @@ export async function POST(req: Request) {
   if (!tenant || !cfg) return NextResponse.json({ error: "Introuvable" }, { status: 404 });
   const open = ((charges ?? []) as VCharge[]).filter((c) => remaining(c) > 0);
   if (open.length === 0) return NextResponse.json({ error: "Aucun impayé pour ce locataire." }, { status: 400 });
-  const to = (tenant.billing_email ?? tenant.email ?? "").trim();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
-    return NextResponse.json({ error: "Aucune adresse e-mail valable pour ce locataire : renseignez-la sur sa fiche." }, { status: 400 });
+  const { valid: toList, invalid } = parseEmails(tenant.billing_email ?? tenant.email ?? "");
+  if (toList.length === 0 || invalid.length > 0) {
+    return NextResponse.json({ error: invalid.length ? `Adresse e-mail non valable : ${invalid.join(", ")}` : "Aucune adresse e-mail valable pour ce locataire : renseignez-la sur sa fiche." }, { status: 400 });
   }
+  const to = toList.join(", ");
   const total = round2(open.reduce((s, c) => s + remaining(c), 0));
   const fmt = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
   const list = open.map((c) => `- loyer ${monthLabelFr(c.period_start ?? c.due_date)} : ${fmt(remaining(c))} (échéance ${c.due_date.split("-").reverse().join("/")})`).join("\n");

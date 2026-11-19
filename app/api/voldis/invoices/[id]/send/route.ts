@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth/requireRole";
 import { VOLDIS_LOCATION_ROLES } from "@/lib/voldis/access";
 import { renderInvoicePdf } from "@/lib/voldis/invoice-pdf";
-import { mailConfigured, sendMail } from "@/lib/voldis/mail";
+import { VOLDIS_CC, mailConfigured, parseEmails, sendMail } from "@/lib/voldis/mail";
 import { monthLabelFr, type VInvoice, type VSettings, type VTenant } from "@/lib/voldis/rental";
 
 // Envoi par e-mail d'une facture / quittance au locataire (rh_admin + comptable). Body optionnel : { to }.
@@ -27,10 +27,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   ]);
   if (!cfg) return NextResponse.json({ error: "Fiche société introuvable" }, { status: 500 });
 
-  const to = (body.to ?? tenant?.billing_email ?? tenant?.email ?? "").trim();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
-    return NextResponse.json({ error: "Aucune adresse e-mail valable pour ce locataire : renseignez-la sur sa fiche." }, { status: 400 });
+  const { valid: toList, invalid } = parseEmails(body.to ?? tenant?.billing_email ?? tenant?.email ?? "");
+  if (toList.length === 0 || invalid.length > 0) {
+    return NextResponse.json({ error: invalid.length ? `Adresse e-mail non valable : ${invalid.join(", ")}` : "Aucune adresse e-mail valable pour ce locataire : renseignez-la sur sa fiche." }, { status: 400 });
   }
+  const to = toList.join(", ");
+  const cc = VOLDIS_CC.filter((a) => !toList.some((t) => t.toLowerCase() === a.toLowerCase()));
 
   let bytes: Buffer | null = null;
   if (invoice.pdf_path) {
@@ -47,7 +49,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     : `Bonjour,\n\nVeuillez trouver ci-joint la facture ${invoice.number} relative au loyer de ${period}, d'un montant de ${invoice.total_ttc.toFixed(2).replace(".", ",")} €.\n${cfg.payment_terms}${cfg.iban ? `\nIBAN : ${cfg.iban}` : ""}\n\nCordialement,\n${cfg.company_name}`;
 
   try {
-    await sendMail({ fromName: cfg.company_name, fromEmail: cfg.email, to, subject, text, attachments: [{ filename: `${invoice.number}.pdf`, content: bytes }] });
+    await sendMail({ fromName: cfg.company_name, fromEmail: cfg.email, to, cc, subject, text, attachments: [{ filename: `${invoice.number}.pdf`, content: bytes }] });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Échec de l'envoi" }, { status: 502 });
   }

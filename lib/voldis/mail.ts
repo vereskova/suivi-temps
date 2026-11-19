@@ -26,6 +26,22 @@ function smtpConfig(): Smtp | null {
 
 export const mailConfigured = () => smtpConfig() !== null;
 
+/** Copie systématique des factures envoyées aux locataires (comptable + assistante). */
+export const VOLDIS_CC = ["comptable@vladis.fr", "assistant@vladis.fr"];
+
+/** Une ou plusieurs adresses séparées par virgule, point-virgule ou espace -> liste d'adresses valables (sans doublons). */
+export function parseEmails(raw: string | null | undefined): { valid: string[]; invalid: string[] } {
+  const parts = (raw ?? "").split(/[,;\s]+/).map((x) => x.trim()).filter(Boolean);
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  for (const x of parts) {
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)) {
+      if (!valid.some((v) => v.toLowerCase() === x.toLowerCase())) valid.push(x);
+    } else invalid.push(x);
+  }
+  return { valid, invalid };
+}
+
 /** Adresse d'envoi réellement utilisée (affichée dans Réglages), sans le mot de passe. */
 export const mailSenderAddress = () => smtpConfig()?.user ?? null;
 
@@ -33,6 +49,7 @@ export async function sendMail(opts: {
   fromName: string;
   fromEmail?: string | null;
   to: string;
+  cc?: string[];
   subject: string;
   text: string;
   attachments?: { filename: string; content: Buffer }[];
@@ -49,6 +66,7 @@ export async function sendMail(opts: {
     from: `"${opts.fromName.replace(/"/g, "")}" <${cfg.user}>`,
     replyTo: opts.fromEmail || cfg.user,
     to: opts.to,
+    cc: opts.cc && opts.cc.length ? opts.cc : undefined,
     subject: opts.subject,
     text: opts.text,
     attachments: opts.attachments,
