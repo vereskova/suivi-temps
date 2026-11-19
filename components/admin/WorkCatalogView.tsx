@@ -104,6 +104,7 @@ export default function WorkCatalogView({
   const [custom, setCustom] = useState<CustomLine[]>([]); // свои строки этой сметы
   const [history, setHistory] = useState<HistoryLine[]>([]); // строки прошлых смет объектов - для подсказок
   const [savePanel, setSavePanel] = useState(false);
+  const [sinaoPanel, setSinaoPanel] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [manualDays, setManualDays] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState<string | null>(null); // код раздела, где открыта форма
@@ -344,6 +345,44 @@ export default function WorkCatalogView({
     }
     if (o.hist) addCustom(sec.code, o.hist.label, o.hist.unit ?? "U", o.hist.price_ht);
   }
+  /** Смета в виде разделов и строк для Sinao (инфо-строки про технику и материалы не отправляются). */
+  function sinaoCategories() {
+    return sections
+      .map((sec) => {
+        const fromCatalog = devisPositions
+          .filter((p) => p.section_code === sec.code && !p.is_info)
+          .map((p) => ({
+            label: p.label,
+            unit: p.unit,
+            qty: quantityOf(p),
+            price_ht: p.price_ht,
+            note: (subsByPos.get(p.id) ?? []).map((x) => x.label).filter(Boolean).join("; ") || null,
+          }));
+        const mine = custom
+          .filter((c) => c.section_code === sec.code)
+          .map((c) => ({ label: c.label.trim() || "Без названия", unit: c.unit.trim() || null, qty: c.qty.trim() ? num(c.qty) : 1, price_ht: c.price.trim() ? num(c.price) : null, note: null as string | null }));
+        return { label: sec.label, items: [...fromCatalog, ...mine].filter((i) => i.qty > 0) };
+      })
+      .filter((c) => c.items.length > 0);
+  }
+  async function sendToSinao(t: { organizationId: number; clientName: string; title: string }): Promise<string | null> {
+    const categories = sinaoCategories();
+    if (categories.length === 0) return "В смете нет строк.";
+    try {
+      const res = await fetch("/api/commercial/sinao-devis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...t, categories }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) return data?.error ?? "Sinao не принял смету.";
+    } catch {
+      return "Нет связи с сервером.";
+    }
+    setSinaoPanel(false);
+    setSaveMsg(`Смета отправлена в Sinao как черновик devis для «${t.clientName}». Откройте Sinao → Devis → Brouillons.`);
+    return null;
+  }
   /** Записывает текущую смету в объект (новый или существующий). Возвращает текст ошибки или null. */
   async function saveDevis(t: { objectId: string | null; name: string; teamId: string }): Promise<string | null> {
     const fromInput = (raw: string) => (raw.trim() ? num(raw) : null);
@@ -462,9 +501,14 @@ export default function WorkCatalogView({
           Смета: числа вводятся прямо в строках (мощность, площадь кровли, панели, длина кабеля) - одно число работает для всех строк с тем же источником количества, дни по нормам считаются сразу. «−» убирает строку только из этой сметы (каталог не меняется), «+» добавляет: начните писать - появятся подсказки. Готовую смету сохраните в объект.
           {canEdit ? " Названия, единицы, цены и тексты подпозиций правятся прямо в таблице (наведите на строку) и сохраняются в каталог." : ""}
         </p>
-        <button type="button" className="btn btn-primary px-4 py-2 text-[15px]" onClick={() => setSavePanel(true)}>
-          Сохранить в объект
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn btn-primary px-4 py-2 text-[15px]" onClick={() => { setSavePanel(true); setSinaoPanel(false); }}>
+            Сохранить в объект
+          </button>
+          <button type="button" className="btn btn-secondary px-4 py-2 text-[15px]" onClick={() => { setSinaoPanel(true); setSavePanel(false); }}>
+            Отправить в Sinao
+          </button>
+        </div>
       </div>
       {saveMsg && <p className="rounded-lg bg-success-50 p-2 text-sm text-success-700">{saveMsg}</p>}
       {savePanel && (
@@ -474,6 +518,7 @@ export default function WorkCatalogView({
           onSave={saveDevis}
         />
       )}
+      {sinaoPanel && <SendToSinao onClose={() => setSinaoPanel(false)} onSend={sendToSinao} total={totalHt} />}
       {error && <p className="rounded-lg bg-error-50 p-2 text-sm text-error-700">{error}</p>}
 
       <div className="overflow-x-auto rounded-xl border border-stone-200 bg-white">
@@ -1084,6 +1129,91 @@ function SaveToObject({
       <div className="flex gap-2">
         <button type="button" className="btn btn-primary px-4 py-1.5 text-[15px]" disabled={!ready || busy} onClick={go}>
           {busy ? "Сохраняю…" : "Сохранить смету"}
+        </button>
+        <button type="button" className="px-2 py-1.5 text-[15px] text-stone-600" onClick={onClose}>
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Выбор клиента из списка Sinao и отправка сметы черновиком devis. */
+function SendToSinao({
+  onClose,
+  onSend,
+  total,
+}: {
+  onClose: () => void;
+  onSend: (t: { organizationId: number; clientName: string; title: string }) => Promise<string | null>;
+  total: number;
+}) {
+  const [clients, setClients] = useState<{ id: number; name: string }[] | null>(null);
+  const [filter, setFilter] = useState("");
+  const [orgId, setOrgId] = useState("");
+  const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/commercial/sinao-clients", { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as { clients?: { id: number; name: string }[]; error?: string } | null;
+        if (!alive) return;
+        if (!res.ok || !data?.clients) setErr(data?.error ?? "Не удалось загрузить клиентов Sinao.");
+        else setClients(data.clients);
+      } catch {
+        if (alive) setErr("Нет связи с сервером.");
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const shown = (clients ?? []).filter((c) => !filter.trim() || c.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  const chosen = (clients ?? []).find((c) => String(c.id) === orgId);
+  const ready = Boolean(chosen) && title.trim().length > 0;
+  async function go() {
+    if (!chosen) return;
+    setBusy(true);
+    setErr(null);
+    const res = await onSend({ organizationId: chosen.id, clientName: chosen.name, title: title.trim() });
+    setBusy(false);
+    if (res) setErr(res);
+  }
+  return (
+    <div className="space-y-3 rounded-xl border border-primary-200 bg-primary-50/40 p-4">
+      <p className="text-[15px] font-semibold text-stone-800">
+        Отправить смету в Sinao черновиком devis (итого HT {total.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €)
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="w-64 text-[13px] font-semibold text-stone-700">
+          Клиент Sinao{clients ? ` (${clients.length})` : ""}
+          <input className="input mt-1 w-full py-1.5 text-[15px]" placeholder="поиск по названию…" value={filter} onChange={(e) => setFilter(e.target.value)} disabled={!clients} />
+        </label>
+        <label className="w-72 text-[13px] font-semibold text-stone-700">
+          &nbsp;
+          <select className="input mt-1 w-full py-1.5 text-[15px]" value={orgId} onChange={(e) => setOrgId(e.target.value)} disabled={!clients}>
+            <option value="">{clients ? "выберите клиента…" : "загрузка…"}</option>
+            {shown.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex-1 basis-64 text-[13px] font-semibold text-stone-700">
+          Название devis
+          <input className="input mt-1 w-full py-1.5 text-[15px]" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="например: Centrale PV 150 kWc - Toulouse" />
+        </label>
+      </div>
+      {err && <p className="text-sm text-error-700">{err}</p>}
+      <div className="flex gap-2">
+        <button type="button" className="btn btn-primary px-4 py-1.5 text-[15px]" disabled={!ready || busy} onClick={go}>
+          {busy ? "Отправляю…" : "Отправить в Sinao"}
         </button>
         <button type="button" className="px-2 py-1.5 text-[15px] text-stone-600" onClick={onClose}>
           Отмена

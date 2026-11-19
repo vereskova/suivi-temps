@@ -74,6 +74,16 @@ export async function findOrganizationByName(name: string): Promise<SinaoOrganiz
   return exact ?? items[0] ?? null;
 }
 
+/** Все клиенты (организации) Sinao по алфавиту - для выбора при отправке сметы. */
+export async function listOrganizations(): Promise<SinaoOrganization[]> {
+  const result = await sinaoFetch(`/organizations?limit=200`);
+  const items: SinaoOrganization[] = Array.isArray(result) ? result : (result?.data ?? []);
+  return items
+    .filter((o) => o && o.id != null && o.name)
+    .map((o) => ({ id: o.id, name: o.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" }));
+}
+
 export type SinaoQuoteCategory = {
   label: string;
   /** amount is cents (Sinao's own unit - "Price without taxes in cents"), vatPercent is basis points (20% = 2000). */
